@@ -1,0 +1,71 @@
+import os
+import fnmatch
+import itertools
+
+Import('env')
+env = env.Clone()
+
+#SDM640_CHANGES
+if env['MSM_ID'] in ['640']:
+   env['MSM_ID'] = '670'
+
+SRCPATH = ".."
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+env.Append(CFLAGS = '${ARMCC_STDC99_CMD}')
+env.Append(CFLAGS = '-DCMD_DB_IN_DDR')
+
+# FEATURE CONFIG:
+#env.Append(CPPDEFINES=['RPMH_OFFTARGET_TEST'])
+#env.Append(CPPDEFINES=['OFFTARGET_MSM_ID'])
+
+CBSP_API = [
+  'POWER',
+  'SYSTEMDRIVERS',
+  # needs to be last also contains wrong comdef.h
+  'KERNEL',
+]
+
+if env.has_key('ADSP_PROC') or env.has_key('MODEM_PROC'):
+    env['RPMH_IMAGE_OS'] = 'dal'
+elif env.has_key('AOP_IMAGE'):
+    env['RPMH_IMAGE_OS'] = 'rex'
+else:
+    env['RPMH_IMAGE_OS'] = 'stubs'
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+env.RequireProtectedApi(CBSP_API)
+
+if env['CHIPSET_PMIC'] == 'pm605':
+		env.PublishPrivateApi('CMD_DB', [
+		'${BUILD_ROOT}/core/power/cmd_db/common',
+		'${BUILD_ROOT}/core/power/cmd_db/target/605',
+		])
+else:
+		env.PublishPrivateApi('CMD_DB', [
+		'${BUILD_ROOT}/core/power/cmd_db/common',
+		'${BUILD_ROOT}/core/power/cmd_db/target/${MSM_ID}',
+		])
+
+COMMONPATH = os.path.join('..', 'common')
+if env['CHIPSET_PMIC'] == 'pm605':
+	TARGETPATH = os.path.join('..', 'target', '605')
+else:
+	TARGETPATH = os.path.join('..', 'target', env['MSM_ID'])	
+
+source_patterns = ['*.c', '*.cpp']
+sources = []
+
+#common sources
+for root, dirnames, filenames in os.walk(COMMONPATH):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in source_patterns])
+    matches = ['${BUILDPATH}' + os.path.join(root, filename)[2:] for filename in matches]
+    sources.extend(matches)
+
+#target sources
+for root, dirnames, filenames in os.walk(TARGETPATH):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in source_patterns])
+    matches = ['${BUILDPATH}' + os.path.join(root, filename)[2:] for filename in matches]
+    sources.extend(matches)
+
+env.AddLibrary(['CORE_AOP'],'${BUILDPATH}/cmd_db.lib', sources)

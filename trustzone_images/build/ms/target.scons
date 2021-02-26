@@ -1,0 +1,197 @@
+#===============================================================================
+#
+# TZ Build System
+#
+# GENERAL DESCRIPTION
+#    TZ build script
+#
+# Copyright (c) 2009-2017 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+# $Header: //source/qcom/qct/multimedia2/bsp/build/msm7x30/brew/main/latest/SConstruct#2 $
+#
+#===============================================================================
+import os
+import re
+import glob
+import time
+import random
+import SCons.Script
+import time
+import platform
+import getpass
+import sys
+from SCons.Script import BUILD_TARGETS
+
+print "------------------------------------------------------------------------------"
+print "   Loading OEM build system"
+print "------------------------------------------------------------------------------"
+
+#------------------------------------------------------------------------------
+# Get system Environment
+#------------------------------------------------------------------------------
+env = DefaultEnvironment(ENV = os.environ, tools = ['mingw','textfile'])
+env = env.Clone()
+
+#------------------------------------------------------------------------------
+# Set global variables and defaults
+#------------------------------------------------------------------------------
+_OLD_LISTDIR = os.listdir
+os.listdir = lambda path: sorted(_OLD_LISTDIR(path))
+sys.modules["os"] = os
+
+#t_start = time.clock()
+BUILD_ROOT = os.path.join('..','..') + os.sep
+TARGET_ROOT = os.path.join('..', '..', '..')
+env.Replace(BUILD_ROOT = BUILD_ROOT)
+env.Replace(TARGET_ROOT = TARGET_ROOT)
+env.Replace(SECTOOLS_BUILDER_VERBOSITY = 'z')
+
+if SCons.Script.ARGUMENTS.get('OFF_TARGET'):
+  env.Replace(OFF_TARGET = True)
+
+if ARGUMENTS.get('deterministic',1) == 1:
+  env.Replace(BUILD_TIMESTAMP = "Wed Dec 31 16:00:00 1969")
+  env.Replace(BUILD_USER_NAME = "deterministic user name")
+  env.Replace(BUILD_MACHINE_NAME = "deterministic machine name")
+else:
+  env.Replace(BUILD_TIMESTAMP = time.ctime())
+  env.Replace(BUILD_USER_NAME = getpass.getuser())
+  env.Replace(BUILD_MACHINE_NAME = platform.node())
+
+
+#Convert SOC_VERS to support multiple versions which can be used by other Sconscripts as such
+if SCons.Script.ARGUMENTS.get("SOC_VERS") is not None:
+	SCons.Script.ARGUMENTS["SOC_VERS"] = " ".join(SCons.Script.ARGUMENTS.get("SOC_VERS").split(","))
+
+# Hold TZ execution mode aarch32 vs aarch64
+env.Replace(TZ_EXEC_MODE=SCons.Script.ARGUMENTS["TZ_EXEC_MODE"])
+# Pbl Version 
+env.Replace(PBL_VERSION=SCons.Script.ARGUMENTS["PBL_VERSION"])
+# Secimage config filename
+env.Replace(SECIMAGE_CONFIG=SCons.Script.ARGUMENTS["SECIMAGE_CONFIG"])
+
+#Load the Tools and methods
+env.Tool('ssg_environment', toolpath = ['${BUILD_ROOT}/ssg/bsp/build/scripts'])
+env.Tool('deploy_builder', toolpath = ['${BUILD_ROOT}/build/ms'])
+
+# Any tool scripts with env methods used in core.tz should be defined here to
+# properly establish their feature def flags. Otherwise, individual core scripts
+# must load tool scripts that may not exist in other (non-SSG) environments.
+# Note that QC SCons has not been loaded yet. Only Open Source SCons env methods
+# are available for these tool scripts.
+env.Tool('stripped_elf_builder', toolpath = ['${BUILD_ROOT}/ssg/bsp/build/scripts'])
+
+
+
+#we need to call the method to clean deploy log files before proceeding to load
+#the ComSConstruct tools. Once we call the ComSConstruct tools, the SConscripts
+#for all components are scanned prior to scanning this file. While parsing
+#these SConscript files, if deploy is enabled, the list of files getting 
+#deployed is generated and logged in the logging file. So, the call below
+#deletes the log from previous deployment to allow for the new generated list
+#to be relevant. The log file is used in deployment verification step.
+if 'deploy' in COMMAND_LINE_TARGETS:
+  #if we have any previous log files for given CHIPSET, we should delete the 
+  #deploy_(*).log files, since this run will create a new set
+  env.CleanDeployListLogFiles()
+
+env.Tool('ComSConstruct', toolpath = ['${BUILD_ROOT}/tools/build/scons/build'])
+env.Tool('bldcfg_builder', toolpath = ['${BUILD_ROOT}/build/ms'])
+
+if 'deploy' in COMMAND_LINE_TARGETS:
+  env.Alias('nukedeploytree', env.NukeDeployTreeBuilder())
+  d = env.NukeDeployTreeBuilder()
+  #first thing is to nuke the existing deploy tree
+  env.Requires('deploy', d)
+  #we would want to install the tbc_cleanpack in deploy tree
+  #but only after nuke deploy tree has executed
+  env.Alias('tbc_cleanpack', env.Create_TBCPack_In_DeployTree())
+  BUILD_TARGETS.append('tbc_cleanpack')
+  env.Requires('tbc_cleanpack', d)
+  #If we are deploying, we want to also verify the deploy tree. This is also
+  #an order only dependency
+  #we want to generate a new deploy_stat.txt file every time we deploy
+  BUILD_TARGETS.append('verify_deploy_tree')
+  src_path = os.path.join(os.getcwd(), 'deploy_stat.txt')
+  #always open with 'w' mode so we create a new file
+  with open(src_path, 'w') as f:
+    f.write('Verify deploy begin :{}\n'.format(str(random.random())))
+  dest = 'verify_deploy.txt'
+  vdt = env.VerifyDeployBuild(target = dest, source = src_path)
+  env.Alias('verify_deploy_tree', vdt)
+  env.Requires(vdt, 'deploy')
+
+  deploy_files = [
+     'bldcfg_builder.py',
+     'BuildConfigParser.py',
+     'build_all.py',
+     'deploy_builder.py',
+     'target.scons',
+     '../manifest.xml',
+  ]
+
+  # create a simplified build_config_deploy.xml to deploy in place of the
+  # original build_config.xml
+  build_config_deploy = env.BuildConfigBuilder( \
+      "${BUILD_ROOT}/build/ms/build_config_deploy.xml", \
+      "${BUILD_ROOT}/build/ms/build_config.xml")
+  deploy_files.append(build_config_deploy)
+
+  #cust_header_files = Glob('../cust/*.h')
+  
+  cust_header_files = [
+    '../cust/custdiag.h',
+    '../cust/custefs.h',
+    '../cust/custipsec.h',
+    '../cust/customer.h',
+    '../cust/custpmic.h',
+    '../cust/custremoteapis.h',
+    '../cust/custsdcc.h',
+    '../cust/custsec.h',
+    '../cust/custsfs.h',
+    '../cust/custsio_8660.h',
+    '../cust/custsurf.h',
+    '../cust/custtarget.h'
+  ]
+  
+  #hard-coding following files. They need to come from corresponding builder
+  hcfiles = [
+     'cust{}a.h'.format(env['BUILD_ID'].lower()),
+     'targ{}a.h'.format(env['BUILD_ID'].lower()),
+     'tcfg_{}a.py'.format(env['BUILD_ID'].lower()),
+  ]
+  env.Deploy(deploy_files)
+  env.Deploy(cust_header_files)
+  env.Deploy(hcfiles)
+
+  env._DeployDir(os.path.join(env['BUILD_ROOT'], 'sectools'))
+  env._DeployDir(os.path.join(env['BUILD_ROOT'], 'tools'))
+
+#------------------------------------------------------------------------------
+# Generate BuildProducts.txt
+#------------------------------------------------------------------------------
+DIR_ROOT = os.path.join('..', '..', '..') + os.sep
+env.Replace(DIR_ROOT = DIR_ROOT)
+
+with open(env['DIR_ROOT'] + "BuildProducts.txt", "a") as fh:
+  fh.write ("./trustzone_images/build/ms/bin/" + env['BUILD_ID'] + "/tz.mbn\n")
+  #-------------------------------------------------------------------------------
+  # Bear target don't have hyp image.
+  #-------------------------------------------------------------------------------
+  if env['BUILD_ID'] in ['SANAANAA', 'ZALAANAA', 'MAYAANAA', 'NAKAANAA', 'RAGAANAA', 'TAFAANBA', 'OAPAANAA']:
+    print "Adding only tz.mbn to  Buildproducts.txt" 
+  else:
+    fh.write ("./trustzone_images/build/ms/bin/" + env['BUILD_ID'] + "/hyp.mbn\n")
+
+#-------------------------------------------------------------------------------
+# PreProcessor file cleanup
+#-------------------------------------------------------------------------------
+PP_CLEAN_SOURCES = env.FindFiles(['*.o.pp'], "${BUILD_ROOT}/core/")
+PP_CLEAN_SOURCES += env.FindFiles(['*.o.i'], "${BUILD_ROOT}/core/")
+PP_CLEAN_SOURCES += env.FindFiles(['*.o.lst'], "${BUILD_ROOT}/core/")
+
+env.CleanPack('TZOS_IMAGE', PP_CLEAN_SOURCES)

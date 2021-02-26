@@ -1,0 +1,126 @@
+;****************************************************************************
+;** load_boot_crash_dump.cmm
+;**
+;** This script performs loading of the crash dumps to a simulator.
+;**
+;** Copyright 2013 , 2018 by Qualcomm Technologies, Inc. All Rights Reserved
+;**
+;****************************************************************************
+;**
+;**                        EDIT HISTORY FOR MODULE
+;**
+;**
+;** when       who     what, where, why
+;** --------   ---     ------------------------------------------------------
+;** 03/25/14   kedara  Changes added to support PCIe core dumps 
+;** 09/13/13   aus     Changes added to support SBL DDR crash dumps 
+;** 09/04/13   aus     Fixed SBL dump size
+;** 07/10/13   aus     Initial creation.
+
+;****************************************************************************
+
+; Note: Script assumes that the SBL elf is already loaded
+
+ENTRY &crash_dumps_path
+
+local &SBLAddr     ; SBL address in L2
+local &SBLSize     ; Size of SBL
+local &SBLDumpAddr ; Address in DDR where SBL is dumped to
+local &crash_dump_cookie ; Crash dump cookie value 
+
+&crash_dump_cookie=0x45525220
+
+Area.RESET 
+WINPOS 0% 50% 68% 50% 0. 0. W001
+Area.create MAIN
+Area.view MAIN
+Area.select MAIN
+
+; Get the crash dump location
+if "&crash_dumps_path"==""
+(
+  print "Please enter the location of the crash dumps:"
+  enter &crash_dumps_path
+  print
+  print
+)
+
+; Load the DDR binary
+&ddr_binary_path="&crash_dumps_path"+"/DDRCS0.BIN"
+D.LOAD.B &ddr_binary_path /noclear
+
+; Check for the boot_crash_dump_data variable which will be used to 
+; load the dumps and the registers
+if (v.value("boot_crash_dump_data.crash_dump_cookie")!=&crash_dump_cookie)
+(
+  print "boot crash dump_data not present in build."
+  print "SBL crash dumps not found."
+  ENDDO
+) 
+
+; Currently supports version 1 of the structure.
+if (v.value("boot_crash_dump_data.version")==1)
+(
+; Set the values from the boot_crash_dump_data variable
+    &sbl_ddr_addr=v.value("boot_crash_dump_data.sbl_ddr_addr")
+    &sbl_ddr_size=v.value("boot_crash_dump_data.sbl_ddr_size")
+    &sbl_ddr_dump_addr=v.value("boot_crash_dump_data.sbl_ddr_dump_addr")
+    &sbl_l2_addr=v.value("boot_crash_dump_data.sbl_l2_addr")
+    &sbl_l2_size=v.value("boot_crash_dump_data.sbl_l2_size")
+    &sbl_l2_dump_addr=v.value("boot_crash_dump_data.sbl_l2_dump_addr")
+
+; Set the registers
+r.s r0 v.value("boot_crash_dump_data.regs[0]")
+r.s r1 v.value("boot_crash_dump_data.regs[1]")
+r.s r2 v.value("boot_crash_dump_data.regs[2]")
+r.s r3 v.value("boot_crash_dump_data.regs[3]")
+r.s r4 v.value("boot_crash_dump_data.regs[4]")
+r.s r5 v.value("boot_crash_dump_data.regs[5]")
+r.s r6 v.value("boot_crash_dump_data.regs[6]")
+r.s r7 v.value("boot_crash_dump_data.regs[7]")
+r.s r8 v.value("boot_crash_dump_data.regs[8]")
+r.s r9 v.value("boot_crash_dump_data.regs[9]")
+r.s r10 v.value("boot_crash_dump_data.regs[10]")
+r.s r11 v.value("boot_crash_dump_data.regs[11]")
+r.s r12 v.value("boot_crash_dump_data.regs[12]")
+r.s r13_svc v.value("boot_crash_dump_data.regs[13]")
+r.s r14_svc v.value("boot_crash_dump_data.regs[14]")
+r.s spsr_svc v.value("boot_crash_dump_data.regs[15]")
+r.s pc v.value("boot_crash_dump_data.regs[16]")
+r.s cpsr v.value("boot_crash_dump_data.regs[17]")
+;r.s r13_sys v.value("boot_crash_dump_data.regs[18]")
+;r.s r14_sys v.value("boot_crash_dump_data.regs[19]")
+r.s r13_irq v.value("boot_crash_dump_data.regs[20]")
+r.s r14_irq v.value("boot_crash_dump_data.regs[21]")
+r.s spsr_irq v.value("boot_crash_dump_data.regs[22]")
+r.s r13_abt v.value("boot_crash_dump_data.regs[23]")
+r.s r14_abt v.value("boot_crash_dump_data.regs[24]")
+r.s spsr_abt v.value("boot_crash_dump_data.regs[25]")
+r.s r13_und v.value("boot_crash_dump_data.regs[26]")
+r.s r14_und v.value("boot_crash_dump_data.regs[27]")
+r.s spsr_und v.value("boot_crash_dump_data.regs[28]")
+r.s r8_fiq v.value("boot_crash_dump_data.regs[29]")
+r.s r9_fiq v.value("boot_crash_dump_data.regs[30]")
+r.s r10_fiq v.value("boot_crash_dump_data.regs[31]")
+r.s r11_fiq v.value("boot_crash_dump_data.regs[32]")
+r.s r12_fiq v.value("boot_crash_dump_data.regs[33]")
+r.s r13_fiq v.value("boot_crash_dump_data.regs[34]")
+r.s r14_fiq v.value("boot_crash_dump_data.regs[35]")
+r.s spsr_fiq v.value("boot_crash_dump_data.regs[36]")
+
+    &sbl_ddr_size=&sbl_ddr_size-1
+    &sbl_l2_size=&sbl_l2_size-1
+
+    ; Load the SBL from sbl_ddr_dump_addr to sbl_ddr_addr
+    D.LOAD.B &ddr_binary_path &sbl_ddr_addr++&sbl_ddr_size /skip &sbl_ddr_dump_addr /noclear
+
+    ; Load the SBL from sbl_l2_dump_addr to sbl_l2_addr
+    D.LOAD.B &ddr_binary_path &sbl_l2_addr++&sbl_l2_size /skip &sbl_l2_dump_addr /noclear
+	
+    ; Note: PCIe dump data need not be repopulated from dump location to source. A global variable
+    ; in PCIe drivers keeps track of the data.
+)
+
+print "SBL crash dumps loaded"
+
+ENDDO

@@ -1,0 +1,116 @@
+#===============================================================================
+#
+# CHRE PAL dynamic builder scons
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2017 by QUALCOMM Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+
+Import('env')
+import os
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/chre/chre_pal/src" 
+LIBNAME = 'chre_pal'
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+target_so = '${BUILDPATH}/'+LIBNAME+'.so'
+hexagon_root = env.get('HEXAGON_ROOT')
+hexgaon_rtos_release = env.get('HEXAGON_RTOS_RELEASE')
+hexagon_version = env.get('Q6VERSION')
+HEXAGON_LIB_PATH = "{0}/{1}/Tools/target/hexagon/lib/{2}/G0/pic".format(hexagon_root,hexgaon_rtos_release,hexagon_version)
+#-------------------------------------------------------------------------------
+# Setup env Flags
+#-------------------------------------------------------------------------------
+env.Replace(ASM_DFLAGS = '-D__V_DYNAMIC__')
+env.Replace(CC_DFLAGS = '-D__V_DYNAMIC__')
+env.Replace(HEXAGONCC_OPT = ' -O0 ')    
+env.Replace(HEXAGONCC_WARN = '-Wall -Wno-cast-align -Wpointer-arith -Wno-missing-braces -Wno-strict-aliasing -Wstrict-prototypes -Wnested-externs -Werror ')
+
+env.Replace(HEXAGON_UNDEF = ' ')
+env.Replace(HEXAGON_LANIND = '-fno-exceptions -fno-strict-aliasing -fno-zero-initialized-in-bss -fdata-sections -fno-signed-char -fdiagnostics-show-option ')    
+env.Replace(CFLAGS = ' -G0')
+env.Append(SHLINKFLAGS = '-G0 --wrap=malloc --wrap=calloc --wrap=free --wrap=realloc --wrap=memalign --wrap=__stack_chk_fail -call_shared ')
+env.Append(SHLINKFLAGS = ' -L{} '.format(HEXAGON_LIB_PATH))
+
+env['SKEL_DEP'] = ''
+
+env.Replace(QDSP6OBJS1= '${QDSP6_RELEASE_DIR}/Tools/target/hexagon/lib/${Q6VERSION}/G0/pic/initS.o')
+env.Replace(QDSP6OBJS3= '${QDSP6_RELEASE_DIR}/Tools/target/hexagon/lib/${Q6VERSION}/G0/pic/libgcc.a')
+env.Replace(QDSP6OBJS4= '${QDSP6_RELEASE_DIR}/Tools/target/hexagon/lib/${Q6VERSION}/G0/pic/finiS.o')
+
+env['SHLINKGRP'] = ' -shared -fPIC -Bsymbolic --start-group $QDSP6OBJS1 $QDSP6OBJS3 $SOURCES.posix $QDSP6OBJS4 $SKEL_DEP --end-group ${HEXAGONLD_MAP_CMD} ${TARGET.posix}.map'
+
+env.Replace(SHLINKCOM="${TEMPFILE('$SHLINK $SHLINKFLAGS $HEXAGON_OUTPUT_CMD $TARGET.posix $SHLINKGRP')}")
+
+#-------------------------------------------------------------------------------
+# Get the required Include directories
+#-------------------------------------------------------------------------------
+core_public_apis = [
+       'KERNEL',
+       'SERVICES',
+       'DEBUGTOOLS',
+       'ADSPPM',
+       'POWER',
+       'MPROC',
+       'SYSTEMDRIVERS',
+       'DEBUGTRACE',
+       'DAL',
+       'DIAG',
+       'BUSES',
+]
+
+platform_public_apis = [
+       'PLATFORM_LIBS',
+       'MOD_TABLE',
+       'QAIC',
+       'STDDEF',
+       'REMOTE',
+       'HAPSDK',
+]
+
+env.PublishPrivateApi('CHRE_PAL',[
+        "${BUILD_ROOT}/chre/chre_pal/src",
+])
+
+env.RequirePublicApi(platform_public_apis, area='platform')
+env.RequirePublicApi(core_public_apis, area='core')
+env.RequirePrivateApi('CHRE_PAL')
+
+#-------------------------------------------------------------------------------
+# Add CHRE PAL specific Defines
+#-------------------------------------------------------------------------------
+CHRE_PAL_DEFINES = ['CHRE_PATCH_VERSION=1',
+                        'CHRE_ASSERTIONS_ENABLED',
+                        'CHRE_MINIMUM_LOG_LEVEL=CHRE_LOG_LEVEL_DEBUG',
+                        'NANOAPP_MINIMUM_LOG_LEVEL=CHRE_LOG_LEVEL_DEBUG',
+                        'CHRE_MESSAGE_TO_HOST_MAX_SIZE=4000',
+                        'FLATBUFFERS_CHRE',
+]
+
+env.Append(CPPDEFINES = CHRE_PAL_DEFINES)
+
+#-------------------------------------------------------------------------------
+# Setup source files
+#-------------------------------------------------------------------------------
+chre_pal_src = [
+                    "${BUILDPATH}/pal.c",
+                   ]
+
+#-------------------------------------------------------------------------------
+# Call the build command
+#-------------------------------------------------------------------------------
+env.AddMySharedLibrary(['ADSP_SHARED_LIBS'], '${BUILDPATH}/'+LIBNAME, chre_pal_src)
+
+CLEAN_LIST=['${BUILD_ROOT}/chre/chre_pal/Makefile',
+            '${BUILD_ROOT}/chre/chre_pal/exports.lst',]
+
+env.CleanPack(['ADSP_SHARED_LIBS'], CLEAN_LIST)
+	

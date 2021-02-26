@@ -1,0 +1,241 @@
+ #===============================================================================
+#
+# Bam Libs
+#
+# GENERAL DESCRIPTION
+#    BAM Libs build script
+#
+# Copyright (c) 2011-2017 by QUALCOMM Technologies Inc.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header:  $
+#  $DateTime:  $
+#  $Author:  $
+#  $Change:  $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 10/05/17   WJZ     Added SDM1000 support
+# 08/22/17   WJZ     Added 855 support
+# 06/05/15   PR      Added 8937 and 8953 support
+# 05/12/15   PR      Added 8952 and 8956/76 support
+# 25/11/14   rl      hypervisor 8996
+# 08/29/14   SS      Cleaned up for 8996.
+# 05/12/14   SS      Added 8996 support
+# 02/21/14   SA      Added 8916 support
+# 08/08/13   SS      Added 8962 Support
+# 05/14/13   SS      Added 9x35 support
+# 01/25/13   SS      Added 8x10 Support
+# 10/30/12   SS      Made changes for B family binary compatibility
+# 09/13/11   MK      Created
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+supported_targets = ['660','845','670','24','855','1000', '640']
+xbl_sec_supported_targets = ['845','670','855','1000', '640']
+
+#-------------------------------------------------------------------------------
+# Publish Private APIs
+#-------------------------------------------------------------------------------
+if env['MSM_ID'] in supported_targets:
+   env.PublishPrivateApi('HWENGINES_BAM', [
+       "${INC_ROOT}/core/hwengines/bam/core4",
+       "${INC_ROOT}/core/hwengines/bam",
+       "${INC_ROOT}/core/hwengines/bam/${MSM_ID}"
+   ])
+
+#-------------------------------------------------------------------------------
+# Features
+#-------------------------------------------------------------------------------
+BAM_FEATURES= { 
+                'FEATURE_BAM_BAM2BAM':lambda :False,                  # enable bam2bam capability
+                'FEATURE_BAM_BULKTRANSFER':lambda :False,             #enable bulk transfer capability
+                'FEATURE_BAM_TIMER_CTRL':lambda :False,               #enable bam timer control api
+                'FEATURE_BAM_BLSP_SSC_ENABLED':lambda :False,         #enable Sensor blsp bam config
+                'FEATURE_BAM_XML_PROPS':lambda : not (env.has_key('BUILD_TOOL_CHAIN') or
+                                                      env.has_key('BUILD_BOOT_CHAIN')),
+                'FEATURE_BAM_MSG':lambda : not env.has_key('TZOS_IMAGE'),
+              }
+
+#-------------------------------------------------------------------------------
+# Defines
+#-------------------------------------------------------------------------------
+for k,val in BAM_FEATURES.iteritems():
+    if val():
+      env.Append(CPPDEFINES=[k])
+
+#TZOS image
+if env.has_key('TZOS_IMAGE'):
+    env.Append(CPPDEFINES = [ 'BAM_TZOS' ])
+
+if env.has_key('XBL_SEC_IMAGE'):
+    env.Append(CPPDEFINES = [ 'BAM_XBL' ])
+
+if env['MSM_ID'] in supported_targets:
+    if env.has_key('TZOS_IMAGE'):
+       env.Append(CPPDEFINES = ['BAM_XML_PROPS' ])
+       env.Append(CPPDEFINES = ['BAM_TZOS_CONFIG'])
+       env.Append(CPPDEFINES = ['BAM_API_NOPAGED_IMEM'])
+
+if BAM_FEATURES['FEATURE_BAM_MSG']():
+    env.Append(CPPDEFINES = ['BAM_OSAL_DEBUG'])
+    env.Append(CPPDEFINES = [ 'BAM_OSAL_MSG_LEVEL=MSG_ERR' ])
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/hwengines/bam/"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'HAL',
+   'HWENGINES',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'DAL',
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+   'POWER',
+]
+
+SSG_API = [
+    'AC',
+    'MINK',
+    'QSEE',
+    'TZCHIPSET',
+	'SSGPLATFORM',
+	'SECUREMSM',
+]
+
+if env.has_key('TZOS_IMAGE'):
+    CBSP_API.extend(['SECUREMSM'])
+    SSG_API.extend(['SECUREMSM'])
+else:
+    CBSP_API += ['DEBUGTOOLS']
+
+
+env.RequirePublicApi(CBSP_API, area = 'core')
+env.RequireRestrictedApi(CBSP_API)
+env.RequirePublicApi(SSG_API, area = 'ssg')
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+BAM_HYP_SOURCES = []
+BAM_XBL_SEC_SOURCES = []
+if env['MSM_ID'] in supported_targets:
+  BAM_COMMON_SOURCES =  [
+     '${BUILDPATH}/bams.c',
+     '${BUILDPATH}/bamosal.c',
+     '${BUILDPATH}/core4/bamcore.c',
+     '${BUILDPATH}/debug/bam_debug.c',
+     '${BUILDPATH}/debug/bamcore_debug.c',
+     '${BUILDPATH}/bamsec.c',
+    ]
+  
+  BAM_TGT_SOURCES = ['${BUILDPATH}/${MSM_ID}/bamtgtcfg.c']
+
+  if env.has_key('HYPERVISOR_IMAGE') or env.has_key('QHEEBSP_IMAGE'):
+          BAM_HYP_SOURCES = [
+          '${BUILDPATH}/bam_ac.c',
+  ]
+else:
+   BAM_COMMON_SOURCES =  [
+     '${BUILDPATH}/stubs/bam_stubs.c',
+   ]
+   if env.has_key('HYPERVISOR_IMAGE') or env.has_key('QHEEBSP_IMAGE'):
+      BAM_HYP_SOURCES = BAM_COMMON_SOURCES
+
+if env['MSM_ID'] in xbl_sec_supported_targets:
+   if env.has_key('XBL_SEC_IMAGE'):
+          BAM_XBL_SEC_SOURCES = [
+          '${BUILDPATH}/xbl_sec/bamdrv.c',
+          '${BUILDPATH}/xbl_sec/bamcore.c',
+          ]
+
+
+#remove the common sources
+BAM_HEADERS_TO_REMOVE=[
+     '${BUILDPATH}/bami.h',
+     '${BUILDPATH}/bamosal.h',
+     '${BUILDPATH}/core4/bamcore.c',
+     '${BUILDPATH}/core4/bamcore.h',
+     '${BUILDPATH}/core4/bamhwio.h',
+     '${BUILDPATH}/debug/bam_debug.c',
+     '${BUILDPATH}/xbl_sec/bamcore.c',
+     '${BUILDPATH}/debug/bamcore_debug.h',
+     '${BUILDPATH}/debug/bamcore_debug.c',
+     '${BUILDPATH}/${MSM_ID}/bamsec.h',
+     '${BUILDPATH}/bamsec.c',
+     '${BUILDPATH}/bam_seccfg.h',
+   ]
+
+env.CleanPack(['TZOS_IMAGE'],BAM_HEADERS_TO_REMOVE)
+
+env.AddBinaryLibrary(['TZOS_IMAGE'],'${BUILDPATH}/bam_tz',BAM_COMMON_SOURCES)
+
+env.AddBinaryLibrary(['HYPERVISOR_IMAGE'],'${BUILDPATH}/bam_hyp',BAM_HYP_SOURCES)
+env.AddBinaryObject('QHEEBSP_IMAGE', BAM_HYP_SOURCES)
+
+env.AddBinaryLibrary(['XBL_SEC_IMAGE'],'${BUILDPATH}/bam_xbl_sec',BAM_XBL_SEC_SOURCES)
+
+if env['MSM_ID'] in supported_targets:
+    bam_tgt_obj = env.Object([BAM_TGT_SOURCES])
+    bam_tgt_lib = env.Library('${BUILDPATH}/bam_tgt', bam_tgt_obj)
+    env.AddLibsToImage(['TZOS_IMAGE'],[bam_tgt_lib])
+
+if 'USES_RCINIT' in env:
+  RCINIT_IMG = ['MODEM_IMAGE',    'CBSP_MODEM_IMAGE',  'CORE_APPS',
+                'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE']
+  env.AddRCInitFunc(
+    RCINIT_IMG,
+    {
+      'sequence_group'             : 'RCINIT_GROUP_0',
+      'init_name'                  : 'bam_drv',
+      'init_function'              : 'bam_drv_init',
+      'dependencies'               : ['clk_regime']
+    })
+
+#-------------------------------------------------------------------------------
+# DEVCFG - BAM XML
+#-------------------------------------------------------------------------------
+
+
+if env['MSM_ID'] in supported_targets:
+    BAM_CONFIG_SOURCES = '${BUILDPATH}/config/bamconfig_props.c'
+	
+if (env.get('USES_DEVCFG', False) is True) and BAM_FEATURES['FEATURE_BAM_XML_PROPS']():
+   if env['MSM_ID'] in supported_targets:
+     DEVCFG_IMG = ['DAL_DEVCFG_IMG']
+     env.AddDevCfgInfo(DEVCFG_IMG,
+     {
+      'devcfg_xml'    : ['${BUILD_ROOT}/core/hwengines/bam/config/bam_config.xml', BAM_CONFIG_SOURCES ]
+     })
+
+if "USES_DEPLOY_BUILDER" in env:
+   env.Deploy('build.scons')
+
+if 'USES_RCINIT' in env:
+  RCINIT_IMGS = ['CTZL64_IMAGE', 'TZOS_IMAGE', 'CTZL_IMAGE']
+  env.AddRCInitFunc(
+    RCINIT_IMGS,
+    {
+      'sequence_group'             : 'RCINIT_GROUP_2',
+      'init_name'                  : 'bam_init',
+      'init_function'              : 'tzbsp_bam_init',
+      'dependencies'               : ['smmu_static_init'],
+      'policy_optin'               : ['default']
+    })
+

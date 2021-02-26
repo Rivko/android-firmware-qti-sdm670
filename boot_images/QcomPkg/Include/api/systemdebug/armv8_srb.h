@@ -1,0 +1,373 @@
+
+/*=============================================================================
+                        A R M V 8    S R B   F O R M A T   F I L E  
+
+GENERAL DESCRIPTION     
+  This module defines the SRB format which maintains the index into our abstracted
+  cpu context dump .
+  
+	Copyright 2014  - 2015 by QUALCOMM Technologies, Inc.  All Rights Reserved.
+=============================================================================*/
+
+#ifndef __ARMv8_SRB_H
+#define __ARMv8_SRB_H
+
+#include "comdef.h"
+
+/* Register attributes encoded into the description */
+/*  Default attribute : 64 bit
+ *  Upper 32 bits of 64 bit register   : 0xC000xxxx where xxxx is the index
+ *  Lower 32 bits of 64 bit register   : 0xA000xxxx
+ *  Anything else should return 0
+ *  This format should be in the target data struct 
+ * */
+#define REG_32BIT   (0x8000)
+#define UPPER32     (0x4000)
+#define LOWER32     (0x2000)
+#define REGID_MASK  (0xFFF)
+#define MASK_32BIT  (0xFFFFFFFFL)
+#define INDEX(x)    (x & REGID_MASK)
+#define GET_REGVALUE(srb, srb_index)  ((srb_index & UPPER32) ? ((srb[INDEX(srb_index)] & (MASK_32BIT << 32)) >> 32) : ((srb_index & LOWER32) ? (srb[INDEX(srb_index)] & MASK_32BIT) : srb[INDEX(srb_index)]))
+
+typedef struct
+{
+	/* Every register has an index into the buffer */
+	const uint32 ACTLR_EL1;
+	const uint32 ACTLR_EL2;
+	const uint32 CCPR_EL1;
+	const uint32 CONTEXTIDR_EL3;
+	const uint32 CONTEXTIDR_EL1;
+	const uint32 CSSELR_EL1;
+	const uint32 DACR_EL3;
+	const uint32 DACR_EL2;
+	const uint32 DCCR_EL1;
+	const uint32 CPMR_EL1;
+	const uint32 DCEAR0_EL1;
+	const uint32 DCEAR1_EL1;
+	const uint32 DCECR_EL1;
+	const uint32 DCESR_EL1;
+	const uint32 DCESYNR0_EL1;
+	const uint32 DCESYNR1_EL1;
+	const uint32 HCR232_EL1;
+	const uint32 L2CPUSRELR_EL1;
+	const uint32 SHADOW_PVR0F0_EL1;
+	const uint32 MAIR_EL1;
+	const uint32 MAIR_EL2;
+	const uint32 MAIR_EL3;
+	const uint32 PAR_EL1;
+	const uint32 PAR_EL3;
+	const uint32 PVR2F0_EL1;
+	const uint32 PVR2F1_EL1;
+	const uint32 PVR2F2_EL1;
+	const uint32 PVR2F3_EL1;
+	const uint32 PVR2F4_EL1;
+	const uint32 PVR2F5_EL1;
+	const uint32 SHADOW_SCR_EL3;
+	const uint32 SCTLR_EL3;
+	const uint32 SCTLR_EL2;
+	const uint32 SCTLR_EL1;
+	const uint32 TCR_EL3;
+	const uint32 TCR_EL2;
+	const uint32 TPIDRPRW_EL1;
+	const uint32 VPIDR_EL2;
+	const uint32 TPIDRURO_EL0;
+	const uint32 CSSELR_EL3;
+	const uint32 TPIDR_EL1;
+	const uint32 TPIDR_EL3;
+	const uint32 TPIDRR0_EL0;
+	const uint32 TPIDR_EL0;
+	const uint32 TPIDR_EL2;
+	const uint32 TTBR0_EL1;
+	const uint32 TTBR0_EL2;
+	const uint32 TTBR0_EL3;
+	const uint32 TTBR1_EL1;
+	const uint32 TTBR1_EL3;
+	const uint32 VTCR_EL2;
+	const uint32 TLBCR_EL1;
+	const uint32 VTTBR_EL2;
+	const uint32 GICCVHBASE_EL3;
+	const uint32 SHADOW_DBGABWR;
+	const uint32 DBGWCR0_EL1;
+	const uint32 DBGWCR1_EL1;
+	const uint32 DBGWCR2_EL1;
+	const uint32 DBGWCR3_EL1;
+	const uint32 EDACR;
+	const uint32 SHADOW_MDCR_EL3;
+	const uint32 DBGWVR0_EL1;
+	const uint32 DBGWVR1_EL1;
+	const uint32 DBGWVR2_EL1;
+	const uint32 DBGWVR3_EL1;
+	const uint32 PMEVCNTR0_EL0;
+	const uint32 PMEVCNTR1_EL0;
+	const uint32 PMEVCNTR2_EL0;
+	const uint32 PMEVCNTR3_EL0;
+	const uint32 PMEVCNTR4_EL0;
+	const uint32 PMEVCNTR5_EL0;
+	const uint32 PMEVCNTR6_EL0;
+	const uint32 PMEVCNTR7_EL0;
+	const uint32 PMEVTYPER0_EL0;
+	const uint32 PMEVTYPER1_EL0;
+	const uint32 PMEVTYPER2_EL0;
+	const uint32 PMEVTYPER3_EL0;
+	const uint32 PMEVTYPER4_EL0;
+	const uint32 PMEVTYPER6_EL0;
+	const uint32 PMEVTYPER7_EL0;
+	const uint32 PMEVCNTCR0_EL0;
+	const uint32 PMEVCNTCR1_EL0;
+	const uint32 PMEVCNTCR2_EL0;
+	const uint32 PMEVCNTCR3_EL0;
+	const uint32 PMEVCNTCR4_EL0;
+	const uint32 PMEVCNTCR5_EL0;
+	const uint32 PMEVCNTCR6_EL0;
+	const uint32 PMEVCNTCR7_EL0;
+	const uint32 PMEVCNTSR0_EL0;
+	const uint32 PMEVCNTSR1_EL0;
+	const uint32 PMEVCNTSR2_EL0;
+	const uint32 PMEVCNTSR3_EL0;
+	const uint32 PMEVCNTSR4_EL0;
+	const uint32 PMEVCNTSR5_EL0;
+	const uint32 PMEVCNTSR6_EL0;
+	const uint32 PMEVCNTSR7_EL0;
+	const uint32 PMCCFILTR_EL0;
+	const uint32 PMCCNTCR_EL0;
+	const uint32 PMCCNTSR_EL0;
+	const uint32 PMVR_EL0;
+	const uint32 PMCNTENSET_EL1;
+	const uint32 PMINTENSET_EL1;
+	const uint32 PMOVSSET_EL0;
+	const uint32 PMCR_EL0;
+	const uint32 PMRESR2L_EL0;
+	const uint32 PMRESR2H_EL0;
+	const uint32 PMRESR1L_EL0;
+	const uint32 PMRESR1H_EL0;
+	const uint32 PMSELR_EL0;
+	const uint32 PMRLDR_EL;
+	const uint32 PMRLDRX_EL0;
+	const uint32 PMCCNTR_EL0;
+	const uint32 PENDFETCHVA;
+	const uint32 PStateMisc;
+	const uint32 DLR_EL0;
+	const uint32 ELR_EL1;
+	const uint32 ELR_EL2;
+	const uint32 ELR_EL3;
+	const uint32 FAR_EL1;
+	const uint32 FAR_EL2;
+	const uint32 FAR_EL3;
+	const uint32 HCR_EL2;
+	const uint32 HPFAR_EL2;
+	const uint32 RVBAR_EL3;
+	const uint32 SHADOW_TCR_EL1;
+	const uint32 VBAR_EL1;
+	const uint32 VBAR_EL2;
+	const uint32 VBAR_EL3;
+	const uint32 VMPIDR_EL2;
+	const uint32 SHADOW_VTTBR_EL2;
+	const uint32 ICC_AP1R0_EL1_NS;
+	const uint32 ICC_AP1R0_EL1_S;
+	const uint32 ICH_LR0_EL2;
+	const uint32 ICH_LR1_EL2;
+	const uint32 ICH_LR2_EL2;
+	const uint32 ICH_LR3_EL2;
+	const uint32 BPCR_EL1;
+	const uint32 SHADOW_CONTEXTIDR_EL3;
+	const uint32 SHADOW_CONTEXTIDR_EL1;
+	const uint32 CPACR_EL1;
+	const uint32 SHADOW_CPMR_EL1;
+	const uint32 CPTR_EL1;
+	const uint32 CPTR_EL3;
+	const uint32 DSPSR_EL2;
+	const uint32 ESR_EL1;
+	const uint32 ESR_EL2;
+	const uint32 ESR_EL3;
+	const uint32 FPEXC_EL2;
+	const uint32 HSTR_EL2;
+	const uint32 ICCR_EL1;
+	const uint32 IFSR_EL2;
+	const uint32 IFSR_EL3;
+	const uint32 SHADOW_L2CPUSRELR_EL1;
+	const uint32 NSACR32_EL3;
+	const uint32 PVR0F0_EL1;
+	const uint32 PVR0F1_EL1;
+	const uint32 PVR0F2_EL1;
+	const uint32 PVR0F3_EL1;
+	const uint32 PVR0F4_EL1;
+	const uint32 RMR_EL3;
+	const uint32 SCR_EL3;
+	const uint32 SHADOW_SCTLR_EL1;
+	const uint32 SHADOW_SCTLR_EL2;
+	const uint32 SHADOW_SCTLR_EL3;
+	const uint32 SDER32_EL3;
+	const uint32 SPSR_EL1;
+	const uint32 SPSR_EL2;
+	const uint32 SPSR_EL3;
+	const uint32 SPSR_ABT;
+	const uint32 SPSR_FIQ;
+	const uint32 SPSR_IRQ;
+	const uint32 SPSR_UND;
+	const uint32 SHADOW_TCR_EL2;
+	const uint32 SHADOW_TCR_EL3;
+	const uint32 PMRESR0H_EL0;
+	const uint32 PMRESR0L_EL0;
+	const uint32 PMUSERENR_EL0;
+	const uint32 ICC_AP0R0_EL1;
+	const uint32 ICC_BPR0_EL1;
+	const uint32 ICC_SRE_EL3;
+	const uint32 ICH_AP0R0_EL2;
+	const uint32 ICH_AP1R0_EL2;
+	const uint32 ICH_HCR_EL2;
+	const uint32 ICH_VMCR_EL2;
+	const uint32 SHADOW_PVR2F0_EL1;
+	const uint32 ANSACR32_EL1;
+	const uint32 PMACTLR_EL0;
+	const uint32 ACPTR_EL3;
+	const uint32 AFSR0_EL1;
+	const uint32 AFSR0_EL2;
+	const uint32 AFSR0_EL3; 
+	const uint32 HACR_EL2;
+	const uint32 CNTHCTL_EL2;
+	const uint32 CNTKCTL_EL1;
+	const uint32 ICEAR0_EL1;
+	const uint32 ICEAR1_EL1;
+	const uint32 ICECR_EL1;
+	const uint32 ICESR_EL1;
+	const uint32 ICESYNR0_EL1;
+	const uint32 ICESYNR1_EL1;
+	const uint32 VAFSR0_EL2;
+	const uint32 DBGMISC1;
+	const uint32 DBGMISC2;
+	const uint32 DBGBVR0_EL1;
+	const uint32 DBGBVR1_EL1;
+	const uint32 DBGBVR2_EL1;
+	const uint32 DBGBVR3_EL1;
+	const uint32 DBGBVR4_EL1;
+	const uint32 DBGBVR5_EL1;
+	const uint32 DBGBVR6_EL1;
+	const uint32 DBGBVR7_EL1;
+	const uint32 DBGABWR;
+	const uint32 OSLSR_EL1;
+	const uint32 DBGBCR0_EL1;
+	const uint32 DBGBCR1_EL1;
+	const uint32 DBGBCR2_EL1;
+	const uint32 DBGBCR3_EL1;
+	const uint32 DBGBCR4_EL1;
+	const uint32 DBGBCR5_EL1;
+	const uint32 DBGBCR6_EL1;
+	const uint32 DBGBCR7_EL1;
+	const uint32 DBGPRCR_EL1;
+	const uint32 DBGVCR32_EL2;
+	const uint32 MDCCINT_EL1;
+	const uint32 MDCR_EL3;
+	const uint32 OSDLR_EL1;
+	const uint32 MDSCR_EL1;
+	const uint32 X0;
+	const uint32 X1;
+	const uint32 X2;
+	const uint32 X3;
+	const uint32 X4;
+	const uint32 X5;
+	const uint32 X6;
+	const uint32 X7;
+	const uint32 X8;
+	const uint32 X9;
+	const uint32 X10;
+	const uint32 X11;
+	const uint32 X12;
+	const uint32 X13;
+	const uint32 X14;
+	const uint32 X15;
+	const uint32 X16;
+	const uint32 X17;
+	const uint32 X18;
+	const uint32 X19;
+	const uint32 X20;
+	const uint32 X21;
+	const uint32 X22;
+	const uint32 X23;
+	const uint32 X24;
+	const uint32 X25;
+	const uint32 X26;
+	const uint32 X27;
+	const uint32 X28;
+	const uint32 X29;
+	const uint32 X30;
+	const uint32 SP_EL3;
+	const uint32 V0L;
+	const uint32 V0H;
+	const uint32 V1L;
+	const uint32 V1H;
+	const uint32 V2L;
+	const uint32 V2H;
+	const uint32 V3L;
+	const uint32 V3H;
+	const uint32 V4L;
+	const uint32 V4H;
+	const uint32 V5L;
+	const uint32 V5H;
+	const uint32 V6L;
+	const uint32 V6H;
+	const uint32 V7L;
+	const uint32 V7H;
+	const uint32 V8L;
+	const uint32 V8H;
+	const uint32 V9L;
+	const uint32 V9H;
+	const uint32 V10L;
+	const uint32 V10H;
+	const uint32 V11L;
+	const uint32 V11H;
+	const uint32 V12L;
+	const uint32 V12H;
+	const uint32 V13L;
+	const uint32 V13H;
+	const uint32 V14L;
+	const uint32 V14H;
+	const uint32 V15L;
+	const uint32 V15H;
+	const uint32 V16L;
+	const uint32 V16H;
+	const uint32 V17L;
+	const uint32 V17H;
+	const uint32 V18L;
+	const uint32 V18H;
+	const uint32 V19L;
+	const uint32 V19H;
+	const uint32 V20L;
+	const uint32 V20H;
+	const uint32 V21L;
+	const uint32 V21H;
+	const uint32 V22L;
+	const uint32 V22H;
+	const uint32 V23L;
+	const uint32 V23H;
+	const uint32 V24L;
+	const uint32 V24H;
+	const uint32 V25L;
+	const uint32 V25H;
+	const uint32 V26L;
+	const uint32 V26H;
+	const uint32 V27L;
+	const uint32 V27H;
+	const uint32 V28L;
+	const uint32 V28H;
+	const uint32 V29L;
+	const uint32 V29H;
+	const uint32 V30L;
+	const uint32 V30H;
+	const uint32 V31L;
+	const uint32 V31H;
+	const uint32 CPSR;
+	const uint32 FPSCR;
+	const uint32 SP_EL0;
+	const uint32 SP_EL1;
+	const uint32 SP_EL2;
+	const uint32 PVR1F0_EL1;
+	const uint32 PVR1F1_EL1;
+	const uint32 MISC;
+	const uint32 TRUST0;
+	const uint32 TRUST1;
+	const uint32 TRUST2;
+	const uint32 PSTATE_NZCV;
+}srb_index_type;
+	
+#endif /* __ARMv8_SRB_H */
+

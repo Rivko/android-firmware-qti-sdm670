@@ -1,0 +1,205 @@
+#===============================================================================
+#
+# Time Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009-2018 by QUALCOMM Technologies Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1.c4/services/time/build/time_clnt.scons#1 $
+#  $DateTime: 2018/07/30 01:21:36 $
+#  $Author: pwbldsvc $
+#  $Change: 16759227 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/services/time/src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# External depends within CoreBSP
+#-------------------------------------------------------------------------------
+env.RequireExternalApi([
+   'CS',
+   'DSM',
+   'MODEM_1X',
+   'ONEX',
+   'MODEM_DATA',
+   'MODEM_FTM',
+   'MODEM_HDR',
+   'MODEM_PMIC',
+   'MODEM_RF',
+   'MODEM_SERVICES',    
+
+])
+
+MODEM_API = [
+   'HDR',
+   'ONEX',
+]
+env.RequirePublicApi(MODEM_API, 'modem')
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'BOOT',
+   'DAL',
+   'DEBUGTOOLS',
+   'HWENGINES',
+   'MPROC',
+   'POWER',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'WIREDCONNECTIVITY',
+   'STORAGE',
+
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Feature Definitions
+#-------------------------------------------------------------------------------
+ 	
+#env.Append(CPPDEFINES=["FEATURE_TIME_SINGLE_MULTI_SERVER_PROC"])
+#env.Append(CPPDEFINES=["FEATURE_TIME_QDSP6"])
+#env.Append(CPPDEFINES=["FEATURE_BLAST"])
+#env.Append(CPPDEFINES=["FEATURE_TIMER_QURT"])
+#env.Append(CPPDEFINES=["FEATURE_CDMA1X"])
+#env.Append(CPPDEFINES=["FEATURE_CMI"])
+#env.Append(CPPDEFINES=["FEATURE_GENOFF_STANDALONE"])
+#env.Append(CPPDEFINES=["FEATURE_GSM"])
+#env.Append(CPPDEFINES=["FEATURE_HDR"])
+#env.Append(CPPDEFINES=["FEATURE_NO_DB"])
+#env.Append(CPPDEFINES=["FEATURE_RCINIT"])
+#env.Append(CPPDEFINES=["FEATURE_TIME_NO_RPC"])
+#env.Append(CPPDEFINES=["FEATURE_TIMER_SLAVE1"])
+#env.Append(CPPDEFINES=["FEATURE_TIMER_SLAVE2"])
+#env.Append(CPPDEFINES=["FEATURE_TIMER_SLAVE3"])
+#env.Append(CPPDEFINES=["T_MDM9X00"])
+#env.Append(CPPDEFINES=["FEATURE_BADGER"])
+#env.Append(CPPDEFINES=["FEATURE_BU_WITHOUT_PMIC"])
+#env.Append(CPPDEFINES=["TIMER_ERROR_FATAL_THRESHOLD_ZEROED_OUT"])
+
+if 'ADSP_PROC' in env:
+   env.Append(CPPDEFINES='TIME_PERIPHERAL_ADSP')
+elif 'CDSP_PROC' in env:
+   env.Append(CPPDEFINES='TIME_PERIPHERAL_CDSP')
+elif 'SLPI_PROC' in env:
+   env.Append(CPPDEFINES='TIME_PERIPHERAL_SLPI')
+
+#-------------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+TIME_CLNT_QDSP6_SOURCES = [
+   '${BUILDPATH}/timer_client.c', 
+   '${BUILDPATH}/time_genoff.c',
+   '${BUILDPATH}/timestub.c',
+   '${BUILDPATH}/time_conv.c',
+   '${BUILDPATH}/timetick_sclk64.c',
+   #'${BUILDPATH}/timer_client_test.c', 
+]
+
+time_clnt_qdsp6 = env.Library('${BUILDPATH}/time_clnt_qdsp6', TIME_CLNT_QDSP6_SOURCES)
+
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+env.AddLibsToImage(['QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE'], [time_clnt_qdsp6])
+
+if 'USES_SENSOR_IMG' in env:
+   env.AddLibsToImage(['CORE_QDSP6_SENSOR_SW'], [time_clnt_qdsp6])
+   env.Append(CPPDEFINES='TIME_SENSOR_PD')
+   
+if 'USES_AUDIO_IMG' in env:
+   env.AddLibsToImage(['CORE_QDSP6_AUDIO_SW'],[time_clnt_qdsp6])
+   env.Append(CPPDEFINES='TIME_AUDIO_PD')
+
+#-------------------------------------------------------------------------------
+
+RCINIT_TIME_INIT_COREPD_INIT = {
+   'sequence_group'             : 'RCINIT_GROUP_0',          # required
+   'init_name'                  : 'time',            # required
+   'init_function'              : 'time_init',       # required
+}
+
+if 'USES_RCINIT' in env:
+   env.AddRCInitFunc( ['QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE'], RCINIT_TIME_INIT_COREPD_INIT )
+
+RCINIT_TIMER_INIT_COREPD_INIT = {
+   'sequence_group'             : 'RCINIT_GROUP_0',          # required
+   'init_name'                  : 'timer_client',            # required
+   'init_function'              : 'timer_client_init',       # required
+   'dependencies'               : ['time', 'timer_qdi']
+}
+
+if 'USES_RCINIT' in env:
+   env.AddRCInitFunc( ['QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE'], RCINIT_TIMER_INIT_COREPD_INIT )
+
+if 'USES_SENSOR_IMG' in env:
+   RCINIT_TIME_INIT_SENSORPD_INIT = {
+     'sequence_group'             : 'RCINIT_GROUP_0',          # required
+     'init_name'                  : 'time',                    # required
+     'init_function'              : 'time_init',       # required
+   }
+
+   if 'USES_RCINIT' in env:
+      env.AddRCInitFunc( 'CORE_QDSP6_SENSOR_SW', RCINIT_TIME_INIT_SENSORPD_INIT )
+   
+if 'USES_SENSOR_IMG' in env:
+   RCINIT_TIMER_INIT_SENSORPD_INIT = {
+     'sequence_group'             : 'RCINIT_GROUP_0',          # required
+     'init_name'                  : 'timer_client',            # required
+     'init_function'              : 'timer_client_init',       # required
+     'dependencies'               : ['time']
+   }
+
+   if 'USES_RCINIT' in env:
+      env.AddRCInitFunc( 'CORE_QDSP6_SENSOR_SW', RCINIT_TIMER_INIT_SENSORPD_INIT )
+
+if 'USES_AUDIO_IMG' in env:
+   RCINIT_TIME_INIT_AUDIOPD_INIT = {
+     'sequence_group'             : 'RCINIT_GROUP_0',          # required
+     'init_name'                  : 'time',            # required
+     'init_function'              : 'time_init',       # required
+   }
+
+   if 'USES_RCINIT' in env:
+      env.AddRCInitFunc( 'CORE_QDSP6_AUDIO_SW', RCINIT_TIME_INIT_AUDIOPD_INIT )
+	  
+if 'USES_AUDIO_IMG' in env:
+   RCINIT_TIMER_INIT_AUDIOPD_INIT = {
+     'sequence_group'             : 'RCINIT_GROUP_0',          # required
+     'init_name'                  : 'timer_client',            # required
+     'init_function'              : 'timer_client_init',       # required
+     'dependencies'               : ['time']
+   }
+
+   if 'USES_RCINIT' in env:
+      env.AddRCInitFunc( 'CORE_QDSP6_AUDIO_SW', RCINIT_TIMER_INIT_AUDIOPD_INIT )

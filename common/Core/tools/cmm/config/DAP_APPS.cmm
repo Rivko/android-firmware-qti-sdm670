@@ -1,0 +1,1005 @@
+//============================================================================
+//  Name:                                                                     
+//    DAP_APPS.cmm
+//
+//  Description:                                                              
+//    Setup script for the Apps Processor
+//                                                                            
+// Copyright (c) 2012 - 2018 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who             what, where, why
+// --------   ---             ---------------------------------------------------------
+// 01/09/2018 JBILLING        Updated for sdm845  apps multicore view. Update AUTOSTORE commands
+// 10/27/2017 Martham         CFLUSH OFF for sdm670. Fix for sdi pass#1 stepping issue.
+// 08/26/2017 Martham         Updated for sdm670
+// 03/03/2017 JBILLING        Updates for SDM845
+// 11/08/2016 JBILLING        VSRST feature enabled 
+// 11/08/2016 JBILLING        Updates for KRYO2XX
+// 03/29/2016 JBILLING        Updated for 8998
+// 03/28/2016 JBILLING        APPS_HW_BLOCK_NAME added for bringuptool scripts
+// 03/10/2016 JBILLING        8998 logic added
+// 07/22/2015 RSSRIDHA        Port for MDM9x45
+// 02/20/2015 JBILLING        Remove JTAG/SWD Hack
+// 02/01/2015 JBILLING        Ported for 8996 - SWD disabled
+// 04/15/2014 AJCheriyan      SWDTARGET removed
+// 04/04/2014 AJCheriyan      SWD support auto-detect
+// 11/21/2013 AJCheriyan      Update for Luxor
+// 04/25/2013 AJCheriyan      Updated Gandalf settings
+// 04/13/2013 AJCheriyan      Support for QDSS Gen 2
+// 04/02/2013 AJCheriyan      Added SWDP support
+// 02/11/2013 AJCheriyan      Added 8x26 support
+// 01/31/2013 AJCheriyan      Added support for Cortex A7
+// 08/26/2012 AJCheriyan      Dropped JTAG clock down to 20 MHz
+// 08/25/2012 AJCheriyan      Boosted JTAG clock speed
+// 07/10/2012 AJCheriyan      Created for B-family
+//
+
+// The script accepts two input arguments
+// ARG0 - Chipset name
+// ARG1 - Core number
+// Ideal case, the argument 'ARG0' would not have to be used
+// as the parameters for a sub-system should be the same
+// across the entire family of chipsets
+LOCAL &ARG0 &ARG1 &ARG2
+ENTRY &ARG0 &ARG1 &ARG2
+
+MAIN:
+    GLOBAL &APPS_HW_BLOCK_NAME &CURRENT_HW_BLOCK_NAME
+    &ARG0=STR.UPR("&ARG0")
+    &ARG2=STR.UPR("&ARG2")
+    LOCAL &APPS_cputype_big &APPS_cputype_little &APPS_cputype_multicore
+    ////////////////////////////////////////
+    ////////   SDM845 Logic ///////////////
+    ////////////////////////////////////////
+    
+    IF (("&ARG0"=="SDM845")||("&ARG0"=="SDM670"))
+    (
+    
+        GLOBAL &intercom_base
+        &intercom_base=1000.
+    
+        &APPS_HW_BLOCK_NAME="APPS-ARMV8"
+        
+        do common\&ARG0\std_versionchecker
+        
+        LOCAL &jtagclock
+        IF "&RUMI"=="TRUE"
+        (
+            //SYSTEM.JTAGCLOCK CTCK 500khz
+            &jtagclock="500.KHz"
+        )
+        ELSE
+        (
+            //SYSTEM.JTAGCLOCK CTCK 5Mhz
+            &jtagclock="5.MHz"
+        )
+        IF ("&EUD"!="TRUE")
+        (
+            SYStem.Reset
+        )
+        SYSTEM.JTAGCLOCK CTCK &jtagclock
+        
+        ;ntimescc  ; time out ignored only for debugging 
+        SYStem.Option EnReset ON
+        SYStem.Option TRST ON
+        SYStem.Option ResBreak ON
+        SYStem.Option MemStatusCheck ON
+        SYStem.Option NOMA OFF
+        TRONCHIP.SET.RESET OFF
+        
+        IF "&KRYO3XX_T32_COMPLIANT"=="TRUE"
+        (
+            &APPS_cputype_little="KRYO3XXS"
+            &APPS_cputype_big="KRYO3XXG"
+            &APPS_cputype_multicore="PROMETHEUSANANKE"
+        )
+        ELSE
+        (
+            &APPS_cputype_little="ANANKE"
+            &APPS_cputype_big="PROMETHEUS"
+            &APPS_cputype_multicore="PROMETHEUSANANKE"
+        )
+        IF ("&ARG1"=="0")
+        (
+            SYSTEM.CPU &APPS_cputype_little
+            SYStem.CONFIG COREBASE     DAP:0x87010000
+            SYStem.CONFIG.CTIBASE      DAP:0x87020000
+            SYStem.CONFIG.BMCBASE      DAP:0x87030000
+        )
+        ELSE IF ("&ARG1"=="1")
+        (
+            SYSTEM.CPU &APPS_cputype_little
+            SYStem.CONFIG SLAVE ON
+            SYStem.CONFIG COREBASE     DAP:0x87110000
+            SYStem.CONFIG.CTIBASE      DAP:0x87120000
+            SYStem.CONFIG.BMCBASE      DAP:0x87130000
+        )
+        ELSE IF ("&ARG1"=="2")
+        (
+            SYSTEM.CPU &APPS_cputype_little
+            SYStem.CONFIG SLAVE ON
+            SYStem.CONFIG COREBASE     DAP:0x87210000
+            SYStem.CONFIG.CTIBASE      DAP:0x87220000
+            SYStem.CONFIG.BMCBASE      DAP:0x87230000
+        )
+        ELSE IF ("&ARG1"=="3")
+        (
+            SYSTEM.CPU &APPS_cputype_little
+            SYStem.CONFIG SLAVE ON
+            SYStem.CONFIG COREBASE     DAP:0x87310000
+            SYStem.CONFIG.CTIBASE      DAP:0x87320000
+            SYStem.CONFIG.BMCBASE      DAP:0x87330000
+        )
+        ELSE IF ("&ARG1"=="4")
+        (
+			IF (("&ARG0"=="SDM670"))
+			(
+				SYSTEM.CPU &APPS_cputype_little
+			)
+			ELSE
+			(
+				SYSTEM.CPU &APPS_cputype_big
+			)
+            SYStem.CONFIG SLAVE ON
+            SYStem.CONFIG COREBASE     DAP:0x87410000
+            SYStem.CONFIG.CTIBASE      DAP:0x87420000
+            SYStem.CONFIG.BMCBASE      DAP:0x87430000
+        )
+        ELSE IF ("&ARG1"=="5")
+        (
+            IF (("&ARG0"=="SDM670"))
+			(
+				SYSTEM.CPU &APPS_cputype_little
+			)
+			ELSE
+			(
+				SYSTEM.CPU &APPS_cputype_big
+			)
+			
+            SYStem.CONFIG SLAVE ON
+            SYStem.CONFIG COREBASE     DAP:0x87510000
+            SYStem.CONFIG.CTIBASE      DAP:0x87520000
+            SYStem.CONFIG.BMCBASE      DAP:0x87530000
+        )
+        ELSE IF ("&ARG1"=="6")
+        (
+            SYSTEM.CPU &APPS_cputype_big
+            SYStem.CONFIG SLAVE ON
+            SYStem.CONFIG COREBASE     DAP:0x87610000
+            SYStem.CONFIG.CTIBASE      DAP:0x87620000
+            SYStem.CONFIG.BMCBASE      DAP:0x87630000
+        )
+        ELSE IF ("&ARG1"=="7")
+        (
+            SYSTEM.CPU &APPS_cputype_big
+            SYStem.CONFIG SLAVE ON
+            SYStem.CONFIG COREBASE     DAP:0x87710000
+            SYStem.CONFIG.CTIBASE      DAP:0x87720000
+            SYStem.CONFIG.BMCBASE      DAP:0x87730000
+        )
+        ELSE IF ("&ARG1"=="mp1")||("&ARG1"=="mp0")
+        (
+            SYSTEM.CPU &APPS_cputype_multicore
+            //Command is CORE.ASSIGN BIGLITTLE BIG little BIG little BIG little ...
+            IF ("&ARG0"=="SDM670")
+            (            
+                //Config for 670 is 6 little, 2 big, so use the 
+                //Use NONE's to use only 2 bigs and 6 little's (see command note on core.assign biglittle above)
+                SYStem.CONFIG CORENUMBER  12.
+                CORE.ASSIGN BIGLITTLE     1. 2. 3. 4. NONE 6. NONE 8. NONE 10. NONE 12.
+                SYS.CONFIG.COREDEBUG.BASE DAP:0x87610000 DAP:0x87010000 DAP:0x87710000 DAP:0x87110000 DAP:0x0 DAP:0x87210000 DAP:0x0 DAP:0x87310000 DAP:0x0 DAP:0x87410000 DAP:0x0 DAP:0x87510000
+                SYS.CONFIG.CTI.BASE       DAP:0x87620000 DAP:0x87020000 DAP:0x87720000 DAP:0x87120000 DAP:0x0 DAP:0x87220000 DAP:0x0 DAP:0x87320000 DAP:0x0 DAP:0x87420000 DAP:0x0 DAP:0x87520000  
+                SYStem.CONFIG.BMCBASE     DAP:0x87630000 DAP:0x87030000 DAP:0x87730000 DAP:0x87130000 DAP:0x0 DAP:0x87230000 DAP:0x0 DAP:0x87330000 DAP:0x0 DAP:0x87420000 DAP:0x0 DAP:0x87530000
+            )
+            ELSE
+            (
+                //SYStem.CONFIG CORENUMBER  8.
+                //CORE.ASSIGN BIGLITTLE     1. 2. 3. 4. 5. 6. 7. 8.
+                //SYS.CONFIG.COREDEBUG.BASE DAP:0x87410000 DAP:0x87010000 DAP:0x87510000 DAP:0x87110000 DAP:0x87610000 DAP:0x87210000 DAP:0x87710000 DAP:0x87310000
+                //SYS.CONFIG.CTI.BASE       DAP:0x87420000 DAP:0x87020000 DAP:0x87520000 DAP:0x87120000 DAP:0x87620000 DAP:0x87220000 DAP:0x87720000 DAP:0x87320000 
+                //SYStem.CONFIG.BMCBASE     DAP:0x87430000 DAP:0x87030000 DAP:0x87530000 DAP:0x87130000 DAP:0x87630000 DAP:0x87230000 DAP:0x87730000 DAP:0x87330000
+                
+                SYStem.CONFIG CORENUMBER  16.
+                CORE.ASSIGN.BIGLITTLE NONE 2. NONE 4.  NONE 6. NONE 8.  9. NONE 11. NONE 13. NONE 15. NONE
+                SYS.CONFIG.COREDEBUG.BASE DAP:0x0 DAP:0x87010000 DAP:0x0 DAP:0x87110000 DAP:0x0 DAP:0x87210000 DAP:0x0 DAP:0x87310000 DAP:0x87410000 DAP:0x0 DAP:0x87510000 DAP:0x0 DAP:0x87610000 DAP:0x0 DAP:0x87710000 DAP:0x0 
+                SYS.CONFIG.CTI.BASE       DAP:0x0 DAP:0x87020000 DAP:0x0 DAP:0x87120000 DAP:0x0 DAP:0x87220000 DAP:0x0 DAP:0x87320000 DAP:0x87420000 DAP:0x0 DAP:0x87520000 DAP:0x0 DAP:0x87620000 DAP:0x0 DAP:0x87720000 DAP:0x0  
+                SYStem.CONFIG.BMCBASE     DAP:0x0 DAP:0x87030000 DAP:0x0 DAP:0x87130000 DAP:0x0 DAP:0x87230000 DAP:0x0 DAP:0x87330000 DAP:0x87430000 DAP:0x0 DAP:0x87530000 DAP:0x0 DAP:0x87620000 DAP:0x0 DAP:0x87730000 DAP:0x0 
+            )
+            
+        )
+        SYStem.CONFIG MEMORYACCESSPORT 0.
+        SYStem.CONFIG DEBUGACCESSPORT  1.
+        SYStem.CONFIG AHBACCESSPORT    19.
+        SYStem.CONFIG APBACCESSPORT    1.
+        SYStem.config AXIACCESSPORT    0.
+        SYStem.CONFIG CTICONFIG        ARMV8V3
+
+        SYStem.CONFIG DAPIRPOST 0.
+        SYStem.CONFIG DAPDRPOST 0.
+        SYStem.CONFIG DAPIRPOST 11.
+        SYStem.CONFIG DAPDRPOST 1.
+        SYStem.CONFIG MULTITAP NONE
+        
+        SYS.OPTION.SYSPWRUPREQ ON //Not AlwaysOn
+        
+        
+        IF "&RUMI"=="TRUE"
+        (
+            SYS.CONFIG DAPIRPOST 0.
+            SYS.CONFIG DAPDRPOST 0.
+        )
+        
+        SYStem.Option IMASKASM OFF
+        SYStem.Option IMASKHLL OFF
+		//On warlock SDI pass#1 software single stepping failed with debugger attached at reset time.
+		//Issue fixed with disabling CFLUSH.
+		
+		IF ("&ARG0"=="SDM670")
+		(
+			SYStem.Option CFLUSH OFF
+		)
+		ELSE
+		(
+			SYStem.Option CFLUSH ON
+		)
+		
+        SYStem.Option Address32 OFF
+
+        SYStem.MEMACCESS DAP
+
+        B.SEL PROGRAM onchip
+        RADIX HEX
+        SETUP.VAR %HEX.ON
+        MODE.HLL
+
+        TrOnchip.Set STEPVECTOR ON
+        TRONCHIP.SET.RESET OFF
+
+        MAP.DenyAccess 0x14604000--0x1467FFFF
+        MAP.DenyAccess 0x146C0000--0x147FFFFF
+        MAP.DenyAccess 0x7EFFFFF0--0x7FFFFFFF
+        //Apps attach actions for apps0
+        IF ("&ARG1"=="0")
+        (
+            LOCAL &currdir
+            &currdir=os.pwd()
+            GLOBAL &APPS_ATTACH_DIR
+			IF (("&ARG0"=="SDM670"))
+			(
+				&APPS_ATTACH_DIR="&currdir/apps/sdm670"
+			)
+			ELSE
+			(
+				&APPS_ATTACH_DIR="&currdir/apps/sdm845"
+			)
+            //AOP Attach/detach scripts for software watchdog
+            GLOBALON SYSUP DO &APPS_ATTACH_DIR/apps_attach_actions.cmm
+            
+            GLOBALON SYSDOWN DO &APPS_ATTACH_DIR/apps_deattach_actions.cmm
+            
+            SYS.OPTION.DAPSYSPWRUPREQ ON
+        )
+        ELSE
+        (
+        //    SYS.OPTION.DAPSYSPWRUPREQ OFF
+        )
+
+        IF ("&ARG2"=="SWD")&&("&KRYO3XX_VSRST_ENABLE"=="TRUE")
+        (
+            //HWIO_QDSS_QDSS_CS_QDSSCSR_QDSS_SRST_CTRL_ADDR
+            System.Option ResetRegister DAP:0x6B0E0D8 0x0 0x1 0x2 /long 
+        )
+        
+    )
+    IF ("&ARG0"=="MSM8998")
+    (
+        &APPS_HW_BLOCK_NAME="APPS-ARMV8"
+        
+        
+        do common\&CHIPSET\std_versionchecker.cmm
+        
+        IF ("&KRYO2XX_T32_COMPLIANT"=="TRUE")
+        (
+            &APPS_cputype_little="KRYO2XX"
+            &APPS_cputype_big="KRYO2XX"
+            &APPS_cputype_multicore="KRYO2XX"
+        )
+        ELSE
+        (
+            &APPS_cputype_little="CORTEXA53"
+            &APPS_cputype_big="ARTEMIS"
+            &APPS_cputype_multicore="ARTEMIS"
+        )
+        
+        SYSTEM.JTAGCLOCK 10.0MHZ
+        //SYStem.Option EnReset OFF
+        SYStem.Option EnReset ON
+        SYStem.Option TRST ON
+        SYStem.Option ResBreak ON
+        SYStem.Option MemStatusCheck ON
+        SYStem.Option NOMA OFF
+        tronchip.set.reset off
+        // Core Specific Setup    
+        ////////////////////////////////
+        /////////These are A53's////////
+        ////////////////////////////////
+        IF ("&ARG1"=="0")
+        (
+            SYSTEM.CONFIG SLAVE OFF
+            sys.cpu &APPS_cputype_little
+            //SYSTEM.CPU CORTEXA53
+            //SYSTEM.CONFIG COREBASE         0x80810000 
+            //SYSTEM.CONFIG ETMBASE          0x80840000 
+            //SYSTEM.CONFIG.CTIBASE          0x80820000
+            SYStem.CONFIG SLAVE OFF
+            SYStem.CONFIG COREBASE          DAP:0x87810000
+            SYStem.CONFIG.CTIBASE           DAP:0x87820000
+            SYSTEM.CONFIG ETMBASE           DAP:0x87840000
+            SYSTEM.CONFIG ETMFUNNELPORT     0.
+        )
+        IF ("&ARG1"=="1")
+        (
+            
+            sys.cpu &APPS_cputype_little
+            //SYSTEM.CONFIG COREBASE         0x80910000 
+            //SYSTEM.CONFIG ETMBASE          0x80940000 
+            //SYSTEM.CONFIG ETMFUNNELPORT    1.
+            //SYSTEM.CONFIG.CTIBASE           0X80920000
+            
+            SYSTEM.CONFIG SLAVE ON
+            SYSTEM.CPU CORTEXA53
+            SYStem.CONFIG COREBASE          DAP:0x87910000
+            SYStem.CONFIG.CTIBASE           DAP:0x87920000
+            SYSTEM.CONFIG ETMBASE           DAP:0x87940000
+            SYSTEM.CONFIG ETMFUNNELPORT     1.
+        )
+        IF ("&ARG1"=="2")
+        (
+            sys.cpu &APPS_cputype_little
+            //SYSTEM.CONFIG COREBASE         0x80A10000 
+            //SYSTEM.CONFIG ETMBASE          0x80A40000 
+            //SYSTEM.CONFIG ETMFUNNELPORT    2.
+            //SYSTEM.CONFIG.CTIBASE           0X80A20000
+            
+            SYSTEM.CONFIG SLAVE ON
+            SYSTEM.CPU CORTEXA53
+            SYStem.CONFIG COREBASE          DAP:0x87A10000
+            SYStem.CONFIG.CTIBASE           DAP:0x87A20000
+            SYSTEM.CONFIG ETMBASE           DAP:0x87A40000
+            SYSTEM.CONFIG ETMFUNNELPORT     2.
+        )
+        IF ("&ARG1"=="3")
+        (
+            sys.cpu &APPS_cputype_little
+            //SYSTEM.CONFIG COREBASE         0x80B10000 
+            //SYSTEM.CONFIG ETMBASE          0x80B40000 
+            //SYSTEM.CONFIG ETMFUNNELPORT    3.
+            //SYSTEM.CONFIG.CTIBASE           0X80B20000
+            SYSTEM.CONFIG SLAVE ON
+            SYSTEM.CPU CORTEXA53
+            SYStem.CONFIG COREBASE          DAP:0x87B10000
+            SYStem.CONFIG.CTIBASE           DAP:0x87B20000
+            SYSTEM.CONFIG ETMBASE           DAP:0x87B40000
+            SYSTEM.CONFIG ETMFUNNELPORT     3.
+        )
+        ////////////////////////////////
+        /////////These are A57's////////
+        ////////////////////////////////
+        IF ("&ARG1"=="4")
+        (
+            sys.cpu &APPS_cputype_big
+            SYStem.CONFIG SLAVE ON
+            //SYSTEM.CONFIG COREBASE         0x80C10000 
+            //SYSTEM.CONFIG.CTIBASE          0x80C20000
+            //SYSTEM.CONFIG ETMBASE          0x80C40000 
+            //SYSTEM.CONFIG ETMFUNNELPORT    4.
+            
+            SYSTEM.CONFIG COREBASE         DAP:0x87C10000 
+            SYSTEM.CONFIG.CTIBASE          DAP:0x87C20000
+            SYSTEM.CONFIG ETMBASE          DAP:0x87C40000 
+            SYSTEM.CONFIG ETMFUNNELPORT    4.
+            
+        )
+        IF ("&ARG1"=="5")
+        (
+            sys.cpu &APPS_cputype_big
+            SYStem.CONFIG SLAVE ON
+            //SYSTEM.CONFIG COREBASE         0x80D10000 
+            //SYSTEM.CONFIG.CTIBASE          0X80D20000
+            //SYSTEM.CONFIG ETMBASE          0x80D40000 
+            //SYSTEM.CONFIG ETMFUNNELPORT    5.
+            
+            SYSTEM.CONFIG COREBASE         DAP:0x87D10000 
+            SYSTEM.CONFIG.CTIBASE          DAP:0X87D20000
+            SYSTEM.CONFIG ETMBASE          DAP:0x87D40000 
+            SYSTEM.CONFIG ETMFUNNELPORT    5.
+            
+        )
+        IF ("&ARG1"=="6")
+        (
+            sys.cpu &APPS_cputype_big
+            SYStem.CONFIG SLAVE ON
+            //SYSTEM.CONFIG COREBASE         0x80E10000 
+            //SYSTEM.CONFIG.CTIBASE          0X80E20000
+            //SYSTEM.CONFIG ETMBASE          0x80E40000 
+            //SYSTEM.CONFIG ETMFUNNELPORT    6.
+            
+            SYSTEM.CONFIG COREBASE         DAP:0x87E10000 
+            SYSTEM.CONFIG.CTIBASE          DAP:0X87E20000
+            SYSTEM.CONFIG ETMBASE          DAP:0x87E40000 
+            SYSTEM.CONFIG ETMFUNNELPORT    6.
+            
+        )
+        IF ("&ARG1"=="7")
+        (
+            sys.cpu &APPS_cputype_big
+            SYStem.CONFIG SLAVE ON
+            //SYSTEM.CONFIG COREBASE         0x80F10000 
+            //SYSTEM.CONFIG.CTIBASE          0X80F20000
+            //SYSTEM.CONFIG ETMBASE          0x80F40000 
+            //SYSTEM.CONFIG ETMFUNNELPORT    7.
+            
+            SYSTEM.CONFIG COREBASE         DAP:0x87F10000 
+            SYSTEM.CONFIG.CTIBASE          DAP:0X87F20000
+            SYSTEM.CONFIG ETMBASE          DAP:0x87F40000 
+            SYSTEM.CONFIG ETMFUNNELPORT    7.
+            
+        )
+        IF ("&ARG1"=="mp1")
+        (
+            
+            sys.cpu &APPS_cputype_multicore
+            SYSTEM.CONFIG CORENUMBER       8
+            CORE.num 8.
+            THREAD.ASSIGN                    1. 2. 3. 4. 5. 6. 7. 8.
+            //SYSTEM.CONFIG COREBASE         0x80810000 0x80910000 0x80A10000 0x80B10000
+            //SYSTEM.CONFIG ETMBASE          0X80840000 0x80940000 0x80A40000 0x80B40000 
+            //SYSTEM.CONFIG ETMFUNNELPORT    0. 1. 2. 3.
+            //SYSTEM.CONFIG.CTIBASE          0x80820000 0x80920000 0x80A20000 0x80B20000
+            
+            SYSTEM.CONFIG COREBASE          DAP:0x87810000 DAP:0x87910000 DAP:0x87A10000 DAP:0x87B10000 DAP:0x87C10000  DAP:0x87D10000  DAP:0x87E10000  DAP:0x87F10000
+            SYStem.CONFIG.CTIBASE           DAP:0x87820000 DAP:0x87920000 DAP:0x87A20000 DAP:0x87B20000 DAP:0x87C20000  DAP:0x87D20000  DAP:0x87E20000  DAP:0x87F20000
+            SYSTEM.CONFIG ETMBASE           DAP:0X87840000 DAP:0x87940000 DAP:0x87A40000 DAP:0x87B40000 DAP:0X87C40000  DAP:0x87D40000  DAP:0x87E40000  DAP:0x87F40000 
+            SYSTEM.CONFIG ETMFUNNELPORT     0. 1. 2. 3. 4. 5. 6. 7.
+        )
+
+        //Shouldn't need this
+        IF ("&ARG1"=="mp2")
+        (
+            sys.cpu &APPS_cputype_multicore
+            SYSTEM.CONFIG CORENUMBER       4
+            THREAD.ASSIGN                    1. 2. 3. 4.
+            //SYSTEM.CONFIG COREBASE         0x80C10000 0x80D10000 0x80E10000 0x80F10000
+            //SYSTEM.CONFIG.CTIBASE          0x80C20000 0x80D20000 0x80E20000 0x80F20000
+            //SYSTEM.CONFIG ETMBASE          0X80C40000 0x80D40000 0x80E40000 0x80F40000 
+            //SYSTEM.CONFIG ETMFUNNELPORT    0. 1. 2. 3.
+            SYSTEM.CONFIG COREBASE          DAP:0x87C10000  DAP:0x87D10000  DAP:0x87E10000  DAP:0x87F10000
+            SYSTEM.CONFIG.CTIBASE           DAP:0x87C20000  DAP:0x87D20000  DAP:0x87E20000  DAP:0x87F20000
+            SYSTEM.CONFIG ETMBASE           DAP:0X87C40000  DAP:0x87D40000  DAP:0x87E40000  DAP:0x87F40000 
+            SYSTEM.CONFIG ETMFUNNELPORT    0. 1. 2. 3.
+            
+        )
+        
+        
+        
+        
+        SYSTEM.CONFIG.FUNNELBASE            DAP:0X87321000    
+        SYSTEM.CONFIG.ETBBASE               DAP:0x87325000
+        SYSTEM.CONFIG.FUNNEL2BASE           DAP:0x87322000
+        SYSTEM.CONFIG.ETBFUNNELBASE         DAP:0x87230000
+        SYSTEM.CONFIG.ETMETBFUNNELPORT      1.
+
+        SYSTEM.CONFIG CTICONFIG        ARMV8V1
+        
+        SYStem.CONFIG MEMORYACCESSPORT 0.
+        SYStem.CONFIG DEBUGACCESSPORT  1.
+        SYStem.CONFIG AHBACCESSPORT    3.
+        SYStem.CONFIG APBACCESSPORT    1.
+        SYStem.config AXIACCESSPORT    0.
+
+        SYSTEM.CONFIG.MULTITAP NONE
+        
+        
+        //SYSTEM.CONFIG.JTAGACCESSPORT 2.
+        //SYSTEM.OPTION ENRESET OFF
+        SYSTEM.OPTION CFLUSH OFF
+        SYStem.CONFIG DAPIRPOST 0.
+        SYStem.CONFIG DAPDRPOST 0.
+        SYStem.CONFIG DAPIRPOST 16.
+        SYStem.CONFIG DAPDRPOST 2.
+        SYStem.CONFIG MULTITAP NONE
+        SYSTEM.MEMACCESS DAP
+
+        //TRONCHIP.SET RESET OFF
+        // Enable the powerdown bits and dbgpwrup request
+        SYS.OPTION SYSPWRUPREQ OFF 
+        SYS.OPTION PWRDWN ON
+        
+        // Turn off ETM 
+        ETM.OFF 
+        
+        
+        IF ("&ARG2"=="SWD")&&("&KRYO2XX_T32_COMPLIANT"=="TRUE")
+        (
+            System.Option ResetRegister DAP:0x860010D8 0x0 0x1 0x2 /long 
+        )
+    )
+    ////////////////////////////////////////
+    ////////   MSM8996 Logic ///////////////
+    ////////////////////////////////////////
+    IF (("&ARG0"=="MSM8996"))
+    (
+        &APPS_HW_BLOCK_NAME="APPS-HYDRA"
+        
+        
+        SYSTEM.RESET
+        SYSTEM.CPU HYDRA
+        SYSTEM.JTAGCLOCK 10.0MHZ
+        SYStem.Option EnReset ON
+        
+        SYStem.Option TRST ON
+        SYStem.Option ResBreak ON
+
+        // Core Specific Setup    
+        IF ("&ARG1"=="0")
+        (
+            SYStem.CONFIG SLAVE OFF
+            SYStem.CONFIG COREBASE     DAP:0x83810000
+            SYStem.CONFIG.CTIBASE      DAP:0x83820000
+            
+            //SYSTEM.CONFIG ETMBASE          DAP:0x83840000 
+            //SYSTEM.CONFIG ETMFUNNELPORT    0.
+    
+        )
+        IF ("&ARG1"=="1")
+        (
+            SYStem.CONFIG SLAVE ON
+            SYStem.CONFIG COREBASE     DAP:0x83910000
+            SYStem.CONFIG.CTIBASE      DAP:0x83920000
+            //SYSTEM.CONFIG ETMBASE          DAP:0x83940000 
+            //SYSTEM.CONFIG ETMFUNNELPORT    1.
+
+        )
+        IF ("&ARG1"=="2")
+        (
+        
+            SYStem.CONFIG SLAVE ON
+            SYStem.CONFIG COREBASE     DAP:0x83A10000
+            SYStem.CONFIG.CTIBASE      DAP:0x83A20000
+            //SYSTEM.CONFIG ETMBASE          DAP:0x83A40000 
+            //SYSTEM.CONFIG ETMFUNNELPORT    2.
+        )
+        IF ("&ARG1"=="3")
+        (
+            SYStem.CONFIG SLAVE ON
+            SYStem.CONFIG COREBASE     DAP:0x83B10000
+            SYStem.CONFIG.CTIBASE      DAP:0x83B20000
+            //SYSTEM.CONFIG ETMBASE          DAP:0x83B40000 
+            //SYSTEM.CONFIG ETMFUNNELPORT    3.
+
+        )
+
+        IF ("&ARG1"=="mp1")
+        (
+
+            SYSTEM.CONFIG CORENUMBER       4.
+            CORE.NUM 4.
+            THREAD.ASSIGN                    1. 2. 3. 4.
+            SYSTEM.CONFIG COREBASE         DAP:0x83810000 DAP:0x83910000 DAP:0x83A10000 DAP:0x83B10000 
+            //SYSTEM.CONFIG ETMBASE          DAP:0X83840000 DAP:0x83940000 
+            //SYSTEM.CONFIG ETMFUNNELPORT    0. 1.
+            SYStem.CONFIG.CTIBASE          DAP:0x83820000 DAP:0x83920000 DAP:0x83A20000 DAP:0x83B20000
+        )
+        
+
+        SYStem.CONFIG MEMORYACCESSPORT 0.
+        SYStem.CONFIG DEBUGACCESSPORT  1.
+        SYStem.CONFIG AHBACCESSPORT    3.
+        SYStem.CONFIG APBACCESSPORT    1.
+        SYStem.config AXIACCESSPORT    0.
+        SYSTEM.CONFIG CTICONFIG        ARMV8V1
+
+        SYStem.CONFIG DAPIRPOST 0.
+        SYStem.CONFIG DAPDRPOST 0.
+        SYStem.CONFIG DAPIRPOST 16.
+        SYStem.CONFIG DAPDRPOST 2.
+        SYStem.CONFIG MULTITAP NONE
+
+        //This allows true power down instead of emulated power down
+        SYSTEM.OPTION PWRDWN ON
+        
+
+        System.Option IMASKASM ON
+        System.Option IMASKHLL ON
+
+        SYStem.MEMACCESS DAP
+        
+        //For v1 silicon C5 reset vector catch issue
+        TRONCHIP.SET RESET OFF
+
+
+        
+        //SYSTEM.CONFIG.FUNNELBASE        DAP:0X83321000    
+        //SYSTEM.CONFIG.ETBBASE           DAP:0x83325000
+        //SYSTEM.CONFIG.FUNNEL2BASE       DAP:0x83322000
+        //SYSTEM.CONFIG.ETBFUNNELBASE     DAP:0x83230000
+        //SYSTEM.CONFIG.ETMETBFUNNELPORT  1.
+        // Turn off ETM 
+        //ETM.OFF 
+        
+        B.SEL PROGRAM onchip
+        RADIX HEX
+        SETUP.VAR %HEX.ON
+        MODE.HLL
+        IF "&EUD"!="TRUE"
+        (
+            AUTOSTORE DAP_APPS HISTORY
+        )
+        SYSTEM.STATE
+    )
+    
+    
+    
+    IF (("&ARG0"=="SDX50")||("&ARG0"=="SDX50M"))
+	(
+        &APPS_HW_BLOCK_NAME="APPS-CORTEXA5"
+        &platform_arg1="asic"
+        ;&dap_dp="jtag"
+
+        ; select CPU and options
+        SYStem.Reset
+        SYStem.CPU CortexA7
+        IF "&RUMI"=="TRUE"
+        (
+            SYStem.JTAGCLOCK CTCK 1.MHz
+        )
+        ELSE
+        (
+            SYStem.JTAGCLOCK CTCK 20.MHz
+        )
+        
+        SYStem.OPTION ENRESET ON
+        SYStem.OPTION RESBREAK ON
+
+        SYStem.CONFIG SLAVE OFF
+
+        SYStem.CONFIG COREBASE         	DAP:0x80040000
+        SYStem.CONFIG.CTIBASE	       	DAP:0x80043000
+        SYStem.CONFIG ETMBASE          	DAP:0x80042000
+        ;SYStem.CONFIG ETMFUNNELPORT    0.
+
+        SYStem.CONFIG CTICONFIG        	CORTEXV1
+
+        SYStem.CONFIG MEMORYACCESSPORT 	0.
+        SYStem.CONFIG DEBUGACCESSPORT  	1.
+        SYStem.CONFIG AXIACCESSPORT 	0.
+        
+        IF "&RUMI"=="TRUE"
+        (
+             SYStem.CONFIG DAPIRPOST 0.
+             SYStem.CONFIG DAPDRPOST 0.
+             SYStem.CONFIG DAPIRPOST 0.
+             SYStem.CONFIG DAPDRPOST 0.
+        )
+        ELSE 
+        (
+            SYStem.CONFIG DAPIRPOST 0.
+            SYStem.CONFIG DAPDRPOST 0.
+            SYStem.CONFIG DAPIRPOST 11.
+            SYStem.CONFIG DAPDRPOST 1.
+        )
+
+        tronchip.set.dabort off
+        tronchip.set.pabort off
+        tronchip.set.undef off
+        tronchip.SET RESET OFF 
+        tronchip.SET SRESET OFF 
+
+        ;This re-assignment is a workaround for T32 issue.
+        ;For some reason, T32 does not send Debug port info (JTAG)
+        ;toTarget unless it switches value from SWD.
+        IF "&ARG2"=="JTAG"
+        (
+            SYStem.CONFIG SWDP OFF
+            SYStem.CONFIG DEBUGPORTTYPE JTAG
+        )
+
+        SYStem.CONFIG MULTITAP NONE
+        SYStem.MEMACCESS DAP
+        //copy from VI script
+
+        
+
+    )
+    
+    
+  
+    IF ("&ARG0"=="MDM9665")||("&ARG0"=="SDX20")||("&ARG0"=="SDX20M")
+	(
+        &APPS_HW_BLOCK_NAME="APPS-CORTEXA5"
+        &platform_arg1="asic"
+        ;&dap_dp="jtag"
+
+        ; select CPU and options
+        SYStem.Reset
+        SYStem.CPU CortexA7
+        SYStem.JTAGCLOCK CTCK 20.MHz
+        SYStem.OPTION ENRESET ON
+        SYStem.OPTION RESBREAK ON
+
+        SYStem.CONFIG SLAVE OFF
+
+        SYStem.CONFIG COREBASE         	DAP:0x80040000
+        SYStem.CONFIG.CTIBASE	       	DAP:0x80043000
+        SYStem.CONFIG ETMBASE          	DAP:0x80042000
+        ;SYStem.CONFIG ETMFUNNELPORT    0.
+
+        //SYStem.CONFIG CTICONFIG        	CORTEXV1
+
+        SYStem.CONFIG MEMORYACCESSPORT 	0.
+        SYStem.CONFIG DEBUGACCESSPORT  	1.
+        SYStem.CONFIG AXIACCESSPORT 	0.
+
+        IF "&platform_arg1"=="asic"
+        (
+            SYStem.CONFIG DAPIRPOST 0.
+            SYStem.CONFIG DAPDRPOST 0.
+            SYStem.CONFIG DAPIRPOST 16.
+            SYStem.CONFIG DAPDRPOST 2.
+        )
+        ELSE IF "&platform_arg1"=="veloce"
+        (
+            SYStem.CONFIG DAPIRPOST 0.
+            SYStem.CONFIG DAPDRPOST 0.
+            SYStem.CONFIG DAPIRPOST 16.
+            SYStem.CONFIG DAPDRPOST 2.
+        )
+        ELSE IF "&platform_arg1"=="rumi"
+        (
+             SYStem.CONFIG DAPIRPOST 0.
+             SYStem.CONFIG DAPDRPOST 0.
+             SYStem.CONFIG DAPIRPOST 0.
+             SYStem.CONFIG DAPDRPOST 0.
+        )
+
+        ;This re-assignment is a workaround for T32 issue.
+        ;For some reason, T32 does not send Debug port info (JTAG)
+        ;toTarget unless it switches value from SWD.
+        IF "&ARG2"=="JTAG"
+        (
+            SYStem.CONFIG SWDP OFF
+            SYStem.CONFIG DEBUGPORTTYPE JTAG
+        )
+
+        SYStem.CONFIG MULTITAP NONE
+        SYStem.MEMACCESS DAP
+    //copy from VI script
+
+    tronchip.SET FIQ OFF 
+        tronchip.SET IRQ OFF
+    tronchip.SET DABORT OFF 
+    tronchip.SET PABORT OFF  
+        tronchip.SET UNDEF off
+    tronchip.SET SWI OFF 
+    tronchip.SET RESET OFF 
+    SYStem.CONFIG MULTITAP NONE
+    SYStem.CONFIG COREBASE         DAP:0x80040000 
+    SYStem.CONFIG.CTIBASE           DAP:0x80043000
+    SYStem.CONFIG ETMBASE          DAP:0x8004200
+    SYStem.CONFIG ETMFUNNELPORT    0.
+    SYStem.CONFIG CTICONFIG        CORTEXV1
+        
+
+    )
+
+     IF ("&ARG0"=="MDM9675")||("&ARG0"=="SDX24")
+	(
+        &APPS_HW_BLOCK_NAME="APPS-CORTEXA5"
+        &platform_arg1="asic"
+        ;&dap_dp="jtag"
+
+        ; select CPU and options
+        SYStem.Reset
+        SYStem.CPU CortexA7
+
+		IF "&RUMI"=="TRUE"
+        (
+            SYStem.JTAGCLOCK CTCK 1.MHz
+        )
+        ELSE
+        (
+            SYStem.JTAGCLOCK CTCK 20.MHz
+        )
+        
+       // SYStem.JTAGCLOCK CTCK 20.MHz
+        SYStem.OPTION ENRESET ON
+        SYStem.OPTION RESBREAK ON
+
+        SYStem.CONFIG SLAVE OFF
+
+        SYStem.CONFIG COREBASE         	DAP:0x87000000
+        SYStem.CONFIG.CTIBASE	       	DAP:0x87003000
+        SYStem.CONFIG ETMBASE          	DAP:0x87002000
+        ;SYStem.CONFIG ETMFUNNELPORT    0.
+
+        SYStem.CONFIG CTICONFIG        	CORTEXV1
+
+        SYStem.CONFIG MEMORYACCESSPORT 	0.
+        SYStem.CONFIG DEBUGACCESSPORT  	1.
+        SYStem.CONFIG AXIACCESSPORT 	0.
+
+        IF "&platform_arg1"=="asic"
+        (
+		//below port number reference from vi script and  below ports number has been change for sdx24
+            SYStem.CONFIG DAPIRPOST 0.
+            SYStem.CONFIG DAPDRPOST 0.
+            SYStem.CONFIG DAPIRPOST 11.
+            SYStem.CONFIG DAPDRPOST 1.
+        )
+        ELSE IF "&platform_arg1"=="veloce"
+        (
+            SYStem.CONFIG DAPIRPOST 0.
+            SYStem.CONFIG DAPDRPOST 0.
+            SYStem.CONFIG DAPIRPOST 16.
+            SYStem.CONFIG DAPDRPOST 2.
+        )
+        ELSE IF "&platform_arg1"=="rumi"
+        (
+             SYStem.CONFIG DAPIRPOST 0.
+             SYStem.CONFIG DAPDRPOST 0.
+             SYStem.CONFIG DAPIRPOST 0.
+             SYStem.CONFIG DAPDRPOST 0.
+        )
+
+        ;This re-assignment is a workaround for T32 issue.
+        ;For some reason, T32 does not send Debug port info (JTAG)
+        ;toTarget unless it switches value from SWD.
+        IF "&ARG2"=="JTAG"
+        (
+            SYStem.CONFIG SWDP OFF
+            SYStem.CONFIG DEBUGPORTTYPE JTAG
+        )
+
+        SYStem.CONFIG MULTITAP NONE
+        SYStem.MEMACCESS DAP
+    //copy from VI script
+
+    tronchip.SET FIQ OFF 
+        tronchip.SET IRQ OFF
+    tronchip.SET DABORT OFF 
+    tronchip.SET PABORT OFF  
+        tronchip.SET UNDEF off
+    tronchip.SET SWI OFF 
+    tronchip.SET RESET OFF 
+    SYStem.CONFIG MULTITAP NONE
+    SYStem.CONFIG COREBASE         DAP:0x87000000
+    SYStem.CONFIG.CTIBASE          DAP:0x87003000
+    SYStem.CONFIG ETMBASE          DAP:0x870020000
+    SYStem.CONFIG ETMFUNNELPORT    0.
+    SYStem.CONFIG CTICONFIG        CORTEXV1
+        
+    LOCAL &currdir
+    &currdir=os.pwd()
+    GLOBAL &APPS_ATTACH_DIR
+    &APPS_ATTACH_DIR="&currdir/apps/sdx24"
+    //AOP Attach/detach scripts for software watchdog
+    GLOBALON SYSUP DO &APPS_ATTACH_DIR/apps_attach_actions.cmm
+    
+    GLOBALON SYSDOWN DO &APPS_ATTACH_DIR/apps_deattach_actions.cmm
+    
+    SYS.OPTION.DAPSYSPWRUPREQ ON
+    )
+    
+    
+    IF ("&ARG0"=="MDM9645")
+    (
+    SYSTEM.CPU CORTEXA7
+    SYSTEM.JTAGCLOCK  CTCK 20.0MHZ
+    SYSTEM.OPTION ENRESET ON
+    SYSTEM.OPTION RESBREAK ON
+    SYSTEM.CONFIG SLAVE OFF
+    SYStem.CONFIG MEMORYACCESSPORT 0.
+    SYStem.CONFIG DEBUGACCESSPORT  1.
+    SYStem.CONFIG AXIACCESSPORT    0.
+    SYStem.CONFIG DAPIRPOST 0.
+    SYStem.CONFIG DAPDRPOST 0.
+    SYStem.CONFIG DAPIRPOST 16.
+    SYStem.CONFIG DAPDRPOST 2.
+    SYStem.MEMACCESS DAP
+    tronchip.SET FIQ OFF 
+        tronchip.SET IRQ OFF
+    tronchip.SET DABORT OFF 
+    tronchip.SET PABORT OFF  
+        tronchip.SET UNDEF off
+    tronchip.SET SWI OFF 
+    tronchip.SET RESET OFF 
+    SYStem.CONFIG MULTITAP NONE
+    SYStem.CONFIG COREBASE         DAP:0x80040000 
+    SYStem.CONFIG.CTIBASE           DAP:0x80043000
+    SYStem.CONFIG ETMBASE          DAP:0x8004200
+    SYStem.CONFIG ETMFUNNELPORT    0.
+    SYStem.CONFIG CTICONFIG        CORTEXV1
+        
+
+    )
+    
+    IF ("&ARG0"=="MDM9655")
+    (
+        
+        &APPS_HW_BLOCK_NAME="APPS-CORTEXA5"
+        
+        
+        SYSTEM.CPU CORTEXA7
+        SYSTEM.JTAGCLOCK  CTCK 20.0MHZ
+        SYSTEM.OPTION ENRESET ON
+        SYSTEM.OPTION RESBREAK ON
+        SYSTEM.CONFIG SLAVE OFF
+        SYStem.CONFIG MEMORYACCESSPORT 0.
+        SYStem.CONFIG DEBUGACCESSPORT  1.
+        SYStem.CONFIG AXIACCESSPORT    0.
+        SYStem.CONFIG DAPIRPOST 0.
+        SYStem.CONFIG DAPDRPOST 0.
+        SYStem.CONFIG DAPIRPOST 16.
+        SYStem.CONFIG DAPDRPOST 2.
+        SYStem.MEMACCESS DAP
+        tronchip.SET FIQ OFF 
+        tronchip.SET IRQ OFF
+        tronchip.SET DABORT OFF
+        tronchip.SET PABORT OFF  
+            tronchip.SET UNDEF OFF
+        tronchip.SET SWI OFF 
+        tronchip.SET RESET OFF 
+        SYStem.CONFIG MULTITAP NONE
+        SYStem.CONFIG COREBASE         DAP:0x80040000 
+        SYStem.CONFIG.CTIBASE           DAP:0x80043000
+        SYStem.CONFIG ETMBASE          DAP:0x80042000
+        SYStem.CONFIG ETMFUNNELPORT    0.
+        SYStem.CONFIG CTICONFIG        CORTEXV1
+        
+        B.SEL PROGRAM onchip
+        RADIX HEX
+        SETUP.VAR %HEX.ON
+        MODE.HLL
+        AUTOSTORE DAP_APPS HISTORY
+        SYSTEM.STATE
+            
+
+    )
+
+
+    // Common settings for all chipsets
+    IF ((("&ARG2"=="SWD")||("&ARG2"=="swd"))&&(CABLE.TWOWIRE()))
+    (
+        SYStem.Option TRST OFF
+        SYSTEM.CONFIG SWDP ON 
+        SYSTEM.CONFIG DEBUGPORTTYPE SWD
+    IF ("&ARG0"=="MDM9655")||("&ARG0"=="MDM9665")||("&ARG0"=="SDX20")||("&ARG0"=="SDX20M")
+    (
+        SYStem.CONFIG MULTITAP NONE
+        SYStem.MEMACCESS DAP
+        SYStem.Option RESetREGister DAP:0x808010D8 0x0 0x1 0x2 /long
+        )
+    )
+    
+    &CURRENT_HW_BLOCK_NAME="&APPS_HW_BLOCK_NAME"
+    
+    // Launch startup scripts
+    IF (OS.ENV(STARTUPCMM)!="")
+    (
+        &STARTUPSCRIPT=OS.ENV(STARTUPCMM)
+        do &STARTUPSCRIPT
+    )
+    
+    AUTOSTORE DAP_APPS HISTORY
+    
+    GOTO EXIT
+
+EXIT:
+    ENDDO

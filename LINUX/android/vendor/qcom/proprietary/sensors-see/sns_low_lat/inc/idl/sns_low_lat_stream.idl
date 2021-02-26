@@ -1,0 +1,100 @@
+// /******************************************************************************
+// * File: sns_low_lat_stream.idl
+// *
+// * Copyright (c) 2016-2017 Qualcomm Technologies, Inc.
+// * All Rights Reserved.
+// * Confidential and Proprietary - Qualcomm Technologies, Inc.
+// *
+// ******************************************************************************/
+#include "AEEStdDef.idl"
+
+// SUID type from SEE
+struct sns_std_suid_t {
+    unsigned long long suid_low;
+    unsigned long long suid_high;
+};
+
+interface sns_low_lat_stream
+{
+  // Initialize the necessary connections for this client.
+  //
+  // @note1hang
+  //
+  // @param[in]  fd     File descriptor for the ION buffer (allocated by the client)
+  // @param[in]  size   Size of the allocated ION buffer
+  // @param[in]  offset Offset for the buffer
+  // @param[out] handle Client handle used to distinguish which client is
+  //                    interacting with the framework
+  //
+  // @return
+  // 0 -- Operation was successful. \n
+  // All other values -- Operation failed due to an unknown error.
+  long init(in long fd, in unsigned long size, in unsigned long offset, rout long handle);
+
+  // Configure a stream with the requested sensors and rates for this client.
+  //
+  // @note1hang There can only be one stream active per client.
+  //
+  // @param[in] handle
+  // @param[in] timestamp_offset
+  // @param[in] sensor_suid
+  // @param[in] sample_period_us
+  // @param[in] flags (see SNS_START_FLAG_*)
+  // @param[in] sensor_handle
+  //
+  // @return
+  // 0 -- Operation was successful. \n
+  // All other values -- Operation failed due to an unknown error.
+  long config(in long handle, in long long timestamp_offset,
+    in sns_std_suid_t sensor_suid, in unsigned long sample_period_us,
+    in unsigned long flags, in long sensor_handle);
+
+  // Stops the current active stream for this client.
+  //
+  // @note1hang
+  //
+  // @param[in] handle
+  //
+  // @return
+  // 0 -- Operation was successful. \n
+  // All other values -- Operation failed due to an unknown error.
+  long stop(in long handle);
+
+  // Tear down the connections for this client.
+  //
+  // @note1hang
+  //
+  // @param[in] handle
+  //
+  // @return
+  // 0 -- Operation was successful. \n
+  // All other values -- Operation failed due to an unknown error.
+  long deinit(in long handle);
+
+  // Blocking call that will unblock once the next sensor sample(s) is
+  // available to be read from the shared memory buffer.
+  //
+  // @note1hang This call will block until there is new sensor data to be reported.
+  //
+  // @param[in] handle
+  //
+  // @return
+  // 0 -- Operation was successful. \n
+  // All other values -- Operation failed due to an unknown error.
+  long poll(in long handle);
+
+  // Blocking call that will block for the specified duration.
+  //
+  // @note1hang This call will block for the requested duration or until
+  //            the call is canceled.
+  //
+  // @param[in] sleep_in_ms Duration to sleep in milliseconds. If 0 is used,
+  //                        then the function will return immediately. If -1
+  //                        is used, then the function will block
+  //                        indefinitely
+  //
+  // @return
+  // 0 -- Operation was successful. \n
+  // All other values -- Operation failed due to an unknown error.
+  long forward_block(in long sleep_in_ms);
+};

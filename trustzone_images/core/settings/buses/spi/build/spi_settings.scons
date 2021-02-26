@@ -1,0 +1,79 @@
+#===============================================================================
+#
+# SPI settings 
+#
+# GENERAL DESCRIPTION
+#    Public build script for SPI settings.
+#
+# Copyright (c) 2017 Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Qualcomm Technologies, Inc. Confidential and Proprietary.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.tz/2.0.2/settings/buses/spi/build/spi_settings.scons#1 $
+#  $DateTime: 2018/02/06 02:57:17 $
+#  $Author: pwbldsvc $
+#  $Change: 15399902 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#  
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 10/03/17   vmk     Initial version
+#
+#===============================================================================
+
+import os
+Import('env')
+env = env.Clone()
+
+#------------------------------------------------------------------------------
+# Images
+#------------------------------------------------------------------------------
+SPI_CFG_IMAGES = ['DAL_DEVCFG_OEM_QSEE_IMG']
+
+#-------------------------------------------------------------------------------
+# Source PATH:  
+#-------------------------------------------------------------------------------
+SRCPATH = "../config"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+if "USES_DEPLOY_BUILDER" in env:
+   env.Deploy(['../interface/spi_devcfg.h',
+               '../build/spi_settings.api',
+               '../build/spi_settings.scons'])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_APIS = [
+   'DAL',
+   'BUSES',
+   'BUSES_SPI',
+   'SYSTEMDRIVERS',
+   'SERVICES',
+   'HWENGINES',
+]
+
+env.RequirePublicApi(CBSP_APIS, area='core')
+env.RequireRestrictedApi('SPI_SETTINGS')
+
+#---------------------------------------------------------------------------
+# Device Config
+#---------------------------------------------------------------------------
+if 'USES_DEVCFG' in env:
+    if env['MSM_ID'] in ['845','670','855', '640']:
+        env.AddDevCfgInfo(SPI_CFG_IMAGES, 
+        {
+            'devcfg_xml' : ['${BUILD_ROOT}/core/settings/buses/spi/config/${CHIPSET}/tz/spi_devcfg.xml',
+                            '${BUILD_ROOT}/core/settings/buses/spi/config/${CHIPSET}/tz/spi_devcfg.c']
+        })
+    else:
+        env.AddDevCfgInfo(SPI_CFG_IMAGES, 
+        {
+            'devcfg_xml' : ['${BUILD_ROOT}/core/settings/buses/spi/config/stubs/tz/spi_devcfg.xml',
+                            '${BUILD_ROOT}/core/settings/buses/spi/config/stubs/tz/spi_devcfg.c']
+        })

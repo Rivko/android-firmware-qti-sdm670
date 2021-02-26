@@ -1,0 +1,57 @@
+#===========================================================================
+# PDC global build script
+#
+# Copyright (c) 2016 by Qualcomm Technologies, Incorporated
+# All Rights Reserved
+# Qualcomm Proprietary/GTDR
+#===========================================================================
+
+Import('env')
+
+env = env.Clone()
+#SDM640_CHANGES
+if env['MSM_ID'] in ['640']:
+   env['MSM_ID'] = '670'
+   
+SRCPATH = '..'
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#855au for now compiles with 855 config
+if env['MSM_ID'] == '855au': 
+  env['MSM_ID'] = '855'
+
+# APIs
+CBSP_API = [
+    'DAL',
+    'POWER',
+    'POWER_UTILS',
+	'SYSTEMDRIVERS',
+	# Keep it last as contains incorrect version of comdef.h
+	'KERNEL'
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+env.RequireProtectedApi(CBSP_API)
+env.PublishPrivateApi('PDC_GLOBAL', [
+    '${BUILD_ROOT}/core/power/pdc/global/inc',
+    '${BUILD_ROOT}/core/power/pdc/global/hal/inc',
+    '${BUILD_ROOT}/core/power/pdc/global/hal/hwio/${MSM_ID}',
+])
+
+# Compilation options
+env.Append(CFLAGS = '${ARMCC_STDC99_CMD}')
+
+# Sources
+PDC_GLOBAL_SOURCES = [
+	'${BUILDPATH}/common/pdc_global.c',
+	'${BUILDPATH}/hal/src/pdc_global_hal.c',
+]
+
+# Adding settings files to R-init builder
+if 'USES_RINIT_PARSER' in env:
+	env.AddRinitInfo('CORE_AOP', 
+					 {'files' : '${BUILD_ROOT}/core/power/pdc/global/cfg/${MSM_ID}'})
+
+# Add sources to compile
+env.AddLibrary(['CORE_AOP'], '${BUILDPATH}/pdc_global', PDC_GLOBAL_SOURCES)

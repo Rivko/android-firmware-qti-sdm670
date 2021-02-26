@@ -1,0 +1,181 @@
+#===============================================================================
+#
+#                             Edit History
+# $Header: //components/rel/core.tz/2.0.2/kernel/smmu/build/ACv30.sconscript#3 $
+#
+# when         who     what, where, why
+# ----------   ---     ---------------------------------------------------------
+# 2011/04/26   spa     Create initial version
+#
+#===============================================================================
+# Copyright (c) 2011 - 2015, 2017
+# Qualcomm Technologies Incorporated.
+# All Rights Reserved.
+# Qualcomm Confidential and Proprietary
+#===============================================================================
+import os 
+
+#-------------------------------------------------------------------------------
+# SMMU Lib
+#-------------------------------------------------------------------------------
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "../ACv3.0"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_APIS = [
+   'BUSES',
+   'DAL',
+   'HAL',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'KERNEL',
+   'PMIC'
+]
+
+env.RequirePublicApi(CBSP_APIS)
+env.RequireRestrictedApi(CBSP_APIS)
+
+SSG_API = [
+    'SECUREMSM',
+    'AC',
+    'MINK',
+    'TZCHIPSET',
+    'SSGPLATFORM',
+    'FUSEPROV',
+]
+
+env.RequirePublicApi(SSG_API, area='ssg')
+
+if env['MSM_ID'] == '1000':
+   env.Append(CPPDEFINES = [ 'FIXME_1000' ])
+
+if env.get('CHIPSET').startswith('msm') or env.get('CHIPSET').startswith('sdm'):
+   smmu_type = 'QSMMU'
+elif env.get('CHIPSET').startswith('mdm') or env.get('CHIPSET').startswith('sdx'):
+   smmu_type = 'mmu500'
+else:
+   smmu_type = 'QSMMU'
+
+#-------------------------------------------------------------------------------
+# Internal depends within subunit
+#-------------------------------------------------------------------------------
+env.PublishPrivateApi('SMMU_V2', [
+   '${INC_ROOT}/core/kernel/smmu/ACv3.0/common',
+   '${INC_ROOT}/core/kernel/smmu/ACv3.0/common/src/hyp',
+   '${INC_ROOT}/core/kernel/smmu/ACv3.0/common/src/tz',
+   '${INC_ROOT}/core/kernel/smmu/ACv3.0/chipset/${SMMU_MSM_ID}',
+   '${INC_ROOT}/core/kernel/smmu/ACv3.0/impl/'+smmu_type+'/${SMMU_MSM_ID}',])
+
+#-------------------------------------------------------------------------------
+# Compiler options
+#-------------------------------------------------------------------------------
+#env.Append(CCFLAGS = "--gnu")
+env.Append(CCFLAGS = "-Werror")
+#env.Replace(SMMU_UNITTEST = "yes")
+if 'SMMU_UNITTEST' in env:
+   if env.has_key('TZOS_IMAGE'):
+      env.Append(CPPDEFINES = 'SMMU_TZ_UNITTEST')
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+
+#-------------------------------------------------------------------------------
+
+if 'USES_DEVCFG' in env:
+   DEVCFG_IMG = ['DAL_DEVCFG_HYP_IMG']
+   env.AddDevCfgInfo(DEVCFG_IMG,
+   {
+      'devcfg_xml' : '${BUILD_ROOT}/core/kernel/smmu/ACv3.0/chipset/${SMMU_MSM_ID}/src/SMMUImplDef1Settings.xml'
+   })
+
+SMMU_COMMON_SOURCES = [
+   '${BUILDPATH}/common/src/HALSMMU.c'
+]
+
+#target specific
+SMMU_TARGET_SOURCES = [
+   '${BUILDPATH}/chipset/${SMMU_MSM_ID}/src/SMMUConfig.c',
+   '${BUILDPATH}/chipset/${SMMU_MSM_ID}/src/SMMUConfigInfo.c',
+   '${BUILDPATH}/chipset/${SMMU_MSM_ID}/src/SMMU_vm_secdisp.c',
+]
+
+#implementation specific
+SMMU_IMPL_SOURCES = [
+   '${BUILDPATH}/impl/'+smmu_type+'/${SMMU_MSM_ID}/src/SMMU_ImplDef.c',
+   '${BUILDPATH}/impl/'+smmu_type+'/${SMMU_MSM_ID}/src/HALSMMU_ImplDef.c',
+]
+
+#TZ side 
+SMMU_TZ_SOURCES = [
+   '${BUILDPATH}/common/src/tz/SMMUInit.c',
+   '${BUILDPATH}/chipset/${SMMU_MSM_ID}/src/tz/SMMUFaults.c',
+   '${BUILDPATH}/chipset/${SMMU_MSM_ID}/src/tz/SMMUSocCfg.c',
+   '${BUILDPATH}/chipset/${SMMU_MSM_ID}/src/tz/SMMUSafeEcoUtils.c',
+   '${BUILDPATH}/common/src/tz/SMMUTrustZone.c',
+]
+#HYP side 
+SMMU_HYP_SOURCES = [
+   '${BUILDPATH}/common/src/hyp/SMMUTranslation.c',
+   '${BUILDPATH}/common/src/hyp/SMMU_vm.c',
+   '${BUILDPATH}/common/src/hyp/SMMUVirtualization.c',
+   '${BUILDPATH}/common/src/hyp/SMMUVirtBuffer.c',
+   '${BUILDPATH}/chipset/${SMMU_MSM_ID}/src/hyp/SMMUInit.c',
+   '${BUILDPATH}/common/src/hyp/SMMUHypervisor.c',
+]
+
+#syscall function on HYP side
+SMMU_HYP_SYSCALL_SOURCES = [
+   '${BUILDPATH}/common/src/hyp/SMMU_Dynamic_SID2VMID.c',
+   '${BUILDPATH}/chipset/${SMMU_MSM_ID}/src/hyp/SMMU_Secure_Camera.c',
+]
+
+SMMU_TZ_SYSCALL_SOURCES = [
+   '${BUILDPATH}/common/src/tz/SMMU_TZ_Dynamic_SID2VMID.c'
+]
+
+#Unit test
+if 'SMMU_UNITTEST' in env:
+    SMMU_COMMON_SOURCES += [
+        '${BUILDPATH}/chipset/${SMMU_MSM_ID}/src/SMMU_UnitTest_ISR.c',
+    ]
+
+HAL_SMMU_PACKOUT_HEADER_FILES = [
+   '${BUILDPATH}/chipset/${SMMU_MSM_ID}/inc/HALSMMU.h',
+   '${BUILDPATH}/chipset/${SMMU_MSM_ID}/inc/SMMUInternal.h',
+   '${BUILDPATH}/common/inc/SMMUVirtBuffer.h',
+]
+
+HAL_SMMU_PACKOUT_SOURCE_FILES = env.FindFiles(
+   '*.c',
+   '${INC_ROOT}/core/kernel/smmu/ACv3.0/')
+
+env.CleanPack(['TZOS_IMAGE','HYPERVISOR_IMAGE'],
+              HAL_SMMU_PACKOUT_HEADER_FILES)
+
+env.CleanPack(['TZOS_IMAGE','HYPERVISOR_IMAGE'],
+              HAL_SMMU_PACKOUT_SOURCE_FILES)
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+env.AddBinaryLibrary(['TZOS_IMAGE'], '${BUILDPATH}/SMMUTZOS',
+                     [SMMU_COMMON_SOURCES,SMMU_TARGET_SOURCES,SMMU_TZ_SOURCES,SMMU_IMPL_SOURCES])
+
+env.AddBinaryLibrary(['HYPERVISOR_IMAGE','TZBSPTEST_IMAGE'], '${BUILDPATH}/SMMUHYPOS',
+                     [SMMU_COMMON_SOURCES, SMMU_TARGET_SOURCES,SMMU_HYP_SOURCES,SMMU_IMPL_SOURCES])
+
+#add syscall function to map                     
+env.AddBinaryObject(['TZOS_IMAGE'], SMMU_TZ_SYSCALL_SOURCES)
+env.AddBinaryObject(['QHEEBSP_IMAGE'], [SMMU_COMMON_SOURCES, SMMU_TARGET_SOURCES, SMMU_HYP_SOURCES,
+SMMU_IMPL_SOURCES, SMMU_HYP_SYSCALL_SOURCES])
+env.AddBinaryObject(['HYPERVISOR_IMAGE'], SMMU_HYP_SYSCALL_SOURCES)

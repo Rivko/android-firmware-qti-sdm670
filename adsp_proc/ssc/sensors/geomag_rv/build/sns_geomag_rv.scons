@@ -1,0 +1,44 @@
+#===============================================================================
+#
+# Geomag RV
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2017 - 2018 by Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#
+#
+#===============================================================================
+Import('env')
+import inspect
+
+#-------------------------------------------------------------------------------
+# Adds self
+#-------------------------------------------------------------------------------
+geomag_rv_island_enable = False
+geomag_rv_sensor_cnt = 1
+
+if 'USES_ALTERNATE_QUP_CONFIG' in env:
+  geomag_rv_sensor_cnt = 2
+
+if 'SNS_ISLAND_INCLUDE_GEOMAG_RV' in env:
+  geomag_rv_island_enable = True
+
+if 'USES_SSC_STATIC_LIB_BUILDER' in env:
+  if 'SENSORS_DD_DEV_FLAG' not in env:
+    geomag_rv_pack_list = ['*.c','*.h']
+  else:
+    geomag_rv_pack_list = ['*.c','*.h','*.proto']
+
+  env.AddSSCSU(inspect.getfile(inspect.currentframe()),
+               clean_pack_list = geomag_rv_pack_list,
+               ssc_protected_api = ['SNS_MATH_UTIL'],
+               register_func_name = "sns_geomag_rv_register",
+               binary_lib = True,
+               cflags = ['-Wno-sign-compare'],
+               add_island_files = geomag_rv_island_enable, 
+               registration_cnt = geomag_rv_sensor_cnt)

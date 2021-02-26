@@ -1,0 +1,188 @@
+#ifndef __HALIOMMU_IMPLDEF_H__
+#define __HALIOMMU_IMPLDEF_H__
+/*=========================================================================
+
+                       S M M U  D A L  D R I V E R
+
+FILE:      HALIOMMUIMPLEDEF.h
+
+GENERAL DESCRIPTION
+  This file contains data structures needed for driver configuration
+
+EXTERNALIZED FUNCTIONS
+
+INITIALIZATION AND SEQUENCING REQUIREMENTS
+
+==========================================================================
+Copyright (c) 2014, 2015
+Qualcomm Technologies Incorporated.
+All Rights Reserved.
+Qualcomm Confidential and Proprietary
+==========================================================================*/
+/*==========================================================================
+
+                        EDIT HISTORY FOR MODULE
+
+  This section contains comments describing changes made to the module.
+  Notice that changes are listed in reverse chronological order.
+
+$Header: //components/rel/boot.xf/2.1/QcomPkg/Drivers/HALIOMMUDxe/HALIOMMUImplDef.h#1 $
+$DateTime: 2017/09/18 09:26:13 $
+$Author: pwbldsvc $
+$Change: 14402555 $
+
+when       who     what, where, why
+--------   ---     ---------------------------------------------------------
+07/07/16   dh      Initial Version
+==========================================================================*/
+
+#include "HALIOMMUTypes.h"
+
+
+#define HAL_IOMMU_IMPLDEF1_NUM_MAX_FLOWS (16 - 1)
+
+#define HAL_IOMMU_IMPLDEF1_MAX_SS2TBN 128
+
+#define HAL_IOMMU_IMPLDEF1_NUM_MAX_PREFETCH_ENABLES 4
+#define HAL_IOMMU_MAX_OT_RESERVATIONS 2
+#define HAL_IOMMU_MAX_HTW_CTRL 2
+
+
+#define HAL_IOMMU_IMPLDEF1_INVALID_VAL 0xFFFFFFFF
+#define HAL_IOMMU_IMPLDEF1_INVALID_VAL64 0xFFFFFFFFFFFFFFFF
+
+// common IMPL_DEF1 settings for all IOMMU instances
+#define HAL_IOMMU_IMPLDEF1_MICRO_MMU_CTRL_VAL 0x70
+#define HAL_IOMMU_IMPLDEF1_HTW_AREQ_CTRL_VAL 0x1055
+#define HAL_IOMMU_IMPLDEF1_HUM_CFG_VAL 0x6
+#define HAL_IOMMU_IMPLDEF1_V1_FILTER_CFG_VAL 0x3F3
+#define HAL_IOMMU_IMPLDEF1_V2_FILTER_CFG_VAL 0x3FF
+#define HAL_IOMMU_IMPLDEF1_TLBI_FILTER_CFG_VAL 0xD802
+
+#define HAL_IOMMU_IMPLDEF1_INVALID_VAL 0xFFFFFFFF
+#define HAL_IOMMU_IMPLDEF1_INVALID_VAL64 0xFFFFFFFFFFFFFFFF
+
+#define OFF_HAL_IOMMU_IMPLDEF_TC1_SP_TLB_LOWER_POINTERS_0_OFFSET         0x6070
+#define OFF_HAL_IOMMU_IMPLDEF_TC1_SP_TLB_LOWER_POINTERSn(i)              (0x6070 + ((i) * 4))
+#define OFF_HAL_IOMMU_IMPLDEF_TC1_BP_TLB_LOWER_POINTERS_0                0x6170
+#define OFF_HAL_IOMMU_IMPLDEF_TC1_BP_TLB_LOWER_POINTERSn(i)              (0x6170 + ((i) * 4))
+#define OFF_HAL_IOMMU_IMPLDEF_TC1_BTLB_LOWER_POINTERS_0                  0x6270
+#define OFF_HAL_IOMMU_IMPLDEF_TC1_BTLB_LOWER_POINTERSn(i)                (0x6270 + ((i) * 4))
+#define OFF_HAL_IOMMU_IMPLDEF_TC1_L0_BFB_LOWER_POINTERS_0                0x6370
+#define OFF_HAL_IOMMU_IMPLDEF_TC1_L0_BFB_LOWER_POINTERSn(i)              (0x6370 + ((i) * 4))
+#define OFF_HAL_IOMMU_IMPLDEF_TC1_GB_BFB_LOWER_POINTERS_0                0x6470
+#define OFF_HAL_IOMMU_IMPLDEF_TC1_GB_BFB_LOWER_POINTERSn(i)              (0x6470 + ((i) * 4))
+#define OFF_HAL_IOMMU_IMPLDEF_TC1_MB_BFB_LOWER_POINTERS_0                0x6570
+#define OFF_HAL_IOMMU_IMPLDEF_TC1_MB_BFB_LOWER_POINTERSn(i)              (0x6570 + ((i) * 4))
+#define OFF_HAL_IOMMU_IMPLDEF_TC1_KB_BFB_LOWER_POINTERS_0                0x6670
+#define OFF_HAL_IOMMU_IMPLDEF_TC1_KB_BFB_LOWER_POINTERSn(i)              (0x6670 + ((i) * 4))
+#define OFF_HAL_IOMMU_IMPLDEF_TC2_TLB_LOWER_POINTERS_0                   0x6770
+#define OFF_HAL_IOMMU_IMPLDEF_TC2_TLB_LOWER_POINTERSn(i)                 (0x6770	 + ((i) * 4))
+#define OFF_HAL_IOMMU_IMPLDEF_TC2_GB_BFB_LOWER_POINTERS_0                0x6780
+#define OFF_HAL_IOMMU_IMPLDEF_TC2_GB_BFB_LOWER_POINTERSn(i)              (0x6780 + ((i) * 4))
+#define OFF_HAL_IOMMU_IMPLDEF_TC2_MB_BFB_LOWER_POINTERS_0                0x6788
+#define OFF_HAL_IOMMU_IMPLDEF_TC2_MB_BFB_LOWER_POINTERSn(i)              (0x6788 + ((i) * 4))
+#define OFF_HAL_IOMMU_IMPLDEF_TC2_KB_BFB_LOWER_POINTERS_0                0x6790
+#define OFF_HAL_IOMMU_IMPLDEF_TC2_KB_BFB_LOWER_POINTERSn(i)              (0x6790 + ((i) * 4))
+
+
+#define OFF_HAL_IOMMU_IMPLDEF_TC1_BTLB_WIDTH0	            0x67D0
+#define OFF_HAL_IOMMU_IMPLDEF_TC1_MB_BFB_WIDTH0	            0x67DC
+#define OFF_HAL_IOMMU_IMPLDEF_TC1_KB_BFB_WIDTH0	            0x67E0
+#define OFF_HAL_IOMMU_IMPLDEF_TC2_GB_BFB_WIDTH0	            0x67E8
+#define OFF_HAL_IOMMU_IMPLDEF_TC2_MB_BFB_WIDTH0	            0x67EC
+#define OFF_HAL_IOMMU_IMPLDEF_TC2_KB_BFB_WIDTH0	            0x67F0
+
+/*-----------------------------------------------------------------------------
+ * Register Offsets inside the global region 5
+ *---------------------------------------------------------------------------*/
+// implmentation defined 1
+#define HAL_IOMMU_IMPLDEF_MICRO_MMU_CTRL_OFFSET                       0x00000000
+#define HAL_IOMMU_IMPLDEF_PRR_CFG_OFFSET                              0x00000008 // 64-bits
+#define HAL_IOMMU_IMPLDEF_DEBUG_BUS_DATA_OFFSET                       0x00000018 // RO
+#define HAL_IOMMU_IMPLDEF_HAL_IOMMU_CLK_ON_STATUS_OFFSET                   0x00000050 // RO
+#define HAL_IOMMU_IMPLDEF_REG_DYNCLK_CTRL_OFFSET                      0x0000005C
+#define HAL_IOMMU_IMPLDEF_HTW_AREQ_CTRL_OFFSET                        0x00000060
+#define HAL_IOMMU_IMPLDEF_REG_HAL_IOMMU_CLK_CTRL_OFFSET                    0x00000064
+#define HAL_IOMMU_IMPLDEF_TC1_SP_TLB_LOWER_POINTERS_0_OFFSET          0x00000070
+#define HAL_IOMMU_IMPLDEF_TC1_SP_TLB_LOWER_POINTERSN_OFFSET           0x00000074
+#define HAL_IOMMU_IMPLDEF_TC1_BP_TLB_LOWER_POINTERS_0_OFFSET          0x000000F0
+#define HAL_IOMMU_IMPLDEF_TC1_BP_TLB_LOWER_POINTERSN_OFFSET           0x000000F4
+#define HAL_IOMMU_IMPLDEF_TC1_BTLB_LOWER_POINTERS_0_OFFSET            0x00000170
+#define HAL_IOMMU_IMPLDEF_TC1_BTLB_LOWER_POINTERSN_OFFSET             0x00000174
+#define HAL_IOMMU_IMPLDEF_TC1_L0_BFB_LOWER_POINTERS_0_OFFSET          0x000001F0
+#define HAL_IOMMU_IMPLDEF_TC1_L0_BFB_LOWER_POINTERSN_OFFSET           0x000001F4
+#define HAL_IOMMU_IMPLDEF_TC1_GB_BFB_LOWER_POINTERS_0_OFFSET          0x00000270
+#define HAL_IOMMU_IMPLDEF_TC1_GB_BFB_LOWER_POINTERSN_OFFSET           0x00000274
+#define HAL_IOMMU_IMPLDEF_TC1_MB_BFB_LOWER_POINTERS_0_OFFSET          0x000002F0
+#define HAL_IOMMU_IMPLDEF_TC1_MB_BFB_LOWER_POINTERSN_OFFSET           0x000002F4
+#define HAL_IOMMU_IMPLDEF_TC1_KB_BFB_LOWER_POINTERS_0_OFFSET          0x00000370
+#define HAL_IOMMU_IMPLDEF_TC1_KB_BFB_LOWER_POINTERSN_OFFSET           0x00000374
+#define HAL_IOMMU_IMPLDEF_TC2_GB_BFB_LOWER_POINTERS_0_OFFSET          0x00000780
+#define HAL_IOMMU_IMPLDEF_TC2_GB_BFB_LOWER_POINTERSN_OFFSET           0x00000784
+#define HAL_IOMMU_IMPLDEF_TC1_SP_TLB_SRAM_BASE_ADDR0_OFFSET           0x000007A0
+#define HAL_IOMMU_IMPLDEF_TC1_BP_TLB_SRAM_BASE_ADDR0_OFFSET           0x000007A4
+#define HAL_IOMMU_IMPLDEF_TC1_BTLB_SRAM_BASE_ADDR0_OFFSET             0x000007A8
+#define HAL_IOMMU_IMPLDEF_TC1_GB_BFB_SRAM_BASE_ADDR0_OFFSET           0x000007B0
+#define HAL_IOMMU_IMPLDEF_TC1_MB_BFB_SRAM_BASE_ADDR0_OFFSET           0x000007B4
+#define HAL_IOMMU_IMPLDEF_TC1_KB_BFB_SRAM_BASE_ADDR0_OFFSET           0x000007B8
+#define HAL_IOMMU_IMPLDEF_TC1_BTLB_WIDTH0_OFFSET                      0x000007D0
+#define HAL_IOMMU_IMPLDEF_TC1_MB_BFB_WIDTH0_OFFSET                    0x000007DC
+#define HAL_IOMMU_IMPLDEF_TC1_KB_BFB_WIDTH0_OFFSET                    0x000007E0
+#define HAL_IOMMU_HUM_CFG_OFFSET                                      0x00000800
+#define HAL_IOMMU_FILTER_CFG_OFFSET                                   0x00000900
+#define HAL_IOMMU_TLBI_FILTER_CFG_OFFSET                              0x00000904
+#define HAL_IOMMU_TLBIS_CTRL_OFFSET                                   0x00000908
+#define HAL_IOMMU_IMPLDEF_NESTED_PREFETCH_CTRL_OFFSET                 0x00000924
+#define HAL_IOMMU_IMPLDEF_SLOT_MANAGER_DEMAND_REQ_CTRL_OFFSET         0x00000928
+#define HAL_IOMMU_IMPLDEF_SLOT_MANAGER_NESTED_REQ_CTRL_OFFSET         0x00000930
+#define HAL_IOMMU_IMPLDEF_STRIDED_PREFETCH_ENABLE0_OFFSET             0x00000940 // 64-bits
+#define HAL_IOMMU_IMPLDEF_NESTED_PREFETCH_ENABLE0_OFFSET              0x00000960 // 64-bits
+#define HAL_IOMMU_IMPLDEF_PLVL_CTRL0_OFFSET                           0x00000B48
+#define HAL_IOMMU_IMPLDEF_PLVL_CTRL1_OFFSET                           0x00000B4C
+#define HAL_IOMMU_IMPLDEF_HTW_CTRL0_OFFSET                            0x00000B50
+#define HAL_IOMMU_IMPLDEF_QOS_ARB_CTRL_OFFSET                         0x00000B64
+#define HAL_IOMMU_IMPLDEF_QOS_ARB_FB_CTRL_OFFSET                      0x00000B68
+#define HAL_IOMMU_IMPLDEF_QOS_TRANS_SCHEDULER_RESERVATION_OFFSET      0x00000B70
+#define HAL_IOMMU_IMPLDEF_QOS_MS_DEMAND_HTW_RESERVATION_OFFSET        0x00000B74
+#define HAL_IOMMU_IMPLDEF_QOS_MS_PREFETCH_HTW_RESERVATION_OFFSET      0x00000B78
+#define HAL_IOMMU_IMPLDEF_OT_RESERVATION0_OFFSET                      0x00000B80
+#define HAL_IOMMU_IMPLDEF_THB_SCTRL_OFFSET                            0x00000A00
+#define HAL_IOMMU_IMPLDEF_DEBUG_THB_CTRL_OFFSET                       0x00000A04
+#define HAL_IOMMU_IMPLDEF_DEBUG_THB_WCMD_OFFSET                       0x00000A08
+#define HAL_IOMMU_IMPLDEF_DEBUG_THB_STATUS_OFFSET                     0x00000A0C // RO
+#define HAL_IOMMU_IMPLDEF_DEBUG_THB_START_FILTER_CTRL_OFFSET          0x00000A10
+#define HAL_IOMMU_IMPLDEF_DEBUG_THB_STOP_FILTER_CTRL_OFFSET           0x00000A5C
+#define HAL_IOMMU_IMPLDEF_DEBUG_THB_STOP_FILTER_STATE_OFFSET          0x00000A6C
+#define HAL_IOMMU_IMPLDEF_DEBUG_THB_LOG_FILTER_CTRL_OFFSET            0x00000AAC
+#define HAL_IOMMU_IMPLDEF_DEBUG_THB_LOG_FILTER_VMID_OFFSET            0x00000AC4
+#define HAL_IOMMU_IMPLDEF_DEBUG_THB_READ_DATA0_L_OFFSET               0x00000B00 // RO
+#define HAL_IOMMU_IMPLDEF_DEBUG_THB_READ_DATA0_H_OFFSET               0x00000B04 // RO
+#define HAL_IOMMU_IMPLDEF_DEBUG_THB_READ_DATA1_L_OFFSET               0x00000B08 // RO
+#define HAL_IOMMU_IMPLDEF_DEBUG_THB_READ_DATA1_H_OFFSET               0x00000B0C // RO
+#define HAL_IOMMU_IMPLDEF_DEBUG_THB_READ_DATA2_L_OFFSET               0x00000B10 // RO
+#define HAL_IOMMU_IMPLDEF_DEBUG_THB_READ_DATA2_H_OFFSET               0x00000B14 // RO
+#define HAL_IOMMU_IMPLDEF_DEBUG_THB_READ_DATA3_L_OFFSET               0x00000B18 // RO
+#define HAL_IOMMU_IMPLDEF_DEBUG_THB_READ_DATA3_H_OFFSET               0x00000B1C // RO
+#define HAL_IOMMU_IMPLDEF_DEBUG_THB_READ_DATA4_L_OFFSET               0x00000B20 // RO
+#define HAL_IOMMU_IMPLDEF_DEBUG_THB_READ_DATA4_H_OFFSET               0x00000B24 // RO
+#define HAL_IOMMU_IMPLDEF_DEBUG_THB_READ_DATA5_L_OFFSET               0x00000B28 // RO
+#define HAL_IOMMU_IMPLDEF_DEBUG_THB_READ_DATA5_H_OFFSET               0x00000B2C // RO
+#define HAL_IOMMU_IMPLDEF1_SCRATCH_OFFSET                             0x00000BF0 // 64-bits
+#define HAL_IOMMU_IMPLDEF_SS2TBN_OFFSET                               0x00000C00
+
+typedef union HAL_IOMMU_LOCAL_HALT_CTRL_t
+{
+  struct {
+    unsigned HAL_IOMMU_LOCAL_HALT_REQ:1;
+    unsigned HAL_IOMMU_LOCAL_HALT_ACK:1;
+    unsigned reserved:30;
+  } formatted;
+  unsigned raw;
+} HAL_IOMMU_LOCAL_HALT_CTRL_t;
+
+
+HAL_IOMMUResult_t   HAL_IOMMU_GetLocalHaltCtrl(uint32 baseVirtAddr,uint32 ctxBankNumber, HAL_IOMMU_LOCAL_HALT_CTRL_t *uHaltCtrl);
+HAL_IOMMUResult_t   HAL_IOMMU_SetLocalHaltCtrl(uint32 baseVirtAddr,uint32 ctxBankNumber, HAL_IOMMU_LOCAL_HALT_CTRL_t  uHaltCtrl);
+
+#endif

@@ -1,0 +1,1858 @@
+;============================================================================
+;  Name:
+;    GPIOIntQGIC.CMM
+;
+;  Description:
+;    This script lets the user configure interrupts on the main interrupt 
+;     controller. 
+;  USAGE :
+;    Please Run GPIOInterruptController.cmm . The GPIOIntQGIC.cmm is an internal script 
+;    which is not meant to  be run independently.
+;  
+;
+; Copyright (c) 2012 QUALCOMM, Technologies Incorporated.  
+; All Rights Reserved.
+; Qualcomm Confidential and Proprietary
+;----------------------------------------------------------------------------
+;============================================================================
+;
+;                        EDIT HISTORY FOR MODULE
+;
+; when       who     what, where, why
+; -------    ---     --------------------------------------------------------
+; 10/2/2012  an      Created for querying L2VIC GPIO InterruptController data.
+;============================================================================
+
+
+
+;============================================================================
+; Set up some defaults for some variables
+;============================================================================
+GLOBAL &IntrTrigger &IntTrigger &GPIOSET &nIdx &GPIOIntCnt &Prod &Choice &DirConEnVal &FoundIt &Interrupt &nProc
+GLOBAL &nMask &nResult &nGPIOCfgAddr &nGPIO &PrnRes &nGPIODirConAddr &nGPIOStatus &DirConnCount &Vector &nGPIONum
+GOSUB ResetScript
+;============================================================================
+; Get the arguments passed in.
+;============================================================================
+ENTRY
+DISPLAYMENU:
+AREA.RESet
+WINPOS 0. 0. 100% 100%
+AREA.Create INTRMENU
+AREA.view INTRMENU
+
+
+on error gosub
+(
+  print "An Error has Occured"
+  enddo (1==0)
+)
+
+
+AREA.CLEAR INTRMENU
+AREA.view INTRMENU
+AREA.Select INTRMENU
+;============================================================================
+; don't proceed without user confirmation
+;============================================================================
+      
+print "      "
+print "***************************************************************************"
+print " "     
+print "  T H E   G P I O   I N T E R R U P T C O N T R O L L E R     S C R I P T"
+print " "      
+print "***************************************************************************"       
+if &Presult!=0
+(
+print " "
+  GOSUB ERRORHNDLRMAIN &PlatformNum
+)
+&Presult=0
+if &PrnRes!=0
+(
+print " "
+  GOSUB PRNHNDLER &PrnRes
+)
+&PrnRes=0
+print " "
+print "  PLEASE CHOOSE FROM THE FOLLOWING OPTIONS "
+print " "
+print "***************************************************************************" 
+print " "
+print " Please first select option 1 to select the GPIO interrupt number. "
+print " "
+print " "
+print " "
+print " 0.   Exit the script."
+print " 1.   Select the GPIO interrupt number."
+print " 2.   Check if the GPIO interrupt is enabled."
+print " 3.   Check if the GPIO interrupt is set."
+print " 4.   Check if the GPIO interrupt is pending."
+print " 5.   Get the GPIO interrupt trigger."
+print " 6.   Set the GPIO interrupt trigger."
+print " 7.   Trigger the GPIO interrupt."
+print " 8.   Configure the GPIO as a Direct connect Interrupt."
+print " 9.   Configure the GPIO as a SUMMARY Interrupt."
+print " 10.  Clear the GPIO Interrupt."
+print " 11.  Disable the GPIO interrupt."
+print " 12.  Enable the GPIO interrupt."
+print " 13.  Get a list of pending GPIO interrupts."
+print " 14.  Get a list of GPIO interrupts that are set or fired."
+print "      (This is the raw interrupt status they may not be enabled.)"
+print " 15.  List all GPIO pins configured as Direct connect Interrupts."
+print " 16.  Clear all GPIO pins configured as Direct connect Interrupts."
+print "************************************************************************"    
+print
+print
+print
+print
+&t32_cmm_stopped=1
+enter &Choice
+&t32_cmm_stopped=0
+print
+print
+&Choice=&Choice.
+if (&Choice>0x10)
+(  
+  &PrnRes=0xFFFF
+  GOTO DISPLAYMENU
+)
+if &Choice==1
+(  
+  
+  print
+  print
+  AREA.view INTRMENU
+  AREA.Select INTRMENU
+
+  print "You entered choice 1."
+  print "Please select the interrupt number."
+  &t32_cmm_stopped=1
+  enter &nGPIONum
+  &t32_cmm_stopped=0
+  &GPIOSET=0
+  &nGPIO=&nGPIONum.
+
+  if (&nGPIO>V.VALUE(&MaxIRQ))
+  (
+    &PrnRes=0x1A
+    GOTO DISPLAYMENU
+  )
+  if (&PlatformSet==0)
+  (
+    &PrnRes=0x1B
+    GOTO DISPLAYMENU
+  )
+  &PrnRes=0x1C
+  &GPIOSET=1
+  AREA.view INTRMENU
+  AREA.Select INTRMENU
+  GOTO DISPLAYMENU
+
+)
+
+;==============================================================================
+;  CHECK IF GPIO INTERRUPT IS ENABLED.
+;==============================================================================
+
+if &Choice==2
+(
+  if (&GPIOSET==0)
+  (
+    &PrnRes=0x1A
+    GOTO DISPLAYMENU
+  )
+  if (&Interrupt!=0xFFFF)
+  (
+    &nIdx=((&Interrupt)>>5)
+    &IsEnableReg=((&GICDBASE)+(0x100+(4*(&nIdx))))
+    &EnableVal=data.long(a:&IsEnableReg)
+    &nResult=(&EnableVal)&(1<<((&Interrupt)&0x1F))
+    if (&nResult==0)
+    (
+      &PrnRes=0x2A
+    )
+    else
+    (
+      &PrnRes=0x2B
+    )
+  )
+  else
+  (
+    &EnableVal=(data.long(a:&nGPIOCfgAddr))&(0x1)
+    if (&EnableVal==0)
+    (
+      &PrnRes=0x2A
+    )
+    else
+    (
+      &PrnRes=0x2B
+    )    
+  )
+  GOTO DISPLAYMENU
+)
+
+;==============================================================================
+;  CHECK IF GPIO INTERRUPT IS SET.
+;==============================================================================
+
+if &Choice==3
+(
+  if (&GPIOSET==0)
+  (
+    &PrnRes=0x1A
+    GOTO DISPLAYMENU
+  )
+  if (&Interrupt!=0xFFFF)
+  (
+    &nIdx=((&Interrupt)>>5)
+    &IsPendReg=((&GICDBASE)+(0x200+(4*(&nIdx))))
+    &PendVal=data.long(a:&IsPendReg)
+    &nResult=((&PendVal)&(1<<((&Interrupt)&0x1F)))
+    if (&nResult==0)
+    (
+      &PrnRes=0x3A
+    )
+    else
+    (
+      &PrnRes=0x3B
+    )
+  )
+  else
+  (
+    if (data.long(a:&nGPIOStatus)==0)
+    (
+      &PrnRes=0x3A
+    )
+    else
+    (
+      &PrnRes=0x3B
+    )
+  )
+  GOTO DISPLAYMENU
+)
+
+;==============================================================================
+;  CHECK IF GPIO INTERRUPT IS PENDING.
+;==============================================================================
+if &Choice==4
+(
+  if (&GPIOSET==0)
+  (
+    &PrnRes=0x1A
+    GOTO DISPLAYMENU
+  )
+  if (&Interrupt!=0xFFFF)
+  (
+    &nIdx=((&Interrupt)>>5)
+    &IsPendReg=((&GICDBASE)+(0x200+(4*(&nIdx))))
+    &IsEnableReg=((&GICDBASE)+(0x100+(4*(&nIdx))))
+    &IsEnableVal=data.long(a:&IsEnableReg)
+    &PendVal=data.long(a:&IsPendReg)
+    &nResult=(((&PendVal)&(1<<((&Interrupt)&0x1F)))&((&IsEnableVal)&(1<<((&Interrupt)&0x1F))))
+    if (&nResult==0)
+    (
+      &PrnRes=0x4A
+    )
+    else
+    (
+      &PrnRes=0x4B
+    )
+  )
+  else
+  (
+    &StatusVal=data.long(a:&nGPIOStatus)
+    &EnableVal=(data.long(a:&nGPIOCfgAddr))&(0x1)
+    if (&StatusVal!=0)&&(&EnableVal!=0)
+    (
+      &PrnRes=0x4B
+    )
+    else
+    (
+      &PrnRes=0x4A
+    )
+
+  )  
+  GOTO DISPLAYMENU
+)
+
+;==============================================================================
+;  GET GPIO INTERRUPT TRIGGER
+;==============================================================================
+
+if &Choice==5
+(
+  if (&GPIOSET==0)
+  (
+    &PrnRes=0x1A
+    GOTO DISPLAYMENU
+  )
+  if (&Interrupt!=0xFFFF)
+  (
+    &PolVal=(data.long(a:&nGPIODirConAddr))&(0x100)
+    &PolVal=(&PolVal)>>0x8
+    &nIdx=((&Interrupt)>>4)
+    &Prod=((&Interrupt)&(0xF))
+    &nMask=(1<<((2*(&Prod))+1))
+    &TriggerReg=((&GICDBASE)+(0xc00+(4*(&nIdx))))
+    &TriggerVal=data.long(a:&TriggerReg)
+    &nResult=(&TriggerVal)&(&nMask)
+    if (&nResult==0)&&(&PolVal==0x1)
+    (
+      &PrnRes=0x5A
+    )
+    else if (&nResult==0)&&(&PolVal==0x0)
+    (
+      &PrnRes=0x5B
+    )
+    else if (&nResult!=0)&&(&PolVal==0x1)
+    (
+      &PrnRes=0x5C
+    )
+    else if (&nResult!=0)&&(&PolVal==0x0)
+    (
+      &PrnRes=0x5D
+    )
+  )
+  else
+  (
+    &PolVal=(data.long(a:&nGPIOCfgAddr))&(0x2)
+    &PolVal=(&PolVal)>>1
+    &DetectVal=(data.long(a:&nGPIOCfgAddr))&(0xC)
+    &DetectVal=(&DetectVal)>>0x2
+    if (&DetectVal==0)&&(&PolVal==0)
+    (
+      &PrnRes=0x5B
+    )
+    else if (&DetectVal==0)&&(&PolVal==1)
+    (
+      &PrnRes=0x5A
+    )
+    else if (&DetectVal==1)&&(&PolVal==1)
+    (
+      &PrnRes=0x5C
+    )
+    else if (((&DetectVal==1)&&(&PolVal==0))||(&DetectVal==0x2))
+    (
+       &PrnRes=0x5D
+    )
+    else if (&DetectVal==3)
+    (
+      &PrnRes=0x5E
+    )
+  )
+  GOTO DISPLAYMENU
+)
+
+;==============================================================================
+;  SET GPIO INTERRUPT TRIGGER
+;==============================================================================
+
+if &Choice==6
+( 
+  if (&GPIOSET==0)
+  (
+    &PrnRes=0x1A
+    GOTO DISPLAYMENU
+  )
+  
+  Area.clear INTRMENU
+  print
+  print "****************************************************************************************"
+  print
+  print "you entered choice 6"
+  print "Please choose one of the below trigger options you want to set for GPIO interrupt &nGPIO"
+  print "Please choose 0 for Main Menu."
+  print "Please choose 1 for level high trigger."
+  print "Please choose 2 for level low trigger."
+  print "Please choose 3 for rising edge trigger."
+  print "Please choose 4 for falling edge trigger."
+  print "Please choose 5 for dual edge trigger. This is only possible for SUMMARY GPIO Interrupts."
+  print
+  print "****************************************************************************************"
+  print
+  print
+  &t32_cmm_stopped=1
+  enter &IntrTrigger
+  &t32_cmm_stopped=0
+  &IntrTrigger=&IntrTrigger.
+  if &IntrTrigger==0
+  (  
+    &PrnRes=0x1C
+  )
+  if &IntrTrigger>0x5
+  (  
+    &PrnRes=0x6F
+  )
+  if &IntrTrigger==1
+  (
+  ;=========================================================================================
+  ; Sets a level high Trigger
+  ;=========================================================================================
+    if (&Interrupt!=0xFFFF)
+    (
+      &PolVal=data.long(a:&nGPIODirConAddr)
+      &PolVal=(&PolVal)|(0x1<<8)
+      data.set a:&nGPIODirConAddr %LONG &PolVal
+
+      &nIdx=((&Interrupt)>>4)
+      &Prod=((&Interrupt)&(0xF))
+      &nMask=(1<<((2*(&Prod))+1))
+      &MaskVal=~(&nMask)
+      &TriggerReg=((&GICDBASE)+(0xc00+(4*(&nIdx))))
+      &TriggerVal=data.long(a:&TriggerReg)
+      &nResult=&TriggerVal&(&MaskVal)
+      data.set a:&TriggerReg %LONG &nResult
+    )
+    else
+    (
+      &PolVal=(data.long(a:&nGPIOCfgAddr))
+      &PolVal=(&PolVal)|0x2
+      data.set a:&nGPIOCfgAddr %LONG &PolVal
+      &DetectVal=(data.long(a:&nGPIOCfgAddr))&(0xFFFFFFF3)
+      data.set a:&nGPIOCfgAddr %LONG &DetectVal
+    )
+    &PrnRes=0x6A
+  )
+  if &IntrTrigger==2
+  (
+  ;=========================================================================================
+  ; Sets a level low Trigger
+  ;=========================================================================================
+    if (&Interrupt!=0xFFFF)
+    (
+      &PolVal=data.long(a:&nGPIODirConAddr)
+      &PolVal=(&PolVal)&(0xFFFFFEFF)
+      data.set a:&nGPIODirConAddr %LONG &PolVal
+
+      &nIdx=((&Interrupt)>>4)
+      &Prod=((&Interrupt)&(0xF))
+      &nMask=(1<<((2*(&Prod))+1))
+      &MaskVal=~(&nMask)
+      &TriggerReg=((&GICDBASE)+(0xc00+(4*(&nIdx))))
+      &TriggerVal=data.long(a:&TriggerReg)
+      &nResult=&TriggerVal&(&MaskVal)
+      data.set a:&TriggerReg %LONG &nResult
+      
+    )
+    else
+    (
+      &PolVal=(data.long(a:&nGPIOCfgAddr))&(0xFFFFFFFD)
+      data.set a:&nGPIOCfgAddr %LONG &PolVal
+      &DetectVal=(data.long(a:&nGPIOCfgAddr))&(0xFFFFFFF3)
+      data.set a:&nGPIOCfgAddr %LONG &DetectVal
+    )
+    &PrnRes=0x6B
+  )
+  if &IntrTrigger==3
+  (
+  ;=========================================================================================
+  ; Sets a rising edge Trigger
+  ;=========================================================================================
+    if (&Interrupt!=0xFFFF)
+    (
+      &PolVal=data.long(a:&nGPIODirConAddr)
+      &PolVal=(&PolVal)|(0x1<<8)
+      data.set a:&nGPIODirConAddr %LONG &PolVal
+
+      &nIdx=((&Interrupt)>>4)
+      &Prod=((&Interrupt)&(0xF))
+      &nMask=(1<<((2*(&Prod))+1))
+      &TriggerReg=((&GICDBASE)+(0xc00+(4*(&nIdx))))
+      &TriggerVal=data.long(a:&TriggerReg)
+      &nResult=(&TriggerVal)|(&nMask)
+      data.set a:&TriggerReg %LONG &nResult 
+    )
+    else
+    (
+      &PolVal=(data.long(a:&nGPIOCfgAddr))|(0x2)
+      data.set a:&nGPIOCfgAddr %LONG &PolVal
+      &DetectVal=(data.long(a:&nGPIOCfgAddr))&(0xFFFFFFF3)
+      &DetectVal=(&DetectVal)|(0x1<<0x2)
+      data.set a:&nGPIOCfgAddr %LONG &DetectVal
+    )
+    &PrnRes=0x6C
+  )
+  if &IntrTrigger==4
+  (
+  ;=========================================================================================
+  ; Sets a falling edge Trigger
+  ;=========================================================================================
+    if (&Interrupt!=0xFFFF)
+    (
+      &PolVal=data.long(a:&nGPIODirConAddr)
+      &PolVal=(&PolVal)&(0xFFFFFEFF)
+      data.set a:&nGPIODirConAddr %LONG &PolVal
+
+      &nIdx=((&Interrupt)>>4)
+      &Prod=((&Interrupt)&(0xF))
+      &nMask=(1<<((2*(&Prod))+1))
+      &TriggerReg=((&GICDBASE)+(0xc00+(4*(&nIdx))))
+      &TriggerVal=data.long(a:&TriggerReg)
+      &nResult=(&TriggerVal)|(&nMask)
+      data.set a:&TriggerReg %LONG &nResult
+      
+    )
+    else
+    (
+      &PolVal=(data.long(a:&nGPIOCfgAddr))&(0xFFFFFFFD)
+      data.set a:&nGPIOCfgAddr %LONG &PolVal
+      &DetectVal=(data.long(a:&nGPIOCfgAddr))&(0xFFFFFFF3)
+      &DetectVal=(&DetectVal)|(0x2<<0x2)
+      data.set a:&nGPIOCfgAddr %LONG &DetectVal
+    )
+    &PrnRes=0x6D
+  )
+  if &IntrTrigger==5
+  (
+  ;=========================================================================================
+  ; Sets a dual edge Trigger only for a SUMMARY line GPIO interrupt.
+  ;=========================================================================================
+    if (&Interrupt!=0xFFFF)
+    (
+      &PrnRes=0x60
+    )
+    else
+    (
+      &DetectVal=(data.long(a:&nGPIOCfgAddr))&(0xFFFFFFFD)
+      &DetectVal=(&DetectVal)|(0x3<<0x2)
+      data.set a:&nGPIOCfgAddr %LONG &DetectVal
+      &PrnRes=0x6E
+    )  
+  )
+  GOTO DISPLAYMENU
+)
+
+;==============================================================================
+;  TRIGGER INTERRUPT
+;==============================================================================
+
+if &Choice==0x7
+(
+  if (&GPIOSET==0)
+  (
+    &PrnRes=0x1A
+    GOTO DISPLAYMENU
+  )
+  if (&Interrupt!=0xFFFF)
+  (
+    &nIdx=((&Interrupt)>>5)
+    &nMask=(1<<((&Interrupt)&0x1F))
+    &IsPendReg=((&GICDBASE)+(0x200+(4*(&nIdx))))
+    &PendVal=data.long(a:&IsPendReg)
+    &nResult=((&PendVal)|(1<<((&Interrupt)&0x1F)))
+    data.set a:&IsPendReg %LONG &nResult
+  )
+  else
+  (
+    &nResult=data.long(a:&nGPIOCfgAddr)
+    &nResult=(&nResult)|0x10
+    data.set a:&nGPIOCfgAddr %LONG &nResult
+    &nResult=0x1
+    data.set a:&nGPIOStatus %LONG &nResult 
+  )
+  &PrnRes=0x7
+  GOTO DISPLAYMENU
+)
+
+;==============================================================================
+;  Configure the GPIO as a Direct connect Interrupt.
+;==============================================================================
+if &Choice==0x8
+(
+  if (&GPIOSET==0)
+  (
+    &PrnRes=0x1A
+    GOTO DISPLAYMENU
+  )
+  &nGPIOCfgAddr=(&SumCfgAddr)+(0x10*(&nGPIO))
+  &nGPIOStatus=(&StatusAddr)+(0x10*(&nGPIO))
+  &DirConEnVal=data.long(a:&nGPIOCfgAddr)
+  &DirConEnVal=(&DirConEnVal)&(0x100)
+
+  if (&DirConEnVal!=0)
+  (  
+    &FoundIt=0x0
+    &DirConnCount=0
+    WHILE ((&DirConnCount<&GPIOIntDirNum)&&(&FoundIt==0x0))
+    (
+      &nGPIODirConAddr=(&DirCfgAddr)+(0x4*(&DirConnCount))
+      &GPIOSelVal=data.long(a:&nGPIODirConAddr)
+      &GPIOSelVal=(&GPIOSelVal)&(0xFF)
+      if (&GPIOSelVal==V.VALUE(&nGPIO))
+      (
+        &FoundIt=0x1
+      )
+      &DirConnCount=V.VALUE(&DirConnCount+1) 
+    ) 
+    
+    &DirConnCount=V.VALUE(&DirConnCount-1)
+    GOSUB GetDirConVector &DirConnCount
+    ENTRY &Interrupt
+
+    &PrnRes=0x8A
+    GOTO DISPLAYMENU
+  )
+  else
+  (
+    &FoundIt=0x0
+    &DirConnCount=0
+    WHILE ((&DirConnCount<&GPIOIntDirNum)&&(&FoundIt==0x0))
+    (
+      &nGPIODirConAddr=(&DirCfgAddr)+(0x4*(&DirConnCount))
+      &GPIOSelVal=data.long(a:&nGPIODirConAddr)
+      &SelVal=(&GPIOSelVal)&(0xFF)
+      if (&SelVal==0x0)
+      (
+        &FoundIt=0x1
+        &GPIOSelVal= (&GPIOSelVal)|(V.VALUE(&nGPIO))
+        data.set a:&nGPIODirConAddr %LONG &GPIOSelVal 
+        &DirConEnVal=data.long(a:&nGPIOCfgAddr)
+        &DirConEnVal=(&DirConEnVal)&(0xFFFFFEFF)
+        &DirConEnVal=(&DirConEnVal)|(0x100)
+        data.set a:&nGPIOCfgAddr %LONG &DirConEnVal
+      )
+      &DirConnCount=V.VALUE(&DirConnCount+1) 
+    ) 
+    if (&FoundIt==0x0)
+    (
+      &PrnRes=0x8C
+      GOTO DISPLAYMENU
+    )
+    &DirConnCount=V.VALUE(&DirConnCount-1)
+    GOSUB GetDirConVector &DirConnCount
+    ENTRY &Interrupt
+
+    &nIdx=((&Interrupt)>>5)
+
+    ; Clear any possible spurious interrupt 
+    &ICPendReg=((&GICDBASE)+(0x280+(4*(&nIdx))))
+    &ICPendVal=data.long(a:&ICPendReg)
+    &nResult=((&ICPendVal)|(1<<((&Interrupt)&0x1F)))
+    data.set a:&ICPendReg %LONG &nResult
+
+    ;Enable the interrupt.
+    &ISEnableReg=((&GICDBASE)+(0x100+(4*(&nIdx))))
+    &ISEnableVal=data.long(a:&ISEnableReg)
+    &nResult=((&ISEnableVal)|(1<<((&Interrupt)&0x1F)))
+    data.set a:&ISEnableReg %LONG &nResult
+
+    &PrnRes=0x8B
+    GOTO DISPLAYMENU
+  )
+)
+;==============================================================================
+;  Configure the GPIO as a SUMMARY Interrupt.
+;==============================================================================
+if &Choice==0x9
+(
+  if (&GPIOSET==0)
+  (
+    &PrnRes=0x1A
+    GOTO DISPLAYMENU
+  )
+  &nGPIOCfgAddr=(&SumCfgAddr)+(0x10*(&nGPIO))
+  &nGPIOStatus=(&StatusAddr)+(0x10*(&nGPIO))
+  &DirConEnVal=data.long(a:&nGPIOCfgAddr)
+  &CfgVal=(&DirConEnVal)&(0xFFFFFEFF)
+  data.set a:&nGPIOCfgAddr %LONG &CfgVal
+  &DirConEnVal=(&DirConEnVal)&(0x100)
+  
+  if (&DirConEnVal!=0)
+  (  
+
+    &FoundIt=0x0
+    &DirConnCount=0
+    WHILE ((&DirConnCount<&GPIOIntDirNum)&&(&FoundIt==0x0))
+    (
+      &nGPIODirConAddr=(&DirCfgAddr)+(0x4*(&DirConnCount))
+      &GPIOSelVal=data.long(a:&nGPIODirConAddr)
+      &GPIOSelVal=(&GPIOSelVal)&(0xFF)
+      &SelVal=(&GPIOSelVal)&(0xFF)
+      if (&SelVal==V.VALUE(&nGPIO))
+      (
+        &FoundIt=0x1
+        &GPIOSelVal=(&GPIOSelVal)&(0xFFFFFF00)
+        data.set a:&nGPIODirConAddr %LONG &GPIOSelVal
+      )
+      &DirConnCount=V.VALUE(&DirConnCount+1) 
+    ) 
+    &DirConnCount=V.VALUE(&DirConnCount-1)
+
+    GOSUB GetDirConVector &DirConnCount
+    ENTRY &Interrupt
+    ;disable L2VIC interrupt which is now a free direct connect line.
+    &nIdx=((&Interrupt)>>5)
+    &ICEnableReg=((&GICDBASE)+(0x180+(4*(&nIdx))))
+    &ICEnableVal=data.long(a:&ICEnableReg)
+    &nResult=((&ICEnableVal)|(1<<((&Interrupt)&0x1F)))
+    data.set a:&ICEnableReg %LONG &nResult
+    &Interrupt=0xFFFF
+    &DirConnCount=0
+  )
+  &FoundIt=0x0
+  &DirConnCount=0
+  GOSUB SetTargetProc
+  &nVal=data.long(a:&nGPIOCfgAddr)
+  &nVal=(&nVal)|(0x11)
+  data.set a:&nGPIOCfgAddr %LONG &nVal
+  data.set a:&nGPIOStatus %LONG 0x0
+
+  &PrnRes=0x9B
+  GOTO DISPLAYMENU
+)
+
+;==============================================================================
+;  CLEAR INTERRUPT
+;==============================================================================
+if &Choice==0xA
+(
+  if (&GPIOSET==0)
+  (
+    &PrnRes=0x1A
+    GOTO DISPLAYMENU
+  )
+  if (&Interrupt!=0xFFFF)
+  (
+    &nIdx=((&Interrupt)>>5)
+    &ICPendReg=((&GICDBASE)+(0x280+(4*(&nIdx))))
+    &ICPendVal=data.long(a:&ICPendReg)
+    &nResult=((&ICPendVal)|(1<<((&Interrupt)&0x1F)))
+    data.set a:&ICPendReg %LONG &nResult
+  )
+  else
+  (
+    &nResult=0x0
+    data.set a:&nGPIOStatus %LONG &nResult 
+  ) 
+  &PrnRes=0xA
+  GOTO DISPLAYMENU
+)
+
+;==============================================================================
+;  DISABLE INTERRUPT
+;==============================================================================
+if &Choice==0xB
+(
+  if (&GPIOSET==0)
+  (
+    &PrnRes=0x1A
+    GOTO DISPLAYMENU
+  )
+  if (&Interrupt!=0xFFFF)
+  (
+    &nIdx=((&Interrupt)>>5)
+    &ICEnableReg=((&GICDBASE)+(0x180+(4*(&nIdx))))
+    &ICEnableVal=data.long(a:&ICEnableReg)
+    &nResult=((&ICEnableVal)|(1<<((&Interrupt)&0x1F)))
+    data.set a:&ICEnableReg %LONG &nResult
+  )
+  else
+  (
+    &EnableVal=(data.long(a:&nGPIOCfgAddr))
+    &EnableVal= (&EnableVal)&(0xFFFFFFFE)
+    data.set a:&nGPIOCfgAddr %LONG &EnableVal 
+  ) 
+
+  &PrnRes=0xB
+  GOTO DISPLAYMENU
+)
+
+;==============================================================================
+;  ENABLE INTERRUPT
+;==============================================================================
+if &Choice==0xC
+(
+  if (&GPIOSET==0)
+  (
+    &PrnRes=0x1A
+    GOTO DISPLAYMENU
+  )
+  if (&Interrupt!=0xFFFF)
+  (
+    &nIdx=((&Interrupt)>>5)
+    &ISEnableReg=((&GICDBASE)+(0x100+(4*(&nIdx))))
+    &ISEnableVal=data.long(a:&ISEnableReg)
+    &nResult=((&ISEnableVal)|(1<<((&Interrupt)&0x1F)))
+    data.set a:&ISEnableReg %LONG &nResult
+  )
+  else
+  (
+    &nResult=0x0
+    &EnableVal=(data.long(a:&nGPIOCfgAddr))
+    &EnableVal= (&EnableVal)|(0x11)
+    data.set a:&nGPIOCfgAddr %LONG &EnableVal 
+  ) 
+  &PrnRes=0xC
+  GOTO DISPLAYMENU
+)
+
+;==============================================================================
+;  LIST OF PENDING INTERUPTS
+;==============================================================================
+if &Choice==0xD
+(
+  &GPIOIntCnt=0
+  &GPIOSET=0
+  &Interrupt=0xFFFF
+  &nGPIO=0x0
+  AREA.RESet 
+  AREA.Create INTRLIST 3000. 10000. ; change size to something that can display all data
+  AREA.Select INTRLIST
+  WINPOS 0. 0. 100% 100%
+  AREA.view INTRLIST
+  print
+  print "****************************************************************************************"
+  print
+  print "you entered choice 13. The following is a list of Pending Interrupts."
+  print
+  print "****************************************************************************************"
+  print
+  print
+  &NoInit=0x1
+  while ((&GPIOIntCnt)<=(&MaxIRQ))
+  (  
+    &GPIOIntCntCfgAddr=(&SumCfgAddr)+(0x10*(&GPIOIntCnt))
+    &GPIOIntCntStatus=(&StatusAddr)+(0x10*(&GPIOIntCnt))
+    &DirConEnVal=data.long(a:&GPIOIntCntCfgAddr)
+    &DirConEnVal=(&DirConEnVal)&(0x100)
+    &Interrupt=0xFFFF
+    if (&DirConEnVal!=0)
+    (  
+      &FoundIt=0x0
+      &DirConnCount=0
+      WHILE ((&DirConnCount<&GPIOIntDirNum)&&(&FoundIt==0x0))
+      (
+        &GPIOCntDirConAddr=(&DirCfgAddr)+(0x4*(&DirConnCount))
+        &GPIOSelVal=data.long(a:&GPIOCntDirConAddr)
+        &GPIOSelVal=(&GPIOSelVal)&(0xFF)
+        if (&GPIOSelVal==V.VALUE(&GPIOIntCnt))
+        (
+          &FoundIt=0x1
+        )
+        &DirConnCount=V.VALUE(&DirConnCount+1) 
+      ) 
+      &DirConnCount=V.VALUE(&DirConnCount-1) 
+      GOSUB GetDirConVector &DirConnCount
+      ENTRY &Interrupt
+      &nIdx=((&Interrupt)>>5)
+      &IsPendReg=((&GICDBASE)+(0x200+(4*(&nIdx))))
+      &IsEnableReg=((&GICDBASE)+(0x100+(4*(&nIdx))))
+      &IsEnableVal=data.long(a:&IsEnableReg)
+      &PendVal=data.long(a:&IsPendReg)
+      &nResult=(((&PendVal)&(1<<((&Interrupt)&0x1F)))&((&IsEnableVal)&(1<<((&Interrupt)&0x1F))))
+      if (&nResult==0)
+      (
+        &PrnRes=0xDA
+      )
+      else
+      (
+        &PrnRes=0xDB
+        &NoInit=0x0
+        GOSUB PRNHNDLER &PrnRes
+      )
+    )
+    else
+    (
+      &StatusVal=data.long(a:&nGPIOStatus)
+      &EnableVal=(data.long(a:&nGPIOCfgAddr))&(0x1)
+      if (&StatusVal!=0)&&(&EnableVal!=0)
+      (
+        &PrnRes=0xDB
+        &NoInit=0x0
+        GOSUB PRNHNDLER &PrnRes
+      )
+      else
+      (
+        &PrnRes=0xDA
+      )
+    )
+    &GPIOIntCnt=(&GPIOIntCnt)+1
+  )
+  &PrnRes=0
+  if &NoInit==0x1
+  (
+    print
+    print
+    print " There are no pending GPIO Interrupts."
+    print
+    print
+  )
+  print
+  print "****************************************************************************************"
+  print
+  print "Please Enter 0 to Go back to the main menu or 0 to exit this script."
+  print
+  print "****************************************************************************************"
+  print
+  print
+  &t32_cmm_stopped=1
+  enter &WhereTo
+  &t32_cmm_stopped=0
+  if "&WhereTo"=="0"
+  (
+    GOTO DISPLAYMENU
+  )
+  else
+  (
+    winclear
+    enddo (0==0)	
+  )
+)
+;==============================================================================
+;  LIST OF SET/FIRED INTERUPTS
+;==============================================================================
+if &Choice==0xE
+(
+  &GPIOIntCnt=0x0
+  &GPIOSET=0x0
+  &Interrupt=0xFFFF
+  &nGPIO=0x0
+  AREA.RESet 
+  AREA.Create INTRLIST 3000. 10000. ; change size to something that can display all data
+  AREA.Select INTRLIST
+  WINPOS 0. 0. 100% 100%
+  AREA.view INTRLIST
+  print
+  print "****************************************************************************************"
+  print
+  print "you entered choice 14. The following is a list of Interrupts that are Set/Fired ."
+  print
+  print "****************************************************************************************"
+  print
+  print
+  &NoInit=0x1
+  while ((&GPIOIntCnt)<=(&MaxIRQ))
+  (  
+    &GPIOIntCntCfgAddr=(&SumCfgAddr)+(0x10*(&GPIOIntCnt))
+    &GPIOIntCntStatus=(&StatusAddr)+(0x10*(&GPIOIntCnt))
+    &DirConEnVal=data.long(a:&GPIOIntCntCfgAddr)
+    &DirConEnVal=(&DirConEnVal)&(0x100)
+    &Interrupt=0xFFFF
+    if (&DirConEnVal!=0)
+    (  
+      &FoundIt=0x0
+      &DirConnCount=0
+      WHILE ((&DirConnCount<&GPIOIntDirNum)&&(&FoundIt==0x0))
+      (
+        &GPIOCntDirConAddr=(&DirCfgAddr)+(0x4*(&DirConnCount))
+        &GPIOSelVal=data.long(a:&GPIOCntDirConAddr)
+        &GPIOSelVal=(&GPIOSelVal)&(0xFF)
+        if (&GPIOSelVal==V.VALUE(&GPIOIntCnt))
+        (
+          &FoundIt=0x1
+        )
+        &DirConnCount=V.VALUE(&DirConnCount+1) 
+      ) 
+      &DirConnCount=V.VALUE(&DirConnCount-1) 
+      GOSUB GetDirConVector &DirConnCount
+      ENTRY &Interrupt
+      &nIdx=((&Interrupt)>>5)
+      &IsPendReg=((&GICDBASE)+(0x200+(4*(&nIdx))))
+      &IsEnableReg=((&GICDBASE)+(0x100+(4*(&nIdx))))
+      &IsEnableVal=data.long(a:&IsEnableReg)
+      &PendVal=data.long(a:&IsPendReg)
+      &nResult=((&PendVal)&(1<<((&Interrupt)&0x1F)))
+      if (&nResult==0)
+      (
+         &PrnRes=0xEA
+      )
+      else
+      (
+        &PrnRes=0xEB
+        &NoInit=0x0
+        GOSUB PRNHNDLER &PrnRes
+      )
+    )
+    else
+    (
+      &StatusVal=data.long(a:&nGPIOStatus)
+           
+      if (&StatusVal!=0)
+      (
+        &PrnRes=0xEB
+        &NoInit=0x0
+        GOSUB PRNHNDLER &PrnRes
+      )
+      else
+      (
+        &PrnRes=0xEA
+      )
+    )
+    &GPIOIntCnt=(&GPIOIntCnt)+1
+  )
+  &PrnRes=0
+  if &NoInit==0x1
+  (
+    print
+    print
+    print " There are no GPIO Interrupts that are set or fired."
+    print
+    print
+  )
+  print
+  print "****************************************************************************************"
+  print
+  print "Please Enter 0 to Go back to the main menu or 0 to exit this script."
+  print
+  print "****************************************************************************************"
+  print
+  print
+  &t32_cmm_stopped=1
+  enter &WhereTo
+  &t32_cmm_stopped=0
+  if "&WhereTo"=="0"
+  (
+    GOTO DISPLAYMENU
+  )
+  else
+  (
+    winclear
+    enddo (0==0)	
+  )
+)
+
+;==============================================================================
+;  List all GPIO pins configured as Direct connect Interrupts.
+;==============================================================================
+
+if &Choice==0xF
+(
+  AREA.RESet 
+  AREA.Create INTRLIST 3000. 10000. ; change size to something that can display all data
+  AREA.Select INTRLIST
+  WINPOS 0. 0. 100% 100%
+  AREA.view INTRLIST
+  print
+  print "****************************************************************************************"
+  print
+  print "you entered choice 15. "
+  print
+  print "****************************************************************************************"
+  print
+  print
+  GOSUB ListAllDirConn
+  GOSUB ResetScript
+  print
+  print "****************************************************************************************"
+  print
+  print "Please Enter 0 to Go back to the main menu or 0 to exit this script."
+  print
+  print "****************************************************************************************"
+  print
+  print
+  &t32_cmm_stopped=1
+  enter &WhereTo
+  &t32_cmm_stopped=0
+  if "&WhereTo"=="0"
+  (
+    GOTO DISPLAYMENU
+  )
+  else
+  (
+    winclear
+    enddo (0==0)	
+  )
+)
+
+;==============================================================================
+;  Clear all GPIO pins configured as Direct connect Interrupts.
+;==============================================================================
+
+if &Choice==0x10
+(
+  AREA.RESet 
+  AREA.Create INTRLIST 3000. 10000. ; change size to something that can display all data
+  AREA.Select INTRLIST
+  WINPOS 0. 0. 100% 100%
+  AREA.view INTRLIST
+  print
+  print "****************************************************************************************"
+  print
+  print "you entered choice 16. "
+  print
+  print "****************************************************************************************"
+  print
+  print
+  GOSUB UnCfgDirConn
+  GOSUB ResetScript
+  print
+  print "****************************************************************************************"
+  print
+  print "Please Enter 0 to Go back to the main menu or 0 to exit this script."
+  print
+  print "****************************************************************************************"
+  print
+  print
+  &t32_cmm_stopped=1
+  enter &WhereTo
+  &t32_cmm_stopped=0
+  if "&WhereTo"=="0"
+  (
+    GOTO DISPLAYMENU
+  )
+  else
+  (
+    winclear
+    enddo (0==0)	
+  )
+)
+
+if &Choice==0
+( 
+  winclear
+  enddo (0==0)
+)	 
+
+term.close 
+
+enddo (0==0)
+
+PRNHNDLER: 
+  ENTRY &PrnEntry
+  if &PrnEntry==0xFFFF
+  (
+    print "  !! DATA ENTRY ERROR !!"
+    print "  Menu option entered is invalid."
+  )
+  else if &PrnEntry==0x1A
+  (
+    print "  !! DATA ENTRY ERROR !!"
+    print "  GPIO Interrupt number is invalid."
+    print "  Please choose option 1 to select a valid GPIO interrupt number from 0 to 145."
+  )
+  else if &PrnEntry==0x1B
+  (
+    print "  !! PLATFORM IS NOT SET !!"
+    print "  Please run the GPIOInterruptController.cmm to set the platform."
+  )
+  else if &PrnEntry==0x1C
+  (
+    print "  You chose GPIO Interrupt &nGPIONum" 
+    print
+    &nGPIOCfgAddr=(&SumCfgAddr)+(0x10*(&nGPIO))
+    &nGPIOStatus=(&StatusAddr)+(0x10*(&nGPIO))
+    &GPIOPinCfg=&PinCfg+(0x10*(&nGPIO))
+    &GPIOInOut=&InOut+(0x10*(&nGPIO))
+    &DirConEnVal=data.long(a:&nGPIOCfgAddr)
+    &DirConEnVal=(&DirConEnVal)&(0x100)
+    GOSUB PrntPinCfg
+    if (&DirConEnVal!=0)
+    (  
+      &FoundIt=0x0
+      print "  The GPIO Interrupt is configured as a direct connect GPIO Interrupt."
+      print
+      &DirConnCount=0
+      WHILE ((&DirConnCount<&GPIOIntDirNum)&&(&FoundIt==0x0))
+      (
+        &nGPIODirConAddr=(&DirCfgAddr)+(0x4*(&DirConnCount))
+        &GPIOSelVal=data.long(a:&nGPIODirConAddr)
+        &GPIOSelVal=(&GPIOSelVal)&(0xFF)
+        if (&GPIOSelVal==V.VALUE(&nGPIO))
+        (
+          &FoundIt=0x1
+        )
+        &DirConnCount=V.VALUE(&DirConnCount+1) 
+      ) 
+      &DirConnCount=V.VALUE(&DirConnCount-1)
+      GOSUB GetDirConVector &DirConnCount
+      ENTRY &Interrupt
+      print "  It is connected to QGIC interrupt vector "
+      print %Continue %Decimal &Interrupt
+      print %Continue " ."
+      print
+      GOSUB PrntTrigger
+      GOSUB PrntPendStatus
+      GOSUB PrntRawStatus
+      GOSUB PrntEnable
+
+    )
+    else
+    (
+      print "  The GPIO Interrupt is configured as a SUMMARY GPIO Interrupt."
+      print
+      GOSUB PrntTargetProc
+      GOSUB PrntTrigger
+      GOSUB PrntPendStatus
+      GOSUB PrntRawStatus
+      GOSUB PrntEnable
+    )
+  )
+  else if &PrnEntry==0x2A
+  (
+    print "  You entered choice 2."
+    print "  The GPIO Interrupt &nGPIONum is disabled."
+  )
+  else if &PrnEntry==0x2B
+  (
+    print "  You entered choice 2."
+    print "  The GPIO Interrupt &nGPIONum is enabled."
+  )
+  else if &PrnEntry==0x3A
+  (
+    print "  You entered choice 3."
+    print "  The GPIO Interrupt &nGPIONum is not set."
+  )
+  else if &PrnEntry==0x3B
+  (
+    print "  You entered choice 3."
+    print "  The GPIO Interrupt &nGPIONum is set."
+  )
+  else if &PrnEntry==0x4A
+  (
+    print "  You entered choice 4."
+    print "  The GPIO interrupt &nGPIONum is currently not pending."
+  )
+  else if &PrnEntry==0x4B
+  (
+    print "  You entered choice 4."
+    print "  The GPIO interrupt &nGPIONum is currently pending."
+  )
+  else if &PrnEntry==0x5A
+  (
+    print   
+    print "  The GPIO Interrupt &nGPIONum has a LEVEL HIGH trigger."
+    print
+  )
+  else if &PrnEntry==0x5B
+  (
+    print
+    print "  The GPIO Interrupt &nGPIONum has a LEVEL LOW trigger."
+    print
+  )
+  else if &PrnEntry==0x5C
+  (
+    print
+    print "  The GPIO Interrupt &nGPIONum has a RISING EDGE trigger."
+    print
+  )
+  else if &PrnEntry==0x5D
+  (
+    print
+    print "  The GPIO Interrupt &nGPIONum has a FALLING EDGE trigger."
+    print
+  )
+  else if &PrnEntry==0x5E
+  (
+    print
+    print "  The GPIO Interrupt &nGPIONum has a DUAL EDGE trigger."
+    print
+  )
+  else if &PrnEntry==0x6A
+  (
+    print "  You entered choice 1 to configure GPIO Interrupt &nGPIONum to level high."
+    print "  The trigger has been configured."
+  )
+  else if &PrnEntry==0x6B
+  (
+    print "  You entered choice 2 to configure GPIO Interrupt &nGPIONum to level Low."
+    print "  The trigger has been configured."
+  )
+  else if &PrnEntry==0x6C
+  (
+    print "  You entered choice 3 to configure GPIO Interrupt &nGPIONum to rising edge."
+    print "  The trigger has been configured."
+  )
+  else if &PrnEntry==0x6D
+  (
+    print "  You entered choice 4 to configure GPIO Interrupt &nGPIONum to falling edge."
+    print "  The trigger has been configured."
+  )
+  else if &PrnEntry==0x6E
+  (
+    print "  You entered choice 5 to configure GPIO Interrupt &nGPIONum to dual edge."
+    print "  The trigger has been configured."
+  )
+  else if &PrnEntry==0x6F
+  (
+    print "  INVALID DATA ENTRY !!! "
+    print "  You entered an invalid trigger choice you are being redirected to the main menu."
+    
+  )
+  else if &PrnEntry==0x60
+  (
+    print "  INVALID DATA ENTRY !!! "
+    print "  The GPIO interrupt &nGPIONum is a direct connect interrupt. It does not have a dual edge trigger."
+    print "  You are being directed to the main menu ."
+  )
+  else if &PrnEntry==0x7
+  (
+    print "  You entered choice 7."
+    print "  The GPIO Interrupt &nGPIONum has been triggered."
+  )
+  else if &PrnEntry==0x8A
+  (
+    print "  You entered choice 8."
+    print "  You chose GPIO Interrupt &nGPIONum to be configured as a direct connect Interrupt." 
+    print "  It is connected to QGIC interrupt vector "
+    print %Continue %Decimal &Interrupt
+    print %Continue "."
+  )
+  else if &PrnEntry==0x8B
+  (
+    print "  You entered choice 8."
+    print "  You chose GPIO &nGPIONum to be configured as a direct connect Interrupt." 
+    print "  It is connected to QGIC interrupt vector "
+    print %Continue %Decimal &Interrupt
+    print %Continue "."
+  )
+  else if &PrnEntry==0x8C
+  (
+    print "  You entered choice 8."
+    print "  You chose GPIO &nGPIONum to be configured as a direct connect Interrupt." 
+    print "  Sorry, but there are no available direct connect lines that are free."
+  )
+  else if &PrnEntry==0x9B
+  (
+    print "  You entered choice 9."
+    print "  You chose GPIO &nGPIONum to be configured as a summary interrupt." 
+    print "  It is configured as a summary interrupt."
+  )
+  else if &PrnEntry==0xA
+  (
+    print "  You entered choice 10."
+    print "  The GPIO Interrupt &nGPIONum has been cleared"
+  )
+  else if &PrnEntry==0xB
+  (
+    print "  You entered choice 11."
+    print "  The GPIO interrupt &nGPIONum has been disabled."
+  )
+  else if &PrnEntry==0xC
+  (
+    print "  You entered choice 12."
+    print "  The GPIO interrupt &nGPIONum has been enabled."
+  )
+  else if &PrnEntry==0xDA
+  ( 
+    print "  The interrupt "
+    print %Continue %Decimal &GPIOIntCnt
+    print %Continue " is currently not pending."
+  )
+  else if &PrnEntry==0xDB
+  (
+    print "  The interrupt "
+    print %Continue %Decimal &GPIOIntCnt
+    print %Continue " is currently pending."
+  )
+  else if &PrnEntry==0xEA
+  ( 
+    print %Decimal "  The interrupt "
+    print %Continue &GPIOIntCnt
+    print %Continue " is currently not set."
+  )
+  else if &PrnEntry==0xEB
+  (
+    print "  The interrupt "
+    print %Continue %Decimal &GPIOIntCnt
+    print %Continue " is currently set."
+  )
+  else if &PrnEntry==0xF10
+  (
+    print "  The Direct connect GPIO interrupt "
+    print %Continue %Decimal &nGPIO
+    print %Continue " is connected to QGIC interrupt vector "
+    print %Continue %Decimal &Interrupt
+    print %Continue "."
+  )
+  else if &PrnEntry==0xF11
+  (
+    print "  There are no GPIO pins currently configured as direct connect interrupts. "
+  )
+  else if &PrnEntry==0xF21
+  (
+    print "  All direct connect interrupt lines are free. "
+  )
+ 
+RETURN
+
+PrntTargetProc:
+&TargProcIdx=data.long(a:&nGPIOCfgAddr)
+&TargProcIdx=((&TargProcIdx)>>0x5)
+IF (&TargProcIdx==0)
+(
+  print "  This GPIO interrupt is configured to be routed to the WLAN subsystem"
+  print 
+)
+ELSE IF (&TargProcIdx==0x1)
+(
+  print "  This GPIO interrupt is configured to be routed to the Sensors subsystem"
+  print 
+)
+ELSE IF (&TargProcIdx==0x2)
+(
+  print "  This GPIO interrupt is configured to be routed to the Low Power Audio subsystem"
+  print
+)
+ELSE IF (&TargProcIdx==0x3)
+(
+  print "  This GPIO interrupt is configured to be routed to the RPM subsystem"
+  print
+)
+ELSE IF (&TargProcIdx==0x4)
+(
+  print "  This GPIO interrupt is configured to be routed to the Applications subsystem"
+  print
+)
+ELSE IF (&TargProcIdx==0x5)
+(
+  print "  This GPIO interrupt is configured to be routed to the Modem subsystem"
+  print
+)
+ELSE
+(
+  print "  This GPIO interrupt is not routed to any subsystem"
+  print
+)
+
+RETURN
+;==============================================================================
+; Sets the processor to which the GPIO interrupt should be routed.
+;==============================================================================
+SetTargetProc:
+  &TargProcVal=data.long(a:&nGPIOCfgAddr)
+  &TargProcVal=(&TargProcVal)&(0xFFFF1F)
+  IF (&PlatformNum==0x1)
+  (
+    ;============================================================================
+    ; Platform 8974 APPS 9x25 Sparrow
+    ;============================================================================
+    &nProc=0x4
+  )
+  ELSE IF (&PlatformNum==0x2)
+  (
+    ;============================================================================
+    ; Platform 8974 Modem
+    ;============================================================================
+    &nProc=0x5
+  )
+  ELSE IF (&PlatformNum==0x3)
+  (
+    ;============================================================================
+    ; Platform 8974 LPASS
+    ;============================================================================
+    &nProc=0x2
+  )
+  ELSE IF (&PlatformNum==0x4)
+  (
+    ;============================================================================
+    ; Platform 8974 Pronto
+    ;============================================================================
+    &nProc=0x0
+  )
+  &nMask=((&nProc)<<0x5)
+  &TargProcVal=(&TargProcVal)|(&nMask)
+  data.set a:&nGPIOCfgAddr %LONG &TargProcVal
+  RETURN
+
+;===============================================================================
+; Prints the GPIO interrupt trigger configuration.
+;===============================================================================
+PrntTrigger:
+  if (&Interrupt!=0xFFFF)
+  (
+    &PolVal=(data.long(a:&nGPIODirConAddr))&(0x100)
+    &PolVal=(&PolVal)>>0x8
+    &Prod=((&Interrupt)&(0xF))
+    &nIdx=((&Interrupt)>>4)
+    &nMask=(1<<((2*(&Prod))+1))
+    &TriggerReg=((&GICDBASE)+(0xc00+(4*(&nIdx))))
+    &TriggerVal=data.long(a:&TriggerReg)
+    &nResult=(&TriggerVal)&(&nMask)
+    if (&nResult==0)&&(&PolVal==0x1)
+    (
+      print "  It has a LEVEL HIGH trigger."
+      print
+    )
+    else if (&nResult==0)&&(&PolVal==0x0)
+    (
+      print "  It has a LEVEL LOW trigger."
+      print    
+    )
+    else if (&nResult!=0)&&(&PolVal==0x1)
+    (
+      print "  It has a RISING EDGE trigger."
+      print    
+    )
+    else if (&nResult!=0)&&(&PolVal==0x0)
+    (
+      print "  It has a FALLING EDGE trigger."
+      print    
+    )
+  )
+  else
+  (
+    &PolVal=(data.long(a:&nGPIOCfgAddr))&(0x2)
+    &PolVal=(&PolVal)>>1
+    &DetectVal=(data.long(a:&nGPIOCfgAddr))&(0xC)
+    &DetectVal=(&DetectVal)>>0x2
+    if ((&DetectVal==0)&&(&PolVal==0))
+    (
+      print "  It has a LEVEL LOW trigger."
+      print
+    )
+    else if ((&DetectVal==0)&&(&PolVal==1))
+    (
+      print "  It has a LEVEL HIGH trigger."
+      print
+    )
+    else if ((&DetectVal==1)&&(&PolVal==1))
+    (
+      print "  It has a RISING EDGE trigger."
+      print
+    )
+    else if ((&DetectVal==2)||((&DetectVal==1)&&(&PolVal==0)))
+    (
+      print "  It has a FALLING EDGE trigger."
+      print
+    )
+    else if (&DetectVal==3)
+    (
+      print "  It has a DUAL EDGE trigger."
+      print
+    )
+  )
+RETURN
+;=========================================================================================
+; Prints whether the given GPIO interrupt is pending in hw or not.
+; This status is of the GPIO being enabled and being set in HW.
+; The only way the CPU gets preempted on a valid interrupt is if the interrupt is set in 
+; Hw and it is enabled.
+;=========================================================================================
+PrntPendStatus:
+  if (&Interrupt!=0xFFFF)
+  (
+    &nIdx=((&Interrupt)>>5)
+    &IsPendReg=((&GICDBASE)+(0x200+(4*(&nIdx))))
+    &IsEnableReg=((&GICDBASE)+(0x100+(4*(&nIdx))))
+    &IsEnableVal=data.long(a:&IsEnableReg)
+    &PendVal=data.long(a:&IsPendReg)
+    &nResult=(((&PendVal)&(1<<((&Interrupt)&0x1F)))&((&IsEnableVal)&(1<<((&Interrupt)&0x1F))))
+    if (&nResult==0)
+    (
+      print "  It is currently not Pending."
+      print
+    )
+    else
+    (
+      print "  It is currently Pending."
+      print
+    )
+  )
+  else
+  (
+    &StatusVal=data.long(a:&nGPIOStatus)
+    &EnableVal=(data.long(a:&nGPIOCfgAddr))&(0x1)
+    if (&StatusVal!=0)&&(&EnableVal!=0)
+    (
+      print "  It is currently Pending."
+      print
+    )
+    else
+    (
+      print "  It is currently not Pending."
+      print
+    )
+
+  )
+RETURN
+
+;=========================================================================================
+; Prints whether the given GPIO interrupt is set in hw or not.
+; This status is independent of the GPIO being enabled.
+; The only way the CPU gets preempted on a valid interrupt is if the interrupt is set in 
+; Hw and it is enabled.
+;=========================================================================================
+PrntRawStatus:
+  if (&Interrupt!=0xFFFF)
+  (
+    &nIdx=((&Interrupt)>>5)
+    &IsPendReg=((&GICDBASE)+(0x200+(4*(&nIdx))))
+    &PendVal=data.long(a:&IsPendReg)
+    &nResult=((&PendVal)&(1<<((&Interrupt)&0x1F)))
+    if (&nResult==0)
+    (
+      print "  It is currently not set/ fired."
+      print
+    )
+    else
+    (
+      print "  It is currently set/fired."
+      print
+    )
+  )
+  else
+  (
+    if (data.long(a:&nGPIOStatus)==0)
+    (
+      print "  It is currently not set/fired."
+      print
+    )
+    else
+    (
+      print "  It is currently set/fired."
+      print
+    )
+  )
+RETURN
+;=========================================================================================
+; Prints whether the given GPIO interrupt is enabled or not.
+;=========================================================================================
+PrntEnable:
+  if (&Interrupt!=0xFFFF)
+  (
+    &nIdx=((&Interrupt)>>5)
+    &IsEnableReg=((&GICDBASE)+(0x100+(4*(&nIdx))))
+    &EnableVal=data.long(a:&IsEnableReg)
+    &nResult=(&EnableVal)&(1<<((&Interrupt)&0x1F))
+    if (&nResult==0)
+    (
+      print "  The GPIO Interrupt is currently disabled."
+      print
+    )
+    else
+    (
+      print "  The GPIO Interrupt is currently enabled."
+      print
+    )
+  )
+  else
+  (
+    &EnableVal=(data.long(a:&nGPIOCfgAddr))&(0x1)
+    if (&EnableVal==0)
+    (
+      print "  It is currently not enabled."
+      print
+    )
+    else
+    (
+      print "  It is currently enabled."
+      print
+    )    
+  )
+RETURN
+
+
+;=========================================================================================
+; Prints the GPIO pin cfg
+;=========================================================================================
+PrntPinCfg:
+  &GPIOPinCfg=&PinCfg+(0x10*&nGPIO)
+  &GPIOInOut=&InOut+(0x10*&nGPIO)
+
+  &CfgVal=data.long(a:&GPIOPinCfg)
+  &OutVal=data.long(a:&GPIOInOut)
+ 
+  &func=((&CfgVal&0x3C)>>2)
+  &drive=((&CfgVal&0x1C0)>>0x6)
+  &dir=((&CfgVal&0x200)>>9)
+  &pull=(&CfgVal&0x3)
+  &out_val=((&OutVal)>>0x1)&(0x1)
+  if &pull==0x0
+  (
+    &pull="NO_PULL"
+  )
+  else if &pull==1
+  (
+    &pull="PULL_DOWN"
+  )
+  else if &pull==0x2
+  (
+    &pull="KEEPER"
+  )
+  else if &pull==0x3
+  (
+    &pull="PULL_UP"
+  )
+
+  if &drive==0x0
+  (
+    &drive="2mA"
+  )
+  else if &drive==0x1
+  (
+    &drive="4mA"
+  )
+  else if &drive==0x2
+  (
+    &drive="6mA"
+  )
+  else if &drive==0x3
+  (
+    &drive="8mA"
+  )
+  else if &drive==0x4
+  (
+    &drive="10mA"
+  )
+  else if &drive==0x5
+  (
+    &drive="12mA"
+  )
+  else if &drive==0x6
+  (
+    &drive="14mA"
+  )
+  else if &drive==0x7
+  (
+    &drive="16mA"
+  )
+
+  if &out_val==0x0
+  (
+    &out_val="LOW"
+  )
+  else
+  (
+    &out_val="HIGH"
+  )
+  if &dir==0x0
+  (
+    &dir="IN"
+  )
+  else
+  (
+    &dir="OUT"
+  )
+  if "&dir"=="IN"
+  (
+    print "  GPIO pin &nGPIONum has the following configuration :"
+    print "  Function select is &func, Direction is &dir, pull on the pin is &pull, Drive Strength is &drive "
+    print "  The input value on the pin is &out_val"
+    print
+  )
+  else
+  (
+    print "  GPIO pin &nGPIONum has the following configuration :"
+    print "  Function select is &func, Direction is &dir, pull on the pin is &pull, Drive Strength is &drive "
+    print "  The output value on the pin is &out_val"
+    print
+  )
+RETURN
+
+;===============================================================================
+; Reset all script variables that are being used.
+;===============================================================================
+ResetScript:
+&IntrTrigger=0 
+&IntTrigger=0 
+&GPIOSET=0 
+&nIdx=0 
+&GPIOIntCnt=0 
+&Prod=0 
+&Choice=0 
+&DirConEnVal=0 
+&FoundIt=0
+&nMask=0 
+&nResult=0 
+&nGPIOCfgAddr=0 
+&nGPIO=0
+&nGPIODirConAddr=0 
+&nGPIOStatus=0
+&DirConnCount=0
+&PlatformSet=1
+&Interrupt=0xFFFF
+&PrnRes=0
+&Vector=0
+RETURN
+
+;===============================================================================
+; List all direct connect configured GPIO interrupts.
+;===============================================================================
+ListAllDirConn:
+  GOSUB ResetScript
+  WHILE (&DirConnCount<&GPIOIntDirNum)
+  ( 
+    &nGPIODirConAddr=(&DirCfgAddr)+(0x4*(&DirConnCount))
+    &GPIOSelVal=data.long(a:&nGPIODirConAddr)
+    &GPIOSelVal=(&GPIOSelVal)&(0xFF)
+    &nGPIO=&GPIOSelVal
+    if (&GPIOSelVal!=0x0)
+    (
+      &PrnRes=0xF10
+      &FoundIt=1
+      GOSUB GetDirConVector &DirConnCount
+      ENTRY &Interrupt
+      GOSUB PRNHNDLER &PrnRes
+    )
+    &DirConnCount=V.VALUE(&DirConnCount+1) 
+  ) 
+  if (&FoundIt==0)
+  (
+    &PrnRes=0xF11
+    GOSUB PRNHNDLER &PrnRes
+  )
+RETURN
+
+;===============================================================================
+; Unconfigure all direct connect interrupts.
+;===============================================================================
+UnCfgDirConn:
+  GOSUB ResetScript
+  WHILE (&DirConnCount<&GPIOIntDirNum)
+  (
+    &nGPIODirConAddr=(&DirCfgAddr)+(0x4*(&DirConnCount))
+    &GPIOSelVal=data.long(a:&nGPIODirConAddr)
+    &nGPIO=(&GPIOSelVal)&(0xFF)
+    if (&nGPIO!=0x0)
+    (
+      &FoundIt=1
+      &nGPIOCfgAddr=(&SumCfgAddr)+(0x10*(&nGPIO))
+      &DirConEnVal=data.long(a:&nGPIOCfgAddr)
+      &DirConEnVal=(&DirConEnVal)&(0xFFFFFEFF)
+      data.set a:&nGPIOCfgAddr %LONG &DirConEnVal
+    )
+    &GPIOSelVal=(&GPIOSelVal)&(0xFFFFFF00)
+    data.set a:&nGPIODirConAddr %LONG &GPIOSelVal
+    &DirConnCount=V.VALUE(&DirConnCount+1) 
+  ) 
+  if (&FoundIt==0)
+  (
+    &PrnRes=0xF11
+  )
+  else
+  (
+    &PrnRes=0xF21
+  )
+  GOSUB PRNHNDLER &PrnRes
+RETURN
+
+;===============================================================================
+; Gets the interrupt vector on the main level 1 interrupt controller : QGIC
+;===============================================================================
+GetDirConVector:
+ENTRY &DirConnIdx
+IF (&DirConnIdx==0)
+(
+  &Vector=&DirCon0
+)
+ELSE IF (&DirConnIdx==0x1)
+(
+  &Vector=&DirCon1
+)
+ELSE IF (&DirConnIdx==0x2)
+(
+  &Vector=&DirCon2
+)
+ELSE IF (&DirConnIdx==0x3)
+(
+  &Vector=&DirCon3
+)
+ELSE IF (&DirConnIdx==0x4)
+(
+  &Vector=&DirCon4
+)
+ELSE IF (&DirConnIdx==0x5)
+(
+  &Vector=&DirCon5
+)
+ELSE IF (&DirConnIdx==0x6)
+(
+  &Vector=&DirCon6
+)
+ELSE IF (&DirConnIdx==0x7)
+(
+  &Vector=&DirCon7
+)
+
+RETURN &Vector

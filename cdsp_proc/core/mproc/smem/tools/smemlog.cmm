@@ -1,0 +1,85 @@
+;****************************************************************************
+;**         smemlog.cmm
+;**
+;**    This script dumps the contents of the smem log so that it may be
+;**    parsed by smem_log.pl
+;**
+;**    It generates two files:
+;**      smem_log_events.lst - the event array, smem_data.smem_log_events
+;**      smem_log_index.lst - the index, smem_data.smem_log_idx, into the
+;**                           event array 
+;** 
+;** Copyright (c) 2005 - 2010 by Qualcomm Technologies, Incorporated.  
+;** All Rights Reserved.
+;** 
+;****************************************************************************
+;**
+;**                        EDIT HISTORY FOR MODULE
+;**
+;**  $Header: //components/rel/core.qdsp6/2.1.c4/mproc/smem/tools/smemlog.cmm#1 $
+;**
+;** when       who     what, where, why
+;** --------   ---     ------------------------------------------------------
+;** 11/21/11   bm      Remove smem static log and sleep voter related logging.
+;** 06/24/10   tl      Support debugger use of setup.var, which may change how
+;**                    data fields are formatted
+;** 03/06/09   tl      Suppress log output if log was not initialized
+;** 01/09/09   tl      Support low-bandwidth power log
+;** 07/29/08   hwu     Checked in sleep change for Chris M.
+;** 10/04/07   taw     Use the new name for the pointer to voters in smem.
+;** 08/16/07   ebb     Added code to dump sleep names and static log.
+;** 09/28/06   ptm     Update block comment; add code to setup display format;
+;**                    and, allow optional directory argument.
+;** 03/23/05   ~SN     Initial Version.
+;****************************************************************************
+
+ENTRY &directory
+
+GLOBAL &idx_name
+GLOBAL &log_name
+
+;****************************************************************************
+; Setup display format
+;****************************************************************************
+setup.var %open.on %hex %name %symbol 
+
+;****************************************************************************
+; Create filenames
+;****************************************************************************
+if "&directory"==""
+(
+  &directory="."
+)
+
+&idx_name="&directory"+"/smem_log_index.lst"
+&log_name="&directory"+"/smem_log_events.lst"
+
+;****************************************************************************
+; Set file type
+;****************************************************************************
+printer.FILETYPE ASCIIE
+
+;****************************************************************************
+; Set smem log file name
+;****************************************************************************
+printer.OPEN &log_name
+
+;****************************************************************************
+; Dump the array of structure. (20  bytes (0x14) per record)
+; For 2000 records  we need 400000 (0x9C40)
+;****************************************************************************
+wp.v.v smem_log_table[0].smem_log_events
+wp.v.v (smem_log_struct_type[2000])*smem_log_table[0].smem_log_events
+
+printer.CLOSE
+
+;****************************************************************************
+; Set smem log index file name
+;****************************************************************************
+printer.FILE &idx_name
+
+;****************************************************************************
+; Dump the array index
+;****************************************************************************
+wp.v.v *(smem_log_table[0].smem_log_write_idx)
+

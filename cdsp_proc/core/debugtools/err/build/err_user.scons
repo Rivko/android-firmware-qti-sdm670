@@ -1,0 +1,181 @@
+#===============================================================================
+#
+# ERR Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2007 - 2017 by Qualcomm Technologies, Inc.  All Rights Reserved.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1.c4/debugtools/err/build/err_user.scons#1 $
+#  $DateTime: 2018/07/30 01:21:36 $
+#  $Author: pwbldsvc $
+#  $Change: 16759227 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/debugtools/err/src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Features and Definitions
+#-------------------------------------------------------------------------------
+env.Append(CPPDEFINES=['ERR_CFG_QURT'])
+env.Append(CPPDEFINES=['ERR_HW_QDSP6'])
+
+env.PublishPrivateApi("ERR", [
+   "${INC_ROOT}/core/debugtools/err/src/q6",
+   "${INC_ROOT}/core/debugtools/err/src/qurt"
+])
+
+if 'USES_DEVCFG' in env:
+    env.Append(CPPDEFINES=['ERR_USES_DEVCFG'])
+
+#-------------------------------------------------------------------------------
+# External depends outside CoreBSP
+#-------------------------------------------------------------------------------
+
+env.RequireExternalApi([
+])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+CBSP_API = [
+   'DAL',
+   'DEBUGTOOLS',
+   'HAL',
+   'MPROC',  # MPROC dependency since we are using smem from User PD as well.   
+   'POWER',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Sources
+#-------------------------------------------------------------------------------
+
+# https://jira.qualcomm.com/jira/browse/SMEMIDREQ-9
+env.Append(CPPDEFINES = ["ERR_LOG_SMEM_ITEM = 611"])
+
+ERR_USERPD_SOURCES = [
+   '${BUILDPATH}/err.c',
+   '${BUILDPATH}/err_user.c',
+   '${BUILDPATH}/err_pd_exception_handler.c',
+   '${BUILDPATH}/err_qdi_client.c',
+   '${BUILDPATH}/err_policy_pdr.c',
+   '${BUILDPATH}/err_smem_log.c',
+   ]
+
+#Source meant for Uerr, Should be explicitly added for island mode
+UERR_USERPD_FULL_SOURCES = [
+   '${BUILDPATH}/q6/err_jettison_core_q6.S',
+   ]
+
+if 'USES_ISLAND_FEATURE' in env:
+   #Move data from sbss/scommon to bss/data segments
+   env.Append(CCFLAGS = "-G0")
+   #We don't support island functions with '-fstack-protector'
+   if "-fstack-protector" in env['HEXAGON_STKPRO']:
+      env.Replace(HEXAGON_STKPRO = "")
+   UERR_USERPD_FULL_SOURCES.append('${BUILDPATH}/err_fatal.c')
+   UERR_USERPD_FULL_SOURCES.append('${BUILDPATH}/err_fatal_user.c')
+   UERR_USERPD_FULL_SOURCES.append('${BUILDPATH}/err_qdi_client_initialized.c')
+   env.Append(CFLAGS = "-DUERR_ISLAND_MODE ")
+else:
+   ERR_USERPD_SOURCES.append('${BUILDPATH}/q6/err_jettison_core_q6.S')
+   ERR_USERPD_SOURCES.append('${BUILDPATH}/err_fatal.c')
+   ERR_USERPD_SOURCES.append('${BUILDPATH}/err_fatal_user.c')
+   ERR_USERPD_SOURCES.append('${BUILDPATH}/err_qdi_client_initialized.c')
+
+   
+VERSION_IMG = [
+   'IMAGE_TREE_VERSION_AUTO_GENERATE',
+]
+
+if env.IsTargetEnable(VERSION_IMG):
+   ERR_USERPD_SOURCES.append('${BUILDPATH}/err_image_version.c')
+else:
+   ERR_USERPD_SOURCES.append('${BUILDPATH}/err_image_version_void.c')
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+# Add USER PD sources
+#-------------------------------------------------------------------------------
+#uImage is not enabled for LPASS 
+ERR_IMGS = [
+     'CORE_QDSP6_SENSOR_SW', 'CORE_SLPI_USER', 'CORE_SSC_SLPI_USER', 
+     'CORE_QDSP6_AUDIO_SW', 'CORE_USER_PD'
+]
+
+err_full_libs = env.AddLibrary(ERR_IMGS,
+  '${BUILDPATH}/err_user', ERR_USERPD_SOURCES )
+
+if 'USES_ISLAND_FEATURE' in env:
+  uerr_full_libs = env.AddLibrary(ERR_IMGS,'${BUILDPATH}/uerr_user', UERR_USERPD_FULL_SOURCES)
+
+if 'USES_ISLAND' in env:
+  env.AddIslandLibrary(ERR_IMGS, uerr_full_libs )
+  env.AddSymbolToIslandWhitelist(ERR_IMGS, uerr_full_libs, ['tms_get_timetick'])
+  env.AddSymbolToIslandWhitelist(ERR_IMGS, uerr_full_libs, ['err_update_reentrancy_flag'])
+  env.AddSymbolToIslandWhitelist(ERR_IMGS, uerr_full_libs, ['err_qdi_invoke_err_handling_done'])
+  env.AddSymbolToIslandWhitelist(ERR_IMGS, uerr_full_libs, ['coredump'])
+
+# Register initializations with rcinit
+RCINIT_INIT_INIT = {
+   'sequence_group'             : 'RCINIT_GROUP_0',                  # required
+   'init_name'                  : 'err_init',                        # required
+   'init_function'              : 'err_init',                        # required
+   'dependencies'               : ['dalsys', 'tms_timetick',]
+}
+
+RCINIT_INIT_PD_INIT = {
+   'sequence_group'             : 'RCINIT_GROUP_1',                  # required
+   'init_name'                  : 'err_pd_init',                     # required
+   'init_function'              : 'err_pd_init',                     # required
+   'dependencies'               : ['err_init',]
+}
+
+RCINIT_INIT_POLICY_PDR_INIT = {
+   'sequence_group'             : 'RCINIT_GROUP_0',                  # required
+   'init_name'                  : 'errppdrinit',                     # required
+   'init_function'              : 'err_policy_pdr_init',             # required
+}
+
+RCINIT_INIT_INIT_QDI = {
+   'sequence_group'             : 'RCINIT_GROUP_1',                  # required
+   'init_name'                  : 'errqdiclntinit',                  # required
+   'init_function'              : 'err_qdi_client_init',             # required
+   'dependencies'               : ['err_init',]
+}
+
+if 'USES_RCINIT' in env:
+  env.AddRCInitFunc( ERR_IMGS, RCINIT_INIT_INIT )
+  env.AddRCInitFunc( ERR_IMGS, RCINIT_INIT_PD_INIT )
+  env.AddRCInitFunc( ERR_IMGS, RCINIT_INIT_POLICY_PDR_INIT )
+  env.AddRCInitFunc( ERR_IMGS, RCINIT_INIT_INIT_QDI )

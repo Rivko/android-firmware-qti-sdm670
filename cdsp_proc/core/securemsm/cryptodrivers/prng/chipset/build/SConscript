@@ -1,0 +1,113 @@
+#===============================================================================
+#
+# Crypto Driver Chipset Library
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2012 by QUALCOMM, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header:  $
+#  $DateTime: $
+#  $Author:  $
+#  $Change:  $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 07/04/12    nk     Initial version
+#
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Publish Private APIs
+#-------------------------------------------------------------------------------
+env.PublishPrivateApi('PrngCL', [
+   '${INC_ROOT}/core/securemsm/cryptodrivers/prng/shared/inc', 
+   '${INC_ROOT}/core/securemsm/cryptodrivers/prng/chipset/inc', 
+   '${INC_ROOT}/core/securemsm/cryptodrivers/prng/environment/inc',
+   '${INC_ROOT}/core/securemsm/cryptodrivers/prng/environment/env/adsp/inc',
+])
+
+env.PublishPrivateApi('PrngCL_SENSORS', [
+   '${INC_ROOT}/core/securemsm/cryptodrivers/prng/shared/inc', 
+   '${INC_ROOT}/core/securemsm/cryptodrivers/prng/chipset/inc', 
+   '${INC_ROOT}/core/securemsm/cryptodrivers/prng/environment/inc',
+   '${INC_ROOT}/core/securemsm/cryptodrivers/prng/environment/env/sensors/inc',
+])
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/securemsm/cryptodrivers/prng/chipset/src"
+HDRPATH = "${BUILD_ROOT}/core/securemsm/cryptodrivers/prng/chipset/inc"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# External depends outside CoreBSP
+#-------------------------------------------------------------------------------
+env.RequireExternalApi([
+   'BREW',
+   'CS',
+   'DSM',
+])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'DEBUGTOOLS',
+   'HAL',
+   'MPROC',
+   'SECUREMSM',
+   'SERVICES',
+   'STORAGE',
+   'SYSTEMDRIVERS',
+   'WIREDCONNECTIVITY',
+   'BOOT',
+   'HWENGINES',
+   'POWER',
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Compiler, object, and linker definitions
+#-------------------------------------------------------------------------------
+env.Append(ARMCC_CODE = " ${ARM_SPLIT_SECTIONS}")
+env.Replace(ARMLD_NOREMOVE_CMD = "")
+
+env.Append(CPPDEFINES = ['_ARM_', '__arm', 'ARM', 'ARM_BREW_BUILD'])
+env.Append(ARMCC_OPT = ' --loose_implicit_cast ')
+env.Append(ARMCPP_OPT = ' --loose_implicit_cast ')
+if env.has_key('BUILD_BOOT_CHAIN'):
+   env.Append(CPPDEFINES = ['FEATURE_LIBRARY_ONLY'])
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+PrngCL_LIB_SOURCES = [
+        '${BUILDPATH}/PrngCL.c',
+        '${BUILDPATH}/PrngCL_DALIntf.c',
+]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+#ADSP library
+env.AddBinaryLibrary(['CORE_QDSP6_SW','CORE_QDSP6_SENSOR_SW'], '${BUILDPATH}/PrngCL', PrngCL_LIB_SOURCES)

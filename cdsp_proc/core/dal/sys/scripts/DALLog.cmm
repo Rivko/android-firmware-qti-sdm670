@@ -1,0 +1,441 @@
+;=============================================================================
+; GENERAL DESCRIPTION
+; DAL logs can be extracted to a log file"
+;
+; Usage:
+; do <dal_log_script> <log_file> <pd>
+; <dal_log_script> - typically <build_root>\core\dal\framework\sys\scripts\DALLog.cmm
+; <log_file> - name of log file
+;   If not specified, this would run in an interactive mode
+;   wherein the user provide the log file and symbol prefix
+; <pd> - protection domain suffix
+;   This is only required on multi-PD images.
+;   If not specified, the logs refers to the guest OS or default PD.
+;
+;=============================================================================
+
+ENTRY &logFile &symbolSuffix
+
+GLOBAL &ReadStringReturnValue &MaxArgCnt
+LOCAL &dump &symbolCheck
+
+; Select the output area for messages
+AREA.SELECT A000
+AREA.VIEW
+
+IF ("&logFile"=="help")
+(
+  GOSUB ShowHelp
+  END
+)
+
+IF ("&logFile"=="")
+(
+  PRINT "Enter log file name"
+  PRINT ">"
+  ENTER &logFile
+ 
+  &symbolSuffix=""
+  GOSUB ConfigSymbolSuffix
+)
+
+ON ERROR GOSUB SymbolErrorHandler
+&symbolCheck=V.VALUE(DALSYSWorkLoopCnt&(symbolSuffix))
+ON ERROR
+
+IF ("&logFile"=="")
+(
+  &logFile="stdout"
+  &dump="PRINT"
+  PRINT "**** DAL LOG ****"
+)
+else 
+(
+  PRINT "Writing file: &(logFile)"
+  &dump="WRITE #1"
+  OPEN #1 "&(logFile)" /Create
+)
+
+IF ("&symbolSuffix"!="")
+(
+  &dump "PD: &symbolSuffix"
+  &dump
+)
+
+
+GOSUB DumpWorkLoopList
+GOSUB DumpDalLog
+
+IF "&logFile"!="stdout"
+(
+  PRINT "Closing file"
+  CLOSE #1
+)
+END
+
+ConfigSymbolSuffix:
+  LOCAL &pdChoice
+  PRINT "Choose one of the following PDs (Protection Domains)"
+  PRINT "  0 - Default (Guest OS/Single PD)"
+  PRINT "  1 - Sensor"
+  PRINT "  2 - Audio"
+  PRINT ">"
+  ENTER &pdChoice
+
+  IF ("&pdChoice"=="1")
+  (
+    &symbolSuffix="_sensor"
+  )
+  ELSE IF ("&pdChoice"=="2")
+  (
+    &symbolSuffix="_audio"
+  )
+  RETURN
+  
+; Dump Work Loop Information
+DumpWorkLoopList:
+  LOCAL &logSize &logIdx
+  &logSize=V.VALUE(DALSYSWorkLoopCnt&(symbolSuffix))
+  &logIdx=0
+
+  &dump "*** Workloop Information ***"
+  &dump
+  &dump "OBJ_ADDR   TID   OWNER_TID  OWNER_LR   NEXT_EVENT"
+
+  REPEAT
+  (
+    LOCAL &pWL
+    &pWL=V.VALUE(DALSYSWorkLoopList&(symbolSuffix)[&logIdx])
+
+    IF &pWL!=0
+    (
+      LOCAL &currTID &ownerTID &ownerLR &nextEvent &thisAddr
+      LOCAL &currTIDStr &ownerTIDStr &ownerLRStr &nextEventStr &pWLStr
+
+      &pWLStr=FORMAT.HEX(0x8,&pWL)
+      &thisAddr=V.VALUE(DALSYSWorkLoopList&(symbolSuffix)[&logIdx]->thisVirtualAddr)
+
+      IF &pWL==&thisAddr
+      (
+        &currTID=V.VALUE(DALSYSWorkLoopList&(symbolSuffix)[&logIdx]->hThread)
+        &currTIDStr=FORMAT.HEX(0x3,&currTID)
+        &ownerTID=V.VALUE(DALSYSWorkLoopList&(symbolSuffix)[&logIdx]->ownerThreadId)
+        &ownerTIDStr=FORMAT.HEX(0x3,&ownerTID)
+        &ownerLR=V.VALUE(DALSYSWorkLoopList&(symbolSuffix)[&logIdx]->ownerRetAddr)
+        &ownerLRStr=FORMAT.HEX(0x8,&ownerLR)
+        &nextEvent=V.VALUE(DALSYSWorkLoopList&(symbolSuffix)[&logIdx]->hWorkLoopEventHead)
+        &nextEventStr=FORMAT.HEX(0x8,&nextEvent)
+        &dump "0x&pWLStr 0x&currTIDStr 0x&ownerTIDStr      0x&ownerLRStr 0x&nextEventStr"
+      ) 
+      ELSE
+      (
+        &dump "0x&pWLStr ***CORRUPTED***"
+      )
+    )
+
+    &logIdx=(&logIdx+1)
+  )
+  WHILE &logIdx<&logSize
+  &dump "OBJ_ADDR type: (_DALSYSWorkLoopObj *) "
+  &dump "NEXT_EVENT type: (_DALSYSEventObj *) "
+  &dump
+
+  RETURN
+
+;Dump DAL logs
+DumpDalLog:
+  LOCAL &logSize &logEnd &logIdx &logAddr
+  &logSize=V.VALUE(DALSYSLogBufferLen&(symbolSuffix))
+  &logEnd=V.VALUE(DALSYSLogUnmaskIdx&(symbolSuffix))%&logSize
+  &logStart=(&logEnd+1)%&logSize
+  &logIdx=&logStart
+  &MaxArgCnt=V.VALUE(DALSYSLogMaxArgCnt&(symbolSuffix))
+
+  ; print heading
+  &dump "*** LOG MESSAGES ***"
+  &dump
+  &dump "TIME         TYPE  MESSAGE"
+
+  REPEAT
+  (
+    LOCAL &outputString &severityStr &timestamp &timestampStr &formatStringPtr
+    &outputString=""
+
+    &formatStringPtr=V.VALUE(DALSYSLogBuffer&(symbolSuffix)[&logIdx].pszFmt)
+    IF &formatStringPtr!=0
+    (
+      &timestamp=((V.VALUE(DALSYSLogBuffer&(symbolSuffix)[&logIdx].timestampHi))<<20)+V.VALUE(DALSYSLogBuffer&(symbolSuffix)[&logIdx].timestampLo)
+      &timestampStr=FORMAT.HEX(0xc,&timestamp)
+
+      GOSUB ParseSeverity &logIdx &severityStr
+      
+      GOSUB ParsePrintfString &logIdx &outputString
+
+      &dump "&(timestampStr) &severityStr &outputString"
+    )
+    &logIdx=(&logIdx+1)%&logSize
+  )
+  WHILE &logIdx!=&logStart
+
+  RETURN
+
+ParseSeverity:
+  ENTRY &logIdx &severityStr
+  
+  &severity=V.VALUE(DALSYSLogBuffer&(symbolSuffix)[&logIdx].eventType)
+  IF &severity==1
+  (
+    &severityStr="FATAL"
+  )
+  ELSE IF &severity==2
+  (
+    &severityStr="ERROR"
+  )
+  ELSE IF &severity==3
+  (
+    &severityStr="WARN "
+  )
+  ELSE IF &severity==4
+  (
+    &severityStr="INFO "
+  )
+  ELSE
+  (
+    &severityStr="N/A  "
+  )
+  RETURN
+
+ParsePrintfString:
+  ENTRY &logIdx &outputString
+  LOCAL &formatStringPtr &subFormatString &g_format_size 
+  LOCAL &char &formatString &argIdx &parseErrorStr
+
+  &formatStringPtr=V.VALUE(DALSYSLogBuffer&(symbolSuffix)[&logIdx].pszFmt)
+  GOSUB ReadString &formatStringPtr
+  &formatString="&(ReadStringReturnValue)"
+
+  &argIdx=0
+  &parseErrorStr=""
+
+  WHILE STRING.LEN("&(formatString)")!=0
+  (
+    ; Get the first character of the format string
+    &char=string.mid("&(formatString)", 0, 1)     
+
+    ; Tear appart the format string one character at a time looking for format strings.
+    IF "&(char)"=="%"&&&argIdx<&MaxArgCnt&&"&parseErrorStr"==""
+    (
+      LOCAL &isAtEnd &parmaValue &paramAddress
+      &subFormatString="%"
+      
+      &fmtstringCharCount=0
+      REPEAT
+      ( 
+        &formatString=STRING.CUT("&(formatString)",1)
+        &fmtstringCharCount=&fmtstringCharCount+1
+        &char=string.mid("&(formatString)", 0, 1)
+        GOSUB IsEndOfFormat &char
+        ENTRY &isAtEnd
+        &subFormatString="&(subFormatString)&(char)"
+        IF &fmtstringCharCount>0x14
+        (
+           PRINT ">> Printf format string greater than 20 chars found.  Skipping..."
+           &dump ">> Printf format string greater than  20 chars found.  Skipping..."
+           &subFormatString=""
+           &isAtEnd=1
+        )
+      )
+      WHILE &isAtEnd==0  
+      IF string.scan("&(subFormatString)", "lld", 0)!=-1
+      (
+        &parseErrorStr="No Support for 64-bit Arguments"
+      )
+      IF string.scan("&(subFormatString)", "llu", 0)!=-1
+      (
+        &parseErrorStr="No Support for 64-bit Arguments"
+      )
+      IF string.scan("&(subFormatString)", "llx", 0)!=-1
+      (
+        &parseErrorStr="No Support for 64-bit Arguments"
+      )
+      IF string.scan("&(subFormatString)", "llX", 0)!=-1
+      (
+        &parseErrorStr="No Support for 64-bit Arguments"
+      )      
+
+      ; Add substring to outputString
+      IF "&parseErrorStr"!=""
+      (
+        PRINT "&parseErrorStr"
+        &outputString="&(outputString)<&(parseErrorStr)>"
+      )
+      ELSE IF "&(char)"=="%"
+      (
+        &outputString="&(outputString)%"
+      )
+      ELSE
+      (
+        &parmaValue=V.VALUE(DALSYSLogBuffer&(symbolSuffix)[&logIdx].argList[&argIdx])
+        &argIdx=&argIdx+1
+
+        IF "&(char)"=="d"
+        (
+          GOSUB HandleNumberFormating
+          ;T32 Is using 64 bit data widths and needs this to correctly use 32 bit negative numbers.
+          IF ((&(parmaValue)&0x80000000)==0x80000000)
+          (
+            &parmaValue=CONV.SignedWord(&parmaValue)
+          )
+          &char=FORMAT.DECIMAL(&g_format_size,&parmaValue)
+        )
+        ELSE IF "&(char)"=="u"
+        (
+          GOSUB HandleNumberFormating
+          &char=FORMAT.UDECIMAL(&g_format_size,&parmaValue)
+        )
+        ELSE IF "&(char)"=="s"
+        (
+          IF (&parmaValue==0)
+          (
+            &char="<NULL REFERENCE>"
+          )
+          ELSE
+          (
+            &char=DATA.STRING(D:&parmaValue)
+          )
+        )
+        ELSE IF string.scan("xX", "&(char)", 0)!=-1
+        (
+          GOSUB HandleNumberFormating
+          &char=FORMAT.HEX(&g_format_size,&parmaValue)
+        )
+        ELSE IF "&(char)"=="c"
+        (
+          &char=CONV.CHAR(&parmaValue)
+          &char=STRING.MID("&char", 1, 1)
+        )
+        ELSE
+        (
+          &char=""
+        )
+        &outputString="&(outputString)&(char)"
+      )
+    )
+    ELSE
+    (
+      ; Add the non-format data
+      &outputString="&(outputString)&(char)"
+    )
+    &formatString=STRING.CUT("&(formatString)",1)
+  )
+  RETURN
+
+; Allow for formating strings like %03d. %3d Return the &g_format_size 
+; This isn't perfect because TRACE32 FORMAT.DECIMAL doesn't zero fill, while 
+; FORMAT.HEX does, but it somewhat matches the requested formating. 
+HandleNumberFormating:
+  LOCAL &c_ascii &c_ascii_0 &c
+  &g_format_size=0
+  &c=14
+  
+  IF string.find("&(subFormatString)", "0123456789")
+  (
+    REPEAT
+    (
+      &c_ascii_0=FORMAT.DECIMAL(0,&c)
+      &c_ascii_0="0&(c_ascii_0)"      ;020, 019, 018, etc...    
+      &c_ascii=FORMAT.DECIMAL(0,&c)   ;20, 19, 18, etc...
+     
+      IF string.scan("&(subFormatString)", "&(c_ascii_0)", 0)!=-1 
+      (
+        ; found a format string with a %08d style format 
+        &g_format_size=&c
+        RETURN
+      )
+      
+      IF string.scan("&(subFormatString)", "&(c_ascii)", 0)!=-1 
+      (
+        ;found a format string with a %8d style format 
+        IF &c==0
+        (
+          ; format strings in the format %0d are a special case.
+          &g_format_size=8
+        )
+        ELSE
+        (
+          &g_format_size=&c
+          RETURN
+        )
+      )
+      &c=&c-1
+    )
+    WHILE &c!=0
+  )
+  RETURN
+
+; Returns 0 when a non format character is found. 
+IsEndOfFormat:
+  ENTRY &char
+  LOCAL &isEndValue
+  &isEndValue=1
+  IF string.scan("%EGXcdefginopsuxt", "&(char)", 0)==-1
+  (
+    &isEndValue=0
+  )
+  RETURN &isEndValue
+
+; This function returns the string it read through
+; the global value &ReadStringReturnValue
+;
+ReadString:
+  ENTRY &localAddress
+  LOCAL &outputString &localString &localLength
+
+  &localLength=0x80
+  WHILE &localLength==0x80
+  (
+    &localString=DATA.STRING(D:&localAddress)
+    &localAddress=&localAddress+0x80
+    &outputString="&(outputString)&(localString)"
+    &localLength=STRING.LEN("&(localString)")
+  )
+  &ReadStringReturnValue="&(outputString)"
+
+  RETURN
+
+SymbolErrorHandler:
+  ON ERROR
+  PRINT "*********************"
+  PRINT "DAL Log symbol is not found"
+  PRINT "Possible causes:"
+  PRINT "<pd> is not valid"
+  PRINT "  See below for information on <pd>"
+  PRINT "This script is incompatible with current platform/build"
+  PRINT "  See below for information on <dal_log_script>"
+  PRINT "Current platform does not support DAL native logging"
+  GOSUB ShowHelp
+  END
+
+ShowHelp:
+  PRINT "*********************"
+  PRINT "DAL logs can be extracted and output to a log file"
+  PRINT "Usage:"
+  PRINT "do <dal_log_script> <log_file> <pd>"
+  PRINT "<dal_log_script> - typically <build_root>\core\dal\framework\sys\scripts\DALLog.cmm"
+  PRINT "<log_file> - name of log file"
+  PRINT "  If not specified, this would run in an interactive mode"
+  PRINT "  wherein the user provide the log file and PD identifier"
+  PRINT "<pd> - protection domain suffix"
+  PRINT "  This is only required on multi-PD images."
+  PRINT "  If not specified, the logs refers to the default or guest OS PD"
+  PRINT "Examples:"
+  PRINT "do DALLog.cmm"
+  PRINT "  Run in interactive mode"
+  PRINT "  DALLog.cmm is in current directory"
+  PRINT "do DALLog.cmm c:\builds\log.txt"
+  PRINT "  Output log to c:\builds\log.txt; Guest OS PD is used"
+  PRINT "do DALLog.cmm c:\builds\log.txt _sensor"
+  PRINT "  Sensor PD is used"
+  PRINT "do DALLog.cmm help"
+  PRINT "  Display this help message"
+  RETURN

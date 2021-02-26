@@ -1,0 +1,111 @@
+;****************************************************************
+;    filename: DSP_connect.cmm
+;
+;    please enter phys start address	
+; usage:
+;    DSP_connect <physical start address>
+;****************************************************************
+
+entry &p_start_address
+
+print "You have entered &p_start_address as physical start address"
+
+TOOLBAR ON
+STATUSBAR ON
+;WINPAGE.RESET
+
+;******************************************************************
+; Reset QDSP6 through intercomm command
+;******************************************************************
+
+
+
+sys.cpu qdsp6000v3l
+;sys.mode attach
+
+
+global &rtos_dir
+global &edk_dir
+global &etm_enable
+local  &roottask
+local  &rt_pt
+
+
+SYStem.CPU QDSP6000V3l
+;system.jtagclock 5000000.
+system.option.icflush OFF
+system.option.dcfreeze OFF 
+;sys.mode.attach
+
+
+; TURN OFF MMU
+;mmu.off
+;mmu.delete
+; RESET PATHS
+sYmbol.SourcePath.reset
+
+; LOAD SYMBOL FILES
+; Load bootimage symbols, bootimg.pbn contains the map for static text section
+;d.load.elf &rtos_dir\bootimg.pbn /NOCODE /NOREG 
+d.load.elf .\obj\qdsp6v3_ReleaseG\bootimg.pbn /NOCODE /NOREG 
+
+&Qube_va=address.offset(start);
+&Qube_pa=&p_start_address;
+
+; LOAD RTOS AWARENESS MODULE
+TASK.CONFIG blast\osam\bin\T32\v3\Blast_model.t32
+MENU.ReProgram blast\osam\bin\T32\v3\Blast_model.men
+
+; Enable RTOS debug messages
+;ext.debug 1
+
+;MMU and System SETUP
+system.option PC &Qube_pa ; PARK PC AT A VALID PHYSICAL ADDRESSS
+			                ; TYPICALLY THIS LOCATION COULD BE WHERE YOU LOAD THE CODE
+;system.option icflush off
+
+;mmu.map.scan	; SCAN ELF FILE (bootimg.pbn) TO GET VA to PA TRANSLATION
+			    ; FOR CODE and STATIC DATA
+
+; CREATE DEFAULT TRANSLATION
+; YOU HAVE TO KNOW THE PHYSICAL MEMORY WHERE THE KERNEL IS MAPPED
+mmu.off
+mmu.create (&Qube_va)--(&Qube_va+0xffffff) (&Qube_pa)--(&Qube_pa+0xffffff)
+mmu.protect
+mmu.on
+
+; GO TO THE POINT WHERE L4 TABLE OF ROOTTASK IS INITIALIZED
+
+wait 1s
+&rt_pt=d.l(BLASTK_pagetables)
+print &rt_pt
+
+mmu.format Blast &rt_pt (&Qube_va)--(&Qube_va+0xffffff) &Qube_pa
+;mmu.autoscan on
+Mmu.tablewalk on
+
+b.s main /onchip
+b.s BLASTK_handle_error
+b.s BLASTK_tlb_crash
+b.s BLASTK_error
+
+
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

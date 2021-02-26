@@ -1,0 +1,152 @@
+#===============================================================================
+#
+# cryptoLibs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009-2014, 2017 by QUALCOMM, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header:  $
+#  $DateTime: $
+#  $Author:  $
+#  $Change:  $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 06/27/17   shl     Added SMMU support flag.
+# 06/19/17   shl     Added sw crypto self test API path.
+# 10/20/16   jp      Added support for enabling CE BAM for xbl_sec
+# 03/02/14   nk      Added support for 8916 and 8936
+# 02/23/11   jl	     Removed debug/nodebug from build path.
+#
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/ssg/securemsm/cryptodrivers/ce/shared"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+
+#-------------------------------------------------------------------------------
+# External depends outside CoreBSP
+#-------------------------------------------------------------------------------
+env.RequireExternalApi([
+   'BREW',
+   'CS',
+   'DSM',
+])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'DEBUGTOOLS',
+   'MPROC',
+   'SERVICES',
+   'STORAGE',
+   'SYSTEMDRIVERS',
+   'BOOT',
+   'HWENGINES',
+   'POWER',
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API, area = 'core')
+
+SME_PROTECTED_API = [
+                      'SME_SMECOM',
+]
+env.RequireProtectedApi(SME_PROTECTED_API)
+
+SSG_API = [
+    'CECL',
+    'SECUREMSM',
+    'QSEE',
+    'MINK',
+    'TZCHIPSET',
+    'UNIFIEDCRYPTO',
+    'SSGPLATFORM',
+    'SWCRYPTOSELFTEST',
+]
+
+   
+env.RequirePublicApi(SSG_API, area = 'ssg')
+env.RequireRestrictedApi(SSG_API)
+
+
+#-------------------------------------------------------------------------------
+# Publish Private APIs
+#-------------------------------------------------------------------------------
+env.PublishPrivateApi('CEML', [
+   '${INC_ROOT}/ssg/securemsm/cryptodrivers/ce/shared/inc',
+])
+
+#-------------------------------------------------------------------------------
+# Compiler, object, and linker definitions
+#-------------------------------------------------------------------------------
+
+env.Append(ARMCC_CODE = " ${ARM_SPLIT_SECTIONS}")
+env.Replace(ARMLD_NOREMOVE_CMD = "")
+
+env.Append(CPPDEFINES = ['_ARM_', '__arm', 'ARM', 'ARM_BREW_BUILD'])
+env.Append(ARMCC_OPT = ' -Wno-int-conversion ')
+if env.has_key('BUILD_BOOT_CHAIN'):
+   env.Append(CPPDEFINES = ['FEATURE_LIBRARY_ONLY'])
+
+# this is for security caution, only enable SG feature when there is SMMU support
+# Before SMMU API (which will avoid such modification when target is changed ) is
+# finalized, following condition must be modified on target base, and before a new
+# target is added, make sure there is SMMU support by contact SMMU team and fully 
+# test this out !!!
+if env['CHIPSET'] not in ['sdm845', 'sdm670', 'qcs6200', 'sdm640']:
+   env.Append(CCFLAGS = ' -DNO_SMMU_SG_SPPORT ')
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+CEML_LIB_SOURCES = [
+        '${BUILDPATH}/src/CeML.c',
+        '${BUILDPATH}/src/CeML_kdf.c',
+]
+
+#-------------------------------
+# This is only used for bringup
+#-------------------------------
+
+# Uncoment sha includes in unifiedcrypto.api
+
+CEML_LIB_SOURCES_SW = [
+        '${BUILDPATH}/src/CeML_sw.c',
+        '${BUILDPATH}/src/CeML_kdf.c',
+]
+
+CEML_LIB_SOURCES_XBL_SEC = [
+       '${BUILDPATH}/src/xbl_sec/CeML.c',
+]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+if env['CHIPSET'] in ['msmXXXX']:
+  env.AddBinaryLibrary(['TZOS_IMAGE'], '${BUILDPATH}/CeML', CEML_LIB_SOURCES_SW)
+else:
+  env.AddBinaryLibrary(['TZOS_IMAGE'], '${BUILDPATH}/CeML', CEML_LIB_SOURCES)
+env.Deploy(['SConscript',
+            '../inc/CeML.h'
+           ])

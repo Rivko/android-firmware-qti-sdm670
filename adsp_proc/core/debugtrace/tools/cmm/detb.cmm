@@ -1,0 +1,78 @@
+;****************************************************************************
+;** Dumps ETB contents in hexadecimal format into a file.
+;**         
+;**
+;** Copyright (c) 2011-2012 by Qualcomm Technologies Incorporated.  All Rights Reserved.
+;**
+;****************************************************************************
+;**  $Header: //components/rel/core.qdsp6/2.1/debugtrace/tools/cmm/detb.cmm#1 $
+;**                        EDIT HISTORY FOR MODULE
+;**
+;**
+;** when       who     what, where, why
+;** --------   ---     ------------------------------------------------------
+;** 06/20/12   jk     First revision for Aragorn(8974)
+
+ENTRY &full
+&etb_base=0xFC307000
+&etb_size_reg=&etb_base+0x4    //etb size
+&sts_reg=&etb_base+0xC       //status
+&rrd_reg=&etb_base+0x10      //read data
+&rrp_reg=&etb_base+0x14      //read pointer
+&rwp_reg=&etb_base+0x18      //write pointer
+&ctl_reg=&etb_base+0x20      //control
+&ffcr_reg=&etb_base+0x304    //ffcr
+&lar_reg=&etb_base+0xFB0     //lock access
+
+
+
+d.s a:&lar_reg %LONG 0xC5ACCE55   // Unlock ETB 
+&ffcr=data.long(a:&ffcr_reg)       //Flush the system
+&ffcr=&ffcr|0x40
+d.s a:&ffcr_reg %LONG &ffcr
+
+d.s a:&ctl_reg %LONG 0x00000000   // Disable ETB
+
+&write_ptr=data.long(a:&rwp_reg)
+&temp=data.long(a:&rrp_reg) //save the orignial read pointer
+
+&start_ptr=0
+&dump_size=&write_ptr
+&status=data.long(a:&sts_reg)
+&dump_full_etb=0
+var.if (&status&0x1)
+(
+        print "ETB full"
+        &dump_full_etb=1
+
+)
+else if ("&full"!="")
+(
+        &dump_full_etb=1
+)
+
+if (&dump_full_etb==1)
+(
+        &start_ptr=&write_ptr
+        &dump_size=data.long(a:&etb_size_reg)
+)
+
+PRINT "Dumping "  &dump_size " 32 bit words from ETB starting at " &start_ptr
+
+d.s a:&rrp_reg %LONG &start_ptr
+OPEN #1 stpdump.dat /Create
+&i=0
+WHILE &i<&dump_size
+(
+   &data=data.long(a:&rrd_reg)
+   WRITE #1 format.hex(8.,&data) 
+   &i=&i+1
+)
+CLOSE #1
+
+
+d.s a:&rrp_reg %LONG &temp
+d.s a:&ctl_reg %LONG 0x00000001   // Enable ETB
+d.s a:&lar_reg %LONG 0x3A5331AA   // Lock ETB 
+
+enddo

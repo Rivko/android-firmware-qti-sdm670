@@ -1,0 +1,125 @@
+#===============================================================================
+#           Copyright 2009-2015 QUALCOMM Technologies Incorporated.
+#                           All Rights Reserved.
+#                         QUALCOMM Proprietary/GTDR
+#=============================================================================
+# $Header: //components/rel/core.qdsp6/2.1.c4/systemdrivers/hal/gpioint/build/halgpioint.scons#1 $
+#===============================================================================
+# HAL GPIOINT Libs
+#-------------------------------------------------------------------------------
+import os
+Import('env')
+env = env.Clone()
+
+env.PublishPrivateApi("SYSTEMDRIVERS_HAL_GPIOINT_INC", [
+   "${INC_ROOT}/core/systemdrivers/hal/gpioint/src",
+   "${INC_ROOT}/core/systemdrivers/hal/tlmmtile/inc"
+  ])
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+
+SRCPATH = "${BUILD_ROOT}/core/systemdrivers/hal/gpioint"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+CBSP_API = [
+   'DAL',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'GPIOINT_DEVCFG_INTERFACE',
+   'HALGPIOINT',
+
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Image Definitions
+#-------------------------------------------------------------------------------
+HALGPIOINT_IMAGES = ['CORE_Q6_ROOT',
+                     'CORE_SLPI_USER',
+                     'CORE_ADSP_USER',
+                     'CORE_CDSP_USER',
+                     'CORE_SSC_ADSP_USER',
+                     'CORE_AVS_ADSP_USER']
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+env.UsesInc([
+   "${HAL_API}",
+   "${SERVICES_API}",
+   "${SYSTEMDRIVERS}",
+   "${SYSTEMDRIVERS_API}",
+   "${KERNEL_API}",
+])
+
+env.UsesInc([
+   "${HAL_LEGACY}",
+   # needs to be last also contains wrong comdef.h
+   "${KERNEL_LEGACY}",
+])
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+GPIO_SOURCES =  [
+   '${BUILDPATH}/src/HALgpioint.c'  
+  ]
+
+image_path = os.path.join(env['INC_ROOT'],'core','systemdrivers','hal','gpioint','image',env['IMAGE'],'hw',env['CHIPSET'])
+
+if os.path.exists(image_path):
+    GPIO_PLATFORM_SOURCES =  [
+        '${BUILDPATH}/image/${IMAGE}/hw/${CHIPSET}/HALgpiointPlatform.c'
+    ]
+else:
+    GPIO_PLATFORM_SOURCES =  [
+        '${BUILDPATH}/image/stub/HALgpiointPlatformStub.c'
+    ]
+
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+env.AddLibrary(HALGPIOINT_IMAGES, '${BUILDPATH}/HALgpioint', GPIO_SOURCES)
+env.AddLibrary(HALGPIOINT_IMAGES, '${BUILDPATH}/HALgpiointPlatform', GPIO_PLATFORM_SOURCES)
+
+# ============================================================================
+# HWIO
+# ============================================================================
+
+if env.has_key('HWIO_IMAGE'):
+
+  env.AddHWIOFile('HWIO', [
+    {
+      'filename': '${INC_ROOT}/core/systemdrivers/hal/gpioint/image/${IMAGE}/hw/${CHIPSET}/HALgpiointHWIO.h',
+      'bases': ['TLMM_TLMM'],
+      'filter-include': ['GPIO_INTR', 'DIR_CONN'],
+      'filter-exclude': ['ACR'],
+      'header': 'extern uint32 nGPIOIntBaseAddress;\n' +
+                '#define TLMM_TLMM_BASE nGPIOIntBaseAddress\n'
+    }
+  ])
+
+#---------------------------------------------------------------------------
+# Pack out target specific files not needed
+#---------------------------------------------------------------------------
+
+# Remove target specific hardware files
+ALL_HW_FILES = env.FindFiles(
+  ['*'],
+  '../image/')
+MY_HW_FILES = env.FindFiles(
+  ['*'],
+  '../image/${IMAGE}/hw/${CHIPSET}')
+PACK_HW_FILES = list(set(ALL_HW_FILES) - set(MY_HW_FILES))
+env.CleanPack(HALGPIOINT_IMAGES, PACK_HW_FILES)
+

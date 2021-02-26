@@ -1,0 +1,102 @@
+;============================================================================
+; Name: variant_setup.cmm
+;
+; Description: Dump current GCD memory map entries, symbols should be loaded
+;     
+; Copyright (c) 2016 Qualcomm Technologies, Inc.
+; All Rights Reserved. 
+; Qualcomm Technologies Proprietary and Confidential. 
+;
+;----------------------------------------------------------------------------
+
+;============================================================================
+;
+;                        EDIT HISTORY FOR MODULE
+;
+;
+;
+;  when         who     what, where, why
+;  ----------   ---     -----------------------------------------------------
+;  2016-03-17   bh      Listing variants for choices
+;  2016-02-19   vk      Initial version
+;============================================================================;
+
+ENTRY &Target &UserVar
+GLOBAL &Variant
+
+;---------------------------------------------------
+;DetectVariant
+;---------------------------------------------------
+DetectVariant:
+  local &TestVariant
+  local &UefiElfPath
+  local &UefiVariantsExists
+  local &ReleasePath
+  local &VariantList
+  local &DispVariantList
+
+  &UefiVariantsExists=0
+  &VariantList=""
+
+  if ("&UserVar"!="")
+  (
+    &TestVariant="&UserVar"
+    &UefiElfPath="&CwDir/../Bin/&Target/&TestVariant/&RelFolder/uefi.elf"
+    if (os.file("&UefiElfPath"))
+    (
+      &Variant="&TestVariant"
+      enddo
+    )
+    else
+    (
+      print %ERROR "Variant &UserVar not built"
+      end
+    )
+  )
+
+  ; Traverse through variants to find if any/more exist
+  &TestVariant="LA"
+  &UefiElfPath="&CwDir/../Bin/&Target/&TestVariant/&RelFolder/uefi.elf"
+  if (os.file("&UefiElfPath"))
+  (
+    &Variant="&TestVariant"
+    &VariantList="&VariantList&TestVariant,"
+    &UefiVariantsExists=&UefiVariantsExists+1
+  )
+
+  &TestVariant="WP"
+  &UefiElfPath="&CwDir/../Bin/&Target/&TestVariant/&RelFolder/uefi.elf"
+  if (os.file("&UefiElfPath"))
+  (
+    &Variant="&TestVariant"
+    &VariantList="&VariantList&TestVariant,"
+    &UefiVariantsExists=&UefiVariantsExists+1
+  )
+
+  if (&UefiVariantsExists==0)
+  (
+    print %ERROR "No variants have been built. Exiting..."
+    enter
+    enddo
+  )
+
+  ; If more than one exists, prompt user for variant
+  while (&UefiVariantsExists>1)
+  (
+    area.view UEFI_Logs
+    print "Multiple variants found (delete the variant not required to avoid this message)"
+    &DispVariantList=string.cut("&VariantList",-1)
+    print "Please make a choice for one of (&DispVariantList) : "
+    enter &Choice
+    &Choice=convert.toupper("&Choice")
+
+    ;check if exists , prep the path and send to dxe_debug
+    if (os.file("&CwDir/../Bin/&Target/&Choice/&RelFolder/uefi.elf"))
+    (
+      &Variant="&Choice"
+      print "Selected &Variant"
+      enddo
+    )
+    print %ERROR "Invalid Variant. Uefi.elf not found. Enter correct choice..."
+  )
+  enddo

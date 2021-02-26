@@ -1,0 +1,235 @@
+
+//============================================================================
+//  Name:                                                                     
+//    listparser.cmm 
+//
+//  Description:                                                              
+//      Parses a list of "separator" separated entries in a list
+//                                                                            
+// Copyright (c) 2012 - 2016 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who             what, where, why
+// --------   ---             ---------------------------------------------------------
+// 12/06/2016 JBILLING        Updated with more arguments
+// 05/03/2014 AMCHERIY        Created for warehouse 2.1
+//* Note: List entries cannot have a whitespace. *//
+
+
+//**************************************************
+//                  Declarations 
+//**************************************************
+LOCAL &ReporterScript
+&ReporterScript="&METASCRIPTSDIR/../tools/general/script_telemetry.py"
+LOCAL &FailureKeyWord &SuccessKeyWord
+&FailureKeyWord="FAILURE"
+&SuccessKeyWord="SUCCESS"
+//**************************************************
+//                  Arguments Passed 
+//**************************************************
+LOCAL &Argumentline &argremainder &UTILITY
+ENTRY &UTILITY %LINE &argremainder
+ENTRY %LINE &Argumentline
+
+
+//**************************************************
+//                  Defaults 
+//**************************************************
+//Clear error handler as that may be how we got here
+ON ERROR DEFAULT
+
+//**************************************************
+//                  Subroutine Checks
+//**************************************************
+// Name of the utility we are calling
+LOCAL &SUBROUTINE
+//**************************************************
+//                  Basic Options Check
+//**************************************************
+    LOCAL &args
+    IF ("&UTILITY"=="FULLLIST")
+    (
+        &SUBROUTINE="&UTILITY"
+        &args="&argremainder"
+    )
+    ELSE
+    (
+        &SUBROUTINE="MAIN"
+        &args="&Argumentline"
+    )
+    LOCAL &rvalue
+    
+    // Call the required utility
+    GOSUB &SUBROUTINE &args
+    ENTRY %LINE &rvalue
+
+    GOSUB EXIT &rvalue
+
+
+
+
+MAIN:
+    LOCAL &Entry0 &Entry1 &Entry2 &Entry3 &Entry4 &Entry5 &Entry6 &Entry7
+
+    LOCAL &Counter &CpyList &Entry &ListEnd &Length
+    LOCAL &List
+    ENTRY %LINE &List
+    &Length=STRING.LEN("&List")
+    &CpyList="&List"
+    &Counter=0
+
+    WHILE (&Length>0)
+    (
+        &ListEnd=STRING.SCAN("&CpyList",",",0)
+        // Check if this is the last entry in the list
+        IF (&ListEnd==-1)
+        (
+            &ListEnd=&Length
+        )
+    
+       // Extract the parameters one at a time
+        IF (&Counter==0)
+        (
+            &Entry0=STRING.MID("&CpyList",0,&ListEnd)
+        )
+        IF (&Counter==1)
+        (
+            &Entry1=STRING.MID("&CpyList",0,&ListEnd)
+        )
+        IF (&Counter==2)
+        (
+            &Entry2=STRING.MID("&CpyList",0,&ListEnd)
+        )
+        IF (&Counter==3)
+        (
+            &Entry3=STRING.MID("&CpyList",0,&ListEnd)
+        )
+        IF (&Counter==4)
+        (
+            &Entry4=STRING.MID("&CpyList",0,&ListEnd)
+        )
+        IF (&Counter==5)
+        (
+            &Entry5=STRING.MID("&CpyList",0,&ListEnd)
+        )
+        // Extract the parameters one at a time
+        IF (&Counter==6)
+        (
+            &Entry6=STRING.MID("&CpyList",0,&ListEnd)
+        )
+        IF (&Counter==7)
+        (
+            &Entry7=STRING.MID("&CpyList",0,&ListEnd)
+        )
+        IF ((&ListEnd==-1)||(&Counter==7))
+        (
+            &CpyList=""
+        )
+        ELSE
+        (
+            &CpyList=STRING.MID("&CpyList",&ListEnd+1,&Length)
+        )
+        &Length=STRING.LEN("&CpyList")
+        // Extract the entry out
+        &Counter=&Counter+1
+    )
+    RETURN &Entry0 &Entry1 &Entry2 &Entry3 &Entry4 &Entry5 &Entry6 &Entry7
+    
+FULLLIST:
+    LOCAL &rvalue &option &argumentline
+    ENTRY &option %LINE &argumentline
+    //Right now, mproc treated same as non-mproc. 
+    //IF ("&option"=="mproc")
+    //(
+    //)
+    LOCAL &ReverseArgs
+    IF ("&option"=="reverse")
+    (
+        &ReverseArgs="TRUE"
+    )
+    ELSE
+    (
+        &ReverseArgs="FALSE"
+    )
+    
+    &rvalue=""
+    // find first entry (separated by ' '), if ',', split it, else append 'entry NULL' to returnstring
+    
+    LOCAL &stringremainder &stringlength &cutvalue
+    &stringremainder=STRING.TRIM("&argumentline")
+    
+    WHILE (STRING.SCAN("&stringremainder"," ",0)!=-1)
+    (
+        &stringlength=STRING.LENGTH("&stringremainder")
+        &cutvalue=STRING.SCAN("&stringremainder"," ",0)
+
+        &newstring=STRING.CUT("&stringremainder",&cutvalue-&stringlength) //Negative value - cut from end up.
+        GOSUB PARSE_OUT_STRING_SEGMENT &newstring
+        LOCAL &segment &arg1 &arg2
+        ENTRY &arg1 &arg2 %LINE &therest
+        ENTRY %LINE  &segment
+        IF ("&ReverseArgs"=="TRUE")&&(STRING.SCAN("&segment","NULL",0)!=-1)
+        (
+            &rvalue="&rvalue"+" "+"&arg2"+" "+"&arg1" //Here we reverse the inputs
+        )
+        ELSE
+        (
+            ENTRY %LINE &segment
+            &rvalue="&rvalue"+" "+"&segment"
+        )
+        &stringremainder=STRING.CUT("&stringremainder",&cutvalue)
+        &stringremainder=STRING.TRIM("&stringremainder")
+    )
+    IF "&stringremainder"!=""
+    (
+        GOSUB PARSE_OUT_STRING_SEGMENT &stringremainder
+        LOCAL &segment &arg1 &arg2
+        ENTRY &arg1 &arg2 %LINE &therest
+        ENTRY %LINE  &segment
+        IF ("&ReverseArgs"=="TRUE")&&(STRING.SCAN("&segment","NULL",0)!=-1)
+        (
+            &rvalue="&rvalue"+" "+"&arg2"+" "+"&arg1" //Here we reverse the inputs
+        )
+        ELSE
+        (
+            ENTRY %LINE &segment
+            &rvalue="&rvalue"+" "+"&segment"
+        )
+    )
+    
+    RETURN &rvalue
+    
+PARSE_OUT_STRING_SEGMENT:
+    LOCAL &stringsegment &rvalue
+    ENTRY &stringsegment
+    
+    IF STRING.SCAN("&stringsegment",",",0)!=-1
+    (
+        do listparser &stringsegment
+        LOCAL &value1 &value2
+        ENTRY &value1 &value2
+        &rvalue=" &value1 &value2"
+    )
+    ELSE
+    (
+        &rvalue=" &stringsegment"+" NULL"
+    )
+    RETURN &rvalue
+/////////////////////////////////////
+//
+//  FATALEXIT/EXIT
+//      Exit script, passing returned parameters
+//
+//////////////////////////////////////
+FATALEXIT:
+EXIT:
+    LOCAL &result
+    ENTRY %LINE &result
+    ENDDO &result
+    

@@ -1,0 +1,75 @@
+#===============================================================================
+#
+# PDC Logging system
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+#   Copyright (c) 2016-2017 Qualcomm Technologies, Inc. (QTI).
+#   All Rights Reserved.
+#   Qualcomm Confidential and Proprietary.
+#   Export of this technology or software is regulated by the U.S. Government.
+#   Diversion contrary to U.S. law prohibited.
+#-------------------------------------------------------------------------------
+#  $Header: //components/rel/core.qdsp6/2.1.c4/power/pdc/log/build/pdclog.scons#1 $
+#  $DateTime: 2018/07/30 01:21:36 $
+#===============================================================================
+import os
+Import('env')
+env = env.Clone()
+
+if 'PDC_LOGGING_ENABLED' not in env:
+  env.PrintWarning('PDC logging is disabled')
+  Return()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+TARGET_ROOTPATH = "${BUILD_ROOT}/core/power/pdc/log"
+TARGET_SRCPATH  = TARGET_ROOTPATH + "/src"
+
+env.VariantDir('${BUILDPATH}', TARGET_SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'DEBUGTOOLS',
+   'POWER',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'POWER_PDC',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Global source settings
+#-------------------------------------------------------------------------------
+MAIN_IMG_TAG = ['CORE_Q6_ROOT']
+
+PDCLOG_SOURCES =  [
+   '${BUILDPATH}/pdclog.c',
+]
+
+#-------------------------------------------------------------------------------
+# Create libraries
+#-------------------------------------------------------------------------------
+pdc_log_lib = env.AddLibrary(MAIN_IMG_TAG,
+                             os.path.join('${BUILDPATH}', 'pdclog'),
+                             PDCLOG_SOURCES)
+
+#-------------------------------------------------------------------------------
+# Add init function to RCINIT
+#-------------------------------------------------------------------------------
+RCINIT_PROPS = {
+  'sequence_group'             : 'RCINIT_GROUP_0',
+  'init_name'                  : 'PDCLog',
+  'init_function'              : 'pdcLog_initialize',
+  'dependencies'               : ['ulog_backend'],
+}
+
+if 'USES_RCINIT' in env and 'PDC_LOGGING_ENABLED' in env:
+  env.AddRCInitFunc(MAIN_IMG_TAG, RCINIT_PROPS)

@@ -1,0 +1,69 @@
+#===============================================================================
+#
+# App Core
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/apps.tz/2.0.2/securemsm/trustzone/qsapps/gpsample/src/SConscript#1 $
+#  $DateTime: 2018/02/06 03:27:17 $
+#  $Author: pwbldsvc $
+#  $Change: 15400261 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains schedulerents describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+#------------------------------------------------------------------------------
+# We need to specify "neon" to generate SIMD instructions in 32-bit mode
+#------------------------------------------------------------------------------
+if env['PROC'] == 'scorpion':
+  env.Append(CCFLAGS = " -mfpu=neon ")
+
+
+includes = [
+  "${BUILD_ROOT}/core/api/services",
+  "${BUILD_ROOT}/ssg/api/securemsm/trustzone/gp",
+  "${BUILD_ROOT}/ssg/api/securemsm/trustzone/qsee",
+  "${BUILD_ROOT}/ssg/securemsm/secrsa/shared/inc",
+  "${BUILD_ROOT}/ssg/securemsm/secmath/shared/inc"
+]
+
+
+#----------------------------------------------------------------------------
+# App core Objects
+#----------------------------------------------------------------------------
+sources = [
+  'gpsample.c',
+]
+
+#-------------------------------------------------------------------------------
+# Add metadata to image
+#-------------------------------------------------------------------------------
+# privileges: all
+# services:   COEMUnwrapKeys_UID (60)
+md = {
+    'appName':      'gpsample',
+    'UUID':         '5AF8C3E6-D9DF-446E-4ff2-d4d58e8ca49b',
+    'privileges': [ 'default',
+                    'GPServices',
+                  ],
+}
+
+app_units = env.SecureAppBuilder(
+  sources = sources,
+  includes = includes,
+  metadata = md,
+  image = 'gpsample',
+  deploy_sources = [sources, 'SConscript'],
+  deploy_variants = env.GetDefaultPublicVariants()
+)
+
+op = env.Alias('gpsample', app_units)
+Return('app_units')

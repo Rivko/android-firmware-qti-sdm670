@@ -1,0 +1,64 @@
+//============================================================================
+//  Name:                                                                     
+//    start_tracing_ETB.cmm 
+//
+//  Description:                                                              
+//    Wakes adsp processor and begins ETB tracing
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who     		what, where, why
+// --------   ---     		---------------------------------------------------------
+// 05/23/2014 jbilling		update to use std_cti_adsp
+// 05/09/2014 jbilling      Initial creation
+//
+//  Usage:
+//      do start_tracing_ETB
+//	Note - meant to be run from T32 menu 
+//
+
+	///////////////////Set Defaults///////////////
+	LOCAL &image 
+	&image="adsp"
+	
+	//from GETDEBUGDEFAULTS
+	LOCAL &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &usescti &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option
+	
+	//Trace Variables//
+	LOCAL &tracesource &tracesink &tpiusink &cycleaccurate &traceconfiguration &portsize &cycleaccuratecommand &portsizecommand 
+	
+	        
+	///////////get target specific debug defaults////////////////
+	do std_debug_&CHIPSET GETDEBUGDEFAULTS NONE &image &lpm_option &cti_enable &multi_elf_option
+		ENTRY &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &usescti &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option
+
+	
+	////////////get target specific trace defaults////////////////
+	&tracesource="&targetprocessor"
+	&tracescript="std_trace"+"_"+"&image"+"_"+"&CHIPSET"
+	
+	do &tracescript GETTRACEDEFAULTS &tracesource &tracesink &tpiusink &cycleaccurate &traceconfiguration &portsize 
+		ENTRY &tracesource &tracesink &tpiusink &portsize &cycleaccuratecommand &traceconfiguration &portsizecommand 
+
+	//since we are tracing with ETB
+	&tpiusink="etb"
+			
+
+	do std_cti_adsp WAKEPROCESSOR
+	wait.200ms
+	do &tracescript STARTTRACING NULL &tracesource &tpiusink &cycleaccuratecommand hotattach &portsizecommand
+	
+	GOTO EXIT
+
+EXIT:
+	ENDDO
+	
+FATALEXIT:
+	END

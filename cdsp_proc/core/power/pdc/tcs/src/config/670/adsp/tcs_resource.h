@@ -1,0 +1,47 @@
+#ifndef _TCS_RESOURCE_H_
+#define _TCS_RESOURCE_H_
+/*============================================================================
+  FILE:         tcs_resource.h
+  
+  OVERVIEW:     This file provides the types for the PDC TCS driver
+ 
+  DEPENDENCIES: None
+
+                Copyright (c) 2016-2017 Qualcomm Technologies, Inc. (QTI).
+                All Rights Reserved.
+                Qualcomm Confidential and Proprietary.
+                Export of this technology or software is regulated by the U.S. Government.
+                Diversion contrary to U.S. law prohibited.
+=============================================================================
+$Header: //components/rel/core.qdsp6/2.1.c4/power/pdc/tcs/src/config/670/adsp/tcs_resource.h#1 $
+$DateTime: 2018/07/30 01:21:36 $
+============================================================================*/
+
+/*===========================================================================
+ *                            TYPES AND DEFINITIONS
+ *===========================================================================*/
+/* Number of commands per TCS; assumed to be the same for all */
+#define NUM_COMMANDS_PER_TCS  4
+
+/* Enum for the intended usage of each TCS */
+typedef enum 
+{
+  TCS_NUM_SLEEP0        = 0,            /* TCS 0 - Sleep: SSC CX retention */
+  TCS_NUM_SLEEP1,                       /* TCS 1 - RESERVED */
+  TCS_NUM_TOTAL_SLEEPS,                 /* Number of sleep TCS's */
+  
+  TCS_NUM_WAKE0 = TCS_NUM_TOTAL_SLEEPS, /* TCS 3 - Wake:  resources to MOL */
+  
+  TCS_NUM_TOTAL                         /* Total TCS's: */
+}tcs_usage;
+
+/* General purpose index values */
+typedef enum 
+{
+  RES_IDX_SSC_CX = 0,
+
+  TCS_TOTAL_RESOURCE_NUM
+}resource_index;
+
+#endif /* _TCS_RESOURCE_H_ */
+

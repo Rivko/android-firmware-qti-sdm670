@@ -1,0 +1,70 @@
+#===============================================================================
+#
+# AVS AU
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2009-2009 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: $
+#  $DateTime: $
+#  $Author:  $
+#  $Change:  $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+
+from glob import glob
+from os.path import join, basename
+
+CBSP_API = [
+   'BOOT',
+   'DAL',
+   'DEBUGTOOLS',
+   'HAL',
+   'MPROC',
+   'POWER',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',   
+]
+
+env.RequirePublicApi(CBSP_API,area='core')
+env.RequireRestrictedApi('AVS')
+env.RequireProtectedApi('AVS')
+
+env.PublishPrivateApi('HWD_COMMON',[
+   '${AVS_ROOT}/afe/drivers/hw/common/inc',
+   ])
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${AVS_ROOT}/afe/drivers/hw/common"
+LIBNAME_COMMON = 'hwd_common'
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+srcpath = env.RealPath(SRCPATH, posix=True)
+common_mmpm_sources = env.GlobFiles([srcpath+'/src/*.cpp', srcpath+'/src/*.c'], posix=True)
+common_mmpm_sources = [source.replace(srcpath, '${BUILDPATH}') for source in common_mmpm_sources]
+
+common_tst_sources = env.GlobFiles([srcpath+'/tst/*.cpp', srcpath+'/tst/*.c'], posix=True)
+common_tst_sources = [source.replace(srcpath, '${BUILDPATH}') for source in common_tst_sources]
+
+env.AddLibrary(['AVS_ADSP','AVS_ADSP_USER'], '${BUILDPATH}/'+LIBNAME_COMMON, [common_mmpm_sources, common_tst_sources])
+

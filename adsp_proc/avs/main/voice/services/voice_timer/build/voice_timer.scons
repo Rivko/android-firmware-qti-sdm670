@@ -1,0 +1,67 @@
+#===============================================================================
+#
+# AVS AU
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2012-2014 Qualcomm Technologies, Inc.  All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: $
+#  $DateTime: $
+#  $Author:  $
+#  $Change:  $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+
+#env.Append(CFLAGS = '-Werror')
+#env.Append(CPPFLAGS = '-Werror')
+#env.Append(ASMFLAGS = '-Werror')
+
+core_public_apis = [
+   'DEBUGTOOLS',
+   'KERNEL',
+   'POWER',
+   'SERVICES',
+   ]
+
+env.RequirePublicApi(core_public_apis, area='core')
+env.RequirePublicApi(['MCS',],area='MCS')
+env.RequireRestrictedApi('AVS')
+env.RequireProtectedApi('AVS')
+
+env.PublishPrivateApi('AVS',[
+   '../inc',
+   '../vds_clk_mgmt/inc',
+   ])
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = ".."
+LIBNAME = 'voice_timer'
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+avs_sources = env.GlobSourceFiles(['src/*.cpp', 'src/*c','src/*.S'], SRCPATH,posix=True)
+ 
+# Generate regular source file list
+if env.get('USES_AUDIO_IN_ROOTPD') == True and env.get('MDSPMODE') == True:
+   avs_sources = env.GlobSourceFiles(['src/*.cpp', 'src/*.c', 'src/*.S', 'src/mcs_hist/*.cpp', 'src/mcs_hist/*.c'], SRCPATH,posix=True)
+else:
+   avs_sources = env.GlobSourceFiles(['src/*.cpp', 'src/*.c', 'src/*.S', 'src/mcs_hist_stub/*.cpp', 'src/mcs_hist_stub/*.c'], SRCPATH,posix=True)
+ 
+env.AddLibrary(['AVS_ADSP','AVS_ADSP_USER'], '${BUILDPATH}/'+LIBNAME, avs_sources)
+
+env.LoadSoftwareUnits()

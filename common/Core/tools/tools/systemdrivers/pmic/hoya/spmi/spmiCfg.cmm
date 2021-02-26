@@ -1,0 +1,491 @@
+; ============================================================================
+;
+;  spmiCfg.cmm
+;
+; Script to configure SPMI
+;
+;  Execution:
+;    do spmiCfg.cmm [target] true
+;
+;    e.g. do spmiCfg.cmm 9x55 true
+;
+;  This script will configure SPMI for specified target
+;
+;  ====================================================================
+;
+;  Copyright (c) 2014-2016 QUALCOMM Technologies Incorporated. All Rights Reserved.
+;  QUALCOMM Proprietary and Confidential.
+;
+;  ====================================================================
+;
+;  $Header: //components/rel/core.glue/1.2/tools/tools/systemdrivers/pmic/hoya/spmi/spmiCfg.cmm#4 $
+;  $DateTime: 2017/12/06 11:10:22 $
+;  $Author: pwbldsvc $
+;
+; ============================================================================
+;
+
+IF !WIN.EXIST(SPMI_CFG)
+(
+    ;WinPOS 0.0 0.0 ,, 100%,,SPMI_CFG
+    AREA.Create SPMI_CFG 200. 500.
+)
+AREA.Clear SPMI_CFG
+AREA.View SPMI_CFG
+AREA.Select SPMI_CFG
+
+LOCAL &numPvcPorts &channelCnt &FINISH_RUNNING &ACCESS_CLASS &numPriorities &numMgpiPorts
+ENTRY &target &loadConfig
+
+&FINISH_RUNNING="false"
+
+if ("&target"=="8996") 
+(
+    &ACCESS_CLASS="anc"
+)
+else
+(
+    &ACCESS_CLASS="ezaxi"
+)
+
+if ("&target"=="") 
+(
+    print %ERROR "Specify target folder (i.e. 845)"
+    ENDDO "Specify target folder (i.e. 845)"
+)
+
+if state.target()=="system down"
+(
+    sys.m.a
+)
+
+if state.run()
+(
+    ;&FINISH_RUNNING="true"
+    ;b
+    ;wait !state.run()
+)
+
+if (file.exist(&target/hwio.cmm))
+(
+  do &target/hwio.cmm
+)
+else
+(
+  print %ERROR "Target not supported!"
+  ENDDO "Target not supported!"
+)
+
+//*****************************************************************************
+// HW Settings
+//*****************************************************************************
+
+OPEN #1 &target/meta.txt /Read
+READ #1 &tmp &channelCnt
+READ #1 &tmp &numPvcPorts
+READ #1 &tmp &numPriorities
+READ #1 &tmp &numMgpiPorts
+CLOSE #1
+
+do spmiCoreCfg.cmm &target &loadConfig
+
+if ("&loadConfig"!="")
+(   
+    //
+    // PVC
+    //   
+    if ("&VIRTIO"!="true")&&("&VIRTIO"!="t")
+        GOSUB PrioritiesInit
+        GOSUB PVCInit
+        GOSUB MGPIInit
+        GOSUB VRMInit
+    
+    //
+    // Channels
+    //    
+    OPEN #1 &target/channels.txt /Read
+    
+    print "Programming channels..."
+    
+    LOCAL &i &chan &owner &sid &periph
+    READ #1 %Line &chan
+    
+    REPEAT 
+    (
+        READ #1 &chan &owner &sid &periph
+    
+        if ("&chan"!="")
+        (
+            &tmp=(&sid<<16.)|(&periph<<8.)|(0x1000000)
+            d.s &ACCESS_CLASS:(HWIO_PMIC_ARB_REG_ADDR0_ADDR+(4.*&chan)) %LONG &tmp
+            
+            &tmp=&owner
+            d.s &ACCESS_CLASS:(HWIO_SPMI_PERIPH0_2OWNER_TABLE_REG_ADDR+(4.*&chan)) %LONG &tmp    
+        )
+    )
+    WHILE !EOF()
+    
+    CLOSE #1
+    print %CONT "done"
+)
+
+&i=0.
+print ""
+print "Channel | Owner | SID | Periph          Channel | Owner | SID | Periph"
+print "------------------------------          ------------------------------"
+REPEAT (&channelCnt/2.)
+(
+    &chnl=data.long(&ACCESS_CLASS:(HWIO_PMIC_ARB_REG_ADDR0_ADDR+(4.*&i)))
+    &owner=data.long(&ACCESS_CLASS:(HWIO_SPMI_PERIPH0_2OWNER_TABLE_REG_ADDR+(4.*&i)))&0x7
+    
+    print "  " FORMAT.DECIMAL(0.,&i) 
+    
+    GOSUB PrintPadding &i
+    
+    print %CONT "   |   " FORMAT.DECIMAL(0.,&owner&0x7) "   |  " FORMAT.HEX(1.,(&chnl>>16.)&0xF) "  | 0x" FORMAT.HEX(2.,(&chnl>>8.)&0xFF)
+    
+    // Col 2
+    &chnl=data.long(&ACCESS_CLASS:(HWIO_PMIC_ARB_REG_ADDR0_ADDR+(4.*&i)+((&channelCnt/2.)*4.)))
+    &owner=data.long(&ACCESS_CLASS:(HWIO_SPMI_PERIPH0_2OWNER_TABLE_REG_ADDR+(4.*&i)+((&channelCnt/2.)*4.)))&0x7
+    
+    print %CONT "            "
+    print %CONT "  " FORMAT.DECIMAL(0.,&i+(&channelCnt/2.))
+    
+    GOSUB PrintPadding &i+(&channelCnt/2.)
+    
+    print %CONT "   |   " FORMAT.DECIMAL(0.,&owner&0x7) "   |  " FORMAT.HEX(1.,(&chnl>>16.)&0xF) "  | 0x" FORMAT.HEX(2.,(&chnl>>8.)&0xFF)
+        
+    &i=&i+1
+)
+
+//*****************************************************************************
+// PVC Settings
+//*****************************************************************************
+if ("&VIRTIO"!="true")&&("&VIRTIO"!="t")
+(
+    &i=0
+    print ""
+    print "PVC Port    Priority    Enabled    Idx0    Idx1    Idx2    Idx3"
+
+    REPEAT &numPvcPorts
+    (
+        print " "
+        GOSUB PrintPadding &i
+        print %CONT FORMAT.DECIMAL(0.,&i)
+        
+        GOSUB GET_PVC_PRI &i
+        Entry &pri
+        
+        print %CONT "            &pri" 
+        
+        &tmp=data.long(&ACCESS_CLASS:(HWIO_PMIC_ARB_PVC_PORT0_CTL_ADDR+(0x4*(&i))))   
+        print %CONT "          " FORMAT.DECIMAL(0.,&tmp&0x1)
+        
+        print %CONT "       " FORMAT.HEX(5.,data.long(&ACCESS_CLASS:(HWIO_PMIC_ARB_PVC0_ADDR0_ADDR+(0x20*(&i)))))
+        print %CONT "   " FORMAT.HEX(5.,data.long(&ACCESS_CLASS:(HWIO_PMIC_ARB_PVC0_ADDR1_ADDR+(0x20*(&i)))))
+        print %CONT "   " FORMAT.HEX(5.,data.long(&ACCESS_CLASS:(HWIO_PMIC_ARB_PVC0_ADDR2_ADDR+(0x20*(&i)))))
+        print %CONT "   " FORMAT.HEX(5.,data.long(&ACCESS_CLASS:(HWIO_PMIC_ARB_PVC0_ADDR3_ADDR+(0x20*(&i)))))
+
+        &i=&i+1
+    )
+)
+//*****************************************************************************
+// Status
+//*****************************************************************************
+print ""
+
+print "SPMI Master: "
+&tmp=data.long(&ACCESS_CLASS:HWIO_SPMI_GENI_CTRL_ADDR)
+if (&tmp==0)
+    print %CONT "Enabled"
+else
+    print %CONT %ERROR "Disabled"
+
+print "  PVC ports: "
+&tmp=data.long(&ACCESS_CLASS:HWIO_PMIC_ARB_PVC_INTF_CTL_ADDR)
+if (&tmp==1)
+    print %CONT "Enabled"
+else
+    print %CONT %ERROR "Disabled"
+
+print "  VRM ports: "
+&tmp=data.long(&ACCESS_CLASS:HWIO_PMIC_ARB_VRM_S_INTF_CTL_ADDR)
+if (&tmp==1)
+    print %CONT "Enabled"
+else
+    print %CONT %ERROR "Disabled"
+
+print " MGPI ports: "
+&tmp=data.long(&ACCESS_CLASS:HWIO_PMIC_MGPI_MASTER_CSR_ADDR)
+if ((&tmp&0x1)==1)
+    print %CONT "Enabled"
+else
+    print %CONT %ERROR "Disabled"
+
+print "  Geni Core: "
+&tmp=data.long(&ACCESS_CLASS:HWIO_SPMI_GENI_STATUS_ADDR)&0x1
+if (&tmp==0)
+    print %CONT "Idle"
+else
+    print %CONT %ERROR "Active"
+    
+print " Global Int: "
+&tmp=data.long(&ACCESS_CLASS:HWIO_SPMI_MWB_ENABLE_REG_ADDR)
+if (&tmp==0)
+    print %CONT %ERROR "Disabled"
+else
+    print %CONT "Enabled"
+
+print "SEC Disable: "
+&tmp=data.long(&ACCESS_CLASS:HWIO_SPMI_SEC_DISABLE_REG_ADDR)
+if (&tmp==0)
+    print %CONT "Security on"
+else
+    print %CONT %ERROR "Security off"
+
+print "       CMPR: "
+&tmp=data.long(&ACCESS_CLASS:HWIO_SPMI_CMPR_EN_REG_ADDR)
+if (&tmp==0)
+    print %CONT %ERROR "R/W security off"
+else
+    print %CONT "R/W security on"
+    
+&irq=data.long(&ACCESS_CLASS:HWIO_SPMI_PROTOCOL_IRQ_STATUS_ADDR)
+print " IRQ Status: "
+
+if (&irq==0)    
+(
+    print %CONT %ERROR &irq
+    if ("&loadConfig"!="")&&("&VIRTIO"!="true")&&("&VIRTIO"!="t")
+        print %CONT %ERROR " <--- Should not be 0"    
+)
+else
+    print %CONT &irq
+
+GOSUB PrintIfSet 11. &irq "             ARBITER_DISCONNECTED"
+GOSUB PrintIfSet 10. &irq "             ARBITER_CONNECTED"
+GOSUB PrintIfSet 9.  &irq "             PERIH_IRQ_LOST"
+GOSUB PrintIfSet 8.  &irq "             UNEXPECTED_SSC"
+GOSUB PrintIfSet 7.  &irq "             NO_RESPONSE_DATA_FRAME_DETECTED"
+GOSUB PrintIfSet 6.  &irq "             NO_RESPONSE_CMD_FRAME_DETECTED"
+GOSUB PrintIfSet 5.  &irq "             FALSE_MASTER_ARBITRATION_WIN"
+GOSUB PrintIfSet 4.  &irq "             FALSE_BUS_REQUEST"
+GOSUB PrintIfSet 3.  &irq "             UNSUPPORTED_COMMAND"
+GOSUB PrintIfSet 2.  &irq "             DATA_ADDR_FRAME_PARITY_ERROR"
+GOSUB PrintIfSet 1.  &irq "             SLAVE_CMD_FRAME_PARITY_ERROR"
+GOSUB PrintIfSet 0.  &irq "             MASTER_CMD_FRAME_PARITY_ERROR"
+
+if "&FINISH_RUNNING"=="true"
+(
+    g
+)
+
+ENDDO SUCCESS
+
+//*****************************************************************************
+// Helper Funcs
+//*****************************************************************************
+
+PrintIfSet:
+    ENTRY &bit &val &msg
+    &val=(&val>>&bit)&0x1
+    if (&val==1)
+        print &msg
+    RETURN
+
+PrintPadding:
+    ENTRY &pad
+    if (&pad<0xA)
+    (
+        print %CONT " "
+    )
+    if (&pad<0x64) 
+    (
+        print %CONT " "
+    )
+    RETURN
+    
+//*****************************************************************************
+// Priorities Config
+//*****************************************************************************
+PrioritiesInit: 
+
+    &i=0
+    REPEAT &numPriorities
+    (
+        // Set port priority - PMIC_ARB_PRIORITIESn
+        data.set &ACCESS_CLASS:(HWIO_PMIC_ARB_PRIORITIES0_ADDR+(0x4*(&i))) %LONG &i
+        &i=&i+1
+    )
+    
+    RETURN
+    
+//*****************************************************************************
+// PVC Config
+//*****************************************************************************
+PVCInit: 
+    // Enable global PVC ports
+    data.set  &ACCESS_CLASS:HWIO_PMIC_ARB_PVC_INTF_CTL_ADDR %LONG 0x01 
+
+    &i=0
+    REPEAT &numPvcPorts
+    (
+        data.set &ACCESS_CLASS:(HWIO_PMIC_ARB_PVC_PORT0_CTL_ADDR+(0x4*(&i))) %LONG 0
+        &i=&i+1
+    )
+    
+    OPEN #1 &target/pvc.txt /Read
+    
+    print ""
+    print "Programming PVC Ports..."
+    
+    LOCAL &pvcEntry
+    READ #1 %Line &pvcEntry
+    
+    REPEAT 
+    (
+        READ #1 %Line &pvcEntry
+        if ("&pvcEntry"!="")
+            GOSUB SET_PVC_TABLE &pvcEntry
+    )
+    WHILE !EOF()
+    
+    print %CONT "done"
+    
+    CLOSE #1
+    
+    RETURN
+    
+SET_PVC_TABLE:
+    ENTRY &port &t1 &t2 &t3 &t4
+
+    // Enable PVC port - PMIC_ARB_PVC_PORTn_CTL
+    data.set &ACCESS_CLASS:(HWIO_PMIC_ARB_PVC_PORT0_CTL_ADDR+(0x4*(&port))) %LONG 0x01
+
+    // Populate address table - PMIC_ARB_PVCn_ADDRm, m=[0..7], n=[0..31]
+    data.set &ACCESS_CLASS:(HWIO_PMIC_ARB_PVC0_ADDR0_ADDR+(0x20*(&port))) %LONG &t1
+    data.set &ACCESS_CLASS:(HWIO_PMIC_ARB_PVC0_ADDR1_ADDR+(0x20*(&port))) %LONG &t2
+    data.set &ACCESS_CLASS:(HWIO_PMIC_ARB_PVC0_ADDR2_ADDR+(0x20*(&port))) %LONG &t3
+    data.set &ACCESS_CLASS:(HWIO_PMIC_ARB_PVC0_ADDR3_ADDR+(0x20*(&port))) %LONG &t4
+    
+    RETURN
+    
+GET_PVC_PRI:
+    Entry &port
+    local &k
+    
+    &k=3
+    REPEAT &numPvcPorts+1
+    (
+        &tmp=data.long(&ACCESS_CLASS:(HWIO_PMIC_ARB_PRIORITIES0_ADDR+(0x4*(&k))))
+        if (&tmp==(&port+3))
+        (
+            &k=FORMAT.DECIMAL(0.,&k)
+            RETURN &k
+        )
+        &k=&k+1
+    )
+    
+    RETURN -
+    
+//*****************************************************************************
+// MGPI Config
+//*****************************************************************************
+MGPIInit: 
+
+    &i=0
+    REPEAT &numMgpiPorts
+    (
+        data.set &ACCESS_CLASS:(HWIO_PMIC_MGPI_TRIG_CONFIG0_ADDR+(0x8*(&i))) %LONG 0
+        &i=&i+1
+    )
+    
+    OPEN #1 &target/mgpi.txt /Read
+    
+    print ""
+    print "Programming MGPI Ports..."
+    
+    LOCAL &mgpiEntry
+    READ #1 %Line &mgpiEntry
+    
+    REPEAT 
+    (
+        READ #1 %Line &mgpiEntry
+        if ("&mgpiEntry"!="")
+            GOSUB SET_MGPI_TABLE &mgpiEntry
+    )
+    WHILE !EOF()
+
+    // enable MGPI
+    data.set &ACCESS_CLASS:(HWIO_PMIC_MGPI_MASTER_CSR_ADDR) %LONG 0x1
+    
+    print %CONT "done"
+    
+    CLOSE #1
+    
+    RETURN
+    
+SET_MGPI_TABLE:
+    ENTRY &port &pvcport &edge &posAddrIdx &posData &negAddrIdx &negData
+
+    // enable MGPI and data
+    &cfgdata=0
+    &cfgdata=((&negAddrIdx<<24.)|(&negData<<16.)|(&posAddrIdx<<8.)|(&posData))
+    data.set &ACCESS_CLASS:(HWIO_PMIC_MGPI_TRIG_CONFIG0_ADDR+(0x8*(&port))) %LONG &cfgdata
+
+    // enable MGPI positve or negative or dual edge
+    &cfgdata=0
+    &cfgdata=data.long(&ACCESS_CLASS:(HWIO_PMIC_MGPI_TRIG_CONFIG_EN0_ADDR+(0x8*(&port))))
+
+    if ("&edge"=="pos")
+    (
+       &cfgdata=((&cfgdata&0x1F00)|0x1)
+    )
+
+    if ("&edge"=="neg")
+    (
+       &cfgdata=((&cfgdata&0x1F00)|0x2)
+    )
+
+    if ("&edge"=="dual")
+    (
+       &cfgdata=((&cfgdata&0x1F00)|0x3)
+    )
+
+    data.set &ACCESS_CLASS:(HWIO_PMIC_MGPI_TRIG_CONFIG_EN0_ADDR+(0x8*(&port))) %LONG &cfgdata
+    
+    RETURN
+    
+//*****************************************************************************
+// VRM Config
+//*****************************************************************************
+VRMInit: 
+    // Enable global VRM ports
+    data.set  &ACCESS_CLASS:HWIO_PMIC_ARB_VRM_S_PORT_CTL_ADDR %LONG 0x03
+    data.set  &ACCESS_CLASS:HWIO_PMIC_ARB_VRM_S_INTF_CTL_ADDR %LONG 0x01 
+
+    
+    OPEN #1 &target/vrm.txt /Read
+    
+    print ""
+    print "Programming VRM Ports..."
+    
+    LOCAL &vrmId &vrmSid &vrmPid
+    READ #1 &vrmId &vrmSid &vrmPid
+    
+    REPEAT 
+    (
+        READ #1 &vrmId &vrmSid &vrmPid
+        if ("&vrmId"!="")
+        (
+            &tmp=(&vrmSid<<16.)|(&vrmPid<<8.)
+            d.s &ACCESS_CLASS:(HWIO_PMIC_ARB_VRM_S_ADDR0_ADDR+(4.*&vrmId)) %LONG &tmp
+        )
+    )
+    WHILE !EOF()
+    
+    print %CONT "done"
+    
+    CLOSE #1
+    
+    RETURN

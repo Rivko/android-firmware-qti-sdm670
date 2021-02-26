@@ -1,0 +1,251 @@
+//============================================================================
+//  Name:                                                                     
+//    EUD_CONFIG.cmm
+//
+//  Description:                                                              
+//    EUD Configuration script.
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who             what, where, why
+// --------   ---             --------------------------------------------------------
+// 10/20/2017 JBILLING        DeviceID logic added
+// 09/29/2017 JBILLING        Q6 version check added
+// 08/26/2017 Martham         Updated for sdm670
+// 04/19/2017 JBILLING        Created
+//
+// The script accepts two input arguments
+// ARG0 - Chipset name
+// ARG1 - Core number
+// ARG2 - JTAG / SWD option
+
+LOCAL &chipset &corenum &connect &deviceid
+ENTRY &chipset &corenum &connect &deviceid
+
+LOCAL &currdir &GTLPATH &GTLDllName &EUDDllPath
+&currdir=os.ppd()
+&GTLPATH="&currdir/../../eud/bin/x64/Release"
+&GTLDllName="EUD_T32.dll"
+&EUDDllPath="&currdir/../../eud/bin/x64/Release"
+
+LOCAL &CPUArch
+&CPUArch=sys.cpu()
+
+IF (STRING.SCAN(STR.UPR("&CPUArch"),"HEX",0)!=-1)
+(
+    LOCAL &currdir
+    &currdir=OS.PPD()
+    do &currdir/../common/&chipset/std_versionchecker.cmm
+    
+    IF (VERSION.BUILD()<&MINIMUM_Q6_EUD_Version)
+    (
+        PRINT %ERROR "Error! Newer t32 version needed for Q6 using EUD (at least build &MINIMUM_Q6_EUD_Version). Exiting setup."
+        END
+    )
+)
+
+&EUD="TRUE"
+//OS.COMMAND "PATH=%PATH%;&EUDDllPath"
+IF !OS.FILE("&GTLPATH/&GTLDllName")
+(
+    PRINT %ERROR "Error! could not find EUD .dll at location &GTLPATH/&GTLDllName"
+    END
+)
+MAIN:
+
+    &chipset=STR.LWR("&chipset")
+    &connect=STR.LWR("&connect")
+    IF (("&chipset"=="sdm845")||("&chipset"=="sdm670"))
+    (
+        SYS.CONFIG.DEBUGPORT UNKNOWN
+        SYS.CONFIG.DEBUGPORT GTL0
+        IF SYSTEM.INSTANCE()<2.
+        (
+            SYS.GTL.DISCONNECT
+            SYS.GTL.LOG.ADDOPTION CALLS CALLDATA SMARTCALLDATA INFO
+            SYS.VT.TIMEINTARGETTIME ON
+            SYS.VT.PAUSEINTARGETTIME ON
+        )
+        IF ("&connect"=="swd")
+        (
+            SYS.GTL.MODELNAME "MODEL_ARM_DAP"
+            SYS.GTL.GPIONAME "GPIO0"
+            SYS.GTL.LIBNAME "&GTLPATH\&GTLDllName"
+            cd "&EUDDllPath"
+            SYS.GTL.CONNECT
+            cd "&currdir\.."
+            SYS.CONFIG.DAPNAME "DAP0"
+            IF POWERDEBUG()
+            (
+                SYS.CONFIG.DEBUGPORTTYPE SWD
+            )
+        )
+        ELSE IF ("&connect"=="jtag")
+        (
+            SYS.GTL.MODELNAME "MODEL_JTAG"
+            SYS.GTL.jtagprobename "JTAGPROBE0"
+            SYS.GTL.libname  "GTLPATH\&GTLDllName"
+            SYS.GTL.CONNECT
+            IF POWERDEBUG()
+            (
+                SYS.CONFIG.DEBUGPORTTYPE JTAG
+                SYSTEM.JTAGCLOCK 50KHZ
+            )
+        )
+    )
+    
+    //
+    // Set Device ID.
+    //
+    IF ("&deviceid"=="")
+    (
+        GOSUB DISPLAY_DEVICES &deviceid
+        ENTRY &deviceid
+    )
+    LOCAL &deviceid_upr
+    &deviceid_upr=STR.UPR("&deviceid")
+    IF STRING.SCAN("&deviceid_upr","0X",0)==-1
+    (
+        &deviceid="0x"+"&deviceid"
+    )
+    sys.gtl.modelcommand "setdeviceid &deviceid"
+    &result=EVAL.STRING()
+
+    IF STRING.SCAN("&result","SUCCESS",0)==-1
+    (
+        IF STRING.SCAN("&result","device not found",0)!=-1
+        (
+           PRINT %ERROR "Error - Specified Device (&deviceid) not found connected to host PC. Exiting."
+        )
+        ELSE
+        (
+            PRINT %ERROR "Error ocurred during setting device ID. Cannot connect to EUD. Exiting."
+        )
+        
+        END
+        
+    )
+    
+    AREA.SELECT A000
+    AREA.RESET
+    AREA
+    AREA.CREATE A000 100 9999.
+    AREA.SELECT A000
+    AREA
+    //winpos ,,,,,,
+    //area.view A000
+    //printer.export.ASCIIE c:\temp\area.txt
+    //winpan 0 -999. myareawin
+    
+    GOTO EXIT
+
+////////////////////////////////////
+///
+/// @brief Retrieves available list of devices from EUD DLL. 
+///        Displays these to user and returns selected deviceID
+///
+////////////////////////////////////
+DISPLAY_DEVICES:
+    LOCAL &deviceid
+    ENTRY &deviceid
+    
+    LOCAL  &rvalue_deviceid
+    LOCAL &newlinekey
+    &newlinekey=","
+    area.create AvailDevices
+    area.select AvailDevices
+    area.view AvailDevices
+    
+    
+    sys.gtl.modelcommand "getdevicesList"
+    LOCAL &availabledevicesresult
+    &availabledevicesresult=eval.string()
+    
+    
+    LOCAL &exitflag
+    &exitflag=0
+    LOCAL &stringtoprint &currstring &index &incrementer
+    &index=0
+    &incrementer=0
+    &stringtoprint=""
+    &currstring="&availabledevicesresult"
+    &index=STRING.SCAN("&currstring",": ",&index)
+    &currstring=STRING.CUT("&currstring",&index+2)
+    
+    PRINT "The following EUD devices were found attached to the host machine:"
+    WHILE (&exitflag==0x0)
+    (
+        &index=STRING.SCAN("&currstring","&newlinekey",0)
+        IF (&index==-1)
+        (
+            &exitflag=1
+        )
+        ELSE
+        (
+            &stringtoprint=STRING.CUT("&currstring",&index-STRING.LENGTH("&currstring"))
+            &currstring=STRING.CUT("&currstring",&index+1)
+            PRINT "   &stringtoprint"
+            &incrementer=&incrementer+1
+        )
+        
+    )
+    
+    IF (&incrementer==0)
+    (
+        PRINT " "
+        PRINT %ERROR "No devices were found attached. Rescan? Y/N: "
+        ENTER &response
+        IF STRING.SCAN(STR.UPR("&response"),"Y",0)!=-1
+        (
+            WAIT.5s
+            LOCAL &deviceid
+            GOSUB DISPLAY_DEVICES
+            ENTRY &deviceid
+            &rvalue_deviceid="&deviceid"
+        )
+        ELSE 
+        (
+            PRINT %ERROR "Error - no devices detected. Cannot connect to an EUD device. Exiting."
+            END
+        )
+    )
+    ELSE IF (&incrementer==0x1)
+    (
+        PRINT "One device detected. Connecting to device: &stringtoprint"
+        &rvalue_deviceid="&stringtoprint"
+        WAIT.2s
+    )
+    ELSE (&incrementer>1)
+    (
+        PRINT "Multiple devices found. Please enter the ID of the device to connect to:"
+        PRINT "   "
+        ENTER &selecteddevice
+        IF STRING.SCAN("&availabledevicesresult","&selecteddevice",0)!=-1
+        (
+            PRINT "Selected device: &selecteddevice"
+            WAIT.1s
+            &rvalue_deviceid="&selecteddevice"
+        )
+        ELSE
+        (
+            PRINT "ERROR! Selected device (&selecteddevice) not in list of devices. Please enter again"
+            GOSUB DISPLAY_DEVICES
+            LOCAL &deviceid
+            ENTRY &deviceid
+            &rvalue_deviceid="&deviceid"
+        )
+        
+    )
+    
+
+    RETURN &rvalue_deviceid
+    
+EXIT:
+    ENDDO

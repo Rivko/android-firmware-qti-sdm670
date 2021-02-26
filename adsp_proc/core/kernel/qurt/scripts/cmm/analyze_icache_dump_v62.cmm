@@ -1,0 +1,116 @@
+;=============================================================================
+;
+;                                    analyze_icache_dump_v62.cmm
+;
+; GENERAL DESCRIPTION
+;
+; EXTERNAL FUNCTIONS
+;        None.
+;
+; INITIALIZATION AND SEQUENCING REQUIREMENTS
+;        None.
+;
+;             Copyright (c) 2016  by Qualcomm Technologies, Inc.  All Rights Reserved.
+;=============================================================================
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+; 
+; 
+; This script formats and dumps Icache data as well as the 
+; virtual memory contents for v62 hexagon architecture. 
+;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+LOCAL &dump_dir
+ENTRY &dump_dir
+
+IF ("&dump_dir"=="")
+(
+  print %ERROR "Must specify dump directory"
+  ENDDO
+)
+
+IF (!Y.EXIST(QURTK_icache_tag_dump))
+(
+  print %ERROR "icache dump not found - exiting"
+  ENDDO
+)
+
+; d.save.binary &dump_dir/icache_tags.bin y.range(QURTK_icache_tag_dump)
+; d.save.binary &dump_dir/icache_data.bin y.range(QURTK_icache_dump)
+
+LOCAL &num_sets &num_ways
+&num_ways=2.
+&num_sets=y.sizeof(QURTK_icache_tag_dump)/&num_ways/4.
+
+LOCAL &dumpfile &memfile
+&dumpfile="&dump_dir/icache_dump.txt"
+&memfile="&dump_dir/icache_mem.txt"
+OPEN #1 &dumpfile /Create
+OPEN #2 &memfile /Create
+
+LOCAL &set
+&set_loop=0
+WRITE #1 "Set:Way VADDR   :Valid:Asid:Cache contents"
+WRITE #2 "Set:Way VADDR   :Valid:Asid:Memory contents"
+WRITE #1 ""
+WRITE #2 ""
+
+WHILE (&set_loop<512.)
+(
+  &set=511.-&set_loop
+  LOCAL &way
+  &way_loop=0.
+  
+  WHILE (&way_loop<2.)
+  (
+    &way=1.-&way_loop
+    &tag_index=((&set*&num_ways)+&way)*4.
+    &tag_addr=v.value(&QURTK_icache_tag_dump)+&tag_index
+    &tag=data.long(D:&tag_addr)
+    print "set " &set " way " &way " tag_addr: " &tag_addr " &tag " &tag
+    LOCAL &addr
+	LOCAL &asid
+	&asid=((&tag)&(0x7F000000))/0x800000
+	&addr=((&tag)&(0xFFFFC0))*256.+(&set*32.)
+    LOCAL &valid
+    &valid=((&tag)&(0x2))/2.
+
+    WRITE #1 %CONT format.decimal(3.,&set) ":" format.decimal(3.,&way) " " format.hex(8.,&addr) ":" format.decimal(5.,&valid) ":" format.decimal(4.,&asid)
+    WRITE #2 %CONT format.decimal(3.,&set) ":" format.decimal(3.,&way) " " format.hex(8.,&addr) ":" format.decimal(5.,&valid) ":" format.decimal(4.,&asid)
+
+    IF (&valid!=0)
+    (
+      LOCAL &i
+
+      &i=0.
+      WHILE (&i<8.)
+      (   
+        &data_index=((((&set)*&num_ways)+&way)*8.+&i)*4.
+        &data_addr=v.value(&QURTK_icache_data_dump)+&data_index
+        &data_val=data.long(D:&data_addr)
+        WRITE #1 %CONT " " format.hex(8.,&data_val)
+        &i=&i+1.
+      )
+
+      &i=0.
+      WHILE (&i<8.)
+      (
+        WRITE #2 %CONT " " format.hex(8.,d.long(D:(&addr+&i*4.)))
+        &i=&i+1.
+      )
+    )
+    WRITE #1 ""
+    WRITE #2 ""
+
+    &way_loop=&way_loop+1.
+  )
+
+  &set_loop=&set_loop+1.
+)
+
+CLOSE #1
+CLOSE #2
+
+PRINT "Output saved to &dumpfile and &memfile"
+
+WAIT 1.s

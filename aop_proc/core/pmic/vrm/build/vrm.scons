@@ -1,0 +1,116 @@
+#===============================================================================
+#
+# vrm libs
+#
+# GENERAL DESCRIPTION
+#    vrm build script
+#
+# Copyright (c) 2016 - 2018 by Qualcomm Technologies Incorporated, All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/aop.ho/1.1.c1/aop_proc/core/pmic/vrm/build/vrm.scons#2 $
+#  $DateTime: 2018/02/22 02:28:39 $
+#  $Author: pwbldsvc $
+#  $Change: 15520253 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+
+env = env.Clone()
+#SDM640_CHANGES
+if env['MSM_ID'] in ['640']:
+   env['MSM_ID'] = '670'
+   env['CHIPSET_PMIC'] = 'pm670'
+   
+env['CCFLAGS'] += '${ARMCC_STDC99_CMD}'
+
+if env['CHIPSET'] in ['sdm670']:
+    if env['CHIPSET_PMIC'] in ['pm605']:
+        env['MSM_ID'] ='605'
+    else:
+        env['MSM_ID'] ='670'
+
+
+#855au for now compiles with 855 config
+if env['MSM_ID'] == '855au': 
+  env['MSM_ID'] = '855'
+  
+
+#-------------------------------------------------------------------------------
+# Load sub scripts
+#-------------------------------------------------------------------------------
+
+env.LoadSoftwareUnits()
+ 
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_APIS = [
+   'DAL',
+   'DEBUGTRACE',
+   'POWER',
+   'PMIC',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_APIS)
+env.RequireRestrictedApi(CBSP_APIS)
+           
+env.RequireProtectedApi([
+    'PMIC',
+    ])
+
+env.PublishPrivateApi('VRM', [
+  "${INC_ROOT}/core/pmic/vrm/src",
+  "${INC_ROOT}/core/pmic/vrm/src/vreg",
+  "${INC_ROOT}/core/pmic/vrm/src/xob",
+  "${INC_ROOT}/core/pmic/vrm/hal",
+  "${INC_ROOT}/core/pmic/vrm/utils",
+  "${INC_ROOT}/core/pmic/vrm/utils/os/aop",
+  "${INC_ROOT}/core/pmic/vrm/target",
+  "${INC_ROOT}/core/pmic/vrm/target/${MSM_ID}",
+  "${INC_ROOT}/core/pmic/vrm/target/${MSM_ID}/hwio",
+])
+
+#-------------------------------------------------------------------------------
+# Sources & Libraries
+#-------------------------------------------------------------------------------
+MAIN_LIB_IMAGES = ['CORE_AOP']
+
+SRCPATH = ".."   
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+              
+VRM_SOURCE_PATHS = [
+   SRCPATH + "/src",
+   SRCPATH + "/src/vreg",
+   SRCPATH + "/src/xob",
+   SRCPATH + "/utils",
+   SRCPATH + "/utils/os/aop",
+   SRCPATH + "/hal",
+   SRCPATH + "/target/${MSM_ID}",
+]
+
+VRM_SOURCES = []
+
+for src_path in VRM_SOURCE_PATHS:
+   VRM_SOURCES += env.GlobFiles(src_path + '/*.c', posix=True)
+
+VRM_BLD_SOURCES = [f.replace(SRCPATH, '${BUILDPATH}') for f in VRM_SOURCES]
+
+# Adding settings files to R-init builder
+if 'USES_RINIT_PARSER' in env:
+	env.AddRinitInfo('CORE_AOP', {'files' : '${BUILD_ROOT}/core/pmic/vrm/target/${MSM_ID}'})
+
+env.AddLibrary(MAIN_LIB_IMAGES, '${BUILDPATH}/vrm.lib', VRM_BLD_SOURCES)
+

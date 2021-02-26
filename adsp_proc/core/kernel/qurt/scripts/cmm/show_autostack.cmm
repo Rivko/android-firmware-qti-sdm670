@@ -1,0 +1,524 @@
+; olgak 7/5/2016
+
+; cmm script to show 
+
+; 1) state of autostack configuration and current resources
+
+; 2) some statistics?
+
+; 3) state of each thread with respect to its autostack budget
+
+;=====================================================================
+
+; tcb | fixed_size | curr sp | auto-grown top | abs stack top | name |
+
+;=====================================================================
+
+; 
+
+;usage: do show_autostack.cmm  
+
+; tcm threads are not scanned here
+
+; skip asids other than 0 for now
+
+; #define ASID_FROM_SSR(x)    ((x>>8) & 0x3f)
+
+
+
+
+
+Area.Create IO 1000. 5000.
+
+Area.Select IO
+
+Area IO
+
+
+
+local &thread_list
+
+local &offset_utcb
+
+local &offset_attr
+
+local &offset_name
+
+local &offset_valid
+
+local &offset_stack_top
+
+local &offset_stack_size
+
+local &offset_frame_limit
+
+local &count_auto
+
+local &stack_top
+
+local &curr_tcb
+
+local &tcb_size
+
+local &curr_sp
+
+local &name
+
+local &count
+
+local &valid
+
+local &attr
+
+local &max
+
+local &ugp
+
+
+
+;vtlb walk related
+
+local &vtlb_tree_base
+
+local &vtlb_tree_asid0_base
+
+local &vtlb_entries_base
+
+local &L2_idx
+
+local &L3_idx
+
+local &L4_idx
+
+local &L5_idx
+
+local &vtlb_entry_idx
+
+local &walk_ptr
+
+local &temp
+
+local &tlbhi
+
+local &tlblo
+
+local &leaf
+
+local &vpage
+
+local &is_autostack
+
+local &frame_limit
+
+local &asid
+
+
+
+local &temp_vpage
+
+local &curr_min_page
+
+local &L5_subtable
+
+local &subtable_cnt
+
+local &vtlb_walk_ptr
+
+local &auto_grew
+
+local &reclaim_amount
+
+
+
+local &chars
+
+
+
+var.newlocal char * \name_str
+
+
+
+&count=0
+
+&count_auto=0
+
+&max=v.value(QURTK_MAX_THREADS)
+
+&thread_list=v.value(QURTK_thread_contexts)
+
+&tcb_size=v.value(QURTK_CONTEXT_SIZE)
+
+
+
+;offsets may vary depending on tcb changes
+
+;this script assumes ADSPv56MP offsets
+
+&offset_valid=0x16
+
+&offset_stack_top=0x50
+
+&offset_is_autostack=0x5C
+
+&offset_name=0x30
+
+&offset_frame_limit=0xF8
+
+
+
+&reclaim_amount=0
+
+&is_autostack=0
+
+&frame_limit=0
+
+&fixed_size=0
+
+&stack_top=0
+
+&auto_top=0
+
+&name=0
+
+&asid=5
+
+
+
+;&offset_tree=0x40
+
+;&offset_entries=0xE0
+
+
+
+; initialize bases:
+
+&vtlb_tree_base=QURTK_VTLB_DATA+0x40    ; v.value(QURTK_vtlb_tree)
+
+&vtlb_tree_asid0_base=&vtlb_tree_base+0x100
+
+;&vtlb_entries_base=QURTK_VTLB_DATA+0xE0   ;v.value(QURTK_vtlb_entries)
+
+&vtlb_entries_base=v.value((unsigned int*)&QURTK_vtlb_entries)
+
+
+
+;local &smth
+
+&smth=interface.sim()
+
+print &smth
+
+
+
+;print headers
+
+print "tree base: &vtlb_tree_base entries_base &vtlb_entries_base asid0_base &vtlb_tree_asid0_base"
+
+print "============================================================================================================================ "
+
+print "    TCB   | FIXED SIZE | CURRENT SP | AUTO-GROWN TOP | ABSOLUTE TOP | RECLAIM_AMOUNT | L5_subtable | AUTOGREW | NAME   " 
+
+print "============================================================================================================================= "
+
+repeat 
+
+(
+
+	if &count==&max
+
+	(
+
+           goto endloop
+
+	)
+
+	;&curr_tcb=v.value((QURTK_thread_context*)(&thread_list + tcb_size*&count))
+
+	&curr_tcb=v.value(&thread_list + &tcb_size*&count)
+
+	&valid=data.byte(d:(&curr_tcb+&offset_valid))
+
+	if (&valid==1)
+
+	(
+
+	    &asid=5
+
+		&is_autostack=0
+
+		&asid=(v.value(((QURTK_thread_context*)&curr_tcb)->ssr)>>8)&0x3f
+
+		if (&asid==0)
+
+		(
+
+			&ugp=v.value(((QURTK_thread_context*)&curr_tcb)->ugp)
+
+			&is_autostack=data.long(d:(&ugp+&offset_is_autostack))
+
+		)
+
+	)
+
+     if (&valid==1)&&(&is_autostack==1) 
+
+	(	
+
+		;print "&curr_tcb &ugp"
+
+		&curr_sp=v.value(((QURTK_thread_context*)&curr_tcb)->r29)
+
+		&ugp=v.value(((QURTK_thread_context*)&curr_tcb)->ugp)
+
+		;print "ugp &ugp &offset_stack_top"
+
+		;&stack_top=data.long(d:(&ugp+&offset_stack_top))
+
+		&stack_top=v.value(((QURTK_thread_context*)&curr_tcb)->framelimit)
+
+		&is_autostack=data.long(d:(&ugp+&offset_is_autostack))
+
+		;print "autostack &is_autostack"
+
+		;&fixed_size=somthing here
+
+		;&name=y.name(d:(&ugp+&offset_name))
+
+		&name=data.long(d:(&ugp+&offset_name))
+
+                var.set \name_str=&ugp+&offset_name
+
+		;var.newlocal char[1000] \myvar
+
+		;var.set \myvar=(d:(&ugp+&offset_name))
+
+		;&name=var.string(\myvar)
+
+		
+
+		;auto_top: this requires going through L5 subtable and finding 
+
+		;the lowest mapped valid virt address, search starts with mapped stack top 
+
+		; currently that is maintained in framelimit
+
+		&vpage=&stack_top>>0xC 	
+
+		;print &vpage
+
+
+
+		; precompute indecies
+
+		&L2_idx=(&vpage>>12.)*2
+
+		&L3_idx=((&vpage>>8)&0xF)*2
+
+		&L4_idx=((&vpage>>4)&0xF)*2
+
+		&L5_idx=(&vpage&0xF)*2
+
+
+
+		; start the walk
+
+		; 1. read contents under L2_idx
+
+		;&walk_ptr=v.value((&vtlb_tree_asid0_base+&L2_idx))
+
+		&walk_ptr=&vtlb_tree_asid0_base+&L2_idx
+
+		;&temp=data.short(d:&walk_ptr)
+
+		&temp=data.short(&walk_ptr)
+
+		
+
+		; check if leaf
+
+		&leaf=&temp&0x1
+
+		if &leaf==1 
+
+		(
+
+
+
+			goto bail_out
+
+		)
+
+		;2.
+
+		&walk_ptr=&vtlb_tree_base+&L3_idx+(&temp*8)
+
+		&temp=data.short(&walk_ptr)
+
+		; check if leaf
+
+		&leaf=&temp&0x1
+
+		if (&leaf==1)&&(&is_autostack==1)
+
+		(
+
+			goto bail_out
+
+		)
+
+		;3.
+
+		&walk_ptr=&vtlb_tree_base+&L4_idx+(&temp*8)
+
+		&temp=data.short(&walk_ptr)
+
+	 	; check if leaf
+
+		&leaf=&temp&0x1
+
+		if (&leaf==1)&&(&is_autostack==1) 
+
+		(
+
+			goto bail_out
+
+		)
+
+		;4.
+
+		&walk_ptr=&vtlb_tree_base+&L5_idx+(&temp*8)
+
+		;iterate over entire subtable
+
+		&subtable_cnt=1
+
+		&curr_min_page=0
+
+		&auto_grew=0
+
+	    &L5_subtable=&walk_ptr
+
+		&walk_ptr=&walk_ptr+0x20	
+
+		repeat
+
+		(
+
+			if &subtable_cnt==0x10 ;leave lowest page unmapped
+
+			(
+
+				goto end_subtable
+
+			)
+
+			
+
+			&temp=data.short(d:(&walk_ptr-0x2*&subtable_cnt))
+
+			;print "temp &temp"
+
+	       	&leaf=&temp&0x1
+
+			if (&leaf==1)&&(&temp!=0x11)&&(&temp!=0x1) ;fixme here code in a special 
+
+	        	(
+
+				
+
+					&vtlb_walk_ptr=(&vtlb_entries_base+&temp*4)
+
+					;print "entries location &vtlb_entries_base &temp &vtlb_walk_ptr"
+
+					&tlbhi=data.long(d:&vtlb_walk_ptr)
+
+					&tlblo=data.long(d:(&vtlb_walk_ptr-0x4))
+
+					; this will guarantee min page since we are going 
+
+					; backwards until we hit guard or special or unmapped
+
+					&temp_vpage=(&tlbhi)&0xFFFFF	
+
+					;print &tlbhi
+
+					;print "&stack_top	temp vpage now &temp_vpage at &temp &subtable_cnt &walk_ptr"
+
+			)
+
+			&subtable_cnt=&subtable_cnt+1
+
+			;print "&subtable_cnt &walk_ptr"
+
+		)
+
+
+
+end_subtable:		
+
+                ;extract tlbhi vpage and maintain running lowest page
+
+		&auto_top=&temp_vpage
+
+		if (&auto_top<(&stack_top>>0xC))&&(&is_autostack==1) 
+
+		(
+
+			&auto_grew=1
+
+		)			
+
+		
+
+		&chars=&name
+
+		;print %ascii %continue &chars
+
+		&chars=&chars+1
+
+		;print %ascii %continue &chars	
+
+		&reclaim_amount=((&curr_sp)&0xFFFFF000)-(&auto_top<<0xC)
+
+		if (&curr_sp<(&auto_top<<0xC))
+
+		(
+
+			print "overflow on &curr_sp"
+
+			&reclaim_amount=0
+
+		)
+
+
+
+		&auto_top=&auto_top<<0xC
+
+ 		print "&curr_tcb   &fixed_size        &curr_sp      &auto_top       &stack_top   &reclaim_amount  &L5_subtable     &auto_grew " var.string(\name_str)
+
+		&count_auto=&count_auto+1.
+
+	)
+
+	&count=&count+1.
+
+	;print "&count"
+
+				
+
+)
+
+bail_out:
+
+print "found Leaf at non-L5, bail out"
+
+endloop:
+
+print "total threads: &count"
+
+print "total autostacked threads &count_auto"
+
+print "Done"
+
+
+

@@ -1,0 +1,153 @@
+#===============================================================================
+# Copyright (c) 2009 - 2010 Qualcomm Incorporated.
+# All Rights Reserved.
+# Qualcomm Confidential and Proprietary
+#
+#  $Header: //source/qcom/qct/core/pkg/mpss/rel/1.0/modem_proc/core/dal/drivers/Timer/build/SConscript#1 $
+#  $DateTime: 2011/07/12 11:42:57 $
+#  $Author: cbirch $
+#  $Change: 1831834 $
+#===============================================================================
+# DAL Timer Lib
+#-------------------------------------------------------------------------------
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${DAL_ROOT}/drivers/Timer/src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Source Code
+#-------------------------------------------------------------------------------
+if env.has_key('QDSP6_PROC') and env['PLAT'] == "l4":
+   env.Replace(SRC_DIR='q6')
+elif env.has_key('WCN_IMAGE'):
+   env.Replace(SRC_DIR='rexnative') 
+elif env.has_key('CORE_RPM') or env.has_key('RPM_IMAGE'):
+   env.Replace(SRC_DIR='dalnative')
+elif env.has_key('CORE_SPS'):
+   env.Replace(SRC_DIR='dsps')
+elif env['PLAT'] == 'blast':
+   env.Replace(SRC_DIR='amss_arm')
+else:
+   env.Replace(SRC_DIR='${PLAT}')
+
+#-------------------------------------------------------------------------------
+# External depends within CoreBSP
+#-------------------------------------------------------------------------------
+env.RequireExternalApi([
+   'MODEM_PMIC',
+   'MODEM_RF',
+   'MODEM_SERVICES',
+])
+
+#-------------------------------------------------------------------------------
+# External depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'HAL',
+   'POWER',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   # needs to be last also contains wrong comdef.h      
+   'KERNEL',   
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+env.UsesInc([
+   "${DAL_API}",
+   "${DEBUGTOOLS_API}",
+   "${HWENGINES_API}",
+   "${MPROC_API}",
+   "${SERVICES_API}",
+   "${SYSTEMDRIVERS_API}",
+   "${KERNEL_API}",
+])
+
+env.UsesInc([
+   "${DAL_LEGACY}",
+   "${DEBUGTOOLS_LEGACY}",
+   "${HWENGINES_LEGACY}",
+   "${MPROC_LEGACY}",
+   "${SERVICES_LEGACY}",
+   "${SYSTEMDRIVERS_LEGACY}",
+
+   # needs to be last also contains wrong comdef.h
+   "${KERNEL_LEGACY}",
+])
+
+#-------------------------------------------------------------------------------
+# Source Code
+#-------------------------------------------------------------------------------
+
+DAL_TIMER_SOURCES =  [
+   '${BUILDPATH}/DALTimerInfo.c',
+   '${BUILDPATH}/${SRC_DIR}/DALTimer.c'
+]
+
+DAL_TIMER_FWK_SOURCES = [
+   '${BUILDPATH}/DALTimerFwk.c',
+]
+
+DAL_TIMER_REX_SOURCES = [
+   '${BUILDPATH}/${SRC_DIR}/DAL_hwplatform_timer_7625.c'
+]
+
+DAL_TIMER_SPS_SOURCES = [
+   '${BUILDPATH}/${SRC_DIR}/DAL_hwplatform_timer_dsps.c'
+]
+
+DAL_TIMER_RPM_SOURCES = [
+   '${BUILDPATH}/${SRC_DIR}/DAL_hwplatform_timer_rpm.c'
+]
+
+if env.has_key('DAL_NATIVE_PLATFORM'):
+   DAL_TIMER_SOURCES += DAL_TIMER_REX_SOURCES
+   env.Append(CPPDEFINES = ["DAL_NATIVE_PLATFORM"])
+elif env.has_key('CORE_SPS'):
+   DAL_TIMER_SOURCES += DAL_TIMER_SPS_SOURCES
+   env.Append(CPPPATH = [
+      "${BUILD_ROOT}/core/sensors/common/inc",
+      "${BUILD_ROOT}/core/sensors/api",
+      "${BUILD_ROOT}/core/sensors/common/util/memmgr/inc",
+      "${DAL_ROOT}/framework/sys/src/dsps"
+   ])
+   env.Append(CPPDEFINES = [
+      "DAL_NATIVE_PLATFORM",
+      "DAL_IMAGE_CONFIG_H=\\\"../../dal/config/sps/spsconfig.h\\\""
+   ])
+   if env['BUILD_ASIC'] == "8960":
+      env.Append(CPPDEFINES = ["DAL_TIME_RESTART"])
+elif env.has_key('CORE_RPM') or env.has_key('RPM_IMAGE'):
+   DAL_TIMER_SOURCES += DAL_TIMER_RPM_SOURCES
+   env.Append(CPPDEFINES = [
+      "DAL_NATIVE_PLATFORM",
+      "DAL_IMAGE_CONFIG_H=\\\"../../dal/config/rpm/rpmconfig.h\\\""
+   ])
+else:
+   DAL_TIMER_SOURCES += DAL_TIMER_FWK_SOURCES
+
+dal_timer_obj = env.Object(DAL_TIMER_SOURCES)
+dal_timer_lib = env.Library('${BUILDPATH}/DALTimer', dal_timer_obj)
+
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+env.AddLibsToImage([
+   'SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 
+   'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+   'APPS_IMAGE', 'CBSP_APPS_IMAGE','QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE',
+   'CORE_SPS', 'CORE_RPM', 'RPM_IMAGE', 
+   'WCN_IMAGE', 'CBSP_WCN_IMAGE', 'CORE_WCN'],
+   dal_timer_lib)
+

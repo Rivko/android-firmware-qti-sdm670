@@ -1,0 +1,88 @@
+#===============================================================================
+#
+# Ultrasound services- dynamic services- ultrasound encoder 
+#
+# GENERAL DESCRIPTION
+#    Ultrasound services- dynamic services- ultrasound encoder build script
+#
+# Copyright (c) 2013,2015 Qualcomm Technologies, Inc.
+# All rights reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#-------------------------------------------------------------------------------
+#
+#  $Header: $
+#  $DateTime: $
+#  $Author:  $
+#  $Change:  $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 01-01-2013 NR     Initial version
+# 04-03-2013 NR     Stub out all ultrasound modules when USM is stubbed out
+# 05-03-2015 HS     Move ultrasound outside of avs
+#===============================================================================
+Import('env')
+
+core_public_apis = [
+   'DEBUGTOOLS',
+   'SERVICES',
+   'KERNEL',
+   ]
+
+env.RequirePublicApi(core_public_apis, area='core')
+env.RequirePublicApi('AVS', area='avs')
+env.RequirePublicApi('QDSP6', area='qdsp6')
+env.RequirePublicApi('APR', area='apr')
+env.RequireRestrictedApi('ULTRASOUND_ALGORITHMS')
+env.RequireProtectedApi('ULTRASOUND')
+
+env.PublishPrivateApi('ULTRASOUND',[
+   '../inc',
+   '${ULTRASOUND_ROOT}/algorithms/enc/eposstylus/CCapiEposStylusEncoderLib/inc',
+   '${ULTRASOUND_ROOT}/algorithms/proc/gesture/CUsGestureLib/inc',
+   '${ULTRASOUND_ROOT}/algorithms/enc/usdetect/CCapiUsDetectLib/inc',
+   '${ULTRASOUND_ROOT}/algorithms/enc/freeform/CCapiFreeFormEncoderLib/inc',
+   '${INC_ROOT}/avs/aud/algorithms/utils/audio_cmn_lib/inc',
+   '${INC_ROOT}/avs/elite/module_interfaces/shared_lib_api/inc/audio_cmn_lib',
+   '${INC_ROOT}/avs/api/audio/inc',
+   '${INC_ROOT}/avs/elite/qurt_elite/inc',
+   '${INC_ROOT}/avs/elite/utils/inc',
+   '${INC_ROOT}/avs/elite/module_interfaces/shared_lib_api/inc/qurt_elite',
+   '${INC_ROOT}/avs/elite/module_interfaces/shared_lib_api/inc/capi',
+   '${INC_ROOT}/avs/afe/services/static/inc',
+   '${INC_ROOT}/avs/api/afe/inc',
+   '${INC_ROOT}/avs/afe/drivers/afe/vfr/common/inc',
+   '${INC_ROOT}/avs/afe/drivers/afe/codec/inc',
+   '${INC_ROOT}/avs/aud/algorithms/utils/audio_cmn_lib/inc'
+   ])
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = '..'
+LIBNAME = 'ultrasound_enc_svc'
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+# Generate regular source file list
+usnd_reg_sources  = env.GlobSourceFiles(['src/*.cpp', 'src/*.c'], SRCPATH,posix=True)
+
+# Generate stub source file list
+usnd_stub_sources = []
+
+# Generate proprietary source file list
+usnd_prop_sources = []
+   
+# if USM is stubbed out, all ultrasound modules should be stubbed out
+if not env.has_key('USES_ULTRASOUND_STREAM_MGR_STUB'):
+    env.AddBinaryLibrary(['ULTRASOUND_ADSP'], '${BUILDPATH}/'+LIBNAME,
+        [usnd_reg_sources, usnd_stub_sources, usnd_prop_sources])
+
+# Pack Rules: CLEAN_LIST carries list of files to be removed from the packages. Should not contain 'build' folder
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*'], '${ULTRASOUND_ROOT}/services/dynamic_svcs/ultrasound_enc_svc/src'))
+env.CleanPack(['CORE_QDSP6_SW', 'AVS_ADSP', 'CLEANPACK_TARGET', 'ULTRASOUND_ADSP'], CLEAN_LIST)

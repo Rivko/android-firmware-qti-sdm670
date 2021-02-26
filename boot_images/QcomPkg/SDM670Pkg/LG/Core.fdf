@@ -1,0 +1,691 @@
+#/** @file SDM670Pkg.fdf
+# FLASH layout file for SDM670Pkg.
+#
+# Copyright (c) 2015 - 2017, 2020 Qualcomm Technologies, Inc. All rights reserved.
+# Portions Copyright (c) 2009, Apple Inc. All rights reserved.
+# This program and the accompanying materials
+# are licensed and made available under the terms and conditions of the BSD License
+# which accompanies this distribution.  The full text of the license may be found at
+# http://opensource.org/licenses/bsd-license.php
+#
+# THE PROGRAM IS DISTRIBUTED UNDER THE BSD LICENSE ON AN "AS IS" BASIS,
+# WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.
+#
+#**/
+
+################################################################################
+#
+# FD Section
+# The [FD] Section is made up of the definition statements and a
+# description of what goes into  the Flash Device Image.  Each FD section
+# defines one flash "device" image.  A flash device image may be one of
+# the following: Removable media bootable image (like a boot floppy
+# image,) an Option ROM image (that would be "flashed" into an add-in
+# card,) a System "Flash"  image (that would be burned into a system's
+# flash) or an Update ("Capsule") image that will be used to update and
+# existing system flash.
+#
+################################################################################
+
+
+[FD.SDM670_EFI]
+BaseAddress   = 0x9FC00000|gEmbeddedTokenSpaceGuid.PcdEmbeddedFdBaseAddress  #The base address of the FLASH Device.
+Size          = 0x00200000|gEmbeddedTokenSpaceGuid.PcdEmbeddedFdSize         #The size in bytes of the FLASH Device
+ErasePolarity = 1
+BlockSize     = 0x200
+NumBlocks     = 0x1000
+
+################################################################################
+#
+# Following are lists of FD Region layout which correspond to the locations of different
+# images within the flash device.
+#
+# Regions must be defined in ascending order and may not overlap.
+#
+# A Layout Region start with a eight digit hex offset (leading "0x" required) followed by
+# the pipe "|" character, followed by the size of the region, also in hex with the leading
+# "0x" characters. Like:
+# Offset|Size
+# PcdOffsetCName|PcdSizeCName
+# RegionType <FV, DATA, or FILE>
+#
+################################################################################
+
+# 512 bytes of configuration header & 8 bytes of image header
+0x00000000|0x00200000
+gEmbeddedTokenSpaceGuid.PcdFlashFvMainBase|gEmbeddedTokenSpaceGuid.PcdFlashFvMainSize
+FV = FVMAIN_COMPACT
+
+################################################################################
+#
+# FV Section
+#
+# [FV] section is used to define what components or modules are placed within a flash
+# device file.  This section also defines order the components and modules are positioned
+# within the image.  The [FV] section consists of define statements, set statements and
+# module statements.
+#
+################################################################################
+
+[FV.FvMain]
+BlockSize          = 0x40
+NumBlocks          = 0         # This FV gets compressed so make it just big enough
+FvAlignment        = 8         # FV alignment and FV attributes setting.
+ERASE_POLARITY     = 1
+MEMORY_MAPPED      = TRUE
+STICKY_WRITE       = TRUE
+LOCK_CAP           = TRUE
+LOCK_STATUS        = TRUE
+WRITE_DISABLED_CAP = TRUE
+WRITE_ENABLED_CAP  = TRUE
+WRITE_STATUS       = TRUE
+WRITE_LOCK_CAP     = TRUE
+WRITE_LOCK_STATUS  = TRUE
+READ_DISABLED_CAP  = TRUE
+READ_ENABLED_CAP   = TRUE
+READ_STATUS        = TRUE
+READ_LOCK_CAP      = TRUE
+READ_LOCK_STATUS   = TRUE
+FvNameGuid         = 631008B0-B2D1-410A-8B49-2C5C4D8ECC7E
+
+!include Apriori.fdf.inc
+
+  INF MdeModulePkg/Core/Dxe/DxeMain.inf
+
+  #
+  # PI DXE Drivers producing Architectural Protocols (EFI Services)
+  #
+  INF ArmPkg/Drivers/CpuDxe/CpuDxe.inf
+
+  INF MdeModulePkg/Core/RuntimeDxe/RuntimeDxe.inf
+
+  #
+  # Security Dxe
+  #
+  INF QcomPkg/Drivers/SecurityDxe/SecurityDxe.inf
+  #INF MdeModulePkg/Universal/SecurityStubDxe/SecurityStubDxe.inf
+  
+  #
+  # SecRSA Dxe
+  #
+  INF QcomPkg/Drivers/SecRSADxe/SecRSADxe.inf
+
+  #
+  # ASN1X509 Dxe
+  #
+  INF QcomPkg/Drivers/ASN1X509Dxe/ASN1X509Dxe.inf
+
+  #
+  # VerifiedBoot Dxe
+  #
+  INF QcomPkg/Drivers/VerifiedBootDxe/VerifiedBootDxe.inf
+  #INF QcomPkg/Drivers/VerifiedBootNullDxe/VerifiedBootNullDxe.inf
+
+  #
+  # PIL Loader
+  #
+  INF QcomPkg/Drivers/TzDxe/TzDxeLA.inf
+
+  #INF QcomPkg/Drivers/MdtpDxe/MdtpDxe.inf
+  INF MdeModulePkg/Universal/WatchdogTimerDxe/WatchdogTimer.inf
+  INF MdeModulePkg/Universal/CapsuleRuntimeDxe/CapsuleRuntimeDxe.inf
+
+  # Report Status Code Router & Handler
+  INF MdeModulePkg/Universal/ReportStatusCodeRouter/RuntimeDxe/ReportStatusCodeRouterRuntimeDxe.inf
+  INF MdeModulePkg/Universal/StatusCodeHandler/RuntimeDxe/StatusCodeHandlerRuntimeDxe.inf
+
+  #
+  # Variable Dxe
+  #
+  INF MdeModulePkg/Universal/Variable/EmuRuntimeDxe/EmuVariableRuntimeDxe.inf
+  INF QcomPkg/Drivers/EmbeddedMonotonicCounter/EmbeddedMonotonicCounter.inf
+  INF QcomPkg/Drivers/SimpleTextInOutSerialDxe/SimpleTextInOutSerial.inf
+
+  INF QcomPkg/Drivers/ResetRuntimeDxe/ResetRuntimeDxe.inf
+
+  INF EmbeddedPkg/RealTimeClockRuntimeDxe/RealTimeClockRuntimeDxe.inf
+  INF EmbeddedPkg/MetronomeDxe/MetronomeDxe.inf
+  INF MdeModulePkg/Universal/PrintDxe/PrintDxe.inf
+  INF MdeModulePkg/Universal/DevicePathDxe/DevicePathDxe.inf
+
+  INF MdeModulePkg/Universal/Console/ConPlatformDxe/ConPlatformDxe.inf
+  INF MdeModulePkg/Universal/Console/ConSplitterDxe/ConSplitterDxe.inf
+  INF MdeModulePkg/Universal/Console/GraphicsConsoleDxe/GraphicsConsoleDxe.inf
+  INF MdeModulePkg/Universal/HiiDatabaseDxe/HiiDatabaseDxe.inf
+  INF QcomPkg/Drivers/FontDxe/FontDxe.inf
+
+  INF QcomPkg/Drivers/EnvDxe/EnvDxe.inf
+
+  #
+  # SoC Drivers
+  #
+  INF ArmPkg/Drivers/ArmGic/ArmGicDxe.inf
+  INF ArmPkg/Drivers/TimerDxe/TimerDxe.inf
+  INF QcomPkg/Drivers/ChipInfoDxe/ChipInfoDxe.inf
+
+  #
+  # GLink Driver
+  #
+  #INF QcomPkg/Drivers/GLinkDxe/GLinkDxe.inf
+
+  #
+  # SMEM Driver
+  #
+  INF QcomPkg/Drivers/SmemDxe/SmemDxe.inf
+
+  #
+  # ULog Driver
+  #
+  INF QcomPkg/Drivers/ULogDxe/ULogDxe.inf
+
+  #
+  # NPA Driver
+  #
+  INF QcomPkg/Drivers/NpaDxe/NpaDxe.inf
+
+  #
+  # CmdDb Driver
+  #
+  INF QcomPkg/Drivers/CmdDbDxe/CmdDbDxe.inf
+
+  #
+  # RPMH Driver
+  #
+  INF QcomPkg/Drivers/RpmhDxe/RpmhDxe.inf
+
+  #
+  # CPR Driver
+  #
+  INF QcomPkg/Drivers/CPRDxe/CPRDxe.inf
+
+  #
+  # Pdc Driver
+  #
+  INF QcomPkg/Drivers/PdcDxe/PdcDxe.inf
+
+  #
+  # FAT filesystem + GPT/MBR partitioning
+  #
+  INF QcomPkg/Drivers/DiskIoDxe/DiskIoDxe.inf
+  INF QcomPkg/Drivers/PartitionDxe/PartitionDxe.inf
+  INF FatPkg/EnhancedFatDxe/Fat.inf
+  INF MdeModulePkg/Universal/Disk/UnicodeCollation/EnglishDxe/EnglishDxe.inf
+  INF MdeModulePkg/Universal/FvSimpleFileSystemDxe/FvSimpleFileSystemDxe.inf
+
+  #
+  # DAL Drivers
+  #
+  INF QcomPkg/Drivers/DALSYSDxe/DALSYSDxe.inf
+
+  #
+  # Clock DXE driver
+  #
+  INF QcomPkg/Drivers/ClockDxe/ClockDxe.inf
+
+  #
+  # HAL IOMMU DXE driver
+  #
+  INF QcomPkg/Drivers/HALIOMMUDxe/HALIOMMUDxe.inf
+  
+  #
+  # HWIO DXE driver
+  #
+  INF QcomPkg/Drivers/HWIODxe/HWIODxe.inf
+
+  #
+  # GPI Driver
+  #
+  INF QcomPkg/Drivers/GpiDxe/GpiDxe.inf
+
+  #
+  # I2C Driver
+  #
+  INF QcomPkg/Drivers/I2CDxe/I2CDxe.inf
+
+  #
+  # SPI Driver
+  #
+  INF QcomPkg/Drivers/SPIDxe/SPIDxe.inf
+
+  #
+  # SPMI Driver
+  #
+  INF QcomPkg/Drivers/SPMIDxe/SPMIDxe.inf
+
+  #
+  # MMC/SD
+  #
+  INF QcomPkg/Drivers/SdccDxe/SdccDxe.inf
+
+  #
+  # UFS
+  #
+  INF QcomPkg/Drivers/UFSDxe/UFSDxe.inf
+
+  #
+  # TLMM
+  #
+  INF QcomPkg/Drivers/TLMMDxe/TLMMDxe.inf
+
+
+  #
+  # Display/MDP DXE driver
+  #
+  INF QcomPkg/Drivers/DisplayDxe/DisplayDxe.inf
+
+  #
+  # PlatformInfo Driver
+  #
+
+  INF QcomPkg/Drivers/PlatformInfoDxe/PlatformInfoDxe.inf
+
+  #
+  # Button Driver
+  #
+  INF QcomPkg/Drivers/ButtonsDxe/ButtonsDxe.inf
+
+  #
+  # PMIC Driver
+  #
+
+  INF QcomPkg/Drivers/PmicDxe/PmicDxeLa.inf
+  #INF QcomPkg/Drivers/PmicDxe/NullLib/PmicDxeNull.inf
+
+  #
+  # Charger extended Driver
+  #
+  INF QcomPkg/Drivers/ChargerExDxe/ChargerExDxe.inf
+
+  #
+  # Charger Driver
+  #
+  INF QcomPkg/Drivers/QcomChargerDxe/QcomChargerDxeLA.inf
+
+  #
+  # ADC Driver
+  #
+  INF QcomPkg/Drivers/AdcDxe/AdcDxe.inf
+
+  #
+  # TSENS Driver
+  #
+  INF QcomPkg/Drivers/TsensDxe/TsensDxe.inf
+
+  #
+  # Limits Driver
+  #
+  INF QcomPkg/Drivers/LimitsDxe/LimitsDxe.inf
+
+  #
+  # MpPower Driver
+  #
+  #INF QcomPkg/Drivers/MpPowerDxe/MpPowerDxe.inf
+
+  #
+  # QBlizzard
+  #
+#  INF QcomPkg/Drivers/MpCoreDxe/MpCoreDxe.inf
+#  INF QcomPkg/Drivers/MpAKServicesDxe/MpAKServicesDxe.inf
+#  INF QcomPkg/Drivers/SampleMpTest/SampleMpTest.inf
+#  INF QcomPkg/Drivers/SampleMpTest/QBlizzardTest.inf 
+  #
+  #DDR Get Config
+  #
+  INF QcomPkg/Drivers/DDRInfoDxe/DDRInfoDxe.inf 
+  #
+  # USB Support
+  #
+  INF QcomPkg/Drivers/UsbfnDwc3Dxe/UsbfnDwc3Dxe.inf
+  #INF QcomPkg/Drivers/XhciPciEmulationDxe/XhciPciEmulationDxe.inf
+  #INF QcomPkg/Drivers/XhciDxe/XhciDxe.inf
+  #INF QcomPkg/Drivers/UsbBusDxe/UsbBusDxe.inf
+  #INF QcomPkg/Drivers/UsbKbDxe/UsbKbDxe.inf
+  #INF QcomPkg/Drivers/UsbMassStorageDxe/UsbMassStorageDxe.inf
+  INF QcomPkg/Drivers/UsbMsdDxe/UsbMsdDxe.inf
+  INF QcomPkg/Drivers/UsbDeviceDxe/UsbDeviceDxe.inf
+  INF QcomPkg/Drivers/UsbConfigDxe/UsbConfigDxe.inf
+
+  #
+  # Hash Driver
+  #
+  INF QcomPkg/Drivers/HashDxe/HashDxe.inf
+
+  #
+  # RNG Driver
+  #
+  INF QcomPkg/Drivers/RNGDxe/RngDxe.inf
+
+  #
+  # BDS
+  #
+  INF QcomPkg/Drivers/QcomBds/QcomBds.inf
+
+  #
+  # QDSS Driver (Debugtrace)
+  #
+  #INF QcomPkg/Drivers/QdssDxe/QdssDxe.inf
+
+
+  #
+  # Applications
+  #
+  #QCOM Charger app 
+  INF QcomPkg/Application/QcomChargerApp/QcomChargerApp.inf
+
+  FILE FREEFORM = a91d838e-a5fa-4138-825d-455e2303079e {
+    SECTION UI = "BDS_Menu.cfg"
+    SECTION RAW = QcomPkg/Library/PlatformBdsLib/LA/bds_menu.cfg
+  }
+
+  FILE FREEFORM = a91d838e-a5fa-4138-825d-455e23030794 {
+    SECTION UI = "logo1.bmp"
+    SECTION RAW = QcomPkg/Logo/LA/logo1.bmp
+  }
+
+  
+  FILE FREEFORM = 3E5584ED-05D4-4267-9048-0D47F76F4248 {
+    SECTION UI = "battery_symbol_Soc10.bmp"
+    SECTION RAW = QcomPkg/Drivers/QcomChargerDxe/battery_symbol_Soc10.bmp
+  }
+
+  FILE FREEFORM = 4753E815-DDD8-402d-BF69-9B8C4EB7573E {
+      SECTION UI = "battery_symbol_NoBattery.bmp"
+      SECTION RAW = QcomPkg/Drivers/QcomChargerDxe/battery_symbol_NoBattery.bmp
+  }
+
+  FILE FREEFORM = 03DED53E-BECD-428f-9F79-5ABA64C58445 {
+      SECTION UI = "battery_symbol_Nocharger.bmp"
+      SECTION RAW = QcomPkg/Drivers/QcomChargerDxe/battery_symbol_Nocharger.bmp
+  }
+
+  FILE FREEFORM = 8b86cd38-c772-4fcf-85aa-345b2b3c1ab4 {
+      SECTION UI = "battery_symbol_LowBatteryCharging.bmp"
+      SECTION RAW = QcomPkg/Drivers/QcomChargerDxe/battery_symbol_LowBatteryCharging.bmp
+  }
+
+  FILE FREEFORM = 3FD97907-93F1-4349-AF3C-3B68B0A5E626 {
+      SECTION UI = "battery_symbol_LowBattery.bmp"
+      SECTION RAW = QcomPkg/Drivers/QcomChargerDxe/battery_symbol_LowBattery.bmp
+  }
+
+  FILE FREEFORM = E2EA5A4F-98BD-4203-AB49-399505DDFB7D {
+      SECTION UI = "tsens_thermal_symbol.bmp"
+      SECTION RAW = QcomPkg/Drivers/QcomChargerDxe/tsens_thermal_symbol.bmp
+  }
+
+  FILE FREEFORM = C72FB1A9-5527-4E13-BAC4-F671D0330145 {
+      SECTION UI = "tsens_thermal_err_symbol.bmp"
+      SECTION RAW = QcomPkg/Drivers/QcomChargerDxe/tsens_thermal_err_symbol.bmp
+  }
+
+  FILE FREEFORM = B0F8D1BE-5353-4812-B1F6-07E7768204CC {
+      SECTION UI = "battery_symbol_DebugBoot.bmp"
+      SECTION RAW = QcomPkg/Drivers/QcomChargerDxe/battery_symbol_DebugBoot.bmp
+  }
+
+  FILE FREEFORM = F9E8F683-E065-4E09-B4F9-0230D7CECD08 {
+      SECTION UI = "battery_symbol_DebugStay.bmp"
+      SECTION RAW = QcomPkg/Drivers/QcomChargerDxe/battery_symbol_DebugStay.bmp
+  }
+
+  #
+  # CFG files needed in PRODMODE builds
+  #
+  FILE FREEFORM = A1E235DE-E825-4591-9623-C43175811826 {
+    SECTION UI = "SecParti.cfg"
+    SECTION RAW = QcomPkg/SDM670Pkg/LG/SecParti.cfg
+  }
+
+  FILE FREEFORM = 45FE4B7C-150C-45da-A021-4BEB2048EC6F {     
+    SECTION UI = "QcomChargerCfg.cfg"
+    SECTION RAW = QcomPkg/SDM670Pkg/Settings/PMIC/core/QcomChargerConfig_VbattTh.cfg
+  }
+
+  FILE FREEFORM = F780C779-DD7C-47CD-BD1A-5EB414C51704 {
+    SECTION UI = "BATTERY.PROVISION"
+    SECTION RAW = QcomPkg/Drivers/QcomChargerDxe/BATTERY.PROVISION
+  }
+  
+
+
+
+[FV.FVMAIN_COMPACT]
+FvAlignment        = 8
+ERASE_POLARITY     = 1
+MEMORY_MAPPED      = TRUE
+STICKY_WRITE       = TRUE
+LOCK_CAP           = TRUE
+LOCK_STATUS        = TRUE
+WRITE_DISABLED_CAP = TRUE
+WRITE_ENABLED_CAP  = TRUE
+WRITE_STATUS       = TRUE
+WRITE_LOCK_CAP     = TRUE
+WRITE_LOCK_STATUS  = TRUE
+READ_DISABLED_CAP  = TRUE
+READ_ENABLED_CAP   = TRUE
+READ_STATUS        = TRUE
+READ_LOCK_CAP      = TRUE
+READ_LOCK_STATUS   = TRUE
+
+  INF QcomPkg/XBLCore/XBLCore.inf
+
+  FILE FREEFORM = DDE58710-41CD-4306-DBFB-3FA90BB1D2DD {
+    SECTION UI = "uefiplat.cfg"
+    SECTION RAW = QcomPkg/SDM670Pkg/LG/uefiplat.cfg
+  }
+
+#
+# Zlib provides faster decompmression time, but has penalty of larger image size
+# Lzma: EE4E5898-3914-4259-9D6E-DC7BD79403CF
+# Zlib: 1D301FE9-BE79-4353-91C2-D23BC959AE0C
+#
+  FILE FV_IMAGE = 9E21FD93-9C72-4c15-8C4B-E77F1DB2D792 {
+    SECTION GUIDED 1D301FE9-BE79-4353-91C2-D23BC959AE0C PROCESSING_REQUIRED = TRUE {
+      SECTION FV_IMAGE = FVMAIN
+    }
+  }
+
+
+[FV.ImageFv]
+BlockSize          = 0x40
+NumBlocks          = 0x0         # This FV gets compressed so make it just big enough
+FvAlignment        = 8         # FV alignment and FV attributes setting.
+ERASE_POLARITY     = 1
+MEMORY_MAPPED      = TRUE
+STICKY_WRITE       = TRUE
+LOCK_CAP           = TRUE
+LOCK_STATUS        = TRUE
+WRITE_DISABLED_CAP = TRUE
+WRITE_ENABLED_CAP  = TRUE
+WRITE_STATUS       = TRUE
+WRITE_LOCK_CAP     = TRUE
+WRITE_LOCK_STATUS  = TRUE
+READ_DISABLED_CAP  = TRUE
+READ_ENABLED_CAP   = TRUE
+READ_STATUS        = TRUE
+READ_LOCK_CAP      = TRUE
+READ_LOCK_STATUS   = TRUE
+FvNameGuid         = a8169396-d0f7-49cb-890a-25e1a9767406
+  
+ FILE FREEFORM = 3E5584ED-05D4-4267-9048-0D47F76F4248 {
+    SECTION UI = "battery_symbol_Soc10.bmp"
+    SECTION RAW = QcomPkg/Drivers/QcomChargerDxe/battery_symbol_Soc10.bmp
+  }
+
+  FILE FREEFORM = 4753E815-DDD8-402d-BF69-9B8C4EB7573E {
+      SECTION UI = "battery_symbol_NoBattery.bmp"
+      SECTION RAW = QcomPkg/Drivers/QcomChargerDxe/battery_symbol_NoBattery.bmp
+  }
+
+  FILE FREEFORM = 03DED53E-BECD-428f-9F79-5ABA64C58445 {
+      SECTION UI = "battery_symbol_Nocharger.bmp"
+      SECTION RAW = QcomPkg/Drivers/QcomChargerDxe/battery_symbol_Nocharger.bmp
+  }
+
+  FILE FREEFORM = 8b86cd38-c772-4fcf-85aa-345b2b3c1ab4 {
+      SECTION UI = "battery_symbol_LowBatteryCharging.bmp"
+      SECTION RAW = QcomPkg/Drivers/QcomChargerDxe/battery_symbol_LowBatteryCharging.bmp
+  }
+
+  FILE FREEFORM = 3FD97907-93F1-4349-AF3C-3B68B0A5E626 {
+      SECTION UI = "battery_symbol_LowBattery.bmp"
+      SECTION RAW = QcomPkg/Drivers/QcomChargerDxe/battery_symbol_LowBattery.bmp
+  }
+
+  FILE FREEFORM = E2EA5A4F-98BD-4203-AB49-399505DDFB7D {
+      SECTION UI = "tsens_thermal_symbol.bmp"
+      SECTION RAW = QcomPkg/Drivers/QcomChargerDxe/tsens_thermal_symbol.bmp
+  }
+
+  FILE FREEFORM = C72FB1A9-5527-4E13-BAC4-F671D0330145 {
+      SECTION UI = "tsens_thermal_err_symbol.bmp"
+      SECTION RAW = QcomPkg/Drivers/QcomChargerDxe/tsens_thermal_err_symbol.bmp
+  }
+
+  FILE FREEFORM = B0F8D1BE-5353-4812-B1F6-07E7768204CC {
+      SECTION UI = "battery_symbol_DebugBoot.bmp"
+      SECTION RAW = QcomPkg/Drivers/QcomChargerDxe/battery_symbol_DebugBoot.bmp
+  }
+
+  FILE FREEFORM = F9E8F683-E065-4E09-B4F9-0230D7CECD08 {
+      SECTION UI = "battery_symbol_DebugStay.bmp"
+      SECTION RAW = QcomPkg/Drivers/QcomChargerDxe/battery_symbol_DebugStay.bmp
+  }
+
+
+
+[FV.IMAGEFV_COMPACT]
+BlockSize          = 0x200
+NumBlocks          = 0x10
+FvAlignment        = 8
+ERASE_POLARITY     = 1
+MEMORY_MAPPED      = TRUE
+STICKY_WRITE       = TRUE
+LOCK_CAP           = TRUE
+LOCK_STATUS        = TRUE
+WRITE_DISABLED_CAP = TRUE
+WRITE_ENABLED_CAP  = TRUE
+WRITE_STATUS       = TRUE
+WRITE_LOCK_CAP     = TRUE
+WRITE_LOCK_STATUS  = TRUE
+READ_DISABLED_CAP  = TRUE
+READ_ENABLED_CAP   = TRUE
+READ_STATUS        = TRUE
+READ_LOCK_CAP      = TRUE
+READ_LOCK_STATUS   = TRUE
+
+  FILE FV_IMAGE = 072BE68A-6EC0-B209-9B83-276F017EBEAA { 
+    SECTION GUIDED EE4E5898-3914-4259-9D6E-DC7BD79403CF PROCESSING_REQUIRED = TRUE {
+      SECTION FV_IMAGE = IMAGEFV
+    }
+  }
+  
+################################################################################
+#
+# Rules are use with the [FV] section's module INF type to define
+# how an FFS file is created for a given INF file. The following Rule are the default
+# rules for the different module type. User can add the customized rules to define the
+# content of the FFS file.
+#
+################################################################################
+
+
+############################################################################
+# Example of a DXE_DRIVER FFS file with a Checksum encapsulation section   #
+############################################################################
+#
+#[Rule.Common.DXE_DRIVER]
+#  FILE DRIVER = $(NAMED_GUID) {
+#    DXE_DEPEX    DXE_DEPEX Optional      |.depex
+#    COMPRESS PI_STD {
+#      GUIDED {
+#        PE32     PE32                    |.efi
+#        UI       STRING="$(MODULE_NAME)" Optional
+#        VERSION  STRING="$(INF_VERSION)" Optional BUILD_NUM=$(BUILD_NUMBER)
+#      }
+#    }
+#  }
+#
+############################################################################
+
+[Rule.Common.SEC]
+  FILE SEC = $(NAMED_GUID) RELOCS_RETAINED {
+    TE  TE    Align = Auto      |.efi
+  }
+
+[Rule.Common.PEI_CORE]
+  FILE PEI_CORE = $(NAMED_GUID) {
+    TE     TE           |.efi
+    UI     STRING ="$(MODULE_NAME)" Optional
+  }
+
+[Rule.Common.PEIM]
+  FILE PEIM = $(NAMED_GUID) {
+     PEI_DEPEX PEI_DEPEX Optional        |.depex
+     PE32      PE32                      |.efi
+     UI       STRING="$(MODULE_NAME)" Optional
+  }
+
+[Rule.Common.PEIM.TIANOCOMPRESSED]
+  FILE PEIM = $(NAMED_GUID) DEBUG_MYTOOLS_IA32 {
+    PEI_DEPEX PEI_DEPEX Optional         |.depex
+    GUIDED A31280AD-481E-41B6-95E8-127F4C984779 PROCESSING_REQUIRED = TRUE {
+      PE32      PE32                     |.efi
+      UI        STRING="$(MODULE_NAME)" Optional
+    }
+  }
+
+[Rule.Common.DXE_CORE]
+  FILE DXE_CORE = $(NAMED_GUID) {
+    PE32     PE32           |.efi
+    UI       STRING="$(MODULE_NAME)" Optional
+  }
+
+[Rule.Common.UEFI_DRIVER]
+  FILE DRIVER = $(NAMED_GUID) {
+    DXE_DEPEX    DXE_DEPEX Optional      |.depex
+    PE32         PE32                    |.efi
+    UI           STRING="$(MODULE_NAME)" Optional
+  }
+
+[Rule.Common.DXE_DRIVER]
+  FILE DRIVER = $(NAMED_GUID) {
+    DXE_DEPEX    DXE_DEPEX Optional      |.depex
+    PE32         PE32                    |.efi
+    UI           STRING="$(MODULE_NAME)" Optional
+  }
+
+[Rule.Common.DXE_RUNTIME_DRIVER]
+  FILE DRIVER = $(NAMED_GUID) {
+    DXE_DEPEX    DXE_DEPEX Optional      |.depex
+    PE32         PE32                    |.efi
+    UI           STRING="$(MODULE_NAME)" Optional
+  }
+
+[Rule.Common.DXE_RUNTIME_DRIVER.BINARY]
+  FILE DRIVER = $(NAMED_GUID) {
+    DXE_DEPEX    DXE_DEPEX Optional      |.depex
+    PE32         PE32                    |.efi
+    UI           STRING="$(MODULE_NAME)" Optional
+  }
+
+[Rule.Common.UEFI_APPLICATION]
+  FILE APPLICATION = $(NAMED_GUID) {
+    UI     STRING ="$(MODULE_NAME)" Optional
+    PE32   PE32                    |.efi
+  }
+
+[Rule.Common.DXE_DRIVER.BINARY]
+  FILE DRIVER = $(NAMED_GUID) {
+    DXE_DEPEX    DXE_DEPEX Optional      |.depex
+    PE32         PE32                    |.efi
+    UI           STRING="$(MODULE_NAME)" Optional
+  }
+
+[Rule.Common.UEFI_APPLICATION.BINARY]
+  FILE APPLICATION = $(NAMED_GUID) {
+    DXE_DEPEX    DXE_DEPEX Optional      |.depex
+    PE32         PE32                    |.efi
+    UI           STRING="$(MODULE_NAME)" Optional
+  }
+

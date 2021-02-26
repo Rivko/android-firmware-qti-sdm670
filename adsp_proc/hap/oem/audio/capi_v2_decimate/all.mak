@@ -1,0 +1,73 @@
+# pakman min file
+
+hexagon_ReleaseG_toolv50 = hexagon_ReleaseG_toolv50/ship
+hexagon_Debug_dynamic_toolv64 = hexagon_Debug_dynamic_toolv64/ship
+hexagon_Debug = hexagon_Debug/ship
+hexagon_Debug_toolv50_v5 = hexagon_Debug_toolv50_v5/ship
+hexagon_ReleaseG = hexagon_ReleaseG/ship
+hexagon_Release_toolv64_v5 = hexagon_Release_toolv64_v5/ship
+hexagon_Release_toolv50_v5 = hexagon_Release_toolv50_v5/ship
+hexagon_Release_toolv50 = hexagon_Release_toolv50/ship
+hexagon_Debug_dynamic = hexagon_Debug_dynamic/ship
+hexagon_Release_dynamic_toolv64_v5 = hexagon_Release_dynamic_toolv64_v5/ship
+hexagon_Debug_dynamic_toolv64_v5 = hexagon_Debug_dynamic_toolv64_v5/ship
+hexagon_Release_v5 = hexagon_Release_v5/ship
+hexagon_ReleaseG_dynamic_v5 = hexagon_ReleaseG_dynamic_v5/ship
+hexagon_Debug_toolv64_v5 = hexagon_Debug_toolv64_v5/ship
+hexagon_Release_dynamic = hexagon_Release_dynamic/ship
+hexagon_Release = hexagon_Release/ship
+hexagon_Debug_toolv64_v55 = hexagon_Debug_toolv64_v55/ship
+hexagon_Debug_dynamic_toolv50_v5 = hexagon_Debug_dynamic_toolv50_v5/ship
+hexagon_ReleaseG_toolv64_v55 = hexagon_ReleaseG_toolv64_v55/ship
+hexagon_Release_dynamic_toolv64_v55 = hexagon_Release_dynamic_toolv64_v55/ship
+hexagon_Release_dynamic_toolv50 = hexagon_Release_dynamic_toolv50/ship
+hexagon_ReleaseG_dynamic_toolv50 = hexagon_ReleaseG_dynamic_toolv50/ship
+hexagon_ReleaseG_dynamic = hexagon_ReleaseG_dynamic/ship
+MAKE_D_DIR = ../../../tools/make.d
+hexagon_ReleaseG_dynamic_toolv64_v55 = hexagon_ReleaseG_dynamic_toolv64_v55/ship
+hexagon_ReleaseG_dynamic_toolv50_v5 = hexagon_ReleaseG_dynamic_toolv50_v5/ship
+hexagon_ReleaseG_toolv64 = hexagon_ReleaseG_toolv64/ship
+hexagon_Debug_dynamic_v5 = hexagon_Debug_dynamic_v5/ship
+hexagon_Release_dynamic_v5 = hexagon_Release_dynamic_v5/ship
+hexagon_Debug_toolv64 = hexagon_Debug_toolv64/ship
+hexagon_ReleaseG_v5 = hexagon_ReleaseG_v5/ship
+hexagon_ReleaseG_dynamic_toolv64 = hexagon_ReleaseG_dynamic_toolv64/ship
+hexagon_ReleaseG_toolv64_v5 = hexagon_ReleaseG_toolv64_v5/ship
+hexagon_Debug_dynamic_toolv64_v55 = hexagon_Debug_dynamic_toolv64_v55/ship
+hexagon_Release_toolv64_v55 = hexagon_Release_toolv64_v55/ship
+hexagon_Release_toolv64 = hexagon_Release_toolv64/ship
+hexagon_Debug_toolv50 = hexagon_Debug_toolv50/ship
+hexagon_ReleaseG_toolv50_v5 = hexagon_ReleaseG_toolv50_v5/ship
+hexagon_Release_dynamic_toolv64 = hexagon_Release_dynamic_toolv64/ship
+hexagon_Release_dynamic_toolv50_v5 = hexagon_Release_dynamic_toolv50_v5/ship
+hexagon_Debug_dynamic_toolv50 = hexagon_Debug_dynamic_toolv50/ship
+hexagon_ReleaseG_dynamic_toolv64_v5 = hexagon_ReleaseG_dynamic_toolv64_v5/ship
+hexagon_Debug_v5 = hexagon_Debug_v5/ship
+
+# adjust paths to be relative to current working dir
+_pkg_deps = hexagon_ReleaseG_toolv50 hexagon_Debug_dynamic_toolv64 hexagon_Debug hexagon_Debug_toolv50_v5 hexagon_ReleaseG hexagon_Release_toolv64_v5 hexagon_Release_toolv50_v5 hexagon_Release_toolv50 hexagon_Debug_dynamic hexagon_Release_dynamic_toolv64_v5 hexagon_Debug_dynamic_toolv64_v5 hexagon_Release_v5 hexagon_ReleaseG_dynamic_v5 hexagon_Debug_toolv64_v5 hexagon_Release_dynamic hexagon_Release hexagon_Debug_toolv64_v55 hexagon_Debug_dynamic_toolv50_v5 hexagon_ReleaseG_toolv64_v55 hexagon_Release_dynamic_toolv64_v55 hexagon_Release_dynamic_toolv50 hexagon_ReleaseG_dynamic_toolv50 hexagon_ReleaseG_dynamic MAKE_D_DIR hexagon_ReleaseG_dynamic_toolv64_v55 hexagon_ReleaseG_dynamic_toolv50_v5 hexagon_ReleaseG_toolv64 hexagon_Debug_dynamic_v5 hexagon_Release_dynamic_v5 hexagon_Debug_toolv64 hexagon_ReleaseG_v5 hexagon_ReleaseG_dynamic_toolv64 hexagon_ReleaseG_toolv64_v5 hexagon_Debug_dynamic_toolv64_v55 hexagon_Release_toolv64_v55 hexagon_Release_toolv64 hexagon_Debug_toolv50 hexagon_ReleaseG_toolv50_v5 hexagon_Release_dynamic_toolv64 hexagon_Release_dynamic_toolv50_v5 hexagon_Debug_dynamic_toolv50 hexagon_ReleaseG_dynamic_toolv64_v5 hexagon_Debug_v5
+__pkg_dir := $(filter-out ./,$(dir $(lastword $(MAKEFILE_LIST))))
+$(foreach v,$(_pkg_deps),$(eval $v := $(__pkg_dir)$$($v)))
+
+# assign these variables only for the top-level makefile
+ifeq ($(origin __pkg_root),undefined)
+  __pkg_root    := $(__pkg_dir).
+  __pkg_result  := $(__pkg_root)$(filter-out /.,/ship)
+  __pkg_deps    := $(_pkg_deps)
+endif
+__pkg_uri     ?= p4://qctp406.qualcomm.com/source/qcom/qct/platform/adsp/proj/capi_v2_decimate/sdk.pak
+__pkg_version ?= 1213571
+
+
+include $(MAKE_D_DIR)/defines.min
+include glue/all.mak
+RESULT_DIRS = $(sort $(filter-out MAKE_D_DIR,$(__pkg_deps)))
+OBJ_DIR = ship
+$(foreach d,$(RESULT_DIRS),\
+    $(eval BUILD_COPIES+=$(wildcard $($d)/*) $(OBJ_DIR)/$d/ ;))
+include $(MAKE_D_DIR)/rules.min
+
+build_vs:hexagon_Debug hexagon_Debug_v5 hexagon_Debug_dynamic_v5 hexagon_Debug_dynamic hexagon_Release hexagon_Release_v5 hexagon_Release_dynamic_v5 hexagon_Release_dynamic hexagon_ReleaseG hexagon_ReleaseG_v5 hexagon_ReleaseG_dynamic_v5 hexagon_ReleaseG_dynamic hexagon_Debug_toolv64 hexagon_Debug_toolv64_v5 hexagon_Debug_dynamic_toolv64_v5 hexagon_Debug_toolv64_v55 hexagon_Debug_dynamic_toolv64_v55 hexagon_Debug_dynamic_toolv64 hexagon_Release_toolv64 hexagon_Release_toolv64_v5 hexagon_Release_dynamic_toolv64_v5 hexagon_Release_toolv64_v55 hexagon_Release_dynamic_toolv64_v55 hexagon_Release_dynamic_toolv64 hexagon_ReleaseG_toolv64 hexagon_ReleaseG_toolv64_v5 hexagon_ReleaseG_dynamic_toolv64_v5 hexagon_ReleaseG_toolv64_v55 hexagon_ReleaseG_dynamic_toolv64_v55 hexagon_ReleaseG_dynamic_toolv64
+
+build_vs_clean:hexagon_Debug_clean hexagon_Debug_v5_clean hexagon_Debug_dynamic_v5_clean hexagon_Debug_dynamic_clean hexagon_Release_clean hexagon_Release_v5_clean hexagon_Release_dynamic_v5_clean hexagon_Release_dynamic_clean hexagon_ReleaseG_clean hexagon_ReleaseG_v5_clean hexagon_ReleaseG_dynamic_v5_clean hexagon_ReleaseG_dynamic_clean hexagon_Debug_toolv64_clean hexagon_Debug_toolv64_v5_clean hexagon_Debug_dynamic_toolv64_v5_clean hexagon_Debug_toolv64_v55_clean hexagon_Debug_dynamic_toolv64_v55_clean hexagon_Debug_dynamic_toolv64_clean hexagon_Release_toolv64_clean hexagon_Release_toolv64_v5_clean hexagon_Release_dynamic_toolv64_v5_clean hexagon_Release_toolv64_v55_clean hexagon_Release_dynamic_toolv64_v55_clean hexagon_Release_dynamic_toolv64_clean hexagon_ReleaseG_toolv64_clean hexagon_ReleaseG_toolv64_v5_clean hexagon_ReleaseG_dynamic_toolv64_v5_clean hexagon_ReleaseG_toolv64_v55_clean hexagon_ReleaseG_dynamic_toolv64_v55_clean hexagon_ReleaseG_dynamic_toolv64_clean
+

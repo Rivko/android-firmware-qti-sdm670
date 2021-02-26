@@ -1,0 +1,179 @@
+//============================================================================
+//  Name:                                                                     
+//    std_toolsconfig.cmm 
+//
+//  Description:                                                              
+//    Configures the path of the tools / scripts for a particular debug session
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who           what, where, why
+// --------   ---           ---------------------------------------------------------
+// 02/07/2017 JBILLING      Updated for SDM845
+// 03/03/2016 JBILLING      Changes to be called without t32start environment
+// 08/13/2015 RSSRIDHA      Added support for MDMs
+// 12/10/2012 AJCheriyan    Added support for multiple chipsets     
+// 07/10/2012 AJCheriyan    Created for B-family. 
+
+// Supports 2 arguments
+// ARG0 - Name of the Chipset for which path has to be setup
+// ARG1 - Name of the Subsys for which path has to be setup
+
+
+//####################Declarations#######################
+LOCAL &ArgumentLine &UTILITY &argline
+ENTRY %LINE &ArgumentLine
+ENTRY &UTILITY %LINE &argline
+//#####################Select Subroutine###################
+// Name of the utility we are calling
+LOCAL &SUBROUTINE
+
+// Input Argument 0 is the name of the utility
+&SUBROUTINE="&UTILITY"
+IF !(("&SUBROUTINE"=="SETUPPATHS"))
+(
+    &SUBROUTINE="MAIN"
+    &argline="&ArgumentLine"
+)
+
+    // This should be created by some top level script. The setupenv for each proc would
+    // set this up
+    AREA.SELECT
+    // Call the required utility
+    GOSUB &SUBROUTINE &argline
+    ENTRY %LINE &Rvalue
+
+    GOSUB EXIT &Rvalue
+
+
+    
+/////////////////////////////
+//
+//  MAIN
+//  Primary program, only run at setup time.
+//  Initializes various global path variables
+//
+/////////////////////////////    
+MAIN:
+    LOCAL &chipset &subsys
+    ENTRY &chipset &subsys
+    IF STRING.SCAN("&TOOLSCONFIG_RAN","TOOLSCONFIG_RAN",0)==-1
+    (
+        //If it's true it already ran
+        IF "&TOOLSCONFIG_RAN"=="TRUE"
+        (
+            ENDDO
+        )
+    )
+    GLOBAL &TOOLSCONFIG_RAN
+    &TOOLSCONFIG_RAN="TRUE"
+
+
+
+    // Create a global variable for every "subsystem" script folder
+    // Top level meta scripts
+    GLOBAL &METASCRIPTSDIR
+    GLOBAL &METAROOTDIR
+    // Common Scripts
+    GLOBAL &METATOOLSDIR
+    GLOBAL &COMMON_METASCRIPTSDIR
+    // Generated Scripts
+    GLOBAL &GEN_METASCRIPTSDIR
+    // Sub-system level scripts
+    GLOBAL &MPSS_METASCRIPTSDIR
+    GLOBAL &RPM_METASCRIPTSDIR
+    GLOBAL &APPS_METASCRIPTSDIR
+    GLOBAL &ADSP_METASCRIPTSDIR
+    GLOBAL &CDSP_METASCRIPTSDIR
+    GLOBAL &WCNSS_METASCRIPTSDIR
+    GLOBAL &IPA_METASCRIPTSDIR
+    GLOBAL &VSS_METASCRIPTSDIR
+    GLOBAL &PARTITION_METASCRIPTSDIR
+    GLOBAL &COMMON_CHIPSET_METASCRIPTSDIR
+    GLOBAL &DEBUGLEVEL
+    GLOBAL &APPS_METASCRIPTSDIR_HLOS
+    &DEBUGLEVEL="NORMAL"
+    
+    GOSUB SETUPPATHS &chipset &subsys
+    RETURN SUCCESS 
+    
+////////////////////////////////
+//
+//  SETUPPATHS
+//  Sets up T32 path variable. Can be called 
+//  after startup.
+//
+///////////////////////////////////
+SETUPPATHS:
+    LOCAL &chipset &subsys
+    ENTRY &chipset &subsys
+    
+    &METASCRIPTSDIR=OS.PPD()
+    &METAROOTDIR="&METASCRIPTSDIR/../../../.."
+    &GEN_METASCRIPTSDIR="&METASCRIPTSDIR/gen"
+    &METATOOLSDIR="&METASCRIPTSDIR/../tools"
+    &MPSS_METASCRIPTSDIR="&METASCRIPTSDIR/mpss/&chipset"
+    &COMMON_METASCRIPTSDIR="&METASCRIPTSDIR/common"
+    &COMMON_CHIPSET_METASCRIPTSDIR="&METASCRIPTSDIR/common/&chipset"
+    &APPS_METASCRIPTSDIR="&METASCRIPTSDIR/apps/&chipset"
+    &APPS_METASCRIPTSDIR_HLOS="&METASCRIPTSDIR/apps/&chipset/&HLOS"
+
+    &RPM_METASCRIPTSDIR="&METASCRIPTSDIR/rpm/&chipset"
+    &ADSP_METASCRIPTSDIR="&METASCRIPTSDIR/adsp/&chipset"
+    &CDSP_METASCRIPTSDIR="&METASCRIPTSDIR/cdsp/&chipset"
+    &SLPI_METASCRIPTSDIR="&METASCRIPTSDIR/slpi/&chipset"
+    &DDR_METASCRIPTSDIR="&METASCRIPTSDIR/shrm"
+    &WCNSS_METASCRIPTSDIR="&METASCRIPTSDIR/wcnss/&chipset"
+    &VSS_METASCRIPTSDIR="&METASCRIPTSDIR/vss/&chipset"
+    
+    &PARTITION_METASCRIPTSDIR="&METASCRIPTSDIR\..\..\..\build"
+
+    // Set the path up to include the top level, SS specific scripts and apps specific script
+    IF STR.UPR("&subsys")=="NULL"
+    (
+        LOCAL &executable
+        //Gives us the name of the executable running. Can determine if ARM or Q6
+        &executable=OS.PEF()
+        IF (STRING.SCAN(STR.LWR("&executable"),"t32marm",0)!=-1)
+        (
+            &subsys="APPS"
+        )
+        ELSE IF (STRING.SCAN(STR.LWR("&executable"),"t32mqdsp",0)!=-1)
+        (
+            &subsys="MPSS"
+        )
+    )
+
+    PATH &METASCRIPTSDIR &COMMON_METASCRIPTSDIR &COMMON_CHIPSET_METASCRIPTSDIR &GEN_METASCRIPTSDIR &METASCRIPTSDIR/&subsys/&chipset &APPS_METASCRIPTSDIR &APPS_METASCRIPTSDIR/&HLOS &METASCRIPTSDIR/apps &METASCRIPTSDIR/&subsys &METASCRIPTSDIR/adsp &METASCRIPTSDIR/slpi &METASCRIPTSDIR/mpss &METASCRIPTSDIR/apps &METASCRIPTSDIR/ipa &METASCRIPTSDIR/wlan &METASCRIPTSDIR/rpm &PARTITION_METASCRIPTSDIR &METASCRIPTSDIR/&apps/&chipset/&HLOS &IPA_METASCRIPTSDIR &SP_METASCRIPTSDIR &METASCRIPTSDIR/DDR &METASCRIPTSDIR/cdsp
+
+
+    // Set boot processor to have full system knowledge 
+    LOCAL &subsys
+    &subsys=STR.LWR("&subsys")
+
+    IF (("&subsys"=="apps")||("&subsys"=="rpm")||("&T32PROP"=="sim"))
+    (
+        PATH + &MPSS_METASCRIPTSDIR &ADSP_METASCRIPTSDIR &SLPI_METASCRIPTSDIR &CDSP_METASCRIPTSDIR &WCNSS_METASCRIPTSDIR &VSS_METASCRIPTSDIR &RPM_METASCRIPTSDIR &DDR_METASCRIPTSDIR &METASCRIPTSDIR/multipd
+    )
+
+    //For future live debug configuration
+    IF (("&subsys"=="mpss")&&("&T32PROP"!="sim"))
+    (
+        PATH + &MPSS_METASCRIPTSDIR &METASCRIPTSDIR/multipd
+    )
+
+    RETURN
+
+FATALEXIT:    
+EXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    ENDDO &rvalue
+    

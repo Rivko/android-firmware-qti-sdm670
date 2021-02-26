@@ -1,0 +1,121 @@
+#===============================================================================
+#
+# G-LINK LB Server Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2014-2015, 2017 Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Qualcomm Technologies, Inc. Confidential and Proprietary.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1/mproc/glink/lb_server/build/glink_lb_server.scons#2 $
+#  $DateTime: 2017/09/14 03:40:04 $
+#  $Author: pwbldsvc $
+#  $Change: 14371357 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 01/18/16   rv      Disable legacy lb server for 8998
+# 01/11/15   rv/ab   Moved legacy loopback server code to separate file 
+# 05/13/15   db      Added RCINIT function for TN APSS 
+# 02/23/15   bc      Added tracer packet support
+# 12/11/14   rs      Support link notifications
+# 07/27/14   rs      Initial version for G-Link LB server.
+#
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+UNITPATH = "${BUILD_ROOT}/core/mproc/glink/lb_server"
+SRCPATH  = UNITPATH + "/src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+#  Publish Private APIs
+#-------------------------------------------------------------------------------
+
+env.PublishPrivateApi('MPROC_GLINK', [
+   "${BUILD_ROOT}/core/mproc/glink/os/inc",
+   "${BUILD_ROOT}/core/mproc/glink/lb_server/inc",
+   "${BUILD_ROOT}/core/mproc/glink/glink_tracer/inc"
+])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'BOOT',
+   'DEBUGTOOLS',
+   'HAL',
+   'DAL',
+   'HWENGINES',
+   'MPROC',
+   'MEMORY',
+   'POWER',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'WIREDCONNECTIVITY',
+
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(['MPROC', 'MPROC_GLINK_LB_SERVER_SETTINGS'])
+env.RequireProtectedApi(['MPROC_GLINK'])
+
+ 
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+GLINK_LB_SERVER_CORE = [
+   '${BUILDPATH}/glink_lb_server.c',
+   '${BUILDPATH}/glink_lb_server_devcfg.c',
+]
+
+GLINK_LB_SERVER_OS_DAL = [
+   '${BUILDPATH}/glink_lb_server_os.c'
+]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+ROOT_IMAGES = ['CORE_QDSP6_SW', 'CORE_MPSS_ROOT', 'CORE_ADSP_ROOT', 'WCN_IMAGE',
+               'CORE_SLPI_ROOT', 'CORE_ADSP_SLPI_ROOT', 'CORE_CDSP_ROOT']
+
+# Add Image-specific Libraries, whose sources should be packed out.
+env.AddBinaryLibrary(ROOT_IMAGES, '${BUILDPATH}/glink_lb_server',
+                     [GLINK_LB_SERVER_CORE, GLINK_LB_SERVER_OS_DAL])
+
+                     
+#-------------------------------------------------------------------------------
+# CleanPack (Remove) all remaining files for peripheral processors
+#-------------------------------------------------------------------------------
+PACK_OUT = env.FindFiles(['*.h', '*.c', '*.s'], SRCPATH)
+# Don't include RPM in this list, because it already does we want automatically.
+env.CleanPack(ROOT_IMAGES, PACK_OUT)
+
+#-------------------------------------------------------------------------------
+# RCINIT Task and Init Fields and Initialization
+#-------------------------------------------------------------------------------
+RCINIT_INIT_GLINK_LB_SERVER_START = {
+  'sequence_group'             : 'RCINIT_GROUP_2',           # required
+  'init_name'                  : 'glink_lb_server',          # required
+  'init_function'              : 'glink_lb_server_start',    # required
+  'dependencies'               : [ 'dalsys', 'glink', 'xport_smem', 'xport_smd']
+}
+
+if 'USES_RCINIT' in env:
+  RCINIT_IMG = ROOT_IMAGES
+  env.AddRCInitFunc( RCINIT_IMG, RCINIT_INIT_GLINK_LB_SERVER_START )

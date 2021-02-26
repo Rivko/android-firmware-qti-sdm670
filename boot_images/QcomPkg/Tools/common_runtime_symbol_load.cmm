@@ -1,0 +1,206 @@
+;============================================================================
+; Name: common_runtime_symbol_load.cmm
+;
+; This file should not be called directly, TargetPkg/Tools/runtime_symbol_load.cmm
+; will call this with correct parameters
+;
+; Copyright (c) 2013-2015 Qualcomm Technologies, Incorporated.
+; All Rights Reserved.
+; Qualcomm Confidential and Proprietary
+;
+;----------------------------------------------------------------------------
+;============================================================================
+;
+;
+;
+;when         who     what, where, why
+;----------   ---     ----------------------------------------------------------
+;2015-12-09   na      Fixing 32-bit/64-bit differences in reading values
+;2015-09-17   vk      Fix for Linux
+;2015-07-17   dg      Fix pathing issues
+;2015-06-09   dg      Move InfoBlock parsing to a common file
+;2015-03-11   vk      Add InitOffsets path
+;2015-01-27   bh      Unifying 32/64-bit scripts
+;2014-10-03   na      Fixing Virtual and Physical base addr for 64-bit
+;2014-05-09   vk      Branch 64 bit
+;2013-10-23   niting  Updated location of UEFI info block
+;2013-10-07   vk      Fix printing physical load address
+;2013-03-04   yg      Some fixes per code changes
+;2013-12-02   vk      Initial Version
+;============================================================================;
+
+;  Info Block Structure - QcomPkg/Sec/UefiInfoBlk.h
+;  Make sure runtime driver list is up to date in QcomPkg/Drivers/EnvDxe.c
+;
+; Current List:
+;
+;STATIC  RtDriversReadyType RtDrivers[] =
+;{
+;  { "EnvDxe", 0 },
+;  { "RuntimeDxe", 0 },
+;  { "VariableDxe", 0 },
+;  { "EmbeddedMonotonicCounter", 0 },
+;  { "ResetRuntimeDxe", 0 },
+;  { "RealTimeClockRuntime", 0 },
+;  { "CapsuleRuntimeDxe", 0},
+;};
+
+
+;---------------------------------------------------
+; ENTRY point for cmm - start here
+;---------------------------------------------------
+ENTRY &UefiBase &InfoBlkPtrOffset
+
+  ;&UefiBase is the base of FD
+
+  local &PhyImageBase
+  local &VirtImageBase
+  local &LoadFilePathPos
+  local &LoadFilePath
+  local &PathSep
+  local &ScanLocation
+  local &IgnoreSymPathParts
+  local &RunTimeDbgTblPtr
+  local &NumEntriesRtDbgTbl
+
+  AREA.Create InfoBlock
+  AREA.Select InfoBlock
+  AREA.View InfoBlock
+
+  ;PRINT banner
+  GOSUB PrintHeading
+
+  ;Parse all fields
+  &InfoBlkAddr=&UefiBase+&InfoBlkPtrOffset
+
+  do QcomPkg/Tools/InitOffsets.cmm
+
+  ;PRINT InfoBlock
+  do QcomPkg/Tools/parse_info_blk.cmm ParseAndPrintInfoBlk &InfoBlkAddr
+  gosub GetDebugTable &InfoBlkAddr
+  ENTRY &RunTimeDbgTblPtr &NumEntriesRtDbgTbl
+
+  print "RunTimeDebugTablePtr = &RunTimeDbgTblPtr Entries = &NumEntriesRtDbgTbl"
+
+
+  &i=0
+  while (&i<&NumEntriesRtDbgTbl)
+  (
+    if (&ARCHState==1)
+    (
+      &PhyImageBase=data.long(A:&RunTimeDbgTblPtr)
+      &VirtImageBase=data.long(A:&RunTimeDbgTblPtr+0x8)
+    )
+    else
+    (
+      &PhyImageBase=data.quad(A:&RunTimeDbgTblPtr)
+      &VirtImageBase=data.quad(A:&RunTimeDbgTblPtr+0x8)
+    )
+
+    &PathString=data.string(A:&RunTimeDbgTblPtr+0x10)
+
+    print "T: &RunTimeDbgTblPtr P: &PhyImageBase V:&VirtImageBase @ &PathString"
+
+
+  ; Search for Build folder in the file path
+  local &scanres
+  &LoadFilePathPos=0.
+  &scanres=0.
+  repeat
+  (
+    &scanres=string.scan("&PathString","/Build/",&LoadFilePathPos)
+    if (&scanres!=-1.)
+    (
+      &LoadFilePathPos=&scanres+1.
+    )
+    else
+    (
+      &scanres=string.scan("&PathString","\Build\",&LoadFilePathPos)
+      if (&scanres!=-1.)
+      (
+        &LoadFilePathPos=&scanres+1.
+      )
+    )
+  )
+  while &scanres!=-1.
+  &PathSep=string.mid("&PathString",&LoadFilePathPos-1,1)
+
+  ;y.spath.reset
+  y.spath.SETBASEDIR .
+
+  &IgnoreSymPathParts=0
+  &ScanLocation=string.scan("&PathString","&PathSep",0)
+  while &ScanLocation<&LoadFilePathPos
+  (
+    &IgnoreSymPathParts=&IgnoreSymPathParts+1
+    &ScanLocation=string.scan("&PathString","&PathSep",&ScanLocation+1)
+  )
+
+  ; Extract only the elf file path relative to current location
+  &PathString=string.cut("&PathString",&LoadFilePathPos)
+
+
+    &VirtImgLoadAddress=&VirtImageBase+&EfiHeaderOffset
+    data.load.elf &PathString &VirtImgLoadAddress /nocode /noclear /StripPART &IgnoreSymPathParts
+
+    ; Structure size
+    &RunTimeDbgTblPtr=&RunTimeDbgTblPtr+0x200
+
+    &i=&i+1
+  )
+
+  PRINT "------------------------------------"
+  PRINT "+ Completed Runtime Symbol Loading +"
+  PRINT "------------------------------------"
+
+  AREA.Close InfoBlock
+
+ENDDO
+
+;---------------------------------------------------
+; PRINT Banner
+;---------------------------------------------------
+PrintHeading:
+  PRINT ""
+  PRINT "+-------------------------+"
+  PRINT "| UEFI RunTime Symbol Load |"
+  PRINT "+-------------------------+"
+  PRINT ""
+RETURN
+
+;---------------------------------------------------
+; Error handler
+;---------------------------------------------------
+ON ERROR GOSUB
+(
+  PRINT %ERROR Error Occured !
+  ;CONTINUE
+  AREA.Close InfoBlock
+  END
+)
+
+;---------------------------------------------------
+; GetDebugTable
+;---------------------------------------------------
+GetDebugTable:
+  ENTRY &InfoBlkAddr
+
+  &InfoBlkVersion=data.long(A:&InfoBlkAddr+4)
+
+  if (&ARCHState==1)
+  (
+    &RunTimeDbgTblPtr=data.long(A:&InfoBlkAddr+&IBlkRuntimeDbgTablePtr)
+    &NumEntriesRtDbgTbl=data.long(A:&InfoBlkAddr+&IBlkRtDbgTableEntryCnt)
+  )
+  else
+  (
+    &RunTimeDbgTblPtr=data.quad(A:&InfoBlkAddr+&IBlkRuntimeDbgTablePtr)
+    &NumEntriesRtDbgTbl=data.quad(A:&InfoBlkAddr+&IBlkRtDbgTableEntryCnt)
+  )
+
+  ;PRINT all fields
+  PRINT "Parsing InfoBlock at &InfoBlkAddr"
+  PRINT "InfoBlock StructVersion: &InfoBlkVersion"
+  PRINT "DbgTsblePointer@ &RunTimeDbgTblPtr DebugEntryCount: &NumEntriesRtDbgTbl"
+  RETURN &RunTimeDbgTblPtr &NumEntriesRtDbgTbl
+

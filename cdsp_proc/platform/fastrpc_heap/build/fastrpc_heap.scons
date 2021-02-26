@@ -1,0 +1,92 @@
+#===============================================================================
+# Copyright (c) 2012 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===============================================================================
+Import('env')
+
+env = env.Clone()
+
+platform_root = '${BUILD_ROOT}/platform'
+env.Replace(ADSP_PLATFORM_ROOT = platform_root)
+
+
+if env['IMAGE_NAME'] == 'AVS_ADSP_USER':
+    env.Append(CFLAGS='-DSTATIC_PD=1')  
+    
+APIS=[
+  'FASTRPC_HEAP',
+  'HAPSDK',
+  'PLATFORM_LIBS',
+  'REMOTE',
+  'STDDEF',
+  'A1STD',
+  'ATOMIC',
+  'UTILS',
+  'QLIST',
+  'HAP',
+  'QI',
+  'RPCMEM',
+  'APPS_MEM',
+  ]
+env.RequireRestrictedApi(APIS)
+env.RequirePublicApi(APIS)
+
+
+core_public_apis = [
+   'KERNEL',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'DAL',
+   'DEBUGTOOLS',
+   ]
+
+env.RequirePublicApi(core_public_apis, area='core')
+
+env.Append(CPPDEFINES=["FEATURE_QDSP6"])
+#env.Append(CPPDEFINES=["FEATURE_MEMHEAP2_USE_PRNG"])
+env.Append(CPPDEFINES=["MEM_HEAP_LARGE_SECTION_SUPPORT"])
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${ADSP_PLATFORM_ROOT}/fastrpc_heap/src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+SHELL_SOURCES =  [
+  env.AddQaicHeaderDep('${BUILDPATH}/mem.c', "apps_mem"),
+  '${BUILDPATH}/memheap.c',
+  '${BUILDPATH}/wrappers.c',
+]
+
+SHELL_SOURCES_AVS =  [
+  env.AddQaicHeaderDep('${BUILDPATH}/mem.c', "apps_mem"),
+ '${BUILDPATH}/memheap.c',
+]
+
+SOURCES =  [
+  '${BUILDPATH}/fastrpc_kheap.c',
+  ]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+env.AddBinaryLibrary(['FASTRPC_SHELL_IMG'],'${BUILDPATH}/fastrpc_heap', SHELL_SOURCES)
+if ('USES_ENABLE_GUESTOS_AUDIOPD_SUPPORT' in env):
+   env.AddBinaryLibrary(['AVS_ADSP_USER'],'${BUILDPATH}/fastrpc_heap', SOURCES)
+else:
+   env.AddBinaryLibrary(['AVS_ADSP_USER'],'${BUILDPATH}/fastrpc_heap', SHELL_SOURCES_AVS)
+env.AddBinaryLibrary(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+ 'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'CORE_QDSP6_SENSOR_SW', 'SSC_ADSP_USER'],'${BUILDPATH}/fastrpc_heap', SOURCES)
+
+#-------------------------------------------------------------------------------
+# Load Subunits (sys)
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+# Clean / pack rules
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.cpp', '*.h', '*.s'], '${ADSP_PLATFORM_ROOT}/fastrpc_heap/src'))
+CLEAN_LIST.extend(env.FindFiles(['osal*.h','Prng*.h'], '${ADSP_PLATFORM_ROOT}/fastrpc_heap/inc'))
+
+env.CleanPack(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+     'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'FASTRPC_SHELL_IMG', 'CORE_QDSP6_SENSOR_SW','AVS_ADSP_USER', 'SSC_ADSP_USER'], CLEAN_LIST)

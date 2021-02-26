@@ -1,0 +1,167 @@
+#===============================================================================
+#                    Copyright 2009 Qualcomm Technologies Incorporated.
+#                           All Rights Reserved.
+#                         QUALCOMM Proprietary/GTDR
+#===============================================================================
+# REXL4 Libs
+#-------------------------------------------------------------------------------
+Import('env')
+env = env.Clone()
+#SDM640_CHANGES
+if env['MSM_ID'] in ['640']:
+   env['MSM_ID'] = '670'
+   
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/kernel/rex"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# External depends within CoreBSP
+#-------------------------------------------------------------------------------
+env.RequireExternalApi([
+
+])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'DEBUGTOOLS',
+   'DEBUGTRACE',
+   'HWENGINES',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'PRODUCTS',
+   'POWER',
+   'MPROC',
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+if env['MSM_ID'] == '24':
+       env.Append(CPPDEFINES = 'SDX24_STUBS')
+
+if 'USES_REX_TIMESLICING' in env:
+   env.Append(CPPDEFINES= ["FEATURE_REX_TIMESLICING"])
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+REX_C_SOURCES = [
+#   '${BUILDPATH}/src/rextime.c',
+   '${BUILDPATH}/src/rex.c',
+#   '${BUILDPATH}/src/rextp.c',
+#   '${BUILDPATH}/src/rexdiag.c',
+#   '${BUILDPATH}/src/rexswm.c',
+#   '${BUILDPATH}/src/rexcorelog.c',
+#   '${BUILDPATH}/src/rexstat.c',
+#   '${BUILDPATH}/src/rextls.c',
+#   '${BUILDPATH}/src/rextrace.c',
+#   '${BUILDPATH}/src/rex_exception.c',
+]
+
+REX_ARCH_SOURCES = [
+   '${BUILDPATH}/arch/cortex-m3/rexarm.c',
+   '${BUILDPATH}/arch/cortex-m3/rexcore.c',
+   '${BUILDPATH}/arch/cortex-m3/vectors.c',
+   '${BUILDPATH}/arch/cortex-m3/exceptions.c',
+   '${BUILDPATH}/arch/cortex-m3/aop_mpu.c',
+   '${BUILDPATH}/arch/cortex-m3/coredump.c',
+]
+
+REX_TARGET_SOURCES = [
+    '${BUILDPATH}/target/${MSM_ID}/aop_interrupt_table.c',
+    '${BUILDPATH}/target/${MSM_ID}/exception_isr.c',
+    #'${BUILDPATH}/target/${MSM_ID}/image_layout.c',
+    '${BUILDPATH}/target/${MSM_ID}/retarget.c',
+    '${BUILDPATH}/target/${MSM_ID}/aop_mpu_cfg.c',
+    ]
+
+REX_COMMON_SOURCES = [
+    '${BUILDPATH}/common/stack_protect.c',
+    '${BUILDPATH}/common/time_service.c',
+    #'${BUILDPATH}/common/xpu_init.c',
+    '${BUILDPATH}/common/qmp_msg_driver.c',
+    ]
+
+REX_SPECIAL_SOURCES = [
+    '${BUILDPATH}/common/datetime.c',
+    ]
+
+
+REX_ENTRY_SOURCES = [
+   '${BUILDPATH}/target/${MSM_ID}/startup.s',
+]
+		
+rex_arm_obj = env.Object([REX_C_SOURCES, REX_ARCH_SOURCES, REX_TARGET_SOURCES])
+rex_special_objs = env.Object([REX_SPECIAL_SOURCES])
+for so in rex_special_objs:
+    so.set_always_build ()
+rex_arm_obj.extend(rex_special_objs)
+rex_arm_obj.extend(env.Object(REX_COMMON_SOURCES))
+rex_arm_lib = env.Library('${BUILDPATH}/rex_arm', rex_arm_obj)
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+env.AddObject(['CORE','DALSYS_REX','REX_IMAGE','REX', 'CORE_AOP'], REX_ENTRY_SOURCES)
+
+env.AddLibsToImage(
+   ['CORE','DALSYS_REX','REX_IMAGE','REX', 'CORE_AOP'],
+   rex_arm_lib)
+   
+# ============================================================================
+# TIMESLICING
+# ============================================================================
+if 'USES_RCINIT' in env and 'USES_REX_TIMESLICING' in env:
+   RCINIT_IMG = ['CORE','DALSYS_REX','REX_IMAGE','REX', 'CORE_AOP']
+   env.AddRCInitFunc(           # Code Fragment in TMC: NO
+    RCINIT_IMG,                 # define TMC_RCINIT_INIT_IPCMEM_POOL_INIT
+    {
+     'sequence_group'             : 'RCINIT_GROUP_7',                   # required
+     'init_name'                  : 'rex_timeslice_init',                     # required
+     'init_function'              : 'rex_timeslice_init',           # required
+     'dependencies'               : ['dalsys']
+    })
+   
+
+# ============================================================================
+# HWIO
+# ============================================================================
+ 
+if env.has_key('HWIO_IMAGE'):
+   env.AddHWIOFile('HWIO', [
+       {
+         'filename': '${INC_ROOT}/core/kernel/rex/src/rex_hwio.h',
+         'modules': ['WFSS_A5SS_QTMR_F0V1_QTMR_F0V1_QTMR_V1', 'WFSS_A5SS_QTMR_F2V1_QTMR_F2V1_QTMR_V1', 'WFSS_A5SS_A_A_QGIC2' ],
+         'filter-exclude': ['TSENS', 'RPU', 'RESERVED'],
+         'output-offsets': True,
+         'header':
+           '\n#include \"msmhwiobase.h\"\n' 
+       }
+    ])
+
+#-------------------------------------------------------------------------------
+# QDSS SW Events
+#-------------------------------------------------------------------------------
+if 'USES_QDSS_SWE' in env:
+    QDSS_IMG = ['QDSS_EN_IMG']
+    events = [
+             ['AOP_NON_SECURE_WD_BITE_INT_RECEIVED','aop_abort_interrupt_received (APPS NON SECURE WD BITE) ... aborting'],
+             ['AOP_APPS_HANG_STATUS','aop_apps_hang_status (Core: 0x%x) (Gladiator: 0x%x) (GIC: 0x%x) (WDOG: 0x%x)'],
+             ['AOP_LOG_REGISTER','aop_log_register (PhysAddress: 0x%0.8x) (Value: 0x%0.8x)'],
+             ['AOP_GIC_ERR','aop_gic_mem_corr (ERR_INT: %d), (FAULT_INT: %d)'],
+             ['QMP_MSG_DRVR_MAP_EXPAND','MSG DRV: Map is expanding.Current Size: %d'],
+             ['CLASS_STRING_NOT_FOUND','MSG DRV: Class string recieved was not found in map'],
+             ['MSG_Q_OVERFLOW','MSG DRV: Queue overflowed'],
+             ['ERROR_MSG_Q_LEN','QMP MSG: error (size: %d) > 0x64'],
+	     ['AOP_ERR_FATAL', 'aop_err_fatal (lr: 0x%0.8x) (ipsr: 0x%0.8x)'],
+            ]
+    env.AddSWEInfo(QDSS_IMG, events)

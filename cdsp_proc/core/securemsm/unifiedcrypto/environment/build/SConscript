@@ -1,0 +1,92 @@
+#===============================================================================
+#
+# cryptoLibs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009-2009 by QUALCOMM, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header:  $
+#  $DateTime: $
+#  $Author:  $
+#  $Change:  $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 02/23/11   jl	     Removed debug/nodebug from build path.
+#
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/securemsm/unifiedcrypto/environment"
+
+if env.has_key('USES_NO_DEBUG'):
+   env.Replace(DBUG_MODE = "NoDebug")
+else:
+   env.Replace(DBUG_MODE = "Debug")
+
+if env.has_key('IMAGE_NAME'):
+   SECUREMSMLIBPATH = '${IMAGE_NAME}/${PROC}/${ARMTOOLS}'
+#   SECUREMSMLIBPATH = '${IMAGE_NAME}/${PROC}/${ARMTOOLS}/${DBUG_MODE}'
+else:
+   SECUREMSMLIBPATH = 'unknown/${PROC}/${ARMTOOLS}'
+#   SECUREMSMLIBPATH = 'unknown/${PROC}/${ARMTOOLS}/${DBUG_MODE}'
+
+#env.Replace(SECUREMSMLIBPATH = SECUREMSMLIBPATH)
+#env.VariantDir('${SECUREMSMLIBPATH}', SRCPATH, duplicate=0)
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'SECUREMSM',
+   'SERVICES',
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+#-------------------------------------------------------------------------------
+# Publish Private APIs
+#-------------------------------------------------------------------------------
+env.PublishPrivateApi('UC_ENV_ADSP_API', [
+   "${BUILD_ROOT}/core/securemsm/unifiedcrypto/environment/inc",
+   '${BUILD_ROOT}/core/securemsm/unifiedcrypto/environment/adsp/inc', 
+])
+
+env.PublishPrivateApi('UC_ENV_ADSP', [
+   '${INC_ROOT}/core/securemsm/unifiedcrypto/core/sha/inc', 
+   '${INC_ROOT}/core/securemsm/unifiedcrypto/shared/sha/inc',
+   '${INC_ROOT}/core/securemsm/unifiedcrypto/environment/adsp/inc', 
+   '${INC_ROOT}/core/securemsm/unifiedcrypto/environment/inc', 
+   ])
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+ADSP_ENV_LIB_SOURCES = [
+        '${BUILDPATH}/src/uc_env.c',
+]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+env.AddBinaryLibrary(['CORE_QDSP6_SW'], '${BUILDPATH}/ADSPENV', ADSP_ENV_LIB_SOURCES)
+

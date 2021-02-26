@@ -1,0 +1,80 @@
+#===============================================================================
+# Copyright (c) 2012 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+platform_root = '${BUILD_ROOT}/platform'
+env.Replace(ADSP_PLATFORM_ROOT = platform_root)
+
+env.RequireRestrictedApi([
+  'ATOMIC',
+  ])
+
+env.RequirePublicApi([
+  'STDDEF',
+  'A1STD',
+  'HAPSDK',
+  ])
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${ADSP_PLATFORM_ROOT}/platform_libs"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+PLATFORM_LIBS_SOURCES =  [
+   '${BUILDPATH}/platform_libs.c',
+   ]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+pl_lib = env.AddBinaryLibrary(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+    'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'CORE_QDSP6_SENSOR_SW', 'FASTRPC_SHELL_IMG', 'AVS_ADSP_USER', 'SSC_ADSP_USER'],'${BUILDPATH}/platform_libs', PLATFORM_LIBS_SOURCES)
+
+#-------------------------------------------------------------------------------
+# Add pl_init to rc_init
+#-------------------------------------------------------------------------------
+if 'USES_RCINIT' in env:
+    PLATFORM_LIBS_IMGS =  ['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE','QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'SSC_SLPI_USER', 'CORE_QDSP6_SENSOR_SW', 'SSC_ADSP_USER']
+    env.AddRCInitFunc(
+        PLATFORM_LIBS_IMGS,
+        {
+            'sequence_group'             : 'RCINIT_GROUP_2',           # required
+            'init_name'                  : 'platform',
+            'init_function'              : 'pl_init',
+            'dependencies'               : ['dalsys','diag','smd', 'glink', 'qdsp_pm', 'sysmon_init']
+        })
+        
+    if env['IMAGE_NAME'] == 'AVS_ADSP_USER':
+       if ('USES_ENABLE_GUESTOS_AUDIOPD_SUPPORT' in env):
+         env.AddRCInitFunc(
+            'AVS_ADSP_USER',
+            {
+            	'sequence_group'             : 'RCINIT_GROUP_0',           # required
+                'init_name'                  : 'platform',
+                'init_function'              : 'pl_init',
+                'dependencies'               : ['dalsys','diag','glink']
+            })
+       else:
+         env.AddRCInitFunc(
+            'AVS_ADSP_USER',
+            {
+            	'sequence_group'             : 'RCINIT_GROUP_0',           # required
+                'init_name'                  : 'platform',
+                'init_function'              : 'rpc_staticpd_init',
+                'dependencies'               : ['dalsys','diag','glink']
+            })
+#-------------------------------------------------------------------------------
+# Load Subunits (sys)
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.cpp', '*.S', '*.h'], '${ADSP_PLATFORM_ROOT}/platform_libs'))
+for x in env.FindFiles(['platform_libs.h'], '${ADSP_PLATFORM_ROOT}/platform_libs'):
+    CLEAN_LIST.remove(x)
+env.CleanPack(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE','QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'CORE_QDSP6_SENSOR_SW', 'SSC_SLPI_USER', 'FASTRPC_SHELL_IMG', 'AVS_ADSP_USER', 'SSC_ADSP_USER'], CLEAN_LIST)

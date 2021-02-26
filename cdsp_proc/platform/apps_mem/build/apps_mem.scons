@@ -1,0 +1,52 @@
+#===============================================================================
+# Copyrigha (c) 2012 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===============================================================================
+Import('env')
+
+env = env.Clone()
+
+platform_root = '${BUILD_ROOT}/platform'
+env.Replace(ADSP_PLATFORM_ROOT = platform_root)
+
+env.RequirePublicApi([
+'HAPSDK',
+'UTILS',
+'A1ENV',
+'STDDEF',
+'REMOTE',
+])
+
+env.RequireRestrictedApi([
+'APPS_MEM',
+])
+
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+BUILDPATH = "${ADSP_PLATFORM_ROOT}/apps_mem"
+env.VariantDir('${BUILDPATH}', BUILDPATH, duplicate=0)
+
+
+#-------------------------------------------------------------------------------
+# Sources
+#-------------------------------------------------------------------------------
+
+APPS_MEM_SOURCES =  [
+    env.QaicStubFromIdl("apps_mem"),
+]
+apps_mem_lib = env.AddBinaryLibrary(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+   'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'FASTRPC_SHELL_IMG','AVS_ADSP_USER'], '${BUILDPATH}/apps_mem_stub', APPS_MEM_SOURCES)
+
+#-------------------------------------------------------------------------------
+# Load Subunits (sys)
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+#Clean and pack rules
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.cpp', '*.h'], '${ADSP_PLATFORM_ROOT}/apps_mem/src'))
+env.CleanPack(['FASTRPC_SHELL_IMG','AVS_ADSP_USER'], CLEAN_LIST)
+

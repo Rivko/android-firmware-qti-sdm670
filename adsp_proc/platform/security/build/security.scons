@@ -1,0 +1,202 @@
+#===============================================================================
+# Copyright (c) 2012 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===============================================================================
+import os
+Import('env')
+
+env = env.Clone()
+
+platform_root = '${BUILD_ROOT}/platform'
+env.Replace(ADSP_PLATFORM_ROOT = platform_root)
+
+env.RequirePublicApi([
+  'PLATFORM_LIBS',
+  'STDDEF',
+  'UTILS',
+  'A1STD',
+  'REMOTE',
+  'FASTRPC_HEAP',
+  'MOD_TABLE',
+  'DLW',
+  'HAPSDK',
+  'SECURITY',
+  'APPS_STD',
+  'PLATFORM_QDI',
+  'HAP_POOL',
+  ])
+
+
+core_public_apis = [
+  'DAL',
+  'SERVICES',
+  'SYSTEMDRIVERS',
+  'KERNEL',
+  ]
+
+env.RequirePublicApi(core_public_apis, area='core')
+
+env.RequireRestrictedApi([
+ 'QLIST',
+ 'SECURITY',
+ 'FASTRPC_HEAP',
+ ])
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${ADSP_PLATFORM_ROOT}/security/src"
+CONFIGPATH = "${ADSP_PLATFORM_ROOT}/security/config"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+env.VariantDir('${BUILDPATH}/config', CONFIGPATH, duplicate=0)
+
+# comment out following line to disable assembly modules
+env.Append(CPPDEFINES = 'USE_QDSP_ASM')
+
+env.PLRegister("sigverify",['PLATFORM_LIBS','PLATFORM_ROOT_LIBS','SSC_SLPI_USER','SSC_ADSP_USER', 'FASTRPC_SHELL_IMG', 'AVS_ADSP_USER', 'SENSOR_IMG'])
+# env.PLRegister("oemconfig",['PLATFORM_LIBS','SENSOR_IMG', 'FASTRPC_SHELL_IMG', 'AVS_ADSP_USER'])
+
+env.PublishPrivateApi('SECURITY_PRIVATE', SRCPATH)
+
+SECURITY_SOURCES =  [
+  '${BUILDPATH}/secboot.c',
+  '${BUILDPATH}/secboot_asn1.c',
+  '${BUILDPATH}/secboot_hw_stub.c',
+  '${BUILDPATH}/secboot_sha1.c',
+  '${BUILDPATH}/secboot_sha2.c',
+  '${BUILDPATH}/sha256_transform.S',
+  '${BUILDPATH}/secboot_sw_hash.c',
+  '${BUILDPATH}/secboot_x509.c',
+  '${BUILDPATH}/secmath_barrett_reduce.c',
+  '${BUILDPATH}/secmath_BIGINT_read_unsigned_bin.c',
+  '${BUILDPATH}/secmath_mod_exp.c',
+  '${BUILDPATH}/secmath_montmul_utils.c',
+  '${BUILDPATH}/parseelf.c',
+  '${BUILDPATH}/util.c',
+  '${BUILDPATH}/rsapubkey.c',
+  '${BUILDPATH}/dtslicense.c',
+  '${BUILDPATH}/dynconfig.c',
+  '${BUILDPATH}/js.c',
+  '${BUILDPATH}/sigverify_guestos.c',
+  '${BUILDPATH}/montmul_one_opt.S',
+  '${BUILDPATH}/montmul_ref.S',
+  '${BUILDPATH}/sigverify.c',
+  '${BUILDPATH}/sec_hwio.c',
+  ]
+
+SECURITY_USERPD_SOURCES =  [
+  '${BUILDPATH}/secboot.c',
+  '${BUILDPATH}/secboot_asn1.c',
+  '${BUILDPATH}/secboot_hw_stub.c',
+  '${BUILDPATH}/secboot_sha1.c',
+  '${BUILDPATH}/secboot_sha2.c',
+  '${BUILDPATH}/sha256_transform.S',
+  '${BUILDPATH}/secboot_sw_hash.c',
+  '${BUILDPATH}/secboot_x509.c',
+  '${BUILDPATH}/secmath_barrett_reduce.c',
+  '${BUILDPATH}/secmath_BIGINT_read_unsigned_bin.c',
+  '${BUILDPATH}/secmath_mod_exp.c',
+  '${BUILDPATH}/secmath_montmul_utils.c',
+  '${BUILDPATH}/parseelf.c',
+  '${BUILDPATH}/util.c',
+  '${BUILDPATH}/rsapubkey.c',
+  '${BUILDPATH}/dtslicense.c',
+  '${BUILDPATH}/dynconfig.c',
+  '${BUILDPATH}/js.c',
+  '${BUILDPATH}/montmul_one_opt.S',
+  '${BUILDPATH}/montmul_ref.S',
+  '${BUILDPATH}/sigverify.c',
+  '${BUILDPATH}/sec_hwio.c',
+  '${BUILDPATH}/sigverify_pd.c', # pds need to load their own oemconfig otherwise a deadlock may occur on pd exit
+  ]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+security_lib = env.AddBinaryLibrary(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+     'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE'], '${BUILDPATH}/security', SECURITY_SOURCES)
+
+security_userpd_lib = env.AddBinaryLibrary([ 'SSC_SLPI_USER','SSC_ADSP_USER','FASTRPC_SHELL_IMG', 'AVS_ADSP_USER'],
+        '${BUILDPATH}/security', SECURITY_USERPD_SOURCES)
+
+if 'USES_DEVCFG' in env:
+  dir_prefix = str(env.get('BUILD_ROOT', None)) + '/platform/security/config/'
+  if 'USES_DEVCFG_STRICT_XML' in env:
+      # DevCfg is expecting XML-compliance for Napali onwards; USES_DEVCFG_STRICT_XML variable tells
+      # whether the new DevCfg is in this build or not.
+     devcfg_file_loc = dir_prefix + 'testrootconfig_strict_xml.xml'
+  else:
+     devcfg_file_loc = dir_prefix + 'testrootconfig.xml'
+  if os.path.exists(devcfg_file_loc):
+     DEVCFG_IMG = ['DAL_DEVCFG_IMG', 'DEVCFG_CORE_QDSP6_AUDIO_SW', 'DEVCFG_CORE_QDSP6_SENSOR_SW']
+     env.AddDevCfgInfo(DEVCFG_IMG,
+        {
+        'devcfg_xml' : [devcfg_file_loc],
+        }
+     )
+     if 'USES_DEVCFG_STRICT_XML' in env:
+        # DevCfg is expecting XML-compliance for Napali onwards; USES_DEVCFG_STRICT_XML variable tells
+        # whether the new DevCfg is in this build or not.
+        env.AddDevCfgInfo(DEVCFG_IMG,
+           {
+           '845_xml': ['${BUILD_ROOT}/platform/security/config/sdm845/sec_hwio_strict_xml.xml',
+               '${BUILDPATH}/config/sdm845/sec_hwio_devcfg.c'],
+           '855_xml': ['${BUILD_ROOT}/platform/security/config/sdm855/sec_hwio_strict_xml.xml',
+               '${BUILDPATH}/config/sdm855/sec_hwio_devcfg.c'],
+           '670_xml': ['${BUILD_ROOT}/platform/security/config/sdm670/sec_hwio_strict_xml.xml',
+               '${BUILDPATH}/config/sdm670/sec_hwio_devcfg.c'],
+           '6150_xml': ['${BUILD_ROOT}/platform/security/config/sm6150/sec_hwio_strict_xml.xml',
+               '${BUILDPATH}/config/sm6150/sec_hwio_devcfg.c'],
+           '7150_xml': ['${BUILD_ROOT}/platform/security/config/sm7150/sec_hwio_strict_xml.xml',
+               '${BUILDPATH}/config/sm7150/sec_hwio_devcfg.c'],
+           '1000_xml': ['${BUILD_ROOT}/platform/security/config/sdm1000/sec_hwio_strict_xml.xml',
+               '${BUILDPATH}/config/sdm1000/sec_hwio_devcfg.c'],
+			'405_xml': ['${BUILD_ROOT}/platform/security/config/qcs405/sec_hwio_strict_xml.xml',
+               '${BUILDPATH}/config/qcs405/sec_hwio_devcfg.c'],
+               
+           })
+     else:
+        env.AddDevCfgInfo(DEVCFG_IMG,
+           {
+           '8952_xml' : ['${BUILD_ROOT}/platform/security/config/msm8952/sec_hwio.xml',
+               '${BUILD_ROOT}/platform/security/config/msm8952/sec_hwio_devcfg.c'],
+           '8976_xml' : ['${BUILD_ROOT}/platform/security/config/msm8976/sec_hwio.xml',
+               '${BUILD_ROOT}/platform/security/config/msm8976/sec_hwio_devcfg.c'],
+           '8992_xml' : ['${BUILD_ROOT}/platform/security/config/msm8992/sec_hwio.xml',
+               '${BUILD_ROOT}/platform/security/config/msm8992/sec_hwio_devcfg.c'],
+           '8994_xml' : ['${BUILD_ROOT}/platform/security/config/msm8994/sec_hwio.xml',
+               '${BUILD_ROOT}/platform/security/config/msm8994/sec_hwio_devcfg.c'],
+           '8996_xml' : ['${BUILD_ROOT}/platform/security/config/msm8996/sec_hwio.xml',
+               '${BUILD_ROOT}/platform/security/config/msm8996/sec_hwio_devcfg.c'],
+           '8998_xml' : ['${BUILD_ROOT}/platform/security/config/msm8998/sec_hwio.xml',
+               '${BUILD_ROOT}/platform/security/config/msm8998/sec_hwio_devcfg.c'],
+           '660_xml' : ['${BUILD_ROOT}/platform/security/config/sdm660/sec_hwio.xml',
+               '${BUILD_ROOT}/platform/security/config/sdm660/sec_hwio_devcfg.c'],
+           '845_xml' : ['${BUILD_ROOT}/platform/security/config/sdm845/sec_hwio.xml',
+               '${BUILD_ROOT}/platform/security/config/sdm845/sec_hwio_devcfg.c'],
+           '855_xml' : ['${BUILD_ROOT}/platform/security/config/sdm855/sec_hwio.xml',
+               '${BUILD_ROOT}/platform/security/config/sdm855/sec_hwio_devcfg.c'],
+           '670_xml' : ['${BUILD_ROOT}/platform/security/config/sdm670/sec_hwio.xml',
+               '${BUILD_ROOT}/platform/security/config/sdm670/sec_hwio_devcfg.c'],
+           '6150_xml' : ['${BUILD_ROOT}/platform/security/config/sm6150/sec_hwio.xml',
+               '${BUILD_ROOT}/platform/security/config/sm6150/sec_hwio_devcfg.c'],
+           '7150_xml' : ['${BUILD_ROOT}/platform/security/config/sm7150/sec_hwio.xml',
+               '${BUILD_ROOT}/platform/security/config/sm7150/sec_hwio_devcfg.c'],
+           '1000_xml' : ['${BUILD_ROOT}/platform/security/config/sdm1000/sec_hwio.xml',
+               '${BUILD_ROOT}/platform/security/config/sdm1000/sec_hwio_devcfg.c'],
+		   '405_xml'  : ['${BUILD_ROOT}/platform/security/config/qcs405/sec_hwio.xml',
+               '${BUILD_ROOT}/platform/security/config/qcs405/sec_hwio_devcfg.c']
+               
+           })
+
+#-------------------------------------------------------------------------------
+# Load Subunits (sys)
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+#Clean and pack rules
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.cpp', '*.h', '*.S', '*.so'], '${ADSP_PLATFORM_ROOT}/security/src'))
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.cpp', '*.h', '*.S', '*.so'], '${ADSP_PLATFORM_ROOT}/security/qtest'))
+env.CleanPack(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE','QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE','CORE_QDSP6_SENSOR_SW', 'FASTRPC_SHELL_IMG', 'SSC_SLPI_USER', 'SSC_ADSP_USER','AVS_ADSP_USER'], CLEAN_LIST)

@@ -1,0 +1,561 @@
+//============================================================================
+//  Name:                                                                     
+//    std_debug_testpd.cmm 
+//
+//  Description:                                                              
+//    TESTPD debug script - for 8998 runs on mpss processor for testpd PD
+//                                                                            
+// Copyright (c) 2012 - 2016 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who           what, where, why
+// --------   ---          ---------------------------------------------------------
+// 06/23/2016 JBILLING      Created
+
+
+//####################Declarations#######################
+
+
+
+LOCAL &ArgumentLine
+LOCAL &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+LOCAL &targetprocessor &string_length
+GLOBAL &FINDSYMBOLRESULT
+&FINDSYMBOLRESULT=""
+//###################Arguments passed #####################
+ENTRY %LINE &ArgumentLine
+ENTRY &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+
+//##################Defaults##########################
+&targetprocessor="mpss"
+LOCAL &targetprocessorport
+&targetprocessorport=&MPSS_PORT
+
+
+
+//#####################Select Subroutine###################
+// Name of the utility we are calling
+LOCAL &SUBROUTINE
+// Any subroutine specific options
+// Default exists for each subroutine
+LOCAL &OPTION
+
+// Input Argument 0 is the name of the utility
+&SUBROUTINE="&UTILITY"
+IF !(("&SUBROUTINE"=="DEBUG_GUI")||("&SUBROUTINE"=="HOTATTACH_GUI")||("&SUBROUTINE"=="CONFIGURE_TRANSLATION_TABLE")||("&SUBROUTINE"=="SETUP_MMU_TLB"))
+(
+    &SUBROUTINE="MAIN"
+)
+
+    // This should be created by some top level script. The setupenv for each proc would
+    // set this up
+    AREA.SELECT
+    // Call the required utility
+    GOSUB &SUBROUTINE &ArgumentLine
+    ENTRY %LINE &Rvalue
+
+    GOSUB EXIT &Rvalue
+
+
+////////////////////////////////////////
+//
+//          MAIN
+//          Main std_debug_testpd logic
+//          Currently a simplified implementation, getting software from root main to user main
+//
+/////////////////////////////////////////
+MAIN:
+LOCAL &rvalue
+//from GETDEBUGDEFAULTS
+LOCAL &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+//from optextract:
+LOCAL &user_defined_bkpts 
+
+
+        
+///////////////////////////////////////////////////////
+////////////Debug Logic - from root main////////////////
+///////////////////////////////////////////////////////
+                //PRINT "TESTPD script to get to COREMAIN. Please guide script through execution"
+                //WINPOS 0. 0. 100. 15.
+                //PLIST
+                //PSTEP
+                //////////////////////////////////////////////////////
+                ////////////////// Get to dlopen /////////////////////
+                //////////////////////////////////////////////////////
+                //d.load.elf \\c-pkarun-linux\workspace\04_01\core.mpss.4.0.10187973_mpss\modem_proc\core\bsp\elf_loader_wlan\build\8998.coredy.test\ELF_LOADER_IMG_8998.coredy.testQ.elf /nocode /noclear
+                LOCAL &testpd_elffile
+                &testpd_elffile="ELF_LOADER_IMG_"+"&MODEM_BUILDID"+"Q.elf"
+
+                //IF FILE.EXIST("&MPSS_BUILDROOT\modem_proc\core\bsp\elf_loader_wlan\build\&MODEM_BUILDID\&wlan_elffile")
+                //(
+                //    PRINT "Loading &MPSS_BUILDROOT\modem_proc\core\bsp\elf_loader_wlan\build\&MODEM_BUILDID\&wlan_elffile"
+                //    d.load.elf "&MPSS_BUILDROOT\modem_proc\core\bsp\elf_loader_wlan\build\&MODEM_BUILDID\&wlan_elffile" /nocode /noclear
+                //)
+                //ELSE 
+                //(
+                    ENTRY %LINE &ignoreme
+                    
+                    PRINT %ERROR "Please point to TESTPD ELF Loader elf (1st elf for dlopen)"
+                    wait.1s
+                    PRINT %ERROR "Please point to TESTPD ELF Loader elf (1st elf for dlopen)"
+                    DIALOG.FILE &MPSS_BUILDROOT\modem_proc\core\bsp\elf_loader_testpd\build\*.elf
+                    LOCAL &testpd_elf
+                    ENTRY &testpd_elf
+                    IF "&testpd_elf"==""
+                    (
+                        PRINT %ERROR "Some error within T32. Please point to TESTPD ELF Loader elf again. (1st elf for dlopen)"
+                        wait.1s
+                        DIALOG.FILE &MPSS_BUILDROOT\modem_proc\core\bsp\elf_loader_testpd\build\*.elf
+                        ENTRY &testpd_elf
+                    )
+                    
+                    d.load.elf &testpd_elf /nocode /noclear
+                
+                //)
+                B.S dlopen /o
+                GO
+                GOSUB WAIT_TO_STOP dlopen 50
+                BREAK.DISABLE dlopen
+                
+                //////////////////////////////////////////////////////
+                ///////////// Get to wlan merged start ///////////////
+                //////////////////////////////////////////////////////
+                //FIXME - need more mature implementation of elf path load
+                //b.s \\WLAN_MERGED\Global\start /o
+                //IF FILE.EXIST(&WLAN_BUILDROOT/wlan_proc/build/ms/WLAN_MERGED.elf)
+                //(
+                //    PRINT "Loading &WLAN_BUILDROOT/wlan_proc/build/ms/WLAN_MERGED.elf"
+                //    Data.LOAD.Elf "&WLAN_BUILDROOT/wlan_proc/build/ms/WLAN_MERGED.elf" /nocode /noclear
+                //)
+                //ELSE 
+                //(
+                    PRINT %ERROR "Please point to TESTPD_MERGED.elf"
+                    WAIT.1s
+                    DIALOG.FILE &MPSS_BUILDROOT/modem_proc/build/ms\*.elf
+                    LOCAL &testpd_merged_elf
+                    ENTRY &testpd_merged_elf
+                    d.load.elf &testpd_merged_elf /nocode /noclear
+                
+                //)
+                //IF FILE.EXIST(&MPSS_BUILDROOT/modem_proc/WLAN_BIN/WLAN_MERGED.elf)
+                //(
+                //    Data.LOAD.Elf "&MPSS_BUILDROOT/modem_proc/WLAN_BIN/WLAN_MERGED.elf" /nocode /noclear
+                //)
+                //d.load.elf \\harv-jeanies\Dropbox\vijayj\Bringup\04_16\core.mpss.4.0.04_16_Wlan\wlan_proc\build\ms\WLAN_MERGED.elf /nocode /noclear
+
+                
+  
+                LOCAL &testpd_merged_start
+                y.fe "GOSUB FINDSYMBOL * TESTPD_MERGED\Global" start
+                &testpd_merged_start="&FINDSYMBOLRESULT"
+                BREAK.SET &testpd_merged_start /o
+                GO
+                GOSUB WAIT_TO_STOP &testpd_merged_start 50
+                BREAK.DISABLE &testpd_merged_start
+                
+                
+                
+                //////////////////////////////////////////////////////
+                ////////// Get to dynamically loaded start ///////////
+                //////////////////////////////////////////////////////
+                LOCAL &entryaddr
+                //Warning - this tree structure may change eventually
+                //&entryaddr=var.value(((((((_rtld_debug.r_map))->l_next))->l_next))->l_addr)
+                ON ERROR GOSUB
+                (
+                    WINCLEAR
+                    do std_fatalexit SYSTEM "TESTPD debug failure"
+                    
+                    WINPOS 0. 0. 100. 10.
+                    PRINT %ERROR "Error Ocurred trying to access (_rtld_debug.r_map)->l_next)->l_next)->l_addr)"
+                    PRINT %ERROR "This indicates that the dynamic loader may have failed,"
+                    PRINT %ERROR "resulting in T32 being unable to access above symbols."
+                    PRINT " "
+                    
+                    WINPOS 0. 50% 50. 5.
+                    plist
+                    pstep
+                )
+                &entryaddr=var.value((((_rtld_debug.r_map)->l_next)->l_next)->l_addr)
+                ON ERROR DEFAULT
+                
+                //d.load.elf \\harv-jeanies\Dropbox\vijayj\Bringup\04_16\core.mpss.4.0.04_16_Mpss\modem_proc\core\bsp\core_user_pic\build\8998.coredy.test\CORE_USER.so &entryaddr /nocode /noclear
+                //IF FILE.EXIST(&MPSS_BUILDROOT\modem_proc\core\bsp\core_user_pic\build\&MODEM_BUILDID\CORE_USER.so)
+                //(
+                //    PRINT "Loading &MPSS_BUILDROOT\modem_proc\core\bsp\core_user_pic\build\&MODEM_BUILDID\CORE_USER.so"
+                //    d.load.elf &MPSS_BUILDROOT\modem_proc\core\bsp\core_user_pic\build\&MODEM_BUILDID\CORE_USER.so &entryaddr /nocode /noclear
+                //)
+                //ELSE 
+                //(
+                PRINT %ERROR "Please point to CORE_USER.so file"
+                WAIT.1s
+                DIALOG.FILE &MPSS_BUILDROOT\modem_proc\core\bsp\core_user_pic\build\*.so
+                LOCAL &core_user_elf
+                ENTRY &core_user_elf
+                d.load.elf &core_user_elf &entryaddr /nocode /noclear
+            
+                //)
+                
+                //b.s \\CORE_USER\coremain\main
+                
+                LOCAL &testpd_user_start
+                Y.FE "GOSUB FINDSYMBOL * CORE_USER" main
+                &testpd_user_start="&FINDSYMBOLRESULT"
+                
+                BREAK.SET &testpd_user_start /o
+                
+                go
+                
+                GOSUB WAIT_TO_STOP &testpd_user_start 50
+                
+                BREAK.DISABLE &testpd_user_start
+                
+                
+                //Set last breakpoints before returning control to calling script or user
+                
+                ON ERROR CONTINUE
+                
+                Break.Set     \\CORE_USER\err_fatal\err_Fatal_internal3 /Program
+                Break.Set     \\CORE_USER\err_fatal\err_Fatal_internal1
+                v dog_disable_user_startup_timer=1
+                v \\CORE_USER\dog_hb\dog_hb_disable=1
+                
+                ON ERROR
+                //Let apps resume control of this window
+                INTERCOM.EXECUTE &APPS0_PORT CONTINUE
+                
+                //  WHILE &link!=0
+                //  (
+                //    &link_name=DATA.STRING(D:V.VALUE(((npa_link *)&link).name))
+                //    &resource=V.VALUE(((npa_link *)&link).resource)
+                //    &definition=V.VALUE(((npa_resource *)&resource).definition)
+                //    IF &definition!=0
+                //    (
+                //      &resource_name=DATA.STRING(D:V.VALUE(((npa_resource_definition *)&definition).name))
+                //      IF "&resource_name"=="/icb/arbiter"
+                //      (
+                //        GOSUB ICBDump &link &definition
+                //      )
+                //    )
+                //    &link=V.VALUE(((npa_link *)&link).next)
+                //  )
+                //  PRINT
+                //  RETURN
+
+
+
+
+    RETURN SUCCESS
+
+
+
+///////////////
+
+        
+        
+        ///////////////////////////////////////////////////////////
+        ////////////Automation testing result checks///////////////
+        ///////////////////////////////////////////////////////////
+        LOCAL &rvalue
+        IF ("&LOGSENABLED"!="TRUE")
+        (
+            PRINT "Success"
+            &rvalue="SUCCESS"
+        )
+        ELSE
+        (
+            &rvalue="FAILURE"
+            LOCAL &bootproc_runstate &targetproc_runstate
+            INTERCOM.EVALUATE &bootprocessorport STATE.RUN()
+            &bootproc_runstate=EVAL()
+            INTERCOM.EVALUATE &targetprocessorport STATE.RUN()
+            &targetproc_runstate=EVAL()
+            
+            //Case: Entry breakpoint not specified. Expect target and boot processor to be running (or target proc halted at some other point)
+            //Also covers subcase: CTI specified: expect target and boot processor to be in same running state.
+            IF (("&referenceBP_is_selected_by_user"!="true")&&("&entry_bp_address"=="&targetprocessor_pc_value"))
+            (
+
+                
+                //If target processor is halted, make sure  it's not stuck at entry breakpoint
+                IF (1!=&targetproc_runstate)
+                (
+                    INTERCOM.EVALUATE &targetprocessorport ADDRESS.OFFSET(&entry_bkpt)
+                    &entry_bp_address=EVAL()
+                    INTERCOM.EVALUATE &targetprocessorport REGISTER(pc)
+                    &targetprocessor_pc_value=EVAL()
+                    if ("&entry_bp_address"=="&targetprocessor_pc_value") 
+                    (
+                        do std_fatalexit SYSTEM "FAILURE - Entry breakpoint not specified but target processor is stuck at entry"
+                        plist
+                        pstep
+                    )
+                    //We may have hit another breakpoint. If so Check that CTI worked.
+                    ELSE IF ("&cti_enable"=="true")&&(1.!=&bootproc_runstate)
+                    (
+                        do std_fatalexit SYSTEM "FAILURE - Entry breakpoint not specified, CTI enabled. Targetprocessor is at some breakpoint but boot processor not halted -> CTI failed"
+                        plist
+                        pstep
+                    )
+                    //Else system is halted at some breakpoint which is fine.
+                    &rvalue="SUCCESS"
+                )
+                ELSE
+                (
+                    &rvalue="SUCCESS"
+                )
+            )
+                
+            
+            //Case: entry breakpoint specified. Expect target to be halted
+            IF (("&referenceBP_is_selected_by_user"=="true"))
+            (
+                //It may or may not be halted at entry. User could have specified a breakpoint earlier than entry
+                //IF ("&entry_bp_address"=="&targetprocessor_pc_value")
+                IF (1.==&targetproc_runstate)
+                (
+                    do std_fatalexit SYSTEM "FAILURE - Got past entry breakpoint but now target processor is running. Perhaps apps crashed?"
+                    plist
+                    pstep
+                )
+                //Else target is halted. If CTI is enabled, check that it worked
+                ELSE
+                (
+                    //CTI case - should see boot processor halted as well as target processor
+                    IF ("&cti_enable"=="true")&&(1.==&bootproc_runstate)
+                    (
+                        do std_fatalexit SYSTEM "FAILURE - Entry breakpoint specified, CTI enabled. Targetprocessor is halted but boot processor not halted -> CTI failed."
+                        plist
+                        pstep
+                    )
+                    ELSE
+                    (
+                        &rvalue="SUCCESS"
+                    )
+                )
+                &rvalue="SUCCESS"
+            )
+        ) //End automation checks
+        
+///////////////////////////////////////
+//////////////////end//////////////////
+///////////////////////////////////////
+    RETURN &rvalue
+    
+
+        
+////////////////////////////////////////
+//
+//          CONFIGURE_TRANSLATION_TABLE
+//          
+//          Configure the MMU on remote Processor's T32 session.
+//
+///////////////////////////////////////// 
+CONFIGURE_TRANSLATION_TABLE:
+
+ON ERROR GOTO SETUP_MMU_TLB_ERROR
+        //&sw_start=0xDC00000
+
+        
+        
+        //MINIMUM_QURT_PGT_T32_version is defined in std_versionchecker.cmm
+        IF ((VERSION.BUILD())<(&MINIMUM_QURT_PGT_T32_version))
+        (
+            //If using older version, just stick to TLB
+            PRINT "Detected T32 version older than &MINIMUM_QURT_PGT_T32_version. Using TLB instead of Pagetables for MMU translations."
+            GOSUB SETUP_MMU_TLB_ERROR
+            RETURN
+        )
+        
+
+        
+        INTERCOM.EVALUATE &targetprocessorport SYMBOL.EXIST(QURTK_page_table_v2)
+            LOCAL &qurt_v2
+            &qurt_v2=EVAL()
+
+        IF (&qurt_v2==0x1)
+        (
+            
+    
+            LOCAL &v_pgt &p_pgt
+            
+            //Need TLB set up so we can fetch physical address.
+            GOSUB SETUP_MMU_TLB
+            
+            intercom.evaluate &targetprocessorport ADDRESS.OFFSET(D:QURTK_page_table_v2)&0xFFF00000
+            &v_pgt=eval()
+            intercom.evaluate &targetprocessorport ADDRESS.OFFSET(D:(MMU.PHYSICAL(D:QURTK_page_table_v2)))&0xFFF00000
+            &p_pgt=eval()
+            
+            
+            INTERCOM.EXECUTE &targetprocessorport  trans.off
+            INTERCOM.EXECUTE &targetprocessorport  trans.reset
+            INTERCOM.EXECUTE &targetprocessorport  MMU.FORMAT QURTV2 QURTK_page_table_v2 &v_pgt++0xFFFFF &p_pgt
+            INTERCOM.EXECUTE &targetprocessorport  trans.create VM:0x0--0xFFFFFFFF
+            INTERCOM.EXECUTE &targetprocessorport  trans.tablewalk.on
+            INTERCOM.EXECUTE &targetprocessorport  trans.autoenable
+        
+        
+        )
+        ELSE
+        (
+            LOCAL &v_pgt &p_pgt
+            
+            //Need TLB set up so we can fetch physical address.
+            GOSUB SETUP_MMU_TLB
+            
+            intercom.evaluate &targetprocessorport ADDRESS.OFFSET(D:(data.long(QURTK_pagetables)))&0xFFF00000
+            &v_pgt=eval()
+            intercom.evaluate &targetprocessorport ADDRESS.OFFSET(D:(MMU.PHYSICAL(D:(data.long(QURTK_pagetables)))))&0xFFF00000
+            &p_pgt=eval()
+            
+            intercom.execute &targetprocessorport trans.off
+            intercom.execute &targetprocessorport trans.reset
+            intercom.execute &targetprocessorport MMU.FORMAT QURT d.l(QURTK_pagetables) &v_pgt++0xFFFFF &p_pgt
+            intercom.execute &targetprocessorport trans.tablewalk.on
+            intercom.execute &targetprocessorport trans.autoenable
+            
+            
+            
+        )
+        
+        ON ERROR
+        
+        RETURN
+
+////////////////////////////////////////
+//
+//          SETUP_MMU_TLB
+//
+//          Configure the MMU on remote Processor's T32 session.
+//          Also has error handler to print warning
+//
+/////////////////////////////////////////  
+SETUP_MMU_TLB_ERROR:
+    PRINT "Some error ocurred during pagetable setup. Reverting to using TLB for MMU translations"
+    ON ERROR
+SETUP_MMU_TLB:
+
+    INTERCOM.EXECUTE &targetprocessorport trans.off
+    INTERCOM.EXECUTE &targetprocessorport trans.reset
+    INTERCOM.EXECUTE &targetprocessorport mmu.format TLB
+    INTERCOM.EXECUTE &targetprocessorport trans.tablewalk.on
+    INTERCOM.EXECUTE &targetprocessorport trans.autoenable
+    
+RETURN
+
+////////////////////////////////////////
+//
+//          SETUP_MMU_TLB_OLD
+//
+//          Configure the MMU on remote Processor's T32 session.
+//          This method has been deprecated
+//
+/////////////////////////////////////////        
+SETUP_MMU_TLB_OLD:
+    ON ERROR //remove error handler if present
+    INTERCOM.EXECUTE &targetprocessorport mmu.off
+    INTERCOM.EXECUTE &targetprocessorport mmu.reset
+    INTERCOM.EXECUTE &targetprocessorport mmu.tlb.scan
+    INTERCOM.WAIT &targetprocessorport
+    INTERCOM.EXECUTE &targetprocessorport mmu.on
+    RETURN
+
+ 
+
+        
+        
+WAIT_TO_STOP:
+LOCAL &breakpoint &countvalue
+ENTRY &breakpoint &countvalue
+
+                LOCAL &T32_runstate &count
+                &count=0
+                &T32_runstate=STATE.RUN()
+                WHILE ((&T32_runstate==TRUE())&&(&count<&countvalue))
+                (
+                    &T32_runstate=STATE.RUN()
+                    &count=&count+1
+                    Wait.100ms
+                )
+                &T32_attachstate=STATE.RUN()
+                
+                IF (TRUE()==&T32_attachstate)
+                (
+                    GOSUB REMOTE_PROC_NOT_STOPPED &breakpoint
+                    &USEEXISTINGSYMS_TARGET="FALSE"
+                    &ENTRYHEXADDR_TARGET="NULL"
+                    do std_fatalexit USER "std_debug_testpd - symbol mismatch; processor didn't halt at &breakpoint"
+                )
+    RETURN
+REMOTE_PROC_NOT_STOPPED:
+    LOCAL &argline
+    ENTRY %LINE &argline
+    
+        WINPOS 0. 0. 50. 10.
+        area.reset
+        area
+        PRINT %ERROR "   Was not able to stop remote processor. "
+        PRINT        "   Breakpoint: &argline "
+        PRINT %ERROR "   Please Check if:"
+        PRINT %ERROR "       - Symbols mismatch,"
+        PRINT %ERROR "       - Need to restart remote T32 window"
+        PRINT %ERROR "       - Apps timeout resulting "
+        PRINT " "
+        PRINT " "
+        PRINT " "
+        //Don't use same symbols on next run
+        
+        RETURN    
+    
+
+FINDSYMBOL:
+    
+    LOCAL &symbol &searchstring
+    ENTRY &symbol &searchstring
+    
+    //Assumes &SymbolResult has been declared above
+    IF STRING.SCAN("&symbol","&searchstring",0)!=-1
+    (
+    
+        //IF "&FINDSYMBOLRESULT"==""
+        //(
+            &FINDSYMBOLRESULT="&symbol"
+        //)
+        //ELSE
+        //(
+        //    &FINDSYMBOLRESULT="&FINDSYMBOLRESULT"+","+"&symbol"
+        //)
+    )
+    RETURN
+    
+    
+EXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    ENDDO &rvalue
+    
+
+//Should never get here. 
+FATALEXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    IF STRING.SCAN("&FAILUREKEYWORD","FAILUREKEYWORD",0)==-1
+    (
+        GOSUB EXIT &FAILUREKEYWORD - &rvalue
+    )
+    ELSE
+    (
+        GOSUB EXIT &rvalue
+    )
+    
+//Should never get here
+    END
+    

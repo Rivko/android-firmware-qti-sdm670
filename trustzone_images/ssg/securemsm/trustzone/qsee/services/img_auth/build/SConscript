@@ -1,0 +1,116 @@
+#===============================================================================
+#
+#                             Edit History
+# $Header: //components/rel/ssg.tz/1.0.2/securemsm/trustzone/qsee/services/img_auth/build/SConscript#1 $
+#
+# when         who     what, where, why
+# ----------   ---     ---------------------------------------------------------
+# 2011/07/12   spa     Create initial version
+#
+#===============================================================================
+#                    Copyright (c) 2011, 2017 QUALCOMM Incorporated.
+#                           All Rights Reserved.
+#                         QUALCOMM Proprietary/GTDR
+#===============================================================================
+import os
+
+#-------------------------------------------------------------------------------
+# QSEE Lib
+#-------------------------------------------------------------------------------
+Import('env')
+env = env.Clone()
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/services/img_auth/src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+if os.path.exists(env.subst("../cfg/${CHIPSET}")):
+   env.Replace(IMG_AUTH_CHIPSET = env['CHIPSET'])
+else:
+   env.Replace(IMG_AUTH_CHIPSET = 'stubs')
+   env.PrintWarning("Img Auth devcfg not implemented... using stubs.")
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+env.RequirePublicApi([
+   'SERVICES',                    #< comdef.h
+   'SYSTEMDRIVERS',               #< HALhwio.h
+   'DAL',                         #< HALcomdef.h
+   'BOOT',                        #< qfprom.h
+   'SECUREMSM',
+   'KERNEL',
+   'STORAGE'
+], area='core')
+
+env.RequirePublicApi([
+   'AC',
+   'FUSEPROV'
+], area='ssg')
+
+
+env.RequireRestrictedApi([
+   'BOOT',                   #< miprogressive.h
+   'STORAGE',                #< sd_mgr_rpmb.h
+   'KERNEL',                 #< HALxpu2.h
+   'TZSSD',                  #< tz_ssd.h
+   'TZKS',                   #< needed for tz_ssd.h (tz_ks.h)
+   'TZIMGAUTH',
+   'TZCHIPSET',              #< tzbsp_xpu_config.h
+   'TZCRYPTO',               #< tzbsp_cipher.h
+   'SSGPLATFORM',            #< tzbsp_sys.h
+   'SECUREMSM',              #< secboot.h
+   'QSEE',                   #< tzbsp_syscall.h
+   'MINK',
+])
+
+#env.Append(CCFLAGS = " --diag_suppress=1786,2523 ")
+#env.Append(ASFLAGS = " --diag_suppress=1786,2523 ")
+
+INC_PATH = [
+      "${INC_ROOT}/ssg/securemsm/trustzone/qsee/services/keyprov/macchiato/shared/inc",
+]
+env.Append(CPPPATH = INC_PATH)
+
+#-------------------------------------------------------------------------------
+# Compiler options
+#-------------------------------------------------------------------------------
+#env.Append(CCFLAGS = "--gnu")
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+
+SOURCES = [
+    '${BUILDPATH}/tzbsp_pil_syscall_def.c',
+ ]
+
+SOURCES2 = [ '${BUILDPATH}/tzbsp_rollback_version.c', ]
+
+
+#-------------------------------------------------------------------------------
+# XML files
+#-------------------------------------------------------------------------------
+
+PIL_CONFIG = 'img_auth_config.xml'
+PIL_CONFIG_FILE_XML = env.GlobFiles('../cfg/${IMG_AUTH_CHIPSET}/'+PIL_CONFIG, posix=True)
+PIL_CONFIG_FILE_XML = ', '.join(PIL_CONFIG_FILE_XML) #convert list to string
+
+if 'USES_DEVCFG' in env:
+  DEVCFG_IMG = ['DAL_DEVCFG_IMG']
+  env.AddDevCfgInfo(DEVCFG_IMG,
+  {
+    'devcfg_xml' : [PIL_CONFIG_FILE_XML]
+  })
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+env.AddBinaryObject('TZOS_IMAGE', SOURCES)
+env.AddBinaryLibrary('TZOS_IMAGE', '${BUILDPATH}/tz_img_auth', SOURCES2)
+
+env.Deploy('SConscript')

@@ -1,0 +1,783 @@
+;=================================================================
+;
+; recover_diagbuffer.cmm
+;
+; This script reconstructs the diagbuffer data types saved to the uimage_diagbuffer
+;
+; Usage instructions found in InitArea routine.
+;
+; $Header: //components/rel/core.qdsp6/2.1.c4/services/diag/micro_diagbuffer/scripts/recover_diagbuffer.cmm#1 $
+;
+; Copyright (c) 2015 by QUALCOMM Technologies, Inc
+;=================================================================
+; -----------------------------------------------
+
+
+; Parameters passed to script
+entry &outfile_path 
+
+; Declaration of 'constants' used in this script
+;
+
+; Type constants
+; These values come from MICRO_ULOG_REALTIME_SUBTYPES
+local &TYPE_EVENT_PAYLOAD
+&TYPE_EVENT_PAYLOAD=13
+local &TYPE_EVENT
+&TYPE_EVENT=12
+local &TYPE_LOG
+&TYPE_LOG=11
+local &TYPE_MSG
+&TYPE_MSG=10
+
+
+
+; SIZEOF constants
+local &SIZEOF_FORMAT
+&SIZEOF_FORMAT=2
+local &SIZEOF_LENGTH
+&SIZEOF_LENGTH=2
+local &SIZEOF_TIME
+&SIZEOF_TIME=8
+
+; Other constants
+local &TEMP_OUTPUT_FILE
+&TEMP_OUTPUT_FILE=""
+local &DEBUG_LOG_FILE
+&DEBUG_LOG_FILE=""
+local &OUTFILE_DEFAULT_PATH
+&OUTFILE_DEFAULT_PATH="c:/temp"
+local &OUTFILE_DEFAULT
+&OUTFILE_DEFAULT=""
+&FORMATSCRIPT="FormatMicroDiagbufferData.pl"
+&source_path=""
+
+; ------------------------------------------------------------------------
+; Declaration of global variables used in this script
+; (variables are declared 'local' since they are not used by other scripts,
+;  but they are used by multiple functions within this script)
+;
+
+; Globals used to save the current header fields
+local &header &length
+
+
+; Globals used to store values retrieved from variables from the logs
+local &micro_diagbuffer_start &micro_diagbuffer_end &tb_head &tb_tail &buffer_size &buffer_mask &total_size
+local &buffer_wrap_flag
+
+; Pointers used to manage buffer access
+local &start_ptr &end_ptr &current_ptr &bailout &wrap_flag
+local &infinite_loop_break
+
+; Other variables used by the script
+local &item_count &status_update &event_count &msg_count &log_count
+
+
+; ----------------------------------------------
+; This controls the level of debug messages printed to the screen
+; The higher the value, the more messages will be displayed
+; A level of 0 removes all debug messages from the screen
+; (level 0 messages are 'standard' messages and will always be output)
+;
+local &debug_level_screen
+&debug_level_screen=0
+
+; ----------------------------------------------
+; This controls the level of debug messages printed to the log file
+; The higher the value, the more messages will be displayed
+; A level of 0 will not generate a log file 
+; (i.e. must be level 1 or higher to see a log)
+;
+local &debug_level_log
+&debug_level_log=2
+
+; Internal flag. Should always be intialized to 0
+local &debug_log_open
+&debug_log_open=0
+
+gosub InitArea
+
+Y.FOREACH "GOSUB ReadElfVariables" micro_diagmpd_buf
+
+ENDDO
+
+; *************************************************************************
+; Main
+;
+;   This is the main control loop for the script
+; *************************************************************************
+
+Main:
+
+
+  ; Main processing loop
+  &total_size=0
+  while ((&bailout==0)&&(&infinite_loop_break==0))
+  (
+    local &prev_ptr
+
+    gosub DebugPrint 1 "Item count: &item_count"
+    gosub DebugPrint 2 "----------------------------------------------"
+
+    &prev_ptr=&current_ptr
+
+    ; Read the next header
+    gosub ReadCopyBytes &SIZEOF_FORMAT
+    entry &header
+
+      if "&header"=="&TYPE_MSG"
+      (
+        gosub ProcessMessage
+        &item_count=&item_count+1
+	    &msg_count=&msg_count+1
+      )
+      else if "&header"=="&TYPE_LOG"
+      (
+        gosub ProcessPacket
+        &item_count=&item_count+1
+	    &log_count=&log_count+1
+      )
+      else if "&header"=="&TYPE_EVENT"
+	  (
+        gosub ProcessPacket
+        &item_count=&item_count+1
+	    &event_count=&event_count+1	  
+	  )
+	  else if "&header"=="&TYPE_EVENT_PAYLOAD"
+	  (
+        gosub ProcessPacket
+        &item_count=&item_count+1
+	    &event_count=&event_count+1	  	  
+	  )
+	  else
+      (
+        &bailout=1
+      )
+    
+
+    gosub CheckAddressOverrun
+    entry &bailout
+  ) ; end while loop
+
+
+  local &item_fmt &msg_fmt &event_fmt &log_fmt
+  &item_fmt=  format.udecimal(4,&item_count)
+  &msg_fmt=   format.udecimal(4,&msg_count)
+  &event_fmt= format.udecimal(4,&event_count)
+  &log_fmt= format.udecimal(4,&log_count)
+
+  gosub DebugPrint 0
+  gosub DebugPrint 0 "Temp file created. "
+  gosub DebugPrint 0 "Processed &item_fmt total items."
+  gosub DebugPrint 0 "&msg_fmt items were messages"
+  gosub DebugPrint 0 "&event_fmt items were events"
+  gosub DebugPrint 0 "&log_fmt items were logs"
+
+ 
+  close #1
+
+  gosub PostProcessing
+
+  gosub DebugPrint 2 "Script complete."
+  
+RETURN
+
+
+
+
+; *************************************************************************
+; ProcessMessage
+;
+;   This routine processes a message from the buffer. It includes the following fields:
+;   FORMAT(2 bytes), LENGTH(2 bytes), TIMETICK(8 bytes), CONST_TYPE(4 bytes), 
+;   NUM_ARGS(1 byte), VERSION(1 byte), PAD(2 bytes), PARAM(0 or 4 bytes), ARGS
+; *************************************************************************
+ProcessMessage:
+  local &len &msg &file &hash &cnst_ptr &desc_ptr &str_ptr1  &str_ptr2 &line &ext_version &ext_id &ss_id &ss_mask &padding
+  
+  ; Read length of the next packet
+  gosub ReadCopyBytes &SIZEOF_LENGTH
+  entry &len
+  &padding=((&len+3)&(0xFFFFFFFC))-&len
+  &total_size=&total_size+&len-4
+  ;Copy timestamp of the msg packet
+    gosub CopyVariableBytes 8 1
+	
+  ; Read pointer stored after header
+  ; Points to MSG const type (Standard or Qshrink)
+  gosub ReadBytes 4
+  entry &cnst_ptr
+ 
+  ;Copy rest part of the msg packet
+  gosub CopyVariableBytes (&len-10) 1
+	
+  gosub DebugPrint 3 "MsgConst pointer is: &cnst_ptr"
+
+
+  ; We need to retrieve the line number from msg_desc_type, 
+  ; which has this format (same for standard and Qshrink):
+  ;
+  ;  typedef struct
+  ;  {
+  ;    uint16 line;    /* Line number in source file */
+  ;    uint16 ss_id;   /* Subsystem ID               */
+  ;    uint32 ss_mask; /* Subsystem Mask             */
+  ;  } msg_desc_type;
+  ;
+
+
+    &line=data.word(D:&cnst_ptr)
+	&ss_id=data.word(D:&cnst_ptr+2.)
+	&ss_mask=data.long(D:&cnst_ptr+4.)	
+    
+    WRITEB #1 %Word &line
+    WRITEB #1 %Word &ss_id
+    WRITEB #1 %Long &ss_mask
+
+    ; Need to extract msg string and file name from msg_const_type:
+    ;
+    ; typedef struct
+    ; {
+    ;   msg_desc_type desc; /* ss_mask, line, ss_id */
+    ;   const char *fmt;    /* Printf style format string */
+    ;   const char *fname;  /* Pointer to source file name */
+    ;   boolean do_save;    /* If TRUE, save msg to RAM buffer */
+    ; } msg_const_type
+
+
+    &str_ptr1=data.long(D:&cnst_ptr+8.)
+    &msg=data.string(D:&str_ptr1)
+	&len1=STRing.LENgth("&msg")
+
+    gosub DebugPrint 3 "Message string (&str_ptr): &msg"
+
+
+    &str_ptr2=data.long(D:&cnst_ptr+12.)
+    &file=data.string(D:&str_ptr2)	
+	&len2=STRing.LENgth("&file")	  
+    
+	&s_len=(&len1)+(&len2)+2
+    &total_size=&total_size+&s_len+8+1
+	WRITEB #1 &s_len
+    WRITEB #1 ("&msg")
+    WRITEB #1 0
+    WRITEB #1 ("&file")
+    WRITEB #1 0
+    gosub ReadBytes &padding
+    entry &k	  
+    gosub DebugPrint 3 "File string (&str_ptr): &file"
+
+    gosub DebugPrint 1 "Found FILE LINE MSG: &file &line &msg"
+
+RETURN
+
+
+
+; *************************************************************************
+; ProcessPacket
+;
+;   This routine processes copies an event or log packet from diagbuffer to binary file.
+;   The packet will be processed by the perl script.
+;
+; *************************************************************************
+
+ProcessPacket:
+  ; Read length of the next packet
+  gosub ReadCopyBytes &SIZEOF_LENGTH
+  entry &len
+  &padding=((&len+3)&(0xFFFFFFFC))-&len
+  gosub ReadCopyBytes (&len-4)
+  &total_size=&total_size+&len
+  gosub ReadBytes &padding
+  entry &k	 
+RETURN
+
+; *************************************************************************
+; ReadVariableBytes &L &B
+;
+;   This routine reads &L items and places them into a single string of
+;   the format:
+;   0xNN... ... 0xNN...
+;   where each 0xNN... consists of &B bytes
+;
+; Returns: &payload
+; *************************************************************************
+
+ReadVariableBytes:
+  entry &items &size
+  local &payload &first &value
+
+  gosub DebugPrint 4 "Entering ReadVariableBytes (&items &size)"
+
+  &payload=""  
+  &first=1
+
+  while (&items>0)
+  (
+    gosub ReadBytes &size
+    entry &value
+
+    gosub DebugPrint 4 "Value is &value"
+
+    if &first==1
+    (
+      &payload="0x"+format.HEX((&size*2.),&value)
+      &first=0
+    )
+    else
+    (
+      &payload="&payload 0x"+format.HEX((&size*2.),&value)
+    )
+
+    gosub DebugPrint 4 "Payload is now: "
+    gosub DebugPrint 4 "&payload"
+    
+    &items=&items-1
+  )
+
+RETURN "&payload"
+
+
+; *************************************************************************
+; CopyVariableBytes &L &B
+;
+;   This routine copies &size items and places them into a single string of
+;   the format:
+;   0xNN... ... 0xNN...
+;   where each 0xNN... consists of &B bytes
+;
+; Returns: &payload
+; *************************************************************************
+
+CopyVariableBytes:
+  entry &items &size
+  local &payload  &value
+
+  gosub DebugPrint 4 "Entering CopyVariableBytes (&items &size)"
+
+  &payload=""  
+
+
+  while (&items>0)
+  (
+    gosub ReadBytes &size
+    entry &value
+
+    gosub DebugPrint 4 "Value is &value"
+    WRITEB #1  Var.VALUE(&value)
+    
+    &items=&items-1
+  )
+
+RETURN 
+; *************************************************************************
+; CheckAddressOverrun
+;
+;   This routine checks to see if the entire buffer has been passed through
+;   once during item processing. 
+;
+;   Bailout flag is set if we read all the packets in the buffer
+;
+; Returns: &bailout (1 if bailout should occur)
+; *************************************************************************
+
+CheckAddressOverrun:
+  LOCAL &bailout
+  &bailout=0
+  if &start_ptr<&end_ptr
+  (
+    if &current_ptr>=&end_ptr
+    (
+     &bailout=1
+    )
+  )
+  else
+  (
+    if ((&current_ptr>=&end_ptr)&&(&wrap_flag==1))
+    (
+      &bailout=1
+    )
+  )
+
+RETURN &bailout
+
+
+
+
+; *************************************************************************
+; InitVariables
+;
+;   This routine initializes the various pointers used to access the item
+;   buffer in memory, as well as other variables
+;
+; *************************************************************************
+
+InitVariables:
+
+  &wrap_flag=  0
+  &bailout=    0
+  &infinite_loop_break=0
+  &item_count= 0  
+  &event_count=     0
+  &msg_count=       0
+  &log_count=       0
+
+
+  &status_update=250.
+
+
+    &start_ptr=&micro_diagbuffer_start+&tb_head
+    &end_ptr=&micro_diagbuffer_start+&tb_tail
+    &current_ptr= &start_ptr
+ 
+    if &tb_tail<&tb_head
+    (
+      &buffer_wrap_flag=1
+    )
+
+
+  gosub DebugPrint 3 "Initialized start_ptr to &start_ptr"
+  gosub DebugPrint 3 "Initialized end_ptr to &end_ptr"
+  gosub DebugPrint 3 "Initialized current_ptr to &current_ptr"
+
+RETURN
+
+
+; *************************************************************************
+; ReadElfVariables
+;
+;   This routine loads an f3 log file previously saved to EFS andd then
+;   initializes all pointers, counters, etc., needed to begin F3 recovery
+;
+; *************************************************************************
+
+ReadElfVariables:
+   ENTRY &micro_diagmpd_buf_ptr
+   
+   &source_path="&micro_diagmpd_buf_ptr"
+   gosub StripPath
+   
+   gosub OpenOutputFile
+
+   gosub CheckForDependencies
+   
+   ON ERROR Gosub
+   (
+     gosub DebugPrint 0 "Could not retrieve value for a required symbol."
+     gosub DebugPrint 0 "Unable to process logs"
+     ENDDO
+   )
+
+  &buffer_wrap_flag=0
+  
+  if y.exist(micro_diagbuf_mpd_q)
+  (
+    &micro_diagmpd_buf= v.value(&micro_diagmpd_buf_ptr)
+
+	&micro_diagbuffer_start=v.value((((micro_diagbuf_mpd_type*)&micro_diagmpd_buf)->handle)->buffer);
+	&size=v.value((((micro_diagbuf_mpd_type*)&micro_diagmpd_buf)->handle)->bufSize);
+	&mask=(&size-1); 
+	&micro_diagbuffer_end=(&micro_diagbuffer_start+&size);
+	&tb_head=(v.value((((micro_diagbuf_mpd_type*)&micro_diagmpd_buf)->handle)->readWriter))&(&mask);
+	&tb_tail=(v.value((((micro_diagbuf_mpd_type*)&micro_diagmpd_buf)->handle)->write))&(&mask);
+	if &tb_head<&tb_tail
+	(
+	  &total_length=(&tb_tail)-(&tb_head);
+	)
+	else
+	(
+	  &total_length=(&size)-(&tb_head)+(&tb_tail);
+	)	  
+	
+	gosub DebugPrint 2 "                trace_buffer_start          = &micro_diagbuffer_start"
+	gosub DebugPrint 2 "                trace_buffer_end            = &micro_diagbuffer_end"
+	gosub DebugPrint 2 "                tb_head                     = &tb_head"
+	gosub DebugPrint 2 "                tb_tail                     = &tb_tail"	
+	
+	gosub InitVariables
+	  
+	gosub Main	 
+  )
+
+RETURN
+
+
+
+; *************************************************************************
+; OpenOutputFile
+;
+;   This routine creates the output file that will be passed to the perl
+;   script for final processing. If the file is not provided a temp file
+;   will be used.
+;
+; *************************************************************************
+OpenOutputFile:
+
+  ON ERROR gosub
+  (
+    gosub DebugPrint 0 "Unable to create file &outfile in &outfile_path for processing"
+    gosub DebugPrint 0 "Aborting uimage diagbuffer retrieval."
+    ENDDO
+  )
+
+  if "&outfile_path"==""
+  (
+    &outfile_path="&OUTFILE_DEFAULT_PATH"
+    gosub DebugPrint 0 "Output directory not specified on command line."
+    gosub DebugPrint 0 "Using default output directory: &outfile_path"
+  )
+  &TEMP_OUTPUT_FILE="&source_path"+"_micro_diagbuffer_data.bin"
+  gosub DebugPrint 0 "Extracting uimage packets to file &outfile_path/&TEMP_OUTPUT_FILE"
+  gosub DebugPrint 0
+
+  OPEN #1 "&outfile_path/&TEMP_OUTPUT_FILE" /CREATE /BINARY
+
+  if &debug_level_log>0
+  (
+    &DEBUG_LOG_FILE="&source_path"+"_micro_diagbuffer_data.txt"
+    OPEN #2 "&outfile_path/&DEBUG_LOG_FILE" /CREATE /BINARY
+    &debug_log_open=1
+  )
+
+  ON ERROR
+
+RETURN
+
+
+
+; *************************************************************************
+; ReadBytes &N
+;
+;   This routine reads &N bytes from the address pointed to by global 
+;   &current_ptr returing a single value that concatinates the &N bytes.
+;   Needed to prevent unaligned memory accesses by Trace32.
+;
+; Returns: &data
+;
+; *************************************************************************
+
+ReadBytes:
+  ENTRY &length
+  LOCAL &ptr &data &num_shift &temp &orig_ptr
+
+  &data=0
+  &num_shift=0
+  &orig_ptr=&current_ptr
+
+  WHILE (&length>0)
+  (
+    &temp=Data.BYTE(D:&current_ptr)
+    gosub DebugPrint 4 "Read &temp from &current_ptr"
+    &data=((&temp<<(&num_shift*8))|&data)
+    &length=&length-1
+    &num_shift=&num_shift+1
+    &current_ptr=&current_ptr+1
+
+    gosub CheckAddressWrap
+
+  )
+
+  gosub DebugPrint 4 "Read &data from &orig_ptr"
+
+RETURN &data
+
+; *************************************************************************
+; ReadCopyBytes &N
+;
+;   This routine reads &N bytes from the address pointed to by global 
+;   &current_ptr returing a single value that concatinates the &N bytes.
+;   Then write the data into output file.
+;   Needed to prevent unaligned memory accesses by Trace32.
+;
+; Returns: &data
+;
+; *************************************************************************
+
+ReadCopyBytes:
+  ENTRY &length
+  LOCAL &ptr &data &num_shift &temp &orig_ptr
+
+  &data=0
+  &num_shift=0
+  &orig_ptr=&current_ptr
+
+  WHILE (&length>0)
+  (
+    &temp=Data.BYTE(D:&current_ptr)
+	WRITEB #1  Var.VALUE(&temp)
+    gosub DebugPrint 4 "Read &temp from &current_ptr"
+    &data=((&temp<<(&num_shift*8))|&data)
+    &length=&length-1
+    &num_shift=&num_shift+1
+    &current_ptr=&current_ptr+1
+
+    gosub CheckAddressWrap
+
+  )
+
+  gosub DebugPrint 4 "Read &data from &orig_ptr"
+
+RETURN &data
+
+
+; *************************************************************************
+; CheckAddressWrap
+;
+;   This routine checks if the global &current_ptr has exceeded the buffer
+;   range, and wraps it around to the start of the buffer if needed.
+; *************************************************************************
+
+CheckAddressWrap:
+
+  if &current_ptr>=&micro_diagbuffer_end
+  (
+    if &wrap_flag==1
+    (
+      ; Address already wrapped! Don't wrap twice.
+      &infinite_loop_break=1;
+      gosub DebugPrint 1 "Multiple buffer wraps detected; Setting bailout flag."
+    )
+
+    &current_ptr=&micro_diagbuffer_start
+    &wrap_flag=1
+    gosub DebugPrint 3 "Address wrapped around. Now set to &current_ptr"
+  )
+
+RETURN
+
+
+
+; *************************************************************************
+; InitArea
+;
+;   Initializes text areas needed by T32 and any related initialization.
+; *************************************************************************
+
+InitArea:
+
+  Area.Create F3
+  Area.Select F3
+  Area.Clear F3
+  Area F3
+
+  gosub DebugPrint 0 "Beginning recover_diagbuffer.cmm script"
+  gosub DebugPrint 0 
+  gosub DebugPrint 0 "  Usage: cd.do <path>/recover_diagbuffer.cmm <output_dir> "
+  gosub DebugPrint 0 "         <output_dir> is location to write output"
+  gosub DebugPrint 0 "             default is c:/temp"
+  gosub DebugPrint 0 "             requires that <output_dir> be specified"
+  gosub DebugPrint 0 
+
+RETURN
+
+
+; *************************************************************************
+; DebugPrint &L &M
+;
+;   Prints out debug message &M if &L is less than or equal to the global
+;   variable &debug_level
+; *************************************************************************
+
+DebugPrint:
+  entry &level &debugmsg
+  
+  if &level<=&debug_level_screen
+  (
+    if &level==0
+    (
+      print &debugmsg
+    )
+    else
+    (
+      print "DEBUG &level: &debugmsg"
+    )
+  )
+
+
+  if (&level<=&debug_level_log)&&(&debug_log_open==1)
+  (
+    WRITE #2 "Debug &level: &debugmsg"
+  )
+
+
+RETURN
+
+; *************************************************************************
+;StripPath
+;  This function extracts the string that needs to be appended to get the F3 trace control and detail masks 
+; ************************************************************************* 
+StripPath:
+  local &index
+
+  &source_path=STRing.Replace("&source_path","\","",0)
+  &source_path=STRing.Replace("&source_path","Globalmicro_diagmpd_buf","",0)
+RETURN
+
+; *************************************************************************
+; CheckForDependencies
+;
+;   Check for any external dependencies needed before proceeding (like 
+;   available perl scripts, hash files, etc.)
+; *************************************************************************
+CheckForDependencies:
+  local &script_path
+
+  &script_path=OS.PWD()
+
+  if (!os.file("&script_path/&FORMATSCRIPT"))
+  (
+    gosub DebugPrint 0 "ERROR: Script &FORMATSCRIPT not found in current working directory."
+    gosub DebugPrint 0 "       Temp file will not be parsed and formatted."
+  )
+
+RETURN
+
+
+
+; *************************************************************************
+; PostProcessing
+;
+;   Run perl script to process the tokenized output
+; *************************************************************************
+PostProcessing:
+  local &script_path
+
+  &script_path=OS.PWD()
+
+  if (!os.file("&script_path/&FORMATSCRIPT"))
+  (
+    gosub DebugPrint 0 "ERROR: Token file not formatted because required perl script "
+    gosub DebugPrint 0 "       &FORMATSCRIPT can not be located."
+  )
+  else if (&item_count==0)
+  (
+    gosub DebugPrint 0 "No diagbuffer items were processed."
+  )
+  else
+  (
+    local &command &final_output
+    &total_size=  format.udecimal(4,&total_size)
+	&OUTFILE_DEFAULT="&source_path"+"_micro_diagbuffer_data.qmdl"
+    &command="perl &script_path/&FORMATSCRIPT &outfile_path/&TEMP_OUTPUT_FILE &outfile_path/&OUTFILE_DEFAULT &total_size"
+    &final_output="&outfile_path/&OUTFILE_DEFAULT"
+ 
+    gosub DebugPrint 0 "Formatting the uImage diagbuffer binary with perl script to create &final_output" ;     
+    gosub DebugPrint 0 "Executing: &command"
+    gosub DebugPrint 0 "Please wait..."
+    gosub DebugPrint 0 "uiamge diagbuffer data can be found in &final_output"
+	
+    if &debug_log_open==1
+    (
+      close #2
+	  &debug_log_open=0
+    )	
+	
+    ;printer.file &final_output
+    ; Use 'winprint' command to capture any error messages that might pop up
+    wp.OS.window &command
+    gosub DebugPrint 0 "uiamge diagbuffer data can be found in &final_output"
+  )
+
+RETURN
+

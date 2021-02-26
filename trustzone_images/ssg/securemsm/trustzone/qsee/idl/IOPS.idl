@@ -1,0 +1,119 @@
+// Copyright (c) 2017 Qualcomm Technologies, Inc.  All Rights Reserved.
+// Qualcomm Technologies Proprietary and Confidential.
+
+/**
+ * @brief
+ * Common definitions and APIs used for Output Protection
+ */
+
+/** Topology Info **/
+struct HdcpTopology {
+   uint32 depth;
+   /**< Repeater cascade depth. */
+
+   uint32 deviceCount;
+   /**< Number of attached downstream devices. */
+
+   uint32 maxDevicesExceeded;
+   /**< Topology error indicator. When set to one,
+        more than 31 downstream devices are attached */
+
+   uint32 maxCascadeExceeded;
+   /**< Topology error indicator. When set to one,
+        more than four levels of repeaters have been
+        cascaded together. */
+
+   uint32 hdcp2LegacyDeviceDownstream;
+   /**< When set to one, indicates presence of an
+        HDCP2.0 or HDCP2.1 compliant device in the
+        topology. */
+
+   uint32 hdcp1DeviceDownstream;
+   /**< When set to one, indicates presence of an
+        HDCP1.x compliant device in the topology. */
+};
+
+interface IOPS {
+
+  /**
+   * HDCP Protection levels that can be set/get by DRM and HDCPTX TAs
+   * using OutputProtection and HdcpTransmitter interfaces
+   * 
+   * Encryption levels
+   * NO HDCP - 0
+   * HDCP Level 1.0 - 1
+   * HDCP Level 2.0 - 2
+   * HDCP Level 2.1 - 3
+   * HDCP Level 2.2 - 4
+   * HDCP Level 2.3 - 5
+   *
+   * LOCAL DISPLAY ONLY - 0x0F set by DRM to block external display
+   *
+   * No Digital Output - 0xFF  HDCP capability
+   * 
+   */
+
+  const uint8 HDCP_LEVEL_0 = 0x00; /* NO HDCP */
+  const uint8 HDCP_LEVEL_1 = 0x01; /* HDCP Level 1.0 */
+  const uint8 HDCP_LEVEL_2 = 0x02; /* HDCP Level 2.0 */
+  const uint8 HDCP_LEVEL_3 = 0x03; /* HDCP Level 2.1 */
+  const uint8 HDCP_LEVEL_4 = 0x04; /* HDCP Level 2.2 */
+  const uint8 HDCP_LEVEL_5 = 0x05; /* HDCP Level 2.3 */
+  const uint8 DRM_LOCAL_DISPLAY_ONLY = 0x0F; /* Local Display only */
+  const uint8 NO_DIGITAL_OUTPUT = 0xFF; /* No Digital Output */
+
+  /**
+   * Default SRM version
+   */
+  const uint16 HDCP_SRM_DEFAULT_VERSION = 0;
+
+  /**
+   * Corresponds to enum qsee_hdcp_device_t
+   * These constants define the device types
+   */
+  const uint32 HDCP_TXMTR_HDMI = 0x8001;
+  const uint32 HDCP_TXMTR_DP   = 0x8002;
+  const uint32 HDCP_TXMTR_WIFI = 0x8003;
+  const uint32 HDCP_TXMTR_DSI0 = 0x8004;
+  const uint32 HDCP_TXMTR_DSI1 = 0x8005;
+  const uint32 ALL_EXT_DISP    = 0xffff;
+  
+  /**
+   * Get current OPS implementation version
+   * @param [out] version - version number
+   */
+   method getOPSVersion(out uint32 version);
+
+  /**
+   * Get current and maximum supported HDCP levels
+   *
+   * @param [out] currHdcpLevel this is the current HDCP version, based on the
+                  device itself, and the display to which it is connected.
+   * @param [out] maximum this is the maximum supported HDCP version for the
+                  device, ignoring any attached device.
+   */
+  method getHDCPCapability(out uint8 currHdcpLevel, out uint8 maxHdcpLevel);
+
+  /**
+   * Aggregated topology with received ID list for a particular device.
+   * Used by DRM TAs like WFD RX to find the downstream topology for
+   * each device type
+   *
+   * @param [in] deviceId Topology requested for a particular device
+   * @param [out] receiverIdList - downstream deviceid list
+   * @param [out] hdcpTopology provides receiver Id list and information
+   *              on downstream legacy devices connected
+   */
+  method getDeviceTopology(in uint32 deviceId, out uint8[] receiverIdList,
+                           out HdcpTopology hdcpToplogy);
+
+  /**
+   * Get current DRM content protection level enforced by OPS
+   *
+   * @param [out] cpl - content protection level = max( all drm OPLs )
+   * @param [out] epl - final protection level enforced by OPS
+   * @param [out] type - Type 0/1, Type enforced by OPS
+   */
+  method getContentProtectionLevel(out uint8 cpl, out uint8 epl, out uint8 type);
+};
+

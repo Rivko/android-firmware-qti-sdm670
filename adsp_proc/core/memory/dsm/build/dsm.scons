@@ -1,0 +1,153 @@
+#===============================================================================
+#
+# DSM Libs
+#
+# Copyright (c) 2014 Qualcomm Technologies Incorporated.
+#
+# All Rights Reserved. Qualcomm Confidential and Proprietary
+# Export of this technology or software is regulated by the U.S. Government.
+# Diversion contrary to U.S. law prohibited.
+#
+# All ideas, data and information contained in or disclosed by
+# this document are confidential and proprietary information of
+# Qualcomm Technologies Incorporated and all rights therein are expressly reserved.
+# By accepting this material the recipient agrees that this material
+# and the information contained therein are held in confidence and in
+# trust and will not be used, copied, reproduced in whole or in part,
+# nor its contents revealed in any manner to others without the express
+# written permission of Qualcomm Technologies Incorporated.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //source/qcom/qct/modem/mcs/dsm/rel/nikel_1.0/build/dsm.scons#2 $
+#  $DateTime: 2011/06/10 15:56:08 $
+#
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 05/16/14   sm     Added TISE image support.  Note that 'USES_MSVC' and
+#                    'USES_TISE' are used to specify a subset of files from this
+#                    driver to compile for the Windows (MSVC) compiler.  Please
+#                    do not remove these definitions from this file.
+# 06/10/11    rj     Added RCINIT Support 
+#===============================================================================
+from glob import glob
+from os.path import join, basename
+
+Import('env')
+env = env.Clone()
+
+# This is to remove any -Werror declarations in the environmnent for the MSVC
+# compiler.
+if 'USES_MSVC' in env:
+    env.Replace(CFLAGS='-DSTATIC="static"')
+    env.Append(CPPDEFINES = [
+    'MY_GCC_FILE=__FILE__',
+    ])
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/memory/dsm/src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Set MSG_BT_SSID_DFLT for legacy MSG macros
+#-------------------------------------------------------------------------------
+
+# Declare TISE required CPP definitions.
+if 'USES_TISE' and 'USES_MSVC' in env:
+    env.Append(CPPDEFINES = [
+            'WIN32',
+            '_CONSOLE',
+            '_CRT_SECURE_NO_WARNINGS',
+            '_CRT_SECURE_NO_DEPRECATE',
+            '_WIN32_WINNT=0x0501',
+            '__FILENAME__=__FILE__',
+            'QWORD_TYPES_H_DEFINED',
+            'IMAGE_APPS_PROC',
+            'FEATURE_SMD',
+            'FEATURE_DSM_LARGE_ITEMS',
+            'FEATURE_DSM_DUP_ITEMS',
+            'FEATURE_DSM_CHK_NO_FILL_AA',
+            'FEATURE_ALIGNED_QWORD',            
+            'FEATURE_Q_WIN32_LOCKS',            
+            'FEATURE_DSM_WINCE',       
+            'SMEM_APPS_PROC',
+            'CUST_H=custaaaaaaaaq.h'
+        ])
+else:
+    env.Append(CPPDEFINES = [
+   "MSG_BT_SSID_DFLT=MSG_SSID_DSM",
+   "FEATURE_DSM_POOL_OPTIMIZED_CB",
+   "FEATURE_DSM_QUBE",
+])
+
+#-------------------------------------------------------------------------------
+# Necessary Public API's
+#-------------------------------------------------------------------------------
+env.RequirePublicApi([
+    'DAL',
+    'DEBUGTOOLS',
+    'SERVICES',
+    'SYSTEMDRIVERS',
+    'MEMORY',
+
+    # needs to be last also contains wrong comdef.h
+    'KERNEL',
+    ], area='core')
+
+#-------------------------------------------------------------------------------
+# External API's not built with SCons
+#-------------------------------------------------------------------------------
+env.RequireExternalApi([
+    'BREW',
+])
+
+#-------------------------------------------------------------------------------
+# Generate the library and add to an image
+#-------------------------------------------------------------------------------
+
+# Construct the list of source files by looking for *.c
+DSM_C_SOURCES = ['${BUILDPATH}/' + basename(fname)
+                 for fname in glob(join(env.subst(SRCPATH), '*.c'))]
+
+
+# Add our library to the following build tags:
+#   MOB_MCS for MOB
+#   MODEM_APPS for Apps proc
+#   MODEM_MODEM for Modem proc
+#   MODEM_WCN for Riva proc on 8960
+#   CBSP_QDSP6_SW and CBSP_QDSP6_SW_IMAGE for CoreImage
+env.AddLibrary( ['MOB_MCS', 'MODEM_APPS', 'MODEM_MODEM', 'MODEM_WCN',
+                 'CBSP_QDSP6_SW', 'CBSP_QDSP6_SW_IMAGE'],
+                '${BUILDPATH}/mcs_dsm', [DSM_C_SOURCES] )
+
+# Adding the required sources to the TISE SCons Image             
+if 'USES_TISE' in env:     
+    env.Append(CPPPATH = [
+      "${BUILD_ROOT}/hap/tise_orphans/aDSPSim/osal/inc", "${BUILD_ROOT}/hap/tise_orphans/aDSPSim/osal/oal/inc"
+    ])            
+    env.AddLibrary( ['CORE_TISE_SW'], '${BUILDPATH}/mcs_dsm_tise', [DSM_C_SOURCES] )
+
+# Load test units
+env.LoadSoftwareUnits()
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+
+if 'USES_RCINIT' in env:
+   RCINIT_IMG = ['MODEM_MODEM', 'CORE_MODEM', 'CORE_QDSP6_SW']
+   env.AddRCInitFunc(           # Code Fragment in TMC: NO
+    RCINIT_IMG,                 # define TMC_RCINIT_INIT_DSM_INIT
+    {
+     'sequence_group'             : 'RCINIT_GROUP_0',                   # required
+     'init_name'                  : 'dsm',                              # required
+     'init_function'              : 'dsm_init',                         # required
+     'dependencies'               : ['dalsys','smem','err_store',]
+    })

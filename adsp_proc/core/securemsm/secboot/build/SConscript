@@ -1,0 +1,70 @@
+#===============================================================================
+#
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2013 by Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1/securemsm/secboot/build/SConscript#1 $
+#  $DateTime: 2017/07/21 22:10:47 $
+#  $Author: pwbldsvc $
+#  $Change: 13907704 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 01/17/2013  hw     Initial Version
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/securemsm/secboot"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+env.Append(CPPPATH = "${BUILD_ROOT}/core/securemsm/unifiedcrypto/shared/sha/inc")
+env.Append(CPPPATH = "${BUILD_ROOT}/core/securemsm/unifiedcrypto/core/sha/inc")
+env.Append(CPPPATH = "${BUILD_ROOT}/core/securemsm/unifiedcrypto/environment/inc")
+env.Append(CPPPATH = "${BUILD_ROOT}/core/securemsm/unifiedcrypto/environment/adsp/inc")
+#-------------------------------------------------------------------------------
+# Internal depends within SecBoot
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'SECUREMSM',
+   'SERVICES',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(['SECUREMSM'])
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+SECBOOT_LIB_SOURCES = [
+        '${BUILDPATH}/src/secboot.c',
+        '${BUILDPATH}/src/secboot_asn1.c',
+        '${BUILDPATH}/src/secboot_x509.c',
+#        '${BUILDPATH}/hw/secctrl/src/secboot_hw.c', 
+]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to MBA Image
+#-------------------------------------------------------------------------------
+env.AddBinaryLibrary(['CORE_QDSP6_SW'], '${BUILDPATH}/secboot_auth',  SECBOOT_LIB_SOURCES)
+
+CLEAN_SOURCES = env.FindFiles(['*.c', '*.h'], '${BUILD_ROOT}/core/securemsm/secboot/hw/secctrl/src')
+CLEAN_SOURCES.extend(env.FindFiles(['*.c', '*.h'], '${BUILD_ROOT}/core/securemsm/secboot/src'))
+CLEAN_SOURCES.extend(env.FindFiles('*.h', '${BUILD_ROOT}/core/securemsm/secboot/api'))
+env.CleanPack(['CORE_QDSP6_SW'], CLEAN_SOURCES)
+

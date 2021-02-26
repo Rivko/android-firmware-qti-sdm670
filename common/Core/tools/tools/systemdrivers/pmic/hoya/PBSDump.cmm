@@ -1,0 +1,1102 @@
+; ============================================================================
+;
+;  PBSDump.cmm
+;
+;  Script to dump PMIC PBS dump to a text file.
+;
+;  Execution:
+;    PBSDump.cmm [pmicindex] [dumpfile]
+;
+;  example: do PBSDump.cmm 0 c:\temp\pbsdump.txt
+;
+;  If no parameters are provided then the interactive dialog window will be shown.
+;  [pmicindex] is the index of the PMIC and starts from 0 for primary PMIC.
+;  [dumpfile] is the output dump file name which is optional.  It will default to c:\temp\pbsdump.txt  
+;
+;  ====================================================================
+;
+;  Copyright (c) 2015-2017 QUALCOMM Technologies Incorporated.  All Rights Reserved.
+;  QUALCOMM Proprietary and Confidential.
+;
+;  ====================================================================
+;
+;  $Header: //components/rel/core.glue/1.2/tools/tools/systemdrivers/pmic/hoya/PBSDump.cmm#2 $
+;  $DateTime: 2017/11/15 17:28:44 $
+;  $Author: pwbldsvc $
+;
+; ============================================================================
+;
+
+ENTRY &pmicindex &dumpfile
+
+;-----------------------------------------------------------------------------
+; Default bus access mode and owner
+;-----------------------------------------------------------------------------
+
+local &SPMIOwnerChannel
+&SPMIOwnerChannel=3  ; LPASS Channel by default
+
+local &BusAccessMode
+&BusAccessMode="EZAXI"
+
+local &CurrentDir
+&CurrentDir=OS.PWD()
+
+local &PmicIoScript
+&PmicIoScript="&CurrentDir"+"\pmic_io.cmm"
+
+;-----------------------------------------------------------------------------
+; REV ID PERIPHERAL TYPE AND SUBTYPES (VERSION DETECTION)
+;-----------------------------------------------------------------------------
+
+LOCAL &PM_REVID_PERIPH_TYPE_QC_PMIC
+&PM_REVID_PERIPH_TYPE_QC_PMIC=0x51
+
+LOCAL &PM_REVID_PERIPH_SUBTYPES_MAX_NUM
+&PM_REVID_PERIPH_SUBTYPES_MAX_NUM=36.
+
+VAR.NEW char[&PM_REVID_PERIPH_SUBTYPES_MAX_NUM][10] \RevidPeriphSubtypeNamesArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_REVID_PERIPH_SUBTYPES_MAX_NUM
+	VAR.SET \RevidPeriphSubtypeNamesArr[\i++]="UNKNOWN"
+
+VAR.SET \RevidPeriphSubtypeNamesArr[1]="PM8941"
+VAR.SET \RevidPeriphSubtypeNamesArr[2]="PM8841"
+VAR.SET \RevidPeriphSubtypeNamesArr[3]="PMD9607"
+VAR.SET \RevidPeriphSubtypeNamesArr[4]="PM8026"
+VAR.SET \RevidPeriphSubtypeNamesArr[5]="PM8110"
+VAR.SET \RevidPeriphSubtypeNamesArr[6]="PMA8084"
+VAR.SET \RevidPeriphSubtypeNamesArr[7]="PMI8962"
+VAR.SET \RevidPeriphSubtypeNamesArr[8]="PMD9645"
+VAR.SET \RevidPeriphSubtypeNamesArr[9]="PM8994"
+VAR.SET \RevidPeriphSubtypeNamesArr[10]="PMI8994"
+VAR.SET \RevidPeriphSubtypeNamesArr[11]="PM8916"
+VAR.SET \RevidPeriphSubtypeNamesArr[12]="PM8004"
+VAR.SET \RevidPeriphSubtypeNamesArr[13]="PM8909"
+VAR.SET \RevidPeriphSubtypeNamesArr[14]="PM2433"
+VAR.SET \RevidPeriphSubtypeNamesArr[15]="PMD9655"
+VAR.SET \RevidPeriphSubtypeNamesArr[16]="PM8950"
+VAR.SET \RevidPeriphSubtypeNamesArr[17]="PMI8950"
+VAR.SET \RevidPeriphSubtypeNamesArr[18]="PMK8001"
+VAR.SET \RevidPeriphSubtypeNamesArr[19]="PMI8996"
+VAR.SET \RevidPeriphSubtypeNamesArr[20]="PM8998"
+VAR.SET \RevidPeriphSubtypeNamesArr[21]="PMI8998"
+VAR.SET \RevidPeriphSubtypeNamesArr[22]="PM8953"
+VAR.SET \RevidPeriphSubtypeNamesArr[23]="SMB1380"
+VAR.SET \RevidPeriphSubtypeNamesArr[24]="PM8005"
+VAR.SET \RevidPeriphSubtypeNamesArr[25]="PM8937"
+VAR.SET \RevidPeriphSubtypeNamesArr[26]="PM660L"
+VAR.SET \RevidPeriphSubtypeNamesArr[27]="PM660"
+VAR.SET \RevidPeriphSubtypeNamesArr[28]="SMB1355"
+VAR.SET \RevidPeriphSubtypeNamesArr[30]="PM855"
+VAR.SET \RevidPeriphSubtypeNamesArr[33]="PMK8002"
+VAR.SET \RevidPeriphSubtypeNamesArr[34]="PMX24"
+
+LOCAL &PM_REVID_TYPE &PM_REVID_SUBTYPE &PM_REVID_ALL_LAYER &PM_REVID_METAL
+&PM_REVID_TYPE=0.
+&PM_REVID_SUBTYPE=0.
+&PM_REVID_ALL_LAYER=0.
+&PM_REVID_METAL=0.
+
+;-----------------------------------------------------------------------------
+; PBS ADDRESS AND SIZE
+;-----------------------------------------------------------------------------
+
+LOCAL &PBS_OTP_START_ADDRESS &PBS_OTP_END_ADDRESS &PBS_OTP_SIZE
+
+&PBS_OTP_START_ADDRESS=0
+&PBS_OTP_END_ADDRESS=0x3FC
+&PBS_OTP_SIZE=256.
+
+LOCAL &PBS_RAM_START_ADDRESS &PBS_RAM_END_ADDRESS &PBS_RAM_SIZE
+
+&PBS_RAM_START_ADDRESS=0x400
+&PBS_RAM_END_ADDRESS=0x7FC
+&PBS_RAM_SIZE=256.
+
+LOCAL &PBS_MAX_NUM_OF_CLIENTS
+
+&PBS_MAX_NUM_OF_CLIENTS=16.
+
+LOCAL &PBS_CORE_BASE_ADDR &PBS_CORE_DIG_MAJOR &PBS_CORE_DIG_MINOR
+LOCAL &PBS_CORE_SEQ_STATUS0 &PBS_CORE_SEQ_STATUS3
+LOCAL &PBS_CORE_SEQ_PC_STATUS0 &PBS_CORE_SEQ_PC_STATUS1
+LOCAL &PBS_CORE_SEQ_IR_STATUS0 &PBS_CORE_SEQ_IR_STATUS1 &PBS_CORE_SEQ_IR_STATUS2 &PBS_CORE_SEQ_IR_STATUS3
+LOCAL &PBS_CORE_SEQ_STATUS1 &PBS_CORE_SEQ_STATUS2
+LOCAL &PBS_CORE_SEQ_ERR_PC_STATUS0 &PBS_CORE_SEQ_ERR_PC_STATUS1
+LOCAL &PBS_CORE_SEQ_ERR_IR_STATUS0 &PBS_CORE_SEQ_ERR_IR_STATUS1 &PBS_CORE_SEQ_ERR_IR_STATUS2 &PBS_CORE_SEQ_ERR_IR_STATUS3
+LOCAL &PBS_CORE_TRIG_STATUS0 &PBS_CORE_TRIG_STATUS1 &PBS_CORE_TRIG_STATUS2
+LOCAL &PBS_CORE_RAM_CFG1 &PBS_CORE_NVM_CFG1 &PBS_CORE_NVM_CFG2
+
+&PBS_CORE_BASE_ADDR=0x7000
+&PBS_CORE_DIG_MINOR=&PBS_CORE_BASE_ADDR+0x0
+&PBS_CORE_DIG_MAJOR=&PBS_CORE_BASE_ADDR+0x1
+&PBS_CORE_SEQ_STATUS0=&PBS_CORE_BASE_ADDR+0x8
+&PBS_CORE_SEQ_STATUS3=&PBS_CORE_BASE_ADDR+0x9
+&PBS_CORE_SEQ_PC_STATUS0=&PBS_CORE_BASE_ADDR+0xA
+&PBS_CORE_SEQ_PC_STATUS1=&PBS_CORE_BASE_ADDR+0xB
+&PBS_CORE_SEQ_IR_STATUS0=&PBS_CORE_BASE_ADDR+0xC
+&PBS_CORE_SEQ_IR_STATUS1=&PBS_CORE_BASE_ADDR+0xD
+&PBS_CORE_SEQ_IR_STATUS2=&PBS_CORE_BASE_ADDR+0xE
+&PBS_CORE_SEQ_IR_STATUS3=&PBS_CORE_BASE_ADDR+0xF
+&PBS_CORE_SEQ_STATUS1=&PBS_CORE_BASE_ADDR+0x90
+&PBS_CORE_SEQ_STATUS2=&PBS_CORE_BASE_ADDR+0x91
+&PBS_CORE_SEQ_ERR_PC_STATUS0=&PBS_CORE_BASE_ADDR+0x92
+&PBS_CORE_SEQ_ERR_PC_STATUS1=&PBS_CORE_BASE_ADDR+0x93
+&PBS_CORE_SEQ_ERR_IR_STATUS0=&PBS_CORE_BASE_ADDR+0x94
+&PBS_CORE_SEQ_ERR_IR_STATUS1=&PBS_CORE_BASE_ADDR+0x95
+&PBS_CORE_SEQ_ERR_IR_STATUS2=&PBS_CORE_BASE_ADDR+0x96
+&PBS_CORE_SEQ_ERR_IR_STATUS3=&PBS_CORE_BASE_ADDR+0x97
+&PBS_CORE_TRIG_STATUS0=&PBS_CORE_BASE_ADDR+0x98
+&PBS_CORE_TRIG_STATUS1=&PBS_CORE_BASE_ADDR+0x99
+&PBS_CORE_TRIG_STATUS2=&PBS_CORE_BASE_ADDR+0x9A
+&PBS_CORE_RAM_CFG1=&PBS_CORE_BASE_ADDR+0xA0
+&PBS_CORE_NVM_CFG1=&PBS_CORE_BASE_ADDR+0xA2
+&PBS_CORE_NVM_CFG2=&PBS_CORE_BASE_ADDR+0xA3
+
+LOCAL &PBS_CORE_DIG_MAJOR_REV &PBS_CORE_DIG_MINOR_REV
+&PBS_CORE_DIG_MAJOR_REV=0
+&PBS_CORE_DIG_MINOR_REV=0
+
+
+LOCAL &PBS_CLIENT0_BASE_ADDR 
+LOCAL &PBS_CLIENT_PERPH_TYPE_OFF &PBS_CLIENT_PERPH_SUBTYPE_OFF &PBS_CLIENT_STATUS0_OFF &PBS_CLIENT_STATUS1_OFF
+LOCAL &PBS_CLIENT_TRIG_LATCHED_OFF &PBS_CLIENT_TRIG_CFG0_OFF &PBS_CLIENT_TRIG_CFG1_OFF &PBS_CLIENT0_EN_CTL_OFF 
+LOCAL &PBS_CORE_TRIG_ADDR_LSB_OFF &PBS_CORE_TRIG_ADDR_MSB_OFF
+
+&PBS_CLIENT0_BASE_ADDR=0x7100
+&PBS_CLIENT_PERPH_TYPE_OFF=0x4
+&PBS_CLIENT_PERPH_SUBTYPE_OFF=0x5
+&PBS_CLIENT_STATUS0_OFF=0x8
+&PBS_CLIENT_STATUS1_OFF=0x9
+&PBS_CLIENT_TRIG_LATCHED_OFF=0xa
+&PBS_CLIENT_TRIG_CFG0_OFF=0x40
+&PBS_CLIENT_TRIG_CFG1_OFF=0x41
+&PBS_CLIENT_EN_CTL_OFF=0x46
+
+&PBS_CORE_TRIG_ADDR_LSB_OFF=0x50
+&PBS_CORE_TRIG_ADDR_MSB_OFF=0x51
+
+;-----------------------------------------------------------------------------
+; Default bus access mode
+;-----------------------------------------------------------------------------
+
+&BusAccessMode="EZAXI"
+
+;-----------------------------------------------------------------------------
+; PMIC ERROR FLAG TYPES
+;-----------------------------------------------------------------------------
+
+LOCAL &PM_ERR_SUCCESS &PM_ERR_FAILURE
+
+&PM_ERR_SUCCESS=0
+&PM_ERR_FAILURE=1
+
+;-----------------------------------------------------------------------------
+; Determine the file name to save to.
+;-----------------------------------------------------------------------------
+
+IF "&dumpfile"==""
+(
+  &dumpfile="c:\temp\pbsdump.txt"
+)
+
+;-----------------------------------------------------------------------------
+; Check for non-interactive mode.
+;-----------------------------------------------------------------------------
+
+IF ("&pmicindex"!="")
+(
+  AREA.CREATE PBSDump 60. 500.
+  AREA.VIEW PBSDump
+  AREA.SELECT PBSDump
+
+  &status=0
+
+  GOSUB PmicInfoRead &pmicindex
+  ENTRY &status
+
+  IF ((&status==0)||(&PM_REVID_TYPE!=&PM_REVID_PERIPH_TYPE_QC_PMIC))
+  (
+    PRINT "INVALID PMIC!"
+    ENDDO
+  )
+  &analyzeFlag=1
+  GOSUB PbsCollectAndAnalyzeDump &pmicindex &analyzeFlag
+  ENTRY &status
+  IF &status==0
+  (
+    PRINT "ERROR!"
+  )
+  ELSE
+  (
+    PRINT "SUCCESS!"
+  )
+  ENDDO
+)
+
+;-----------------------------------------------------------------------------
+; Create the dialog
+;-----------------------------------------------------------------------------
+
+DIALOG
+(
+  HEADER "PBS Dump Tool"
+   
+  POS 0. 0. 35. 15.
+  BOX "Configuration"
+  
+  POS 1. 1.5 10. 1.
+  TEXT "Log File:"
+  POS 12. 1.5 20. 1.
+  LOGFILE: EDIT "c:\temp\pbsdump.txt" ""
+  
+  POS 1. 4.5 7. 1.
+  PBS_PMIC_INDEX_TXT: TEXT "PMIC:"
+  POS 12. 4.5 8. 1.
+  PBS_PMIC_INDEX_PD: PULLDOWN "PMIC A,PMIC B,PMIC C,PMIC D,PMIC E,PMIC F,PMIC G"
+  (
+  )
+  
+  POS 1. 6. 7. 1.
+  PBS_MEM_TXT: TEXT "MEMORY:"
+  POS 12. 6. 12. 1.
+  PBS_MEM_PD: PULLDOWN "OTP+RAM,OTP,RAM,VERSION,PBS_CORE,PBS_CLIENT,CUSTOM"
+  (
+    IF DIALOG.STRING(PBS_MEM_PD)=="CUSTOM"
+    (
+      DIALOG.ENABLE PBS_ADDR_DATA
+      DIALOG.ENABLE PBS_SIZE_DATA
+    )
+    ELSE
+    (
+      DIALOG.DISABLE PBS_ADDR_DATA
+      DIALOG.DISABLE PBS_SIZE_DATA
+    )
+  )
+  
+  POS 1. 8. 15. 1.
+  TEXT "PBS START ADDR:"
+  POS 17. 8. 15. 1.
+  PBS_ADDR_DATA: EDIT "0x0" ""
+  
+  POS 1. 10. 15. 1.
+  TEXT "PBS SIZE (in words):"
+  POS 17. 10. 15. 1.
+  PBS_SIZE_DATA: EDIT "0x0" ""
+  
+  POS 1. 12. 9. 1.
+  PBS_STATUS_TXT: TEXT "Status:"
+  POS 12. 12. 15. 1.
+  PBS_STATUS_DATA: DYNTEXT ""
+  
+  POS 1. 16. 11. 1.5
+  DEFBUTTON "Dump" 
+  (
+    &pmicindex=0
+    &status=0
+
+    GOSUB PbsValidateParam
+    ENTRY &pmicindex
+
+    GOSUB PmicInfoRead &pmicindex
+    ENTRY &status
+    IF ((&status==0)||(&PM_REVID_TYPE!=&PM_REVID_PERIPH_TYPE_QC_PMIC))
+    (
+      DIALOG.SET PBS_STATUS_DATA "INVALID PMIC!"
+    )
+    ELSE
+    (
+      &analyzeFlag=0
+      GOSUB PbsCollectAndAnalyzeDump &pmicindex &analyzeFlag
+      ENTRY &status
+      IF &status==0
+      (
+        DIALOG.SET PBS_STATUS_DATA "ERROR!"
+      )
+      ELSE
+      (
+        DIALOG.SET PBS_STATUS_DATA "SUCCESS!"
+      )
+    )
+  )
+
+  POS 13. 16. 12. 1.5
+  DEFBUTTON "Dump + Analyze" 
+  (
+    &pmicindex=0
+    &status=0
+
+    GOSUB PbsValidateParam
+    ENTRY &pmicindex
+
+    GOSUB PmicInfoRead &pmicindex
+    ENTRY &status
+    IF ((&status==0)||(&PM_REVID_TYPE!=&PM_REVID_PERIPH_TYPE_QC_PMIC))
+    (
+      DIALOG.SET PBS_STATUS_DATA "INVALID PMIC!"
+    )
+    ELSE
+    (
+      &analyzeFlag=1
+      GOSUB PbsCollectAndAnalyzeDump &pmicindex &analyzeFlag
+      ENTRY &status
+      IF &status==0
+      (
+        DIALOG.SET PBS_STATUS_DATA "ERROR!"
+      )
+      ELSE
+      (
+        DIALOG.SET PBS_STATUS_DATA "SUCCESS!"
+      )
+    )
+  )
+
+  POS 27. 16. 10. 1.5
+  BUTTON "Close" "JUMPTO winclose"
+  CLOSE "JUMPTO winclose"
+)
+DIALOG.DISABLE PBS_ADDR_DATA
+DIALOG.DISABLE PBS_SIZE_DATA
+STOP
+
+winclose:
+DIALOG.END
+ENDDO
+
+;=============================================================================
+;=============================================================================
+; SUBROUTINES
+;=============================================================================
+;=============================================================================
+
+;=============================================================================
+; SUB: PbsValidateParam
+;=============================================================================
+
+PbsValidateParam:
+  &pmicindex=0
+
+  IF DIALOG.STRING(PBS_PMIC_INDEX_PD)=="PMIC B"
+  (
+    &pmicindex=1
+  )
+  ELSE IF DIALOG.STRING(PBS_PMIC_INDEX_PD)=="PMIC C"
+  (
+    &pmicindex=2
+  )
+  ELSE IF DIALOG.STRING(PBS_PMIC_INDEX_PD)=="PMIC D"
+  (
+    &pmicindex=3
+  )
+  ELSE IF DIALOG.STRING(PBS_PMIC_INDEX_PD)=="PMIC E"
+  (
+    &pmicindex=4
+  )
+  ELSE IF DIALOG.STRING(PBS_PMIC_INDEX_PD)=="PMIC F"
+  (
+    &pmicindex=5
+  )
+  ELSE IF DIALOG.STRING(PBS_PMIC_INDEX_PD)=="PMIC G"
+  (
+    &pmicindex=6
+  )
+  ELSE
+  (
+    &pmicindex=0
+  )
+
+  RETURN &pmicindex
+
+;=============================================================================
+; SUB: PmicInfoRead
+;=============================================================================
+
+PmicInfoRead:
+
+  ENTRY &pmicDeviceIndex 
+
+  &revidBaseAddr=0x100
+  &allLayerRevAddr=0
+  &metalRevAddr=0
+  &revidTypeAddr=0
+  &revidSubTypeAddr=0
+  &status=0
+
+  &revidTypeAddr=&revidBaseAddr+0x04
+  GOSUB PMICRead &revidTypeAddr &pmicDeviceIndex
+  ENTRY &status &PM_REVID_TYPE
+  IF ((&status!=0)&&(&PM_REVID_TYPE==&PM_REVID_PERIPH_TYPE_QC_PMIC))
+  (
+    &revidSubTypeAddr=&revidBaseAddr+0x05
+    GOSUB PMICRead &revidSubTypeAddr &pmicDeviceIndex
+    ENTRY &status &PM_REVID_SUBTYPE
+    IF ((&status!=0)&&(&PM_REVID_SUBTYPE!=0)&&(&PM_REVID_SUBTYPE<&PM_REVID_PERIPH_SUBTYPES_MAX_NUM))
+    (
+      &allLayerRevAddr=&revidBaseAddr+0x03
+      GOSUB PMICRead &allLayerRevAddr &pmicDeviceIndex
+      ENTRY &status &PM_REVID_ALL_LAYER
+      IF (&status!=0)
+      (
+        IF (&PM_REVID_SUBTYPE!=1)
+        (
+          IF (&PM_REVID_ALL_LAYER<1)
+          (
+            &PM_REVID_ALL_LAYER=&PM_REVID_ALL_LAYER+1
+          )
+        )
+        ELSE
+        (
+          IF (&PM_REVID_ALL_LAYER<2)
+          (
+            &PM_REVID_ALL_LAYER=&PM_REVID_ALL_LAYER+1
+          )
+        )
+
+        &metalRevAddr=&revidBaseAddr+0x02
+        GOSUB PMICRead &metalRevAddr &pmicDeviceIndex
+        ENTRY &status &PM_REVID_METAL
+      )
+    )
+  )
+
+  IF (&status==0)
+  (
+    &PM_REVID_ALL_LAYER=0
+    &PM_REVID_METAL=0
+    &PM_REVID_TYPE=0
+    &PM_REVID_SUBTYPE=0
+  )
+
+  RETURN &status
+
+;=============================================================================
+; SUB: PbsCollectAndAnalyzeDump
+;=============================================================================
+
+PbsCollectAndAnalyzeDump:
+  ENTRY &pmicindex &analyzeFlag
+
+  &dumpfile=DIALOG.STRING(LOGFILE)
+  &pbsmem=DIALOG.STRING(PBS_MEM_PD)
+  &otpflag=0
+  &ramflag=0
+  &customflag=0
+  &versionflag=0
+  &coreflag=1
+  &clientflag=1
+  &status=1
+  &pbscustomaddr=0
+  &pbscustomsize=0
+  &pbsotpveraddr=0
+  &pbsotpversize=0
+  &pbsramveraddr=0
+  &pbsramversize=0
+  &pmicModelStr=""
+  &pmicRevStr=""
+
+  AREA.CREATE PBSDump 60. 500.
+  AREA.VIEW PBSDump
+  AREA.SELECT PBSDump
+
+  GOSUB PMICRead &PBS_CORE_DIG_MAJOR &pmicindex
+  ENTRY &status &PBS_CORE_DIG_MAJOR_REV
+
+  GOSUB PMICRead &PBS_CORE_DIG_MINOR &pmicindex
+  ENTRY &status &PBS_CORE_DIG_MINOR_REV
+
+  GOSUB PbsCalculateSize &pmicindex
+
+  IF "&pbsmem"=="OTP+RAM"
+  (
+    &otpflag=1
+    &ramflag=1
+  )
+  ELSE IF "&pbsmem"=="OTP"
+  (
+    &otpflag=1
+  )
+  ELSE IF "&pbsmem"=="RAM"
+  (
+    &ramflag=1
+  )
+  ELSE IF "&pbsmem"=="VERSION"
+  (
+    &versionflag=1
+    &pbsotpveraddr=&PBS_OTP_END_ADDRESS-36.
+    &pbsotpversize=10.
+    &pbsramveraddr=&PBS_RAM_END_ADDRESS
+    &pbsramversize=1.
+  )
+  ELSE IF "&pbsmem"=="PBS_CORE"
+  (
+    &clientflag=0
+    &coreflag=1
+  )
+  ELSE IF "&pbsmem"=="PBS_CLIENT"
+  (
+    &clientflag=1
+    &coreflag=0
+  )
+  ELSE IF "&pbsmem"=="CUSTOM"
+  (
+    &clientflag=0
+    &coreflag=0
+    &customflag=1
+    &pbscustomaddr=DIALOG.STRING(PBS_ADDR_DATA)
+    &pbscustomsize=DIALOG.STRING(PBS_SIZE_DATA)
+  )
+
+  &pmicModelStr=VAR.STRING(\RevidPeriphSubtypeNamesArr[&PM_REVID_SUBTYPE])
+  &pmicRevStr="v"+FORMAT.DECIMAL(0,&PM_REVID_ALL_LAYER)+"."+FORMAT.DECIMAL(0,&PM_REVID_METAL)+" "
+
+  PRINT "PBSDump Start"
+  GOSUB StartDump
+
+  WRITE #1 "&pmicModelStr"+"&pmicRevStr"
+  WRITE #1 " "
+  PRINT "&pmicModelStr"+"&pmicRevStr"
+
+  IF &versionflag==0
+  (
+    IF &coreflag==1
+    (
+      WRITE #1 "PBS_CORE_STATUS" 
+      PRINT "PBS_CORE_STATUS" 
+      GOSUB PbsCoreDump &pmicindex
+      WRITE #1 " "
+      WRITE #1 " "
+    )
+    IF &clientflag==1
+    (
+      WRITE #1 "PBS_CLIENT_STATUS" 
+      PRINT "PBS_CLIENT_STATUS" 
+      GOSUB PbsClientDump &pmicindex
+      WRITE #1 " "
+      WRITE #1 " "
+    )
+  )
+
+  IF &otpflag==1
+  (
+    WRITE #1 "PBS_MEM OTP: "+FORMAT.DECIMAL(0,&PBS_OTP_SIZE)+" WORDS" 
+    GOSUB DumpPbs &pmicindex &PBS_OTP_START_ADDRESS &PBS_OTP_SIZE
+    ENTRY &status
+    IF &status==0
+    (
+      RETURN &status
+    )
+    WRITE #1 " "
+    WRITE #1 " "
+  )
+  IF &ramflag==1
+  (
+    WRITE #1 "PBS_MEM RAM: "+FORMAT.DECIMAL(0,&PBS_RAM_SIZE)+" WORDS" 
+    GOSUB DumpPbs &pmicindex &PBS_RAM_START_ADDRESS &PBS_RAM_SIZE
+    ENTRY &status
+    IF &status==0
+    (
+      RETURN &status
+    )
+    WRITE #1 " "
+    WRITE #1 " "
+  )
+  IF &customflag==1
+  (
+    IF &pbscustomaddr>=&PBS_RAM_START_ADDRESS
+    (
+      WRITE #1 "PBS_MEM RAM: "+FORMAT.DECIMAL(0,&pbscustomsize)+" WORDS"
+    )
+    ELSE
+    (
+      WRITE #1 "PBS_MEM OTP: "+FORMAT.DECIMAL(0,&pbscustomsize)+" WORDS"
+    )
+    GOSUB DumpPbs &pmicindex &pbscustomaddr &pbscustomsize
+    ENTRY &status
+    IF &status==0
+    (
+      RETURN &status
+    )
+    WRITE #1 " "
+    WRITE #1 " "
+  )
+  IF &versionflag==1
+  (
+
+    WRITE #1 "PBS_MEM OTP: "+FORMAT.DECIMAL(0,&pbsotpversize)+" WORDS"
+    PRINT "PBS_MEM OTP: "+FORMAT.DECIMAL(0,&pbsotpversize)+" WORDS"
+
+    GOSUB DumpPbs &pmicindex &pbsotpveraddr &pbsotpversize
+    ENTRY &status
+    IF &status==0
+    (
+      RETURN &status
+    )
+    WRITE #1 " "
+    WRITE #1 " "
+
+    WRITE #1 "PBS_MEM RAM: "+FORMAT.DECIMAL(0,&pbsramversize)+" WORDS"
+    PRINT "PBS_MEM RAM: "+FORMAT.DECIMAL(0,&pbsramversize)+" WORDS"
+
+    GOSUB DumpPbs &pmicindex &pbsramveraddr &pbsramversize
+    ENTRY &status
+    IF &status==0
+    (
+      RETURN &status
+    )
+
+    WRITE #1 " "
+    WRITE #1 " "
+  )
+
+  GOSUB CloseDump 
+  PRINT "PBSDump Complete"
+  PRINT "PBSDump sent to &dumpfile"
+
+  IF (&analyzeFlag==1)
+  (
+    GOSUB PbsParseDump &pmicModelStr
+  )
+
+  RETURN &status
+
+;=============================================================================
+; SUB: PbsCoreDump
+;=============================================================================
+
+PbsCoreDump:
+  ENTRY &pmicindex
+  &regaddr=0
+
+  &regaddr=&PBS_CORE_DIG_MAJOR
+  GOSUB PbsRegReadLog &regaddr &pmicindex
+  &regaddr=&PBS_CORE_SEQ_STATUS0
+  GOSUB PbsRegReadLog &regaddr &pmicindex
+  IF (&PBS_CORE_DIG_MAJOR_REV<3)
+  (
+    &regaddr=&PBS_CORE_SEQ_STATUS3
+    GOSUB PbsRegReadLog &regaddr &pmicindex
+  )
+  &regaddr=&PBS_CORE_SEQ_PC_STATUS0
+  GOSUB PbsRegReadLog &regaddr &pmicindex
+  &regaddr=&PBS_CORE_SEQ_PC_STATUS1
+  GOSUB PbsRegReadLog &regaddr &pmicindex
+  &regaddr=&PBS_CORE_SEQ_IR_STATUS0
+  GOSUB PbsRegReadLog &regaddr &pmicindex
+  &regaddr=&PBS_CORE_SEQ_IR_STATUS1
+  GOSUB PbsRegReadLog &regaddr &pmicindex
+  &regaddr=&PBS_CORE_SEQ_IR_STATUS2
+  GOSUB PbsRegReadLog &regaddr &pmicindex
+  &regaddr=&PBS_CORE_SEQ_IR_STATUS3
+  GOSUB PbsRegReadLog &regaddr &pmicindex
+  &regaddr=&PBS_CORE_SEQ_STATUS1
+  GOSUB PbsRegReadLog &regaddr &pmicindex
+  &regaddr=&PBS_CORE_SEQ_STATUS2
+  GOSUB PbsRegReadLog &regaddr &pmicindex
+  &regaddr=&PBS_CORE_SEQ_ERR_PC_STATUS0
+  GOSUB PbsRegReadLog &regaddr &pmicindex
+  &regaddr=&PBS_CORE_SEQ_ERR_PC_STATUS1
+  GOSUB PbsRegReadLog &regaddr &pmicindex
+  &regaddr=&PBS_CORE_SEQ_ERR_IR_STATUS0
+  GOSUB PbsRegReadLog &regaddr &pmicindex
+  &regaddr=&PBS_CORE_SEQ_ERR_IR_STATUS1
+  GOSUB PbsRegReadLog &regaddr &pmicindex
+  &regaddr=&PBS_CORE_SEQ_ERR_IR_STATUS2
+  GOSUB PbsRegReadLog &regaddr &pmicindex
+  &regaddr=&PBS_CORE_SEQ_ERR_IR_STATUS3
+  GOSUB PbsRegReadLog &regaddr &pmicindex
+
+  IF (&PBS_CORE_DIG_MAJOR_REV>=3)
+  (
+    &regaddr=&PBS_CORE_TRIG_STATUS0
+    GOSUB PbsRegReadLog &regaddr &pmicindex
+    &regaddr=&PBS_CORE_TRIG_STATUS1
+    GOSUB PbsRegReadLog &regaddr &pmicindex
+    &regaddr=&PBS_CORE_TRIG_STATUS2
+    GOSUB PbsRegReadLog &regaddr &pmicindex
+  )
+  IF (&PBS_CORE_DIG_MAJOR_REV>=2)
+  (
+    &regaddr=&PBS_CORE_RAM_CFG1
+    GOSUB PbsRegReadLog &regaddr &pmicindex
+    &regaddr=&PBS_CORE_NVM_CFG1
+    GOSUB PbsRegReadLog &regaddr &pmicindex
+    &regaddr=&PBS_CORE_NVM_CFG2
+    GOSUB PbsRegReadLog &regaddr &pmicindex
+  )
+
+  RETURN
+
+;=============================================================================
+; SUB: PbsClientDump
+;=============================================================================
+
+PbsClientDump:
+  ENTRY &pmicindex
+  &baseaddr=0
+  &regaddr=0
+  &regoffset=0x100
+  &regdata=0
+  &perphsubtype=0
+  &index=0
+
+  WHILE (&index<&PBS_MAX_NUM_OF_CLIENTS) 
+  (
+    &baseaddr=&PBS_CLIENT0_BASE_ADDR+(&index*&regoffset)
+    &regaddr=&baseaddr+&PBS_CLIENT_PERPH_TYPE_OFF
+    GOSUB PMICRead &regaddr &pmicindex
+    ENTRY &status &regdata
+    IF ((&status==0)||(&regdata!=22.))
+    (
+      RETURN
+    )
+
+    &regaddr=&baseaddr+&PBS_CLIENT_PERPH_SUBTYPE_OFF
+    GOSUB PMICRead &regaddr &pmicindex
+    ENTRY &status &perphsubtype
+
+    WRITE #1 "CLIENT"+FORMAT.DECIMAL(0,&index)+": 0x"+FORMAT.HEX(4,&baseaddr)
+
+    &regaddr=&baseaddr+&PBS_CLIENT_PERPH_SUBTYPE_OFF
+    GOSUB PbsRegReadLog &regaddr &pmicindex
+    &regaddr=&baseaddr+&PBS_CLIENT_STATUS0_OFF
+    GOSUB PbsRegReadLog &regaddr &pmicindex
+    &regaddr=&baseaddr+&PBS_CLIENT_STATUS1_OFF
+    GOSUB PbsRegReadLog &regaddr &pmicindex
+    IF (&perphsubtype>=9.)
+    (
+      &regaddr=&baseaddr+&PBS_CLIENT_TRIG_LATCHED_OFF
+      GOSUB PbsRegReadLog &regaddr &pmicindex
+    )
+    &regaddr=&baseaddr+&PBS_CLIENT_TRIG_CFG0_OFF
+    GOSUB PbsRegReadLog &regaddr &pmicindex
+    IF (&perphsubtype>=9.)
+    (
+      &regaddr=&baseaddr+&PBS_CLIENT_TRIG_CFG1_OFF
+      GOSUB PbsRegReadLog &regaddr &pmicindex
+    )
+    &regaddr=&baseaddr+&PBS_CLIENT_EN_CTL_OFF
+    GOSUB PbsRegReadLog &regaddr &pmicindex
+
+    &regaddr=&PBS_CORE_BASE_ADDR+&PBS_CORE_TRIG_ADDR_MSB_OFF+(&index*4)
+    GOSUB PbsRegReadLog &regaddr &pmicindex
+    &regaddr=&PBS_CORE_BASE_ADDR+&PBS_CORE_TRIG_ADDR_LSB_OFF+(&index*4)
+    GOSUB PbsRegReadLog &regaddr &pmicindex
+    &index=&index+1
+  )
+
+  RETURN
+
+;=============================================================================
+; SUB: PbsRegReadLog
+;=============================================================================
+
+PbsRegReadLog:
+  ENTRY &regaddr &pmicindex 
+  &regdata=0
+  &status=0
+
+  GOSUB PMICRead &regaddr &pmicindex
+  ENTRY &status &regdata
+  IF (&status!=0)
+  (
+    WRITE #1 "0x"+FORMAT.HEX(4,&regaddr)+": 0x"+FORMAT.HEX(2,&regdata)
+    PRINT "0x"+FORMAT.HEX(4,&regaddr)+": 0x"+FORMAT.HEX(2,&regdata)
+  )
+  ELSE
+  (
+    WRITE #1 "0x"+FORMAT.HEX(4,&regaddr)+": ERROR"
+    PRINT "0x"+FORMAT.HEX(4,&regaddr)+": ERROR"
+  )
+
+  RETURN
+
+;=============================================================================
+; SUB: PbsCalculateSize
+;=============================================================================
+
+PbsCalculateSize:
+  ENTRY &pmicindex
+
+  &pbsramcfg=0
+  &pbsotpcfg1=0
+  &pbsotpcfg2=0
+
+  IF (&PBS_CORE_DIG_MAJOR_REV>=2)
+  (
+    GOSUB PMICRead &PBS_CORE_RAM_CFG1 &pmicindex
+    ENTRY &status &pbsramcfg
+    IF (&status!=0)
+    (
+      IF (&pbsramcfg<=8)||((&PBS_CORE_DIG_MAJOR_REV>=3)&&(&PBS_CORE_DIG_MINOR_REV>=1))||(&PBS_CORE_DIG_MAJOR_REV>=4)
+      (
+        &PBS_RAM_SIZE=(&pbsramcfg*32.)
+      )
+      ELSE
+      (
+        &PBS_RAM_SIZE=(2*(&pbsramcfg-8.)*32.*8.)
+      )
+    )
+    GOSUB PMICRead &PBS_CORE_NVM_CFG1 &pmicindex
+    ENTRY &status &pbsotpcfg1
+    GOSUB PMICRead &PBS_CORE_NVM_CFG2 &pmicindex
+    ENTRY &status &pbsotpcfg2
+    IF (&status!=0)
+    (
+      &PBS_OTP_SIZE=&pbsotpcfg1*(1<<(&pbsotpcfg2&0x3))*8
+    )
+    IF (&PBS_CORE_DIG_MAJOR_REV>=3)
+    (
+      &PBS_RAM_START_ADDRESS=4*&PBS_OTP_SIZE
+    )
+  )
+  ELSE
+  (
+    IF ((&PM_REVID_SUBTYPE==10.)||(&PM_REVID_SUBTYPE==11.)||(&PM_REVID_SUBTYPE==13.)||(&PM_REVID_SUBTYPE==19.))
+    ( 
+      &PBS_RAM_SIZE=128.
+      &PBS_OTP_SIZE=128.
+    )
+    ELSE IF (&PM_REVID_SUBTYPE==5.)
+    ( 
+      &PBS_RAM_SIZE=0.
+      &PBS_OTP_SIZE=128.
+    )
+  )
+  &PBS_OTP_END_ADDRESS=&PBS_OTP_START_ADDRESS+(4*(&PBS_OTP_SIZE-1))
+  &PBS_RAM_END_ADDRESS=&PBS_RAM_START_ADDRESS+(4*(&PBS_RAM_SIZE-1))
+
+  RETURN
+
+;=============================================================================
+; SUB: StartDump
+;=============================================================================
+
+StartDump:
+  ENTRY &target
+  OPEN #1 &dumpfile /Create
+  RETURN
+
+;=============================================================================
+; SUB: DumpPbs
+;=============================================================================
+
+DumpPbs:
+  ENTRY &pmicindex &pbsAddr &pbsSize
+  &word=0
+  &enable=1
+  &tempAddr=&pbsAddr
+
+  GOSUB ConfigPbs &pmicindex &pbsAddr &enable
+  ENTRY &status
+
+  IF (&status==0)
+  (
+    RETURN &status
+  )
+  
+  WHILE &word<&pbsSize
+  (
+    GOSUB ReadPbs &pmicindex
+    ENTRY &status &data0 &data1 &data2 &data3
+    IF (&status==1)
+    (
+      &data_str="0x"+FORMAT.HEX(2,&data3)+",0x"+FORMAT.HEX(2,&data2)+",0x"+FORMAT.HEX(2,&data1)+",0x"+FORMAT.HEX(2,&data0)
+      WRITE #1 "0x"+FORMAT.HEX(4,&tempAddr)+": &data_str"
+      PRINT "0x"+FORMAT.HEX(4,&tempAddr)+": &data_str"
+    )
+    ELSE
+    (
+      RETURN &status
+    )
+    &word=&word+1
+    &tempAddr=&tempAddr+4
+  )
+
+  &enable=0
+  GOSUB ConfigPbs &pmicindex &pbsAddr &enable
+  ENTRY &status
+
+  RETURN &status
+
+;=============================================================================
+; SUB: ConfigPbs
+;=============================================================================
+
+ConfigPbs:
+  ENTRY &pmicindex &pbsAddr &enable
+  &status=0
+  &data=0
+
+  IF (&enable==1)
+  (
+    GOSUB PMICWrite 0x7040 &pmicindex 0x80
+    ENTRY &status
+    GOSUB PMICWrite 0x7041 &pmicindex 0x80
+    ENTRY &status
+
+    IF (((&PBS_CORE_DIG_MAJOR_REV>=3)&&(&PBS_CORE_DIG_MINOR_REV>=3))||(&PBS_CORE_DIG_MAJOR_REV>=4))
+    (
+      GOSUB PMICWrite 0x70E7 &pmicindex 0x40
+      ENTRY &status
+      GOSUB PMICWrite 0x70E9 &pmicindex 0x01
+      ENTRY &status
+
+      WAIT 1.ms
+
+      GOSUB PMICRead  0x709d &pmicindex
+      ENTRY &status &data
+
+      if ((&data&0x1)!=0x1)
+      (
+        &status = 1
+      )
+
+    )
+
+    GOSUB PMICWrite 0x7042 &pmicindex ((&pbsAddr)&0xFF)
+    ENTRY &status
+    GOSUB PMICWrite 0x7043 &pmicindex ((&pbsAddr)&0xFF00)>>8
+    ENTRY &status
+
+  )
+  ELSE
+  (
+    IF (((&PBS_CORE_DIG_MAJOR_REV>=3)&&(&PBS_CORE_DIG_MINOR_REV>=3))||(&PBS_CORE_DIG_MAJOR_REV>=4))
+    (
+      GOSUB PMICWrite 0x70E7 &pmicindex 0x0
+      ENTRY &status
+      GOSUB PMICWrite 0x70E9 &pmicindex 0x0
+      ENTRY &status
+    )
+    GOSUB PMICWrite 0x7040 &pmicindex 0x0
+    ENTRY &status
+    GOSUB PMICWrite 0x7041 &pmicindex 0x0
+    ENTRY &status
+    GOSUB PMICWrite 0x7042 &pmicindex 0x0
+    ENTRY &status
+    GOSUB PMICWrite 0x7043 &pmicindex 0x0
+    ENTRY &status
+  )
+
+  RETURN &status
+
+;=============================================================================
+; SUB: ReadPbs
+;=============================================================================
+
+ReadPbs:
+  ENTRY &pmicindex
+  &status=0
+
+  GOSUB PMICRead 0x704C &pmicindex
+  ENTRY &status0 &data0
+  GOSUB PMICRead 0x704D &pmicindex
+  ENTRY &status1 &data1
+  GOSUB PMICRead 0x704E &pmicindex
+  ENTRY &status2 &data2
+  GOSUB PMICRead 0x704F &pmicindex
+  ENTRY &status3 &data3
+    
+  IF ((&status0==0)||(&status1==0)||(&status2==0)||(&status3==0))
+  (
+    &status=0
+  )
+  ELSE
+  (
+    &status=1
+  )
+
+  RETURN &status &data0 &data1 &data2 &data3
+
+;=============================================================================
+; SUB: CloseDump
+;=============================================================================
+
+CloseDump:
+  CLOSE #1
+
+  RETURN
+
+
+;=============================================================================
+; SUB: PbsParseDump
+;=============================================================================
+
+PbsParseDump:
+  ENTRY &model
+  LOCAL &fname
+
+  &fname="&dumpfile.&model.txt"
+  &pwd=OS.PWD()
+  &parser_cmd="&pwd"+"\"+"PBSDumpParser.py"
+
+  OS.COMMAND start &parser_cmd --file=&dumpfile --output=&fname
+
+  PRINT "PBSDump parsed to &fname"
+
+  RETURN
+
+;=============================================================================
+; SUB: PMICToSPMI
+;=============================================================================
+
+PMICToSPMI:
+
+  ENTRY &addr &devid
+  LOCAL &spmi_sid &spmi_addr
+
+  &spmi_sid=(&devid*2)
+
+  &pmic_sid=&addr>>16.
+  IF &pmic_sid==1
+  (
+    &spmi_sid=&spmi_sid+1
+  )
+
+  &spmi_addr=&addr&0xFFFF
+
+  RETURN &spmi_sid &spmi_addr
+
+
+;=============================================================================
+; SUB: PMICRead
+;=============================================================================
+
+PMICRead:
+
+  ENTRY &addr &devid
+
+  &read_status=0
+  &read_data=0
+
+  GOSUB PMICToSPMI &addr &devid
+  ENTRY &spmi_sid &spmi_addr
+
+  do &PmicIoScript read &SPMIOwnerChannel &BusAccessMode &spmi_sid &spmi_addr
+  ENTRY &read_status &read_data
+
+  RETURN &read_status &read_data
+
+
+;=============================================================================
+; SUB: PMICWrite
+;=============================================================================
+
+PMICWrite:
+
+  ENTRY &addr &devid &data
+
+  &write_status=0
+
+  GOSUB PMICToSPMI &addr &devid
+  ENTRY &spmi_sid &spmi_addr
+
+  do &PmicIoScript write &SPMIOwnerChannel &BusAccessMode &spmi_sid &spmi_addr &data
+  ENTRY &write_status
+
+  RETURN &write_status
+
+

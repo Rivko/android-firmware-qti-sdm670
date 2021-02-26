@@ -1,0 +1,121 @@
+#===============================================================================
+#
+#                             Edit History
+# $Header: //components/rel/ssg.tz/1.0.2/securemsm/trustzone/qsee/mink/oem/build/SConscript#7 $
+#
+# when         who     what, where, why
+# ----------   ---     ---------------------------------------------------------
+# 2015/02/10    cz     Added playready and widevine oem config xml files
+# 2015/02/10    cz     Added tzbsp_cfg_prop.c source file and include path
+# 2011/07/12   spa     Create initial version
+#
+#===============================================================================
+#                    Copyright (c) 2011-2015, 2017, 2019 QUALCOMM Incorporated.
+#                           All Rights Reserved.
+#                         QUALCOMM Proprietary/GTDR
+#===============================================================================
+import os
+
+#-------------------------------------------------------------------------------
+# QSEE Lib
+#-------------------------------------------------------------------------------
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+#SRCPATH = ".."
+SRCPATH = "${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/mink/oem"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+if os.path.exists(env.subst("../config/${CHIPSET}")):
+   env.Replace(MINK_OEM_CHIPSET = env['CHIPSET'])
+else:
+   env.Replace(MINK_OEM_CHIPSET = 'stubs')
+   env.PrintWarning("Mink OEM devcfg not implemented... using stubs.")
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_APIS = [
+   'BUSES',
+   'DAL',
+   'DEBUGTOOLS',
+   'HAL',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'KERNEL',
+]
+env.RequirePublicApi(CBSP_APIS, area='core')
+
+
+SSG_API = [
+    'SECUREMSM',
+    'QSEE',
+    'TZSECAPP',
+]
+env.RequirePublicApi(SSG_API, area = 'ssg')
+env.RequireRestrictedApi(SSG_API)
+
+
+#env.Append(CCFLAGS = " --diag_suppress=1786,2523 ")
+#env.Append(ASFLAGS = " --diag_suppress=1786,2523 ")
+
+#-------------------------------------------------------------------------------
+# Compiler options
+#-------------------------------------------------------------------------------
+#env.Append(CCFLAGS = "--gnu")
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+QSEE_OEM_SOURCES = [
+   '${BUILDPATH}/src/oem.c',
+]
+
+#-------------------------------------------------------------------------------
+# Device Configuration Sources
+#-------------------------------------------------------------------------------
+if 'USES_DEVCFG' in env:
+    DEVCFG_IMG = ['DAL_DEVCFG_OEM_QSEE_IMG']
+    env.AddDevCfgInfo(DEVCFG_IMG,
+    {
+      'devcfg_xml' : ['${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/mink/oem/config/${MINK_OEM_CHIPSET}/oem_config.xml',
+                      '${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/mink/oem/config/common/chamomile_oem_config.xml',
+                      '${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/mink/oem/config/common/cmnlib_oem_config.xml',
+                      '${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/mink/oem/config/common/playready_oem_config.xml',
+                      '${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/mink/oem/config/common/widevine_oem_config.xml',
+                      '${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/mink/oem/config/common/reset_reason_oem_map.c',
+                      '${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/mink/oem/config/common/dhsecapp_oem_config.xml',
+                      '${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/mink/oem/config/common/hdcp1_oem_config.xml',
+                      '${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/mink/oem/config/common/hdcp2p2_oem_config.xml',
+                      '${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/mink/oem/config/common/ops_oem_config.xml',
+                      '${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/mink/oem/config/common/keymaster_oem_config.xml',
+                      '${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/mink/oem/config/common/mdtp_oem_config.xml',
+                      '${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/mink/oem/config/common/fingerprint_oem_config.xml',
+                      '${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/mink/oem/config/common/kdf_fix_oem_config.xml',
+                      '${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/mink/oem/config/common/swcrypto_selftest_oem_config.xml', 
+                      '${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/mink/oem/config/common/secdisp_oem_config.xml',
+                      '${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/mink/oem/config/common/soter_oem_config.xml', ]
+    })
+if 'USES_DEVCFG' in env:
+    DEVCFG_IMG = ['DAL_DEVCFG_OEM_QSEE_IMG']
+    if 'devcfg_with_test_svc' in env and env['devcfg_with_test_svc'] == 1:
+        env.AddDevCfgInfo(DEVCFG_IMG,
+        {
+          'devcfg_xml' : ['${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/mink/oem/config/common/sandbox_oem_testonly_config.xml',]
+        })
+
+    env.AddDevCfgInfo(['DAL_DEVCFG_OEM_HYP_IMG'],
+    {
+      'devcfg_xml' : ['${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/mink/oem/config/common/secdisp_oem_config.xml', ]
+    })
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+env.AddLibrary(['TZOS_IMAGE'], '${BUILDPATH}/QSEEOEM', QSEE_OEM_SOURCES)
+env.Deploy('SConscript')

@@ -1,0 +1,86 @@
+// Copyright (c) 2015 Qualcomm Technologies, Inc.  All Rights Reserved.
+// Qualcomm Technologies Proprietary and Confidential.
+
+
+interface IAppMessage
+{
+
+  
+  //--------------------------------------------------------
+  //  IAppMessage error codes
+  //--------------------------------------------------------
+  error ERROR;
+  error ERROR_ZERO_BUFFER_LEN;
+  error ERROR_INSUFFCIENT_OUT_LEN;
+  error ERROR_BAD_DEST_APPNAME;
+  error ERROR_NO_DEST_APP_THREAD;
+  error ERROR_NO_DEST_APP_KEYS;
+  error ERROR_NO_SPACE_IN_TABLE;
+  error ERROR_CIPHER_INIT;
+  error ERROR_CIPHER_SET_PARAM;
+  error ERROR_CIPHER_ENCRYPT;
+  error ERROR_HMAC_FAIL;
+  error ERROR_PRNG_FAIL;
+  error ERROR_BAD_SOURCE_NAME;
+  error ERROR_MESSAGE_NOT_FOR_YOU;
+  error ERROR_NO_COUNTER_VALS;
+  error ERROR_MAC_MISMATCH;
+  error ERROR_BAD_COUNTER_VALS;
+  error ERROR_MAXED_OUT_COUNTER_VAL;
+  error ERROR_MALLOC_INTERNAL_BUF;
+  error ERROR_INTEGER_OVERFLOW;
+  error ERROR_INTEGER_UNDERFLOW;
+  error ERROR_MALLOC_HMAC_BUF;
+  error ERROR_STRLCPY_FAIL;
+
+  //--------------------------------------------------------
+  //  Interface.
+  //--------------------------------------------------------
+
+/**
+ * @brief 
+ *    API for a secure application to prepare a message that can be sent to
+ *    another secure application. This API writes the encryped message into
+ *    the supplied output buffer, prepended with a header and appended with
+ *    a MAC. This output buffer can be given to the receiving app and then
+ *    passed into decapsulateInterAppMessage to be authenticated and
+ *    decrypted.  The actual data exchange (passing the encrypted bufer)
+ *    between the secure applications can be done between their non secure
+ *    clients running in the HLOS.
+ *
+ * @param[in]  destAppName
+ * @param[in]  encryptedMessage
+ * @param[out] encapsulatedMessage
+ *
+ * @requires 
+ *   encapsulatedMessage buffer length should be greater than encryptedMessage
+ *      buffer length by 144 bytes to allow room for the header and MAC.
+ *
+ * @return 0 indicates sucess, all other values indicate failure and
+ *     correspond to a specific error code. 
+ */
+
+  method encapsulateInterAppMessage(in buffer destAppName, in buffer encryptedMessage, out buffer encapsulatedMessage);
+
+/**
+ * @brief 
+ *    API for a secure application to decapsulate (ie decrypt) a message 
+ *  from another secure application.  This API authenticates the message, 
+ *  decrypts the input buffer, and writes the plaintext message into the 
+ *  supplied output buffer.  The input buffer must have been prepared by 
+ *  encapsulateInterAppMessage(), containing a header and MAC. 
+ *
+ * @param[out] sourceAppName 
+ * @param[in]  encapsulatedMessage 
+ * @param[out] originalMessage 
+ *
+ * @requires 
+ *   sourceAppName is modified to return the sending application's identity
+ *      to the caller.
+ *
+ * @return 0 indicates success, all other values indicate failure and 
+ *     correspond to a specific error code. 
+ */
+  method decapsulateInterAppMessage(out buffer sourceAppName, in buffer encapsulatedMessage, out buffer originalMessage);
+
+};

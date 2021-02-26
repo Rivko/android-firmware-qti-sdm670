@@ -1,0 +1,54 @@
+// Copyright (c) 2017 Qualcomm Technologies, Inc.  All Rights Reserved.
+// Qualcomm Technologies Proprietary and Confidential.
+
+/**
+ * @brief
+ * The HDCP SRM (System Renewability Message) is a small file, currently less
+ * than 5kB, that contains list of Key Selection Vectors (i.e. key IDs) that
+ * should not be negotiated for HDCP. The device is supposed to validate the
+ * signature on the SRM, store the SRM in non-volatile memory and use it during
+ * authentication to decide if a downstream device is allowed to receive content
+ */
+ 
+interface ISRM {
+  /** error codes */
+   error ERROR_INVALID_SRM;
+   error ERROR_INVALID_SRM_VERSION;
+   error ERROR_SIGNATURE_FAILURE;
+   error ERROR_FOUND_REVOKED_DEVICE;
+
+  /**
+   * Verify and install a new SRM file after DCP signature verification.
+   * If verification fails, the existing SRM will be left in place. It also
+   * verifies that the SRM version number will not be decreased.
+   * 
+   * @param [in] srmData - buffer containing SRM
+   * @return Object_OK if successful.
+   *         ERROR_INVALID_SRM_VERSION  if the SRM version is too low
+   *         ERROR_INVALID_SRM          file is corrupted
+   *         Object_ERROR_SIZE_IN  if the buffer is too large for the device
+   *         ERROR_SIGNATURE_FAILURE if signature validation fails
+   *
+   */
+   method updateSRM(in buffer srmData);
+
+  /**
+   * Validate receiver Ids to find a revoked device
+   * @param [in] receiverIdList - Receiver IDs to be validated
+   * @return Object_OK  if none of recv ids is revoked
+   *         ERROR_FOUND_REVOKED_DEVICE - if a revoked device is found
+   *
+   */
+   method validateRecvIds(in uint8[] recvIdList);
+
+  /**
+   * Get current SRM version
+   * @param [out] version - SRM version
+   * @return Object_OK if SRM file is found
+   *         ERROR_INVALID_SRM - if SRM not loaded
+   *
+   */
+   method getCurrentSRMVersion(out uint32 version);
+
+};
+

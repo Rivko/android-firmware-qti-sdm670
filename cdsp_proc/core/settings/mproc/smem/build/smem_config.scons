@@ -1,0 +1,121 @@
+#===============================================================================
+#
+# SMEM Settings Registrations
+#
+# GENERAL DESCRIPTION
+#    SMEM Framework Settings Registrations
+#
+# Copyright (c) 2017 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1.c4/settings/mproc/smem/build/smem_config.scons#1 $
+#  $DateTime: 2018/07/30 01:21:36 $
+#  $Author: pwbldsvc $
+#  $Change: 16759227 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 05/09/17   vr     Initial version
+#===============================================================================
+import os
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/settings/mproc/smem"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#SDM855HACK,SDM1000HACK
+if env['CHIPSET'] in ['sdm855','sdm1000']:
+    env.Replace(CHIPSET = 'sdm845')
+    env.Replace(MSM_ID = '845')
+
+SSG_API = [
+    'SECUREMSM',
+    'AC',
+    'MINK',
+]
+env.RequirePublicApi(SSG_API, area = 'ssg')
+
+#-------------------------------------------------------------------------------
+# Required APIs
+#-------------------------------------------------------------------------------
+env.RequirePublicApi(['DAL'])
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+# If target has separate config file for TZ and HYP
+if os.path.exists(env.subst("${INC_ROOT}/core/settings/mproc/smem/config/smem_tz_cfg_${CHIPSET}.c")):
+   SMEM_AC_TZ_CFG_SOURCES = ['${BUILDPATH}/smem_tz_cfg_${CHIPSET}.c']
+   SMEM_AC_HYP_CFG_SOURCES = ['${BUILDPATH}/smem_hyp_cfg_${CHIPSET}.c']
+   # Common config file for TZ and HYP
+elif os.path.exists(env.subst("${INC_ROOT}/core/settings/mproc/smem/config/smem_tzhyp_cfg_${CHIPSET}.c")):
+   SMEM_AC_TZ_CFG_SOURCES = ['${BUILDPATH}/smem_tzhyp_cfg_${CHIPSET}.c']
+   SMEM_AC_HYP_CFG_SOURCES = ['${BUILDPATH}/smem_tzhyp_cfg_${CHIPSET}.c']
+else:
+  SMEM_AC_TZ_CFG_SOURCES = []
+  SMEM_AC_HYP_CFG_SOURCES = []
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+env.AddBinaryLibrary(['TZOS_IMAGE'],
+                     '${BUILDPATH}/smem_tz_ac_cfg',
+                     [SMEM_AC_TZ_CFG_SOURCES])
+
+env.AddBinaryLibrary(['HYPERVISOR_IMAGE'],
+                     '${BUILDPATH}/smem_hyp_ac_cfg',
+                     [SMEM_AC_HYP_CFG_SOURCES])
+
+#-------------------------------------------------------------------------------
+# Register Device Configuration files
+#-------------------------------------------------------------------------------
+if env.has_key('USES_DEVCFG'):
+   DEVCFG_IMG = ['DAL_DEVCFG_IMG']
+   DEVCFG_XML = '../config/smem_devcfg_%s.xml'
+
+   devcfg_cfg_dict = {}
+
+   if os.path.exists(env.subst('../config/smem_devcfg_${CHIPSET}.xml')):
+      devcfg_cfg_dict['devcfg_xml'] = ['../config/smem_devcfg_${CHIPSET}.xml']
+   else:
+      devcfg_cfg_dict['devcfg_xml'] = [DEVCFG_XML % env['TARGET_FAMILY']]
+  
+   # Bear Targets
+   devcfg_cfg_dict['8937_xml'] = [DEVCFG_XML % 'bear']
+   devcfg_cfg_dict['8952_xml'] = [DEVCFG_XML % 'bear']
+   devcfg_cfg_dict['8953_xml'] = [DEVCFG_XML % 'bear']
+   devcfg_cfg_dict['8956_xml'] = [DEVCFG_XML % 'bear']
+   devcfg_cfg_dict['8976_xml'] = [DEVCFG_XML % 'bear']
+   devcfg_cfg_dict['9645_xml'] = [DEVCFG_XML % 'bear']
+  
+   # HB Targets
+   devcfg_cfg_dict['8996_xml'] = [DEVCFG_XML % 'msm8996']
+   devcfg_cfg_dict['8998_xml'] = [DEVCFG_XML % 'msm8998']
+   devcfg_cfg_dict['660_xml']  = [DEVCFG_XML % 'sdm660']
+   devcfg_cfg_dict['9665_xml'] = [DEVCFG_XML % 'sdx20']
+   devcfg_cfg_dict['24_xml']   = [DEVCFG_XML % 'sdx24']
+ 
+   # Hoya Targets
+   devcfg_cfg_dict['840_xml']  = [DEVCFG_XML % 'sdm830']
+   devcfg_cfg_dict['845_xml']  = [DEVCFG_XML % 'sdm845']
+   devcfg_cfg_dict['670_xml']  = [DEVCFG_XML % 'sdm670']
+   devcfg_cfg_dict['855_xml']  = [DEVCFG_XML % 'sdm845']
+
+   # Add all cfg files
+   env.AddDevCfgInfo(DEVCFG_IMG, devcfg_cfg_dict)
+
+#-------------------------------------------------------------------------------
+# Load sub scripts
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()

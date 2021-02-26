@@ -1,0 +1,634 @@
+;============================================================================
+;
+; Sensors libraries walker
+;
+;   To be called by ssc_parser.cmm to walk the Sensor libraries
+;
+; Version: 1.0
+;
+; Copyright (c) 2017-2018 Qualcomm Technologies, Inc.
+; All Rights Reserved.
+; Qualcomm Technologies, Inc. Confidential and Proprietary.
+;============================================================================
+
+ENTRY
+
+print "##### Sensor Libraries #####"
+print ""
+
+&lib_idx=0.
+&sensor_libraries=V.VALUE(&libraries)
+&num_libs=V.VALUE(((sns_list*)&sensor_libraries)->cnt)
+&lib=V.VALUE(((sns_list*)&sensor_libraries)->item.next)
+
+&mem_block_header_size=V.VALUE(sizeof(sns_mem_block_header_type))
+&mem_block_header_size=(&mem_block_header_size+7.)/8.
+&mem_block_header_size=&mem_block_header_size*8
+
+print "Number of libraries = "+format.decimal(2,&num_libs)
+
+while &lib_idx<&num_libs
+(
+  &lib_id=&lib_idx+1
+
+  &sensor_list=V.VALUE(&(((sns_sensor_library*)&lib)->sensors))
+  &num_sensors=V.VALUE(((sns_list*)&sensor_list)->cnt)
+  &reg_func=V.VALUE(*&(((sns_sensor_library*)&lib)->register_func))
+  &reg_func_symbol= Y.NAME(D:&reg_func)
+
+  print " "
+  print "Library #"+format.decimal(2,&lib_id)
+  print %CONTinue "  (sns_sensor_library*)0x"+format.HEX(8,&lib)
+  print %CONTinue "  func=&reg_func_symbol"
+  ;print %CONTinue "  #sensors="+format.decimal(1,&num_sensors)
+
+  &sensor_idx=0
+  &sensor=V.VALUE(((sns_list*)&sensor_list)->item.next->item)
+  while &sensor_idx<&num_sensors
+  (
+    &instances=V.VALUE(&(((sns_fw_sensor*)&sensor)->sensor_instances))
+    &num_instances=V.VALUE(((sns_list*)&instances)->cnt)
+    &sensor_streams=V.VALUE(&(((sns_fw_sensor*)&sensor)->data_streams))
+    &num_sensor_streams=V.VALUE(((sns_list*)&sensor_streams)->cnt)
+    &state_len=V.VALUE(((sns_sensor*)&sensor)->state->state_len)
+    &data_type=V.VALUE(((sns_fw_sensor*)&sensor)->attr_info->attr_info->data_type)
+    &is_cm_sensor=0
+    if STRing.ComPare(STRing.LoWer(DATA.STRing(D:&data_type)),"cm")
+    (
+      &is_cm_sensor=1
+    )
+    &is_resampler_sensor=0
+    if STRing.ComPare(STRing.LoWer(DATA.STRing(D:&data_type)),"resampler")
+    (
+      &is_resampler_sensor=1
+    )
+    &is_timer_sensor=0
+    if STRing.ComPare(STRing.LoWer(DATA.STRing(D:&data_type)),"timer")
+    (
+      &is_timer_sensor=1
+    )
+    if V.VALUE(((sns_fw_sensor*)&sensor)->island_operation)==1
+    (
+      print "I Sensor #"+format.decimal(1,&sensor_idx+1)
+    )
+    else
+    (
+      print "  Sensor #"+format.decimal(1,&sensor_idx+1)
+    )
+    print %CONTinue "  (sns_fw_sensor*)0x"+format.HEX(8,&sensor)
+    print %CONTinue "  len="+format.decimal(3,&state_len)
+    if &heap_info_avail!=0
+    (
+      &mem_block=&sensor-&mem_block_header_size
+      &size=V.VALUE(((sns_mem_block_header_type*)&mem_block)->forw_offset)
+      print %CONTinue "  size="+format.decimal(3,&size)
+    )
+    print %CONTinue "  type='"+DATA.STRing(D:&data_type)+"'"
+
+    if V.VALUE(((sns_fw_sensor*)&sensor)->attr_info->available)==0
+    (
+      print %CONTinue "  (not available)"
+    )
+    ;print %CONTinue "  #streams="+format.decimal(1,&num_sensor_streams)
+    ;print %CONTinue "  #instances="+format.decimal(1,&num_instances)
+
+
+    &sensor_stream_idx=0
+    &sensor_stream=V.VALUE(((sns_list*)&sensor_streams)->item.next->item)
+    while &sensor_stream_idx<&num_sensor_streams
+    (
+      if &sensor_stream!=0
+      (
+        gosub parse_stream &sensor_stream &sensor_stream_idx "    "
+        &sensor_stream=V.VALUE((*((*(((sns_fw_data_stream*)&sensor_stream))).list_entry_client.next)).item)
+      )
+      else
+      (
+        print "    Stream #"+format.decimal(1,&sensor_stream_idx+1)
+        print %CONTinue "  (sns_fw_data_stream*)0x"+format.HEX(8,&sensor_stream)
+      )
+      &sensor_stream_idx=&sensor_stream_idx+1
+    )
+
+    &inst_idx=0
+    &inst=V.VALUE(((sns_list*)&instances)->item.next->item)
+    while &inst_idx<&num_instances
+    (
+      &state=V.VALUE(&(((sns_sensor_instance *)&inst)->state->state))
+      &state_len=V.VALUE(((sns_sensor_instance*)&inst)->state->state_len)
+      &streams=V.VALUE(&(((sns_fw_sensor_instance*)&inst)->data_streams))
+
+      if V.VALUE(((sns_fw_sensor_instance*)&inst)->island_operation)==1
+      (
+        print "I   Instance #"+format.decimal(1,&inst_idx+1)
+      )
+      else
+      (
+        print "    Instance #"+format.decimal(1,&inst_idx+1)
+      )
+      print %CONTinue "  (sns_fw_sensor_instance*)0x"+format.HEX(8,&inst)
+      print %CONTinue "  len="+format.decimal(3,&state_len)
+      if &heap_info_avail!=0
+      (
+        &mem_block=&inst-&mem_block_header_size
+        &size=V.VALUE(((sns_mem_block_header_type*)&mem_block)->forw_offset)
+        print %CONTinue "  size="+format.decimal(3,&size)
+      )
+
+      if &is_cm_sensor==0
+      (
+        &list_of_list=V.VALUE(&(((sns_fw_sensor_instance*)&inst)->client_req_lists))
+        &num_req_lists=V.VALUE(((sns_list*)&list_of_list)->cnt)
+        &num_streams=V.VALUE(((sns_list*)&streams)->cnt)
+        print %CONTinue "  #req_lists="+format.decimal(1,&num_req_lists)
+        print %CONTinue "  #streams="+format.decimal(1,&num_streams)
+
+        if &is_resampler_sensor==1
+        (
+          &inst_state=V.VALUE((resampler_instance_state*)&state)
+          gosub parse_resampler_inst_state &inst_state "      "
+        )
+        else if &is_timer_sensor==1
+        (
+          &inst_state=V.VALUE((sns_timer_instance_state*)&state)
+          gosub parse_timer_inst_state &inst_state "      "
+        )
+
+        &req_list_idx=0
+        &list=V.VALUE(((sns_list*)&list_of_list)->item.next->item)
+        if (&list==0)&&(&num_req_lists>0)
+        (
+          print "      !!! Request list corrupted !!!"
+        )
+        while (&list!=0)&&(&req_list_idx<&num_req_lists)
+        (
+          gosub parse_request_list &list "      "
+
+          &list=V.VALUE((*((*(((sns_client_req_list*)&list))).list_entry.next)).item)
+          &req_list_idx=&req_list_idx+1
+        )
+
+        &stream_idx=0
+        &stream=V.VALUE(((sns_list*)&streams)->item.next->item)
+        while &stream_idx<&num_streams
+        (
+          if &stream!=0
+          (
+            gosub parse_stream &stream &stream_idx "      "
+            &stream=V.VALUE((*((*(((sns_fw_data_stream*)&stream))).list_entry_client.next)).item)
+          )
+          else
+          (
+            print "      Stream #"+format.decimal(1,&stream_idx+1)
+            print %CONTinue "  (sns_fw_data_stream*)0x"+format.HEX(8,&stream)
+          )
+          &stream_idx=&stream_idx+1
+        )
+      )
+      else
+      (
+        &cm_inst_state= V.VALUE(&(((sns_sensor_instance *)&inst)->state->state))
+        &req_list=V.VALUE(&(((sns_cm_inst_state *)&cm_inst_state)->req_list))
+        &client_busy=V.VALUE(((sns_cm_inst_state *)&cm_inst_state)->busy)
+        &num_reqs=V.VALUE(((sns_list*)&req_list)->cnt)
+        print %CONTinue "  #req="+format.decimal(1,&num_reqs)
+        print %CONTinue "  busy="+format.decimal(1,&client_busy)
+
+        gosub parse_cm_request_list &req_list "      "
+      )
+
+      &inst=V.VALUE((*((*(((sns_fw_sensor_instance*)&inst))).list_entry.next)).item)
+      &inst_idx=&inst_idx+1
+    )
+
+    &sensor=V.VALUE((*((*(((sns_fw_sensor*)&sensor))).list_entry.next)).item)
+    &sensor_idx=&sensor_idx+1
+  )
+  &lib=V.VALUE(((sns_list_item*)&lib)->next->item)
+  &lib_idx=&lib_idx+1.
+)
+
+print "==================================================================================="
+print ""
+enddo
+
+
+; ************************************parse_stream*****************************************
+parse_stream:
+  entry &sensor_stream &sensor_stream_idx &indentation
+
+  &source=V.VALUE(((sns_fw_data_stream*)&sensor_stream)->data_source)
+  &data_type=V.VALUE(((sns_fw_sensor*)&source)->attr_info->attr_info->data_type)
+  &removing=V.VALUE(((sns_fw_data_stream*)&sensor_stream)->removing)
+  &event_cnt=V.VALUE(((sns_fw_data_stream*)&sensor_stream)->event_cnt)
+  &events_lock=V.VALUE(((sns_fw_data_stream*)&sensor_stream)->events_lock)
+  &state=""
+  if &removing==0
+  (
+    &state="AVAIL"
+  )
+  else if &removing==1
+  (
+    &state="WAIT_SRC"
+  )
+  else if &removing==2
+  (
+    &state="WAIT_RCPT"
+  )
+  else
+  (
+    &state=format.decimal(1,&removing)
+  )
+
+  print &indentation
+  print %CONTinue "Stream #"+format.decimal(1,&sensor_stream_idx+1)
+  print %CONTinue "  (sns_fw_data_stream*)0x"+format.HEX(8,&sensor_stream)
+  ;print %CONTinue "  events_lock=(sns_osa_qurt_mutex*)0x"+format.HEX(8,&events_lock)
+  print %CONTinue "  source=(sns_fw_sensor*)0x"+format.HEX(8,&source)
+  print %CONTinue "/'"+DATA.STRing(D:&data_type)+"'"
+  if &removing!=0
+  (
+    print %CONTinue "  (removing="+format.STRing("&state",10.,' ')+")"
+  )
+
+  if &event_cnt>0
+  (
+    print %CONTinue "  #events="+format.decimal(1,&event_cnt)
+    &max_events_in_bins=(V.VALUE(sizeof(sns_events_bin))/4)-4
+    &ev_idx=0
+    &event_bins=V.VALUE(&(((sns_fw_data_stream*)&sensor_stream)->event_bins))
+    &num_bins=V.VALUE(((sns_list*)&event_bins)->cnt)
+    if &num_bins>1
+    (
+      print %CONTinue "  #bins="+format.decimal(1,&num_bins)
+    )
+    if &num_bins>0
+    (
+      &bin=V.VALUE(((sns_list*)&event_bins)->item.next->item)
+      &read_idx=V.VALUE(((sns_fw_data_stream*)&sensor_stream)->read_index)
+      &max_events_to_list=5
+
+      while (&ev_idx<&event_cnt)&&(&bin!=0)
+      (
+        &event=V.VALUE((*(((sns_events_bin*)&bin))).events[&read_idx])
+        if (&ev_idx<&max_events_to_list)||((&event_cnt>(&max_events_to_list*2))&&(&ev_idx>=&event_cnt-&max_events_to_list))
+        (
+          &total_size=V.VALUE((*(((sns_fw_sensor_event*)&event))).header.fw_event_len)
+          &client_cnt=V.VALUE((*(((sns_fw_sensor_event*)&event))).header.client_cnt)
+          &ts=V.VALUE((*(((sns_fw_sensor_event*)&event))).event.timestamp)
+          &event_len=V.VALUE((*(((sns_fw_sensor_event*)&event))).event.event_len)
+          &msg_id=V.VALUE((*(((sns_fw_sensor_event*)&event))).event.message_id)
+
+          print &indentation
+          print %CONTinue "  Event #"+format.decimal(1,&ev_idx+1)
+          print %CONTinue "  (sns_fw_sensor_event*)0x"+format.HEX(8,&event)
+          print %CONTinue "  msg="+format.decimal(1,&msg_id)
+          print %CONTinue "  #len="+format.decimal(1,&total_size)
+          print %CONTinue "/"+format.decimal(1,&event_len)
+          print %CONTinue "  ts="+format.decimal(1,&ts)
+          print %CONTinue "  #clients="+format.decimal(1,&client_cnt)
+        )
+        if (&event_cnt>(&max_events_to_list*2))&&(&ev_idx==&max_events_to_list)
+        (
+          print &indentation
+          print %CONTinue "  . . ."
+        )
+        &read_idx=&read_idx+1
+        if &read_idx>=&max_events_in_bins
+        (
+          &read_idx=0
+          &bin=V.VALUE((*((*(((sns_events_bin*)&bin))).list_entry.next)).item)
+        )
+        &ev_idx=&ev_idx+1
+      )
+    )
+    else
+    (
+      print &indentation
+      print %CONTinue "    ... empty events bin ..."
+    )
+  )
+  return
+
+
+; **********************************parse_request_list*************************************
+parse_request_list:
+  entry &list &indentation
+
+  &req_idx=0
+  &req_list=V.VALUE(&(((sns_client_req_list*)&list)->client_requests))
+  &num_reqs=V.VALUE(((sns_list*)&req_list)->cnt)
+  &client_req=V.VALUE(((sns_list*)&req_list)->item.next->item)
+  while &req_idx<&num_reqs
+  (
+    &msg_id=V.VALUE(((sns_request*)&client_req)->message_id)
+    &req_len=V.VALUE(((sns_request*)&client_req)->request_len)
+    &stream=V.VALUE(((sns_fw_request*)&client_req)->stream)
+    &dest=V.VALUE(((sns_fw_data_stream*)&stream)->dst_sensor)
+    if &dest==0
+    (
+      &dest_inst=V.VALUE(((sns_fw_data_stream*)&stream)->dst_instance)
+      &dest=V.VALUE(((sns_fw_sensor_instance*)&dest_inst)->sensor)
+    )
+    &data_type=V.VALUE(((sns_fw_sensor*)&dest)->attr_info->attr_info->data_type)
+    print &indentation
+    print %CONTinue "Req #"+format.decimal(1,&req_idx+1)
+    print %CONTinue "  (sns_fw_request*)0x"+format.HEX(8,&client_req)
+    print %CONTinue "  ID="+format.decimal(4,&msg_id)
+    if &heap_info_avail!=0
+    (
+      &mem_block=&client_req-&mem_block_header_size
+      &size=V.VALUE(((sns_mem_block_header_type*)&mem_block)->forw_offset)
+      print %CONTinue "  size="+format.decimal(3,&size)
+    )
+    print %CONTinue "  stream=0x"+format.HEX(8,&stream)
+    print %CONTinue "  dest='"+DATA.STRing(D:&data_type)+"'"
+
+    &client_req=V.VALUE((*((*(((sns_fw_request*)&client_req))).list_entry.next)).item)
+    &req_idx=&req_idx+1
+  )
+
+  return
+
+
+; *********************************parse_cm_request_list***********************************
+parse_cm_request_list:
+  entry &req_list &indentation
+
+  &stream_indentation=&indentation+"  "
+  &num_reqs=V.VALUE(((sns_list*)&req_list)->cnt)
+  &req_idx=0
+  &client_req=V.VALUE(((sns_list*)&req_list)->item.next->item)
+
+  while &req_idx<&num_reqs
+  (
+    &sensor_stream=V.VALUE(((sns_cm_request*)&client_req)->data_stream)
+    &num_batch=V.VALUE(((sns_cm_request*)&client_req)->batch_buff.cnt)
+    &proc_susp_state=V.VALUE(((sns_cm_request*)&client_req)->proc_susp_state)
+    &req_msg=V.VALUE(&((sns_cm_request*)&client_req)->req_msg)
+    &std_req=V.VALUE(&(((sns_client_request_msg*)&req_msg)->request))
+    &has_batching=V.VALUE(((sns_std_request*)&std_req)->has_batching)
+
+    &flush_type_val=V.VALUE(((sns_cm_request*)&client_req)->flush_type)
+    &flush_type=""
+    if &flush_type_val==0
+    (
+      &flush_type="NO"
+    )
+    else if &flush_type_val==1
+    (
+      &flush_type="CLIENT"
+    )
+    else if &flush_type_val==2
+    (
+      &flush_type="BATCH"
+    )
+    else
+    (
+      &flush_type=format.decimal(1,&flush_type_val)
+    )
+
+    &msg_id=V.VALUE((((sns_client_request_msg*)&req_msg)->msg_id))
+    &susp_cfg=V.VALUE(&(((sns_client_request_msg*)&req_msg)->susp_config))
+    &delivery_type=V.VALUE((((sns_client_request_msg_suspend_config*)&susp_cfg)->delivery_type))
+    &del_type=""
+    if &delivery_type==0
+    (
+      &del_type="WAKEUP"
+    )
+    else if &delivery_type==1
+    (
+      &del_type="NO_WKUP"
+    )
+    else
+    (
+      &del_type=format.decimal(1,&delivery_type)
+    )
+
+    &cl_proc=V.VALUE((((sns_client_request_msg_suspend_config*)&susp_cfg)->client_proc_type))
+    &proc_name=""
+    if &cl_proc==0
+    (
+      &proc_name="SSC "
+    )
+    else if &cl_proc==1
+    (
+      &proc_name="APPS"
+    )
+    else if &cl_proc==2
+    (
+      &proc_name="ADSP"
+    )
+    else if &cl_proc==3
+    (
+      &proc_name="MDSP"
+    )
+    else if &cl_proc==4
+    (
+      &proc_name="CDSP"
+    )
+    else
+    (
+      &proc_name=format.decimal(1,&cl_proc)
+    )
+
+    print &indentation
+    print %CONTinue "Req #"+format.decimal(1,&req_idx+1)
+    print %CONTinue "  (sns_cm_request*)0x"+format.HEX(8,&client_req)
+    print %CONTinue "  ID="+format.decimal(1,&msg_id)
+    print %CONTinue "  proc="+format.STRing("&proc_name",4,' ')
+    print %CONTinue "  delivery="+format.STRing("&del_type",7,' ')
+    print %CONTinue "  in_susp="+format.decimal(1,&proc_susp_state)
+    print %CONTinue "  flush="+format.STRing("&flush_type",6,'')
+
+    if &has_batching==0
+    (
+      print &indentation
+      print %CONTinue "        No Batching"
+    )
+    else
+    (
+      &batch_spec=V.VALUE(&(((sns_std_request*)&std_req)->batching))
+      &batch_period=V.VALUE((((sns_std_request_batch_spec*)&batch_spec)->batch_period))
+
+      print &indentation
+      print %CONTinue "        Batch Specs: batch_period="+format.decimal(1,&batch_period)+" usec"
+      if 1==V.VALUE((((sns_std_request_batch_spec*)&batch_spec)->has_flush_period))
+      (
+        &flush_period=V.VALUE((((sns_std_request_batch_spec*)&batch_spec)->flush_period))
+        print %CONTinue "  flush_period="+format.decimal(1,&flush_period)+" usec"
+      )
+      if 1==V.VALUE((((sns_std_request_batch_spec*)&batch_spec)->has_flush_only))
+      (
+        &flush_only=V.VALUE((((sns_std_request_batch_spec*)&batch_spec)->flush_only))
+        print %CONTinue "  flush_only="+format.decimal(1,&flush_only)
+      )
+      if 1==V.VALUE((((sns_std_request_batch_spec*)&batch_spec)->has_max_batch))
+      (
+        &max_batch=V.VALUE((((sns_std_request_batch_spec*)&batch_spec)->max_batch))
+        print %CONTinue "  max_batch="+format.decimal(1,&max_batch)
+      )
+    )
+
+    if &num_batch>0
+    (
+      &first_batch_ts=V.VALUE(((sns_cm_request*)&client_req)->first_batch_ts)
+      &last_batch_ts=V.VALUE(((sns_cm_request*)&client_req)->last_batch_ts)
+      &time_span=&last_batch_ts-&first_batch_ts
+      &time_span_ms=&time_span/19200.
+      print &indentation
+      print %CONTinue "        #batch="+format.decimal(1,&num_batch)
+      print %CONTinue "  first_ts="+format.decimal(1,&first_batch_ts)
+      print %CONTinue "  last_ts="+format.decimal(1,&last_batch_ts)
+      if &time_span>0
+      (
+        print %CONTinue "  (spans "+format.decimal(1,&time_span)
+        print %CONTinue " ticks or "+format.decimal(1,&time_span_ms)+" ms)"
+      )
+    )
+
+    gosub parse_stream &sensor_stream &req_idx &indentation
+    print
+
+    &client_req=V.VALUE(((sns_cm_request*)&client_req)->item.next->item)
+    &req_idx=&req_idx+1
+  )
+
+  return
+
+; **********************************parse_resampler_inst_state*****************************
+parse_resampler_inst_state:
+  entry &state &indentation
+
+  &cic_enabled=V.VALUE(((resampler_instance_state*)&state)->cic_enabled)
+  &interp_enabled=V.VALUE(((resampler_instance_state*)&state)->interp_enabled)
+  &sample_rate=V.VALUE(((resampler_instance_state*)&state)->sample_rate)
+
+  &quality_val=V.VALUE(((resampler_instance_state*)&state)->quality)
+  &quality=""
+  if &quality_val==0
+  (
+    &quality="C"
+  )
+  else if &quality_val==1
+  (
+    &quality="F"
+  )
+  else if &quality_val==2
+  (
+    &quality="IF"
+  )
+  else if &quality_val==3
+  (
+    &quality="I"
+  )
+  else
+  (
+    &quality=format.decimal(1,&quality_val)
+  )
+
+  &resampled_rate=V.VALUE(((resampler_instance_state*)&state)->client_config.resampled_rate)
+  &type=V.VALUE(((resampler_instance_state*)&state)->client_config.rate_type)
+  &rate_type=""
+  if &type==0
+  (
+    &rate_type="FIXED"
+  )
+  else if &type==1
+  (
+    &rate_type="MIN"
+  )
+  else
+  (
+    &rate_type=format.decimal(1,&type)
+  )
+
+  &filter=V.VALUE(((resampler_instance_state*)&state)->client_config.filter)
+
+  print &indentation
+  ;print %CONTinue "(resampler_instance_state*)0x"+format.HEX(8,&state)
+  print %CONTinue "(rates="+format.decimal(1,&sample_rate)+"-->"+format.decimal(1,&resampled_rate)
+  print %CONTinue "  rate_type="+format.STRing("&rate_type",5,' ')
+  print %CONTinue "  filter="+format.decimal(1,&filter)
+  print %CONTinue "  quality="+format.STRing("&quality",2,' ')
+
+  if &interp_enabled==1
+  (
+    &interval_ticks=V.VALUE(((resampler_instance_state*)&state)->interp_obj.interval_ticks)
+    print %CONTinue "  INTERP[intvl="+format.decimal(1,&interval_ticks)
+    print %CONTinue "]"
+  )
+
+  if &cic_enabled==1
+  (
+    &input_freq=V.VALUE(((resampler_instance_state*)&state)->cic_obj.input_frequency)
+    &factor=V.VALUE(((resampler_instance_state*)&state)->cic_obj.factor)
+    &count=V.VALUE(((resampler_instance_state*)&state)->cic_obj.count)
+    print %CONTinue "  CIC[freq="+format.decimal(1,&input_freq)
+    print %CONTinue " factor="+format.decimal(1,&factor)
+    print %CONTinue " count="+format.decimal(1,&count)
+    print %CONTinue "]"
+  )
+
+  if (&interp_enabled==0)&&(&cic_enabled==0)
+  (
+    &factor=V.VALUE(((resampler_instance_state*)&state)->cur_samp_obj.sampling_factor)
+    &count=V.VALUE(((resampler_instance_state*)&state)->cur_samp_obj.sampling_count)
+    print %CONTinue "  CUR[factor="+format.decimal(1,&factor)
+    print %CONTinue " count="+format.decimal(1,&count)
+    print %CONTinue "]"
+  )
+
+  print %CONTinue "  last_ts="+format.decimal(1,V.VALUE(((resampler_instance_state*)&state)->ts_last_saved))
+  print %CONTinue ")"
+
+  return
+
+; ************************************parse_timer_inst_state*******************************
+parse_timer_inst_state:
+  entry &state &indentation
+
+  &start=V.VALUE(((sns_timer_instance_state*)&state)->client_config.start_time)
+  &timeout=V.VALUE(((sns_timer_instance_state*)&state)->client_config.timeout_period)
+  &is_per=V.VALUE(((sns_timer_instance_state*)&state)->client_config.is_periodic)
+  &is_dry=V.VALUE(((sns_timer_instance_state*)&state)->client_config.is_dry_run)
+  &prio=V.VALUE(((sns_timer_instance_state*)&state)->client_config.priority)
+  &priority=""
+  if &prio==0
+  (
+    &priority="LOWEST"
+  )
+  else if &prio==10.
+  (
+    &priority="OTHER"
+  )
+  else if &prio==50.
+  (
+    &priority="POLLING"
+  )
+  else if &prio==100.
+  (
+    &priority="S4S"
+  )
+  else
+  (
+    &priority=format.decimal(1,&prio)
+  )
+
+  print &indentation
+  print %CONTinue "(start="+format.decimal(1,&start)
+  print %CONTinue " timeout="+format.decimal(1,&timeout)
+  print %CONTinue " prio="+format.STRing("&priority",7,' ')
+  if &is_per==1
+  (
+    print %CONTinue " PERIODIC"
+  )
+  if &is_dry==1
+  (
+    print %CONTinue " DRY_RUN"
+  )
+  print %CONTinue ")"
+
+  return
+
+

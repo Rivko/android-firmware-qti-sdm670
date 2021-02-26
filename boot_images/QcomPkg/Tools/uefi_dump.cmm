@@ -1,0 +1,508 @@
+;============================================================================
+; Name: uefi_dump.cmm
+; Description: Save all UEFI regions for simulator and post crash analysis
+;
+; This file should not be called directly, TargetPkg/Tools/uefi_dump.cmm
+; will call this with correct parameters
+; 
+; Copyright (c) 2013-2016 Qualcomm Technologies, Incorporated.
+; All Rights Reserved.
+; Qualcomm Confidential and Proprietary
+;
+;----------------------------------------------------------------------------
+;============================================================================
+;
+;
+;
+;when         who     what, where, why
+;----------   ---     ----------------------------------------------------------
+;2015-06-09   dg      Move InfoBlock parsing to a common file
+;2013-29-02   vk      Enhance dump regions
+;2013-12-02   vk      Initial Version
+;============================================================================;
+
+;  Info Block Structure - QcomPkg/Sec/UefiInfoBlk.h
+
+GLOBAL &SaveLogLocation
+
+;---------------------------------------------------
+; ENTRY point for cmm - start here
+;---------------------------------------------------
+ENTRY &SaveLogLocation &UefiBase &CrashCookieAddr &SkipBelow &SkipSizeGreater
+
+  ;&UefiBase is the base of FD
+
+  &InfoBlkPtrOffset=0x003FF000
+
+  AREA.Create InfoBlock
+  AREA.Select InfoBlock
+  AREA.Open InfoBlock &SaveLogLocation/UefiInfoBlock.log
+  AREA.View InfoBlock
+
+  ;PRINT banner
+  GOSUB PrintHeading
+
+  ;Check Path
+  GOSUB VerifyPath
+
+  ;Parse all fields
+  &InfoBlkAddr=&UefiBase+&InfoBlkPtrOffset
+ 
+  ;PRINT InfoBlock 
+  do parse_info_blk.cmm ParseAndPrintInfoBlk &InfoBlkAddr
+
+  ;Dump Krait 0 registers
+  GOSUB SaveRegisters
+
+  ;Dump serial log in RAM to text file
+  GOSUB SaveSerialLog &InfoBlkAddr
+
+  GOSUB CheckCarveoutMode &CrashCookieAddr
+  ENTRY &result
+  PRINT "CheckCarveoutMode returned: &result"
+
+  
+  ;Save current MMU settings
+  GOSUB SaveMmuList
+
+  ;Dump config table
+  ;GOSUB SaveConfigTable 
+
+  &PartialRegionDumpSize=0x2000000 ;32 MB
+  ;&PartialRegionDumpSize=0x1000000 ;16 MB
+
+  ;Create log file for loading on simulator, Dump Memory Table
+  GOSUB SaveUefiRegions &InfoBlkAddr &SkipBelow &SkipSizeGreater &PartialRegionDumpSize
+
+  ;TODO:
+  ;Dump all hobs
+  ;Dump GCD
+  ;Dump all GCD regions to separate file
+
+  PRINT "----------------------------"
+  PRINT "+ Completed log collection +"
+  PRINT "----------------------------"
+
+  AREA.Close InfoBlock
+
+ENDDO
+
+;---------------------------------------------------
+; Verify if the path argument is valid
+;---------------------------------------------------
+VerifyPath:
+
+  if (!os.dir("&SaveLogLocation"))
+  (
+    PRINT %ERROR "Invalid path provided: &SaveLogLocation, exiting ..."
+    END
+  )
+
+  ;Save to current directory if not specified
+  if ("&SaveLogLocation"=="")
+    &SaveLogLocation=os.pwd();
+
+RETURN
+
+;---------------------------------------------------
+;Dump regions specified in CFG file
+;---------------------------------------------------
+SaveUefiRegions:
+
+  ENTRY &InfoBlkAddr &SkipDumpAddrBelow &SkipDumpSizeAbove &PartialRegionDumpSize
+  LOCAL &i
+  LOCAL &MemBase
+  LOCAL &MemSize
+  LOCAL &NextMemRegionOffset
+  LOCAL &MemBaseOffset
+  LOCAL &MemSizeOffset
+  LOCAL &MemBaseAddr
+  LOCAL &MemSizeAddr
+
+  PRINT ""
+  PRINT "------------------------"
+  PRINT "+ Dumping memory table +"
+  PRINT "------------------------"
+  &MemTablePtr=data.long(RD:&InfoBlkAddr+0x28)
+  &MemTableCount=data.long(RD:&InfoBlkAddr+0x2C)
+  PRINT "MemTableEntry Count= &MemTableCount"
+   
+  &i=0
+  &MemBase=0
+  &MemSize=0
+  &NextMemRegionOffset=0x3c
+  &MemBaseOffset=0x20
+  &MemSizeOffset=0x24
+  &MemBaseAddr=0
+  &MemSizeAddr=0
+
+  OPEN #1 &SaveLogLocation/MemoryTable.log /Create
+
+  while (&i<&MemTableCount)
+  (
+    &MemBaseAddr=&MemTablePtr+&MemBaseOffset
+    &MemBase=data.long(RD:&MemBaseAddr) 
+
+    &MemSizeAddr=&MemTablePtr+&MemSizeOffset
+    &MemSize=data.long(RD:&MemSizeAddr)
+
+    PRINT "MemBase[" FORMAT.DECIMAL(2.,&i), "] = 0x" FORMAT.HEX(8.,&MemBase), " MemSize[" FORMAT.DECIMAL(2.,&i), "] = 0x" FORMAT.HEX(8.,&MemSize)
+    &MemTablePtr=&MemTablePtr+&NextMemRegionOffset
+    
+    ;TODO: Add more comprehensive skip list
+    ;SkipList can go in Target\Tools
+
+    ;Convert for fixed width printing
+    &MemBaseStr= FORMAT.HEX(8.,&MemBase)
+    &MemSizeStr= FORMAT.HEX(8.,&MemSize)
+
+    if ((&MemBase>=&SkipDumpAddrBelow)&&(&MemSize<&SkipDumpSizeAbove))
+    (
+      ;Hack for DBI Dump region not initialized, 0xF9000000 not init ?
+      if ((&MemBase!=0xFC100000)&&(&MemBase!=0xF9000000))
+      (
+        data.save.binary &SaveLogLocation/MemBase_0x"&MemBaseStr"_Size_0x"&MemSizeStr".bin &MemBase--((&MemBase+&MemSize-1))
+        WRITE #1 "MemBase=0x&MemBaseStr MemSize=0x&MemSizeStr"
+        PRINT "done ..."
+      )
+    )
+    else
+    (
+      if (&MemSize>&SkipDumpSizeAbove)
+      (
+        print "SkipReg[" FORMAT.DECIMAL(2.,&i), "] * Partial Dump"
+        ;If skipping, then dump Base to (Base + PartialRegionDumpSize)
+        ;PartialRegionDumpSize from above and update string
+        &MemSize=&PartialRegionDumpSize
+        &MemSizeStr= FORMAT.HEX(8.,&MemSize)
+        data.save.binary &SaveLogLocation/MemBase_0x"&MemBaseStr"_Size_0x"&MemSizeStr".bin &MemBase--((&MemBase+&MemSize-1))
+        WRITE #1 "MemBase=0x&MemBaseStr MemSize=0x&MemSizeStr"
+        PRINT "SkipReg done ..."
+      )
+    )
+    &i=&i+1
+  )
+
+  ;Not in carveout dump the top &PartialRegionDumpSize
+  ;Done only once for UEFI region (non-carveout), marked as HLOS region in cfg file
+
+  GOSUB CheckCarveoutMode &CrashCookieAddr
+  ENTRY &InCarveout
+  ;Since we setup cache anyway, skip this check and dump all regions
+  ;if (&InCarveout==0)
+  (
+    ;Print "Dump UEFI (HLOS Top) Region: Not in carve out, dumping upper &PartialRegionDumpSize ...."
+    Print "Dump UEFI (HLOS Top) Region: dumping upper &PartialRegionDumpSize ...."
+
+    &MemBaseOffset=0x0C
+    &MemSizeOffset=0x10
+    &AvailMemoryBasePtr=data.long(RD:(&InfoBlkAddr+&MemBaseOffset))
+    &AvailMemoryBase=data.long(RD:&AvailMemoryBasePtr)
+    &AvailMemorySize=data.long(RD:(&InfoBlkAddr+&MemSizeOffset))
+
+    &AvailMemoryTop=&AvailMemoryBase+&AvailMemorySize
+    &AvailMemoryStart=&AvailMemoryTop-&PartialRegionDumpSize
+
+    ;Convert for fixed width printing
+    &AvailMemoryStartStr= FORMAT.HEX(8.,&AvailMemoryStart)
+    &PartialRegionDumpSizeStr= FORMAT.HEX(8.,&PartialRegionDumpSize)
+
+    data.save.binary &SaveLogLocation/MemBase_0x"&AvailMemoryStartStr"_Size_0x"&PartialRegionDumpSizeStr".bin &AvailMemoryStart--((&AvailMemoryTop-1))
+    WRITE #1 "MemBase=0x&AvailMemoryStartStr MemSize=0x&PartialRegionDumpSizeStr"
+    PRINT "done ..."
+    PRINT "CheckCarveoutMode returned: &InCarveout"
+  )
+
+  CLOSE #1
+
+  PRINT ""
+  PRINT "Dumping memory table complete....."
+  PRINT ""
+
+RETURN
+
+;---------------------------------------------------
+; Save memory table from UefiPlatCfg
+;---------------------------------------------------
+; NOTE: Run to verify memory table, otherwise SaveUefiRegions does this
+
+SaveMemoryTable:
+  ENTRY &InfoBlkAddr &SkipDumpAddrBelow &SkipDumpSizeAbove &PartialRegionDumpSize
+  LOCAL &i
+  LOCAL &MemBase
+  LOCAL &MemSize
+  LOCAL &NextMemRegionOffset
+  LOCAL &MemBaseOffset
+  LOCAL &MemSizeOffset
+  LOCAL &MemBaseAddr
+  LOCAL &MemSizeAddr
+
+  PRINT "Saving memory table ....."
+  &MemTablePtr=data.long(RD:&InfoBlkAddr+0x28)
+  &MemTableCount=data.long(RD:&InfoBlkAddr+0x2C)
+  PRINT "MemTableEntry Count= &MemTableCount"
+   
+  &i=0
+  &MemBase=0
+  &MemSize=0
+  &NextMemRegionOffset=0x3c
+  &MemBaseOffset=0x20
+  &MemSizeOffset=0x24
+  &MemBaseAddr=0
+  &MemSizeAddr=0
+
+  OPEN #1 &SaveLogLocation/MemoryTable.log /Create
+  
+  ;WRITE #1 "MemTableEntry Count= &MemTableCount"
+
+  while (&i<&MemTableCount)
+  (
+    &MemBaseAddr=&MemTablePtr+&MemBaseOffset
+    &MemBase=data.long(RD:&MemBaseAddr) 
+
+    &MemSizeAddr=&MemTablePtr+&MemSizeOffset
+    &MemSize=data.long(RD:&MemSizeAddr)
+
+    PRINT "MemBase[" FORMAT.DECIMAL(2.,&i), "] = 0x" FORMAT.HEX(8.,&MemBase), " MemSize[" FORMAT.DECIMAL(2.,&i), "] = 0x" FORMAT.HEX(8.,&MemSize)
+    
+    if ((&MemBase>=&SkipDumpAddrBelow)&&(&MemSize<&SkipDumpSizeAbove))
+    (
+      ;Hack for DBI Dump region not initialized
+        if ((&MemBase!=0xFC100000)&&(&MemBase!=0xF9000000))
+          WRITE #1 "MemBase=&MemBase MemSize=&MemSize"
+    )
+    else
+    ( ;If skipping, then dump Base to (Base+PartialRegionDumpSize)
+      if (&MemSize>&SkipDumpSizeAbove)
+          WRITE #1 "MemBase=&MemBase MemSize=&PartialRegionDumpSize"
+    )
+    &MemTablePtr=&MemTablePtr+&NextMemRegionOffset
+    &i=&i+1
+  )
+
+  CLOSE #1
+  PRINT "Saving memory table complete....."
+
+RETURN
+
+;---------------------------------------------------
+; Check if UEFI is in Carve Out mode
+;---------------------------------------------------
+CheckCarveoutMode:
+  ENTRY &CrashCookieAddr
+  LOCAL &CookieValue
+  LOCAL &CrashCookieMask
+  LOCAL &result
+
+  PRINT "Checking Carveout mode ..."
+  &CrashCookieMask=0x1
+  &CookieValue=data.long(RD:&CrashCookieAddr)
+
+  &result=((&CookieValue)&(&CrashCookieMask))
+  if (&result==1)
+    PRINT "In carveout mode"
+  else
+    PRINT "Not in carveout mode"
+RETURN &result
+
+;---------------------------------------------------
+; PRINT Banner
+;---------------------------------------------------
+PrintHeading:
+  PRINT ""
+  PRINT "+-----------+"
+  PRINT "| UEFI Logs |"
+  PRINT "+-----------+"
+  PRINT ""
+RETURN
+
+;---------------------------------------------------
+; Write serial port log from RAM to file
+;---------------------------------------------------
+SaveSerialLog:
+  ENTRY &InfoBlkAddr
+
+  &SerialLogFile="serial_buffer.log"
+  PRINT "Saving serial log to &SaveLogLocation/&SerialLogFile"
+  &SerialLogBuffAddr=data.long(RD:&InfoBlkAddr+0x20) 
+  &SerialLogBuffSz=data.long(RD:&InfoBlkAddr+0x24)
+  data.save.binary &SaveLogLocation/&SerialLogFile &SerialLogBuffAddr--(&SerialLogBuffAddr+&SerialLogBuffSz-1)
+RETURN
+
+;---------------------------------------------------
+; Dump MMU settings to file
+;---------------------------------------------------
+SaveMmuList:
+  PRINTer.FILE &SaveLogLocation/UefiMmuList.log
+  WinPRINT.mmu.LIST.PAGETABLE
+RETURN
+
+;---------------------------------------------------
+; PRINT registers to AREA window
+;---------------------------------------------------
+PrintRegisters:
+
+  PRINT "Registers"
+  PRINT "---------"
+  PRINT "REGISTER.SET R0 = &register_r0"
+  PRINT "R1 = &register_r1"
+  PRINT "R2 = &register_r2"
+  PRINT "R3 = &register_r3"
+  PRINT "R4 = &register_r4"
+  PRINT "R5 = &register_r5"
+  PRINT "R6 = &register_r6"
+  PRINT "R7 = &register_r7"
+  PRINT "R8 = &register_r8"
+  PRINT "R9 = &register_r9"
+  PRINT "R10 = &register_r10"
+  PRINT "R11 = &register_r11"
+  PRINT "R12 = &register_r12"
+  PRINT "R13 = &register_r13"
+  PRINT "R14 = &register_r14"
+
+  PRINT "PC = &register_pc"
+  PRINT "CPSR = &register_cpsr"
+  PRINT "SPSR = &register_spsr"
+
+RETURN
+
+;---------------------------------------------------
+; Save Krait 0 registers to fixed file for reloading
+;---------------------------------------------------
+SaveRegisters:
+  &ENTRY &SaveLogLocation
+
+  &register_r0=register(r0)
+  &register_r1=register(r1)
+  &register_r2=register(r2)
+  &register_r3=register(r3)
+  &register_r4=register(r4)
+  &register_r5=register(r5)
+  &register_r6=register(r6)
+  &register_r7=register(r7)
+  &register_r8=register(r8)
+  &register_r9=register(r9)
+  &register_r10=register(r10)
+  &register_r11=register(r11)
+  &register_r12=register(r12)
+  &register_r13=register(r13)
+  &register_r14=register(r14)
+
+  &register_pc=register(pc)
+  &register_cpsr=register(cpsr)
+  &register_spsr=register(spsr)
+
+  &register_r8_usr=register(r8_usr)
+  &register_r9_usr=register(r9_usr)
+  &register_r10_usr=register(r10_usr)
+  &register_r11_usr=register(r11_usr)
+  &register_r12_usr=register(r12_usr)
+  &register_r13_usr=register(r13_usr)
+  &register_r14_usr=register(r14_usr)
+
+  &register_r8_fiq=register(r8_fiq)
+  &register_r9_fiq=register(r9_fiq)
+  &register_r10_fiq=register(r10_fiq)
+  &register_r11_fiq=register(r11_fiq)
+  &register_r12_fiq=register(r12_fiq)
+  &register_r13_fiq=register(r13_fiq)
+  &register_r14_fiq=register(r14_fiq)
+  &register_spsr_fiq=register(spsr_fiq)
+
+  &register_r13_irq=register(r13_irq)
+  &register_r14_irq=register(r14_irq)
+  &register_spsr_irq=register(spsr_irq)
+
+  &register_r13_svc=register(r13_svc)
+  &register_r14_svc=register(r14_svc)
+  &register_spsr_svc=register(spsr_svc)
+
+  &register_r13_abt=register(r13_abt)
+  &register_r14_abt=register(r14_abt)
+  &register_spsr_abt=register(spsr_abt)
+
+  &register_r13_und=register(r13_und)
+  &register_r14_und=register(r14_und)
+  &register_spsr_und=register(spsr_und)
+
+  &register_r13_mon=register(r13_mon)
+  &register_r14_mon=register(r14_mon)
+  &register_spsr_mon=register(spsr_mon)
+
+  ;Open uefi_krait_0_register_state.cmm and write to it
+  OPEN #1 &SaveLogLocation/uefi_krait_0_register_state.cmm /Create
+
+  WRITE #1 "REGISTER.SET R0 &register_r0"
+  WRITE #1 "REGISTER.SET R1 &register_r1"
+  WRITE #1 "REGISTER.SET R2 &register_r2"
+  WRITE #1 "REGISTER.SET R3 &register_r3"
+  WRITE #1 "REGISTER.SET R4 &register_r4"
+  WRITE #1 "REGISTER.SET R5 &register_r5"
+  WRITE #1 "REGISTER.SET R6 &register_r6"
+  WRITE #1 "REGISTER.SET R7 &register_r7"
+  WRITE #1 "REGISTER.SET R8 &register_r8"
+  WRITE #1 "REGISTER.SET R9 &register_r9"
+  WRITE #1 "REGISTER.SET R10 &register_r10"
+  WRITE #1 "REGISTER.SET R11 &register_r11"
+  WRITE #1 "REGISTER.SET R12 &register_r12"
+  WRITE #1 "REGISTER.SET R13 &register_r13"
+  WRITE #1 "REGISTER.SET R14 &register_r14"
+
+  WRITE #1 "REGISTER.SET PC &register_pc"
+  WRITE #1 "REGISTER.SET CPSR &register_cpsr"
+  WRITE #1 "REGISTER.SET spsr &register_spsr"
+
+  WRITE #1 "REGISTER.SET R8_USR &register_r8_usr"
+  WRITE #1 "REGISTER.SET R9_USR &register_r9_usr"
+  WRITE #1 "REGISTER.SET R10_USR &register_r10_usr"
+  WRITE #1 "REGISTER.SET R11_USR &register_r11_usr"
+  WRITE #1 "REGISTER.SET R12_USR &register_r12_usr"
+  WRITE #1 "REGISTER.SET R13_USR &register_r13_usr"
+  WRITE #1 "REGISTER.SET R14_USR &register_r14_usr"
+
+  WRITE #1 "REGISTER.SET R8_FIQ &register_r8_fiq"
+  WRITE #1 "REGISTER.SET R9_FIQ &register_r9_fiq"
+  WRITE #1 "REGISTER.SET R10_FIQ &register_r10_fiq"
+  WRITE #1 "REGISTER.SET R11_FIQ &register_r11_fiq"
+  WRITE #1 "REGISTER.SET R12_FIQ &register_r12_fiq"
+  WRITE #1 "REGISTER.SET R13_FIQ &register_r13_fiq"
+  WRITE #1 "REGISTER.SET R14_FIQ &register_r14_fiq"
+  WRITE #1 "REGISTER.SET SPSR_FIQ &register_spsr_fiq"
+
+  WRITE #1 "REGISTER.SET R13_IRQ &register_r13_irq"
+  WRITE #1 "REGISTER.SET R14_IRQ &register_r14_irq"
+  WRITE #1 "REGISTER.SET SPSR_IRQ &register_spsr_irq"
+
+  WRITE #1 "REGISTER.SET R13_SVC &register_r13_svc"
+  WRITE #1 "REGISTER.SET R14_SVC &register_r14_svc"
+  WRITE #1 "REGISTER.SET SPSR_SVC &register_spsr_svc"
+
+  WRITE #1 "REGISTER.SET R13_ABT &register_r13_abt"
+  WRITE #1 "REGISTER.SET R14_ABT &register_r14_abt"
+  WRITE #1 "REGISTER.SET SPSR_ABT &register_spsr_abt"
+
+
+  WRITE #1 "REGISTER.SET R13_UND &register_r13_und"
+  WRITE #1 "REGISTER.SET R14_UND &register_r14_und"
+  WRITE #1 "REGISTER.SET SPSR_UND &register_spsr_und"
+
+  WRITE #1 "REGISTER.SET R13_MON &register_r13_mon"
+  WRITE #1 "REGISTER.SET R14_MON &register_r14_mon"
+  WRITE #1 "REGISTER.SET SPSR_MON &register_spsr_mon"
+
+  CLOSE #1
+
+RETURN
+
+;---------------------------------------------------
+; Error handler
+;---------------------------------------------------
+ON ERROR GOSUB
+(
+  PRINT %ERROR Error Occured !
+  ;CONTINUE
+  AREA.Close InfoBlock
+  OPEN #1 &SaveLogLocation/MemoryTable.log 
+  CLOSE #1
+  END
+)

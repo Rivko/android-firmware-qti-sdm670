@@ -1,0 +1,140 @@
+
+#
+# diagbuffer Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009-2017 by QUALCOMM Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //source/qcom/qct/core/services/diag/diagbuffer#9 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 06/08/17   gn      Added support for diag services to uImage
+# 03/24/16   sa      Changed ULOG folder to Diagbuffer and made path changes for relocation
+# 12/20/13   c_skikug Adding the CMM script to the T32 menu
+# 07/16/12   jdp     Modified to support the new Badger directory structure.
+# 11/29/10   ss      Build changes for 8960 RIVA target.
+# 04/20/10   bjs     Add diag and processor name handling.
+# 08/13/09   taw     Initial version.
+#
+#===============================================================================
+Import('env')
+env = env.Clone()
+import os
+
+
+#-------------------------------------------------------------------------------
+# SRC PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/services/diag/"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Determine target information
+#-------------------------------------------------------------------------------
+env['LOCAL_TARG_CHIP'] = env['MSM_ID']
+#env['LOCAL_TARG_PROC'] = env.DetermineProcessorName()
+
+#-------------------------------------------------------------------------------
+# Local build searchpath for target customization
+#-------------------------------------------------------------------------------
+
+env.PublishProtectedApi('LOCAL_INCLUDE_PATH', [
+   SRCPATH + "diagbuffer/src",
+   SRCPATH + "diagbuffer/config",
+])
+env.RequireProtectedApi(['LOCAL_INCLUDE_PATH'])
+
+#-------------------------------------------------------------------------------
+# External depends outside CoreBSP
+#-------------------------------------------------------------------------------
+env.RequireExternalApi([
+   'CS',
+])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'POWER',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'DEBUGTOOLS',
+   'DEBUGTRACE',
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+env.RequireProtectedApi(['POWER_UTILS'])
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+# diagbuffer Library
+#
+DIAGBUFFER_LIB_SOURCES = [
+   '${BUILDPATH}/diagbuffer/src/ULogCore.c',
+   '${BUILDPATH}/diagbuffer/src/ULogFront.c',
+   '${BUILDPATH}/diagbuffer/src/ULogParsers.c',
+   '${BUILDPATH}/diagbuffer/src/ULogRead.c',
+   '${BUILDPATH}/diagbuffer/src/ULogDiag.c',
+]
+
+
+#-------------------------------------------------------------------------------
+# Compile and create library
+#-------------------------------------------------------------------------------
+
+image_tags = ['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE',
+              'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+              'APPS_IMAGE', 'CBSP_APPS_IMAGE',
+              'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE',
+              'WCN_IMAGE', 'CBSP_WCN_IMAGE', 'CORE_WCN',
+              'RPM_IMAGE',
+              'CORE_SPS',
+              'SBL3_BOOT_IMAGE',
+              'CORE_GSS',
+              'CORE_QDSP6_SENSOR_SW',
+              'CORE_USER_PD', 'CORE_ROOT_PD', 'CORE_QDSP6_SW']
+
+try:
+  env.AddLibrary(image_tags, '${BUILDPATH}/diagbuffer', DIAGBUFFER_LIB_SOURCES)
+except AttributeError:
+  diagbuffer_lib_obj = env.Object(DIAGBUFFER_LIB_SOURCES)
+  diagbuffer_lib = env.Library('${BUILDPATH}/diagbuffer', diagbuffer_lib_obj)
+  env.AddLibsToImage(image_tags, diagbuffer_lib)
+
+
+if 'USES_RCINIT' in env:
+  RCINIT_IMG = ['WCN_IMAGE', 'CORE_MODEM', 'CORE_QDSP6_SW', 'APPS_IMAGE', 'CBSP_APPS_IMAGE', 'CORE_QDSP6_SENSOR_SW']
+  env.AddRCInitFunc(           # Code Fragment in TMC: NO
+   RCINIT_IMG,                 #
+   {
+    'sequence_group'             : 'RCINIT_GROUP_2',            # required
+    'init_name'                  : 'ulog_backend',              # required
+    'init_function'              : 'ULogBackend_Init',          # required
+    'dependencies'               : ['dalsys',]
+   })
+
+#-------------------------------------------------------------------------------
+# Add CMM Scripts to T32 Menu
+#-------------------------------------------------------------------------------
+SRCPATHSCRIPTS = env['BUILD_ROOT'] + '/core/services/diag/diagbuffer/scripts'
+
+try:
+  env.AddCMMScripts ('MPSS', [SRCPATHSCRIPTS], { 'ULogDump.cmm' : 'ULog Dump'}, 'Power')
+except:
+  pass

@@ -1,0 +1,257 @@
+//============================================================================
+//  Name:                                                                     
+//    std_results.cmm 
+//
+//  Description:                                                              
+//    For reporting usage and results
+//  Usage:
+//      do std_results <script> <result> <argumentline>
+//      where:
+//          <script> is the script reporting the log (such as std_debug, std_loadbuild etc.)
+//              This will be reported in error log's name.
+//          <result> is SUCCESS or FAILURE. 
+//              Other values will be stored in the OTHER directory in log directory.
+//          <argumentline>
+//              This is the argumentline that was passed to the calling script.
+//              This is used for statistics to see what usecases are used the most.
+//              Can contain spaces (anything after first two arguments is considered
+//              part of argumentline).
+//                                                                            
+// Copyright (c) 2012 - 2016 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who             what, where, why
+// --------   ---             ---------------------------------------------------------
+// 11/22/2016 JBILLING        Created
+
+//**************************************************
+//                  Declarations 
+//**************************************************
+LOCAL &ReporterScript
+&ReporterScript="&METASCRIPTSDIR/../tools/general/script_telemetry.py"
+LOCAL &FailureKeyWord &SuccessKeyWord
+&FailureKeyWord="FAILURE"
+&SuccessKeyWord="SUCCESS"
+//**************************************************
+//                  Arguments Passed 
+//**************************************************
+LOCAL &Argumentline &argremainder &UTILITY
+ENTRY &UTILITY %LINE &argremainder
+ENTRY %LINE &Argumentline
+
+
+//**************************************************
+//                  Defaults 
+//**************************************************
+//Clear error handler as that may be how we got here
+ON ERROR DEFAULT
+
+//**************************************************
+//                  Subroutine Checks
+//**************************************************
+// Name of the utility we are calling
+LOCAL &SUBROUTINE
+//**************************************************
+//                  Basic Options Check
+//**************************************************
+    LOCAL &args
+    IF ("&UTILITY"=="CALL_REPORTER")
+    (
+        &SUBROUTINE="&UTILITY"
+        &args="&argremainder"
+    )
+    ELSE
+    (
+        &SUBROUTINE="MAIN"
+        &args="&Argumentline"
+    )
+    LOCAL &rvalue
+    
+    // Call the required utility
+    GOSUB &SUBROUTINE &args
+    ENTRY %LINE &rvalue
+
+    GOSUB EXIT &rvalue
+
+//**************************************************
+//
+// @Function: MAIN
+// @Description : Main logic of the script
+// Expects argumetns as:
+//      result:"<result string>" argumentline:"<argument line>"
+//
+//**************************************************
+MAIN:
+PRINTRESULTLOG:
+
+    LOCAL &script &result &argumentline 
+    ENTRY &script &result %LINE &argumentline
+
+    GOSUB CHECKOUTPUTFILE
+    LOCAL &results_outputfile
+    ENTRY &results_outputfile
+    
+    //Don't want to get caught here
+    ON ERROR CONTINUE
+    
+    //Set up printer
+    PRINTER.FILE &results_outputfile
+    PRINTER.FILETYPE ASCII
+    PRINTER.SIZE 0xFA, 0xFA
+    
+    //Print to area window and print that to file
+    winpos 0, 0, 1000. 10. , , , RESULTWINDOW
+    AREA.CREATE ResultAreaWindow
+    AREA.SELECT ResultAreaWindow
+    area.view ResultAreaWindow
+    PRINT "&argumentline"
+    WINPRT RESULTWINDOW
+    area.view ResultAreaWindow
+    winclear top
+    AREA.CLOSE ResultAreaWindow
+    print " "
+    //Call reporter
+    GOSUB CALL_REPORTER &results_outputfile &result &script
+    
+    ON ERROR DEFAULT 
+    
+    RETURN &SuccessKeyWord
+    
+    
+/////////////////////////////////
+//
+//  ParseVariables
+//      Parses out 2 keys
+//      Not currently used
+//
+////////////////////////////////////
+ParseVariables:
+    LOCAL &key1 &key2 &argumentline
+    ENTRY &key1 &key2 %LINE &argumentline
+    
+    plist
+    pstep
+    
+    LOCAL &resultkey &arglinekey
+    &scriptkey="&key1"
+    &resultkey="&key2"
+    &key1size=STRING.SIZE("&key1")
+    &key2size=STRING.SIZE("&key2")
+    
+    &string_length=String.LENGTH("&argumentline")
+    LOCAL &position &key1position &key2position
+    //Get rvalue
+    
+    &position=STRING.SCAN("&argumentline","&key1",0)
+    &key1position=&position+STRING.LENGTH("&key1")
+    
+    //Get argumentline
+    &position=STRING.SCAN("&argumentline","&key2",0)
+    &key2position=&position+STRING.LENGTH("&key2")
+    
+    
+    &key1result=STRING.CUT("&argumentline",&key2position-&string_length)
+    &key1result=STRING.CUT("&key1result",&key1position)
+    &valuetocut=STRING.SCAN("&key1result"," ",0)
+    &key1resultsize=STRING.LENGTH("&key1result")
+    &key1result=STRING.CUT("&key1result",&valuetocut-&key1resultsize)
+    
+    
+    
+    
+    &valuetocut=STRING.SCAN("&argumentline"," ",&key1position+&key1result+1+&key2size)
+    &key2result=STRING.CUT("&argumentline",&valuetocut)
+    &key2result=STRING.TRIM("&key2result")
+    &valuetocut=STRING.SCAN("&key2result"," ",0)
+    &stringsize=STRING.SIZE("&key2result")
+    &key2result=STRING.CUT("&key2result",&valuetocut-&stringsize)
+    
+
+    RETURN &key1result &key2result
+    
+////////////////////////////////
+//
+//  CHECKOUTPUTFILE
+//      Sets up defaults of where log files are 
+//      written to for this script.
+//
+///////////////////////////////////////
+CHECKOUTPUTFILE:
+
+    LOCAL &results_outputfile
+    
+        GLOBAL &results_outputfile
+        GLOBAL &TEMPDIR
+        LOCAL &ostype
+        &ostype=OS.NAME()
+
+        IF ("&ostype"=="Windows")
+        (
+            &TEMPDIR=OS.ENV(TEMP)
+        )
+        ELSE
+        (
+            &TEMPDIR="~~~"
+        )
+        
+        &results_outputfile="&TEMPDIR/std_debug_results.log"
+        
+
+        
+    
+
+    RETURN &results_outputfile
+//////////////////////////////////
+//
+//  CALL_REPORTER
+//      Calls python script which writes log  
+//      to network location. If file isn't 
+//      present, exit.
+//
+////////////////////////////////////
+CALL_REPORTER:
+    LOCAL &filepath &result &script
+    ENTRY &filepath &result &script %LINE &therest
+    
+    IF ("&result"=="")
+    (
+        &result="NONE"
+    )
+    LOCAL &chipset
+    &chipset="&CHIPSET"
+    IF ("&CHIPSET"=="")
+    (
+        &chipset="UNKNOWN"
+    )
+    IF "&script"==""
+    (
+        &script="unknown"
+    )
+    IF (FILE.EXIST("&ReporterScript"))&&(FILE.EXIST("&filepath"))
+    (
+        
+        OS.COMMAND python &ReporterScript --filepath=&filepath --result=&result --chipset=&chipset --script=&script
+
+    )
+    ELSE
+    (
+        RETURN &FailureKeyWord
+    )
+    
+    RETURN &SuccessKeyWord
+    
+/////////////////////////////////////
+//
+//  FATALEXIT/EXIT
+//      Exit script, passing returned parameters
+//
+//////////////////////////////////////
+FATALEXIT:
+EXIT:
+    LOCAL &result
+    ENTRY %LINE &result
+    ENDDO &result
+    

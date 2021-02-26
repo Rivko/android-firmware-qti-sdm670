@@ -1,0 +1,258 @@
+//------------------------------------------------------------------------------ 
+//
+//  Copyright (c) 2012-2015, Qualcomm Technologies Inc. All rights reserved.
+//  Portions Copyright (c) 2011-2013, ARM Limited. All rights reserved.
+//
+//  This program and the accompanying materials
+//  are licensed and made available under the terms and conditions of the BSD License
+//  which accompanies this distribution.  The full text of the license may be found at
+//  http://opensource.org/licenses/bsd-license.php
+//
+//  THE PROGRAM IS DISTRIBUTED UNDER THE BSD LICENSE ON AN "AS IS" BASIS,
+//  WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.
+//
+//------------------------------------------------------------------------------
+
+//=============================================================================
+//                              EDIT HISTORY
+//
+//
+// when       who     what, where, why
+// --------   ---     ---------------------------------------------------------
+// 10/11/15   vk      Zero out stack
+// 03/15/15   jb      Add support for starting in EL2 or EL1
+// 02/11/15   vk      Fix Q register access crash
+// 12/11/14   bh      Invalidate TLB
+// 11/13/16   jb      Add Early cache init skip
+// 10/18/14   jb      Add EL2 support and update PCDs to 64bits
+// 09/18/14   vk      Invalidate Cache
+// 05/05/14   vk      Setup exception vectors
+// 04/30/14   vk      Add PRE_SIL for 8916
+// 03/03/14   vk      Disable MMU and interrupts first
+// 02/14/14   vk      Initial revision
+//
+//============================================================================
+
+#include <Library/PcdLib.h>
+#include <AsmMacroIoLibV8.h>
+#include <Chipset/AArch64.h>
+
+    AREA    |.text|,ALIGN=8,CODE,READONLY
+
+    IMPORT CEntryPoint
+    EXPORT _ModuleEntryPoint
+    IMPORT ArmWriteCpacr
+    IMPORT ArmEnableInstructionCache
+    IMPORT ArmInvalidateInstructionCache
+    IMPORT ArmInvalidateTlb
+    IMPORT ArmEnableDataCache
+    IMPORT InitStackCanary
+
+  IMPORT  ArmDisableInterrupts
+  IMPORT  ArmDisableCachesAndMmu
+  IMPORT  ArmWriteCptr
+  IMPORT  ArmDisableAlignmentCheck
+  IMPORT  ArmWriteHcr
+  IMPORT  ArmWriteVBar
+  IMPORT  ArmInvalidateDataCache
+  
+  
+// TODO - JDG
+    EXPORT _StackBase 
+    EXPORT _StackSize
+    EXPORT CNTFRQ 
+
+_StackBase
+  dcq FixedPcdGet64(PcdPrePiStackBase)
+
+_StackSize
+  dcq FixedPcdGet64(PcdPrePiStackSize)
+
+CNTFRQ
+  dcq FixedPcdGet32(PcdArmArchTimerFreqInHz)
+
+_ModuleEntryPoint
+  mov x0, #0
+  /* First ensure all interrupts are disabled */
+  bl ArmDisableInterrupts
+
+  /* Ensure that the MMU and caches are off */
+  bl ArmDisableCachesAndMmu
+  
+  /* Invalidate Instruction Cache and TLB */ 
+  bl ArmInvalidateInstructionCache
+
+  bl ArmInvalidateTlb
+
+  /* Get current EL in x0 */
+  EL1_OR_EL2_OR_EL3(x0)
+// CurrentEL : 0xC = EL3; 8 = EL2; 4 = EL1
+// This only selects between EL1 and EL2 and EL3, else we die.
+// Provide the Macro with a safe temp xreg to use.
+        //mrs    x0, CurrentEL
+        cmp    x0, #0xC
+        beq   %F3
+        cmp    x0, #0x8
+        beq   %F2
+        cmp    x0, #0x4
+        bne   .                    // We should never get here
+// EL1 code starts here
+
+1  beq _Start
+2  beq _Start
+
+  /* Do not trap any access to Floating Point and Advanced SIMD in EL3. */
+  /* Note this works only in EL3, x0 has current EL mode */
+3  mov x0, #0
+  bl ArmWriteCptr
+
+_SetupELx
+  mov x0, #0x30           /* RES1 */
+  orr x0, x0, #(1 << 0)   /* Non-secure bit */
+  orr x0, x0, #(1 << 8)   /* HVC enable */
+  orr x0, x0, #(1 << 10)  /* 64-bit EL2 */
+  msr scr_el3, x0
+
+  msr cptr_el3, xzr       /* Disable copro. traps to EL3 */
+
+  ldr x0, CNTFRQ
+  //msr cntfrq_el0, x0
+
+  msr sctlr_el2, xzr
+
+  /* Now setup our EL1. Controlled by EL2 config on Model */
+  mrs x0, hcr_el2         /* Read EL2 Hypervisor configuration Register */
+  orr x0, x0, #(1 << 31)  /* Set EL1 to be 64bit */
+
+  /* Send all interrupts to their respective Exception levels for EL2 */
+  mov x5, #(1 << 3)
+  bic x0, x0, x5          /* Disable virtual FIQ */
+
+  mov x5, #(1 << 4)
+  bic x0, x0, x5          /* Disable virtual IRQ */
+
+  mov x5, #(1 << 5)
+  bic x0, x0, x5          /* Disable virtual SError and Abort */
+
+  msr hcr_el2, x0         /* Write back our settings */
+
+  /* Enable architected timer access */
+  //mrs x0, cnthctl_el2
+  orr x0, x0, #3          /* Enable EL1 access to timers */
+  //msr cnthctl_el2, x0
+
+  //mrs x0, cntkctl_el1
+  orr x0, x0, #3          /* EL0 access to counters */
+  //msr cntkctl_el1, x0
+
+  /* Set ID regs */
+  mrs x0, midr_el1
+  mrs x1, mpidr_el1
+  //msr vpidr_el2, x0
+  //msr vmpidr_el2, x1
+
+  /* Coprocessor traps. */
+  mov x0, #0x33ff
+  //msr cptr_el2, x0        /* Disable copro. traps to EL2 */
+
+  //msr hstr_el2, xzr       /* Disable CP15 traps to EL2 */
+
+  mov x0, #CPACR_CP_FULL_ACCESS
+  bl ArmWriteCpacr        /* Disable copro traps to EL1 */
+
+  /* Switch to ELx NS */
+  bl ArmDisableAlignmentCheck
+
+  adr x0, _Start          /* Load start address for ELx */
+  //msr elr_el3, x0
+
+  LoadConstantToReg (FixedPcdGetBool(PcdSwitchToEL1), x1)
+  cmp x1, #0
+  bne EL1
+EL2
+  mov x1, #0x3c9 /* DAIF, EL2, EL specific SP */
+  //msr spsr_el3, x1
+  eret
+
+EL1
+  mov x1, #0x3c5 /* DAIF, EL1, EL specific SP */
+  //msr spsr_el3, x1
+  eret
+
+_Start
+  /* Get current EL in x0 */ 
+  EL1_OR_EL2(x0)
+// CurrentEL : 0xC = EL3; 8 = EL2; 4 = EL1
+// This only selects between EL1 and EL2, else we die.
+// Provide the Macro with a safe temp xreg to use.
+        //mrs    x0, CurrentEL
+        cmp    x0, #0x8
+        beq   %F2
+        cmp    x0, #0x4
+        bne   .                    // We should never get here
+// EL1 code starts here
+
+  b _SetupExceptionVector
+
+2  mov x0, #ARM_HCR_IMO
+    bl ArmWriteHcr  
+
+_SetupExceptionVector
+  LoadConstantToReg (FixedPcdGet32(PcdCpuVectorBaseAddress), x0)
+//  ldr x1, dead
+  LoadConstantToReg (dead, x1)
+  mov x2, #0
+_FillVectors
+  str     x1, [x0, x2]
+  adds    x2, x2, #8      /* Fill every 8 byte */
+  cmp     x2, #0x800      /* Vector Table Size */
+  bne     _FillVectors
+  
+  /* Update VBAR */
+  bl ArmWriteVBar
+
+_DonNotTrap_VFP_SIMD
+  mrs x0, CPACR_EL1
+  orr x0, x0, #0x300000  /* Set FPEN Bits 20 and 21 for not trapping FP and Advanced SIMD instructions */
+  msr CPACR_EL1, x0
+    
+_SetupPrimaryCoreStack
+  ldr x0, _StackBase     /* Stack base arg0 */
+  ldr x1, _StackSize     /* Stack size arg1 */
+  
+  /*Zero Init stack */
+  mov x2, #0 
+  mov x3, #0 
+  
+_ClearStack 
+  str     x3, [x0, x2] 
+  adds    x2, x2, #8      /* Fill every 8 byte */ 
+  cmp     x2, x1          /* Compare Size */ 
+  bne     _ClearStack 
+  
+  add x4, x0, x1
+  add sp, x4, #0
+
+_EnableCache
+#ifdef PRE_SIL
+  LoadConstantToReg (FixedPcdGet32(PcdSkipEarlyCacheMaint), x0)
+  cmn x0, #0
+  b.ne _PrepareArguments
+#endif
+  bl ArmInvalidateDataCache
+  bl ArmEnableInstructionCache
+  bl ArmEnableDataCache
+
+_PrepareArguments
+  /* Initialize Stack Canary */
+  bl InitStackCanary
+
+  /* x0 = _StackBase and x1 = _StackSize */
+  ldr x0, _StackBase     /* Stack base arg0 */
+  ldr x1, _StackSize     /* Stack size arg1 */
+  bl CEntryPoint
+
+dead
+  b dead                      /* We should never get here */
+
+END

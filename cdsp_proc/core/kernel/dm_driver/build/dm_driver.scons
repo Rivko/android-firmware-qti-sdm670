@@ -1,0 +1,61 @@
+#===============================================================================
+#                    Copyright 2013 Qualcomm Technologies Incorporated.
+#                           All Rights Reserved.
+#                         QUALCOMM Proprietary/GTDR
+#===============================================================================
+
+#-------------------------------------------------------------------------------
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/kernel/dm_driver"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# External depends within CoreBSP
+#-------------------------------------------------------------------------------
+env.RequireExternalApi([
+])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'SERVICES',
+   'DEBUGTOOLS',
+   'MPROC',
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+DM_DRIVER_SOURCES =  [
+   '${BUILDPATH}/src/dm_driver_init.c',
+]
+
+env.Append(CFLAGS = '-DUSES_DM_DRIVER')
+
+dm_driver_lib = env.AddBinaryLibrary(['CBSP_QDSP6_SW_IMAGE'], '${BUILDPATH}/dm_driver', DM_DRIVER_SOURCES)
+if 'USES_RCINIT' in env:
+	RCINIT_IMG = ['CORE_QDSP6_SW', 'CBSP_QDSP6_SW_IMAGE']
+	env.AddRCInitFunc(              # Code Fragment in TMC: YES
+	RCINIT_IMG,                     # define TMC_RCINIT_INIT_DALSYS_INIT
+	{
+		'sequence_group'             : 'RCINIT_GROUP_0',                   # required
+		'init_name'                  : 'dm_driver',                        # required
+		'init_function'              : 'dm_driver_init',                   # require
+		'dependencies'               : ['smem','smp2p']
+	})
+
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles('*.h', '${COREBSP_ROOT}/kernel/dm_driver/src'))
+env.CleanPack(['CORE_QDSP6_SW', 'CBSP_QDSP6_SW_IMAGE'], CLEAN_LIST) 

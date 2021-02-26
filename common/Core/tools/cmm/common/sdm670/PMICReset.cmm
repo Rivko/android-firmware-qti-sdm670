@@ -1,0 +1,133 @@
+; ============================================================================
+;
+;  PMICReset.cmm
+;
+; Script to control PMIC Resets
+;
+;  Execution:
+;    PMICReset.cmm [SOFTRESET, WARMRESET, SHUTDOWN, HARDRESET, DVDD_HARDRESET, XVDD_HARDRESET, SYSUP]
+;
+;  This script will perform PMIC reset using PMIC_IO script
+;  
+;  Usage: 
+;     PMICReset.cmm SOFTRESET -> Perform a Soft reset 
+;     PMICReset.cmm WARMRESET -> Perform a warm reset from PMIC
+;     PMICReset.cmm SHUTDOWN  -> Perform a power off
+;     PMICReset.cmm HARDRESET -> Perform a hard reset 
+;     PMICReset.cmm DVDD_HARDRESET -> Perform a dVdd [MainBatt removal] hard reset 
+;     PMICReset.cmm XVDD_HARDRESET -> Perform a xVdd [Main batt and Coin cell removal] hard reset 
+;     PMICReset.cmm SYSUP     -> Perform any settings needed prior to T32 sys.up command
+;
+;  ====================================================================
+;
+;  Copyright (c) 2015-2017 QUALCOMM Technologies Incorporated. All Rights Reserved.
+;  QUALCOMM Proprietary and Confidential.
+;
+;  ====================================================================
+;
+;  $Header: //components/rel/core.glue/1.2/tools/cmm/common/sdm670/PMICReset.cmm#2 $
+;  $DateTime: 2017/09/02 01:23:22 $
+;  $Author: pwbldsvc $
+;
+; ============================================================================
+;
+
+ENTRY &type
+
+;-----------------------------------------------------------------------------
+; Default bus access mode and owner
+;-----------------------------------------------------------------------------
+
+local &SPMIOwnerChannel
+&SPMIOwnerChannel=3  ; LPASS Channel by default
+
+local &BusAccessMode
+&BusAccessMode="EZAXI"
+
+local &CurrentDir
+&CurrentDir=OS.PWD()
+
+local &PmicIoScript
+&PmicIoScript="&CurrentDir"+"\pmic_io.cmm"
+
+LOCAL &res_cmd &option_pin &rst_spmi_stat &pm_model &slave_id
+&slave_id=0xe
+
+IF ("&type"=="SOFTRESET")
+(
+  &res_cmd=0x0
+)
+ELSE IF ("&type"=="WARMRESET")
+(
+  &res_cmd=0x1
+  &slave_id=0
+)
+ELSE IF ("&type"=="SHUTDOWN")
+(
+  &res_cmd=0x4
+)
+ELSE IF ("&type"=="HARDRESET")
+(
+  &res_cmd=0x7
+)
+ELSE IF ("&type"=="DVDD_HARDRESET")
+(
+  &res_cmd=0x8
+)
+ELSE IF ("&type"=="XVDD_HARDRESET")
+(
+  &res_cmd=0x9
+)
+ELSE IF ("&type"=="SYSUP")
+(
+  &res_cmd=0
+  ;Read Secondary PMIC ID
+  do &PmicIoScript read &SPMIOwnerChannel &BusAccessMode 2 0x105
+  ENTRY &rst_spmi_stat &pm_model
+
+  IF ((&rst_spmi_stat!=0)&&(&pm_model==0xA))
+  (
+     ;Enable GPIO20 on PM8994
+     do &PmicIoScript write &SPMIOwnerChannel &BusAccessMode 0 0xD346 0x80
+
+     ;Read Option Pin on PM8994
+     do &PmicIoScript read &SPMIOwnerChannel &BusAccessMode 0 0x108
+     ENTRY &rst_spmi_stat &option_pin
+
+     IF ((&option_pin&0x3)==0x3)               ;Check Bit0 and bit 1
+     (
+       ;GPIO20 on PM8994 Output High
+       do &PmicIoScript write &SPMIOwnerChannel &BusAccessMode 0 0xD340 0x11
+     )
+     ELSE
+     (
+       ;GPIO20 on PM8994 Output Low
+       do &PmicIoScript write &SPMIOwnerChannel &BusAccessMode 0 0xD340 0x10
+     )
+  )
+)
+ELSE
+(
+  PRINT %ERROR "Error! Reset type specified is not supported "
+  ENDDO "Error! Reset type specified is not supported "
+)
+
+; If 0 or none is passed disable the WDOG; else Enable the WDOG
+  
+IF &res_cmd!=0
+(
+  ;Disable SW Reset
+  do &PmicIoScript write &SPMIOwnerChannel &BusAccessMode &slave_id 0x863 0x0
+  WAIT 1.ms
+  ;Config SW Reset to desired need
+  do &PmicIoScript write &SPMIOwnerChannel &BusAccessMode &slave_id 0x862 &res_cmd
+  WAIT 1.ms
+  ;Enable SW Reset
+  do &PmicIoScript write &SPMIOwnerChannel &BusAccessMode &slave_id 0x863 0x80
+  WAIT 1.ms
+  ;Issue Reset and Go
+  do &PmicIoScript write &SPMIOwnerChannel &BusAccessMode &slave_id 0x864 0xA5
+)
+
+ENDDO SUCCESS
+ 

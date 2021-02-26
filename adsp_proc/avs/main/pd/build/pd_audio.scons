@@ -1,0 +1,240 @@
+#===============================================================================
+#
+# DSPS Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009-2017 by Qualcomm Technologies, Inc.  All Rights Reserved
+# Qualcomm Technologies Proprietary and Confidential
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/avs.adsp/2.8.5/pd/build/pd_audio.scons#2 $
+#  $DateTime: 2018/04/04 23:25:35 $
+#  $Author: pwbldsvc $
+#  $Change: 15851677 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 04/18/2014  sc     Removed target-specific folders
+# 04/04/2014  MW     Added SENSORS_DD_DEV_FLAG for HD22
+# 12/02/2012  ag     Add multi PD support
+# 10/02/2012  ag     SMR/QMI cleanup
+# 05/11/2011  jh     Updated path to dal_tests.c
+# 04/14/2011  jh     Updated to handle multiple targets
+# 01/28/2011  ag     Updated to handle init file
+# 12/22/2010  pg     Update for accessing UCOS header files from DALSYS.
+#
+#===============================================================================
+Import('env')
+env = env.Clone()
+import os
+
+#Pass chipset name as cflags
+chipset_name = env.get('CHIPSET')
+env.Append(CFLAGS=' -D'+chipset_name+'=1')
+
+if 'ADSPMODE' in env:
+
+   if 'USES_AUDIO_IMG' not in env and env['MSM_ID'] in ['8996','8998','660','670']:
+      print "USES_AUDIO_IMG is not in environment, bypass audio in user PD init"
+      Return()
+   
+   #-------------------------------------------------------------------------------
+   # Source PATH
+   #-------------------------------------------------------------------------------
+   SRCPATH = ".."
+   env.Replace(HEXAGONCC_OPT = "-Os")
+   
+   
+   #if not env.SubstPathExists(SRCPATH):
+   #   # Legay Path
+   #   SRCPATH = "${BUILD_ROOT}/avs/pd/"
+   
+   env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+   env.Append(CPPDEFINES = ["DAL_NATIVE_PLATFORM"])
+   if 'MDSPMODE' not in env:
+      #Changes for adding qcom and engg timestamps to audio elf.
+      print "=====Creating Audio pd timestamps header files====="
+      engg_build_version = "const char engg_timestamp_pd_audio[] = \""+os.environ.get('OS_ENV_ENGG_TIME_STAMP')+"_PD_AUDIO\";"
+      qcom_build_version = "const char qcom_timestamp_pd_audio[] = \""+os.environ.get('OS_ENV_QCOM_TIME_STAMP')+"_PD_AUDIO\";"
+      file = open('./audio_pd_build_version.h', 'w')
+      file.write(engg_build_version)
+      file.write("\n")
+      file.write(qcom_build_version)
+      file.close()
+   
+   if "USES_AVS_TEST" in env:
+       if env.get('CHIPSET') == "msm8998":
+           env.Append(CFLAGS=' -DSIM_8998_SPECIFIC=1 ')
+   
+   #-------------------------------------------------------------------------------
+   # External depends within CoreBSP
+   #-------------------------------------------------------------------------------
+   env.RequireExternalApi([
+      'BREW',
+      'CS',
+      'DSM',
+     ])
+   
+   #-------------------------------------------------------------------------------
+   # External depends outside CoreBSP
+   #-------------------------------------------------------------------------------
+   CBSP_API = [
+      'AVS',
+      'DAL',
+      'DEBUGTOOLS',
+      'HAL',
+      'HWENGINES',
+      'IODEVICES',
+      'MPROC',
+      'SYSTEMDRIVERS',
+      'HWIO',
+      'HWIO_API',
+      'SERVICES',
+      'BUSES',
+      'POWER',
+       # needs to be last also contains wrong comdef.h
+      'KERNEL',
+   ]
+   
+   env.RequireRestrictedApi(CBSP_API)
+   
+   #-------------------------------------------------------------------------------
+   # Internal depends within CoreBSP
+   #-------------------------------------------------------------------------------
+   env.PublishProtectedApi('AVS',[
+      '.',
+      '../inc',
+      ])
+   
+   env.RequirePublicApi(CBSP_API)
+   env.RequireProtectedApi('AVS')
+   
+   env.UsesInc([
+      "${HWIO}",
+      "${HWIO_API}",
+   ])
+   
+   env.Append(CPPPATH = [
+   #copied over from top level Sensors scons
+      "${BUILD_ROOT}/core/api/kernel/qube",
+      "${BUILD_ROOT}/avs/elite/qurt_elite/inc",
+      "${BUILD_ROOT}/avs/api/mmutils",
+      "${BUILD_ROOT}/avs/api/avcs/inc",
+      "${BUILD_ROOT}/qdsp6/q6mmpm/inc",
+      "${BUILD_ROOT}/core/api/debugtools",
+      "${BUILD_ROOT}/core/api/dal",
+   #		Contents from Toplevel Elite
+      "${BUILD_ROOT}/core/kernel/qurt/config/8200",
+      "${BUILD_ROOT}/core/api/kernel/qurt",
+      "${BUILD_ROOT}/core/api/services",
+      "${BUILD_ROOT}/core/api/mproc",
+      "${BUILD_ROOT}/core/buses/api/i2c",
+      "${BUILD_ROOT}/core/buses/api/systemdrivers",
+      "${BUILD_ROOT}/core/api/systemdrivers",
+      "${BUILD_ROOT}/core/api/power",
+      "${BUILD_ROOT}/core/api/kernel/libstd/stringl",
+      "${BUILD_ROOT}/avs/pd/build",
+   
+   ])
+   
+   #Add service registry if build system supports
+   #Here we are excluding 8996 target since the pd linking script will cause double registration
+   
+   if 'USES_SERVICE_REGISTRY' in env and env['MSM_ID'] not in ['8996'] and 'USES_AVS_TEST' not in env:
+     #import pdb; pdb.set_trace()
+     env.AddServRegService(
+      ['AVS_ADSP_USER'],
+      {
+       'provider'              : 'avs',
+       'service'               : 'audio'
+      })
+   
+   #-------------------------------------------------------------------------------
+   # Sources, libraries
+   #-------------------------------------------------------------------------------
+   START_LIBNAME = 'pd_audio'
+   LIBNAME = 'pd_audio_restart'
+   LIBNAME_STUB = LIBNAME+'_stub'
+   
+   AUDIO_PD_INIT_SOURCES = [
+         '${BUILDPATH}/src/pd_audio_start.c',
+      ]
+   
+   AUDIO_PD_RESTART_SOURCES = [
+         '${BUILDPATH}/src/pd_audio_restart.cpp',
+      ]
+   AUDIO_PD_RESTART_STUB_SOURCES = [
+         '${BUILDPATH}/stub_src/pd_audio_restart.cpp',
+      ]
+   
+   #-------------------------------------------------------------------------------
+   # Add Libraries to image
+   #-------------------------------------------------------------------------------
+   
+   
+   if 'USES_SERVICE_REGISTRY' in env and 'USES_AVS_TEST' not in env:
+      env.AddLibrary(['AVS_ADSP','AVS_ADSP_USER'], '${BUILDPATH}/'+LIBNAME, AUDIO_PD_RESTART_SOURCES)
+   else:
+      env.AddLibrary(['AVS_ADSP','AVS_ADSP_USER'], '${BUILDPATH}/'+LIBNAME_STUB, AUDIO_PD_RESTART_STUB_SOURCES)
+   if 'USES_AUDIO_IMG' in env:
+       env.AddLibrary(['AVS_ADSP_USER'], '${BUILDPATH}/'+START_LIBNAME, AUDIO_PD_INIT_SOURCES)
+
+else:
+
+   if 'USES_MPSS_MULTI_PD' not in env:
+      Return()
+	  
+   #-------------------------------------------------------------------------------
+   # Make all warnings into errors
+   #-------------------------------------------------------------------------------
+   #if env['PRODUCT_LINE'].startswith("MPSS.AT"):
+   #   env.Append(HEXAGON_WARN = ' -Wno-error-high -Wno-error-medium -Wno-error-low ')
+   #else:
+   #   env.Append(CFLAGS = '-Werror')
+   
+   core_public_apis = [
+      'DEBUGTOOLS',
+      'SERVICES',
+      'KERNEL',
+      ]
+   
+   env.RequirePublicApi(core_public_apis, area='core')
+   
+   env.RequireRestrictedApi('AVS')
+   env.RequireProtectedApi('AVS')
+   
+   #-------------------------------------------------------------------------------
+   # Setup source PATH
+   #-------------------------------------------------------------------------------
+   SRCPATH = ".."
+   KLIBNAME = 'pd_audio_root'
+   
+   env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+   
+   ROOT_PD_SOURCES = ['src/pd_audio_start.c']
+   
+   root_sources = env.GlobSourceFiles(ROOT_PD_SOURCES, SRCPATH, posix=True) 
+   env.AddLibrary(['MULTIMEDIA_ROOT_PD'], '${BUILDPATH}/'+KLIBNAME, root_sources)
+   
+   HOST_RCINIT_IMAGES = ['CORE_ROOT_PD', 'MULTIMEDIA_ROOT_PD'] # Should be in guest OS PD only
+   
+   env.Append(CPPDEFINES="AUDIO_IMG_NAME=\\\"audio_process\\\"")
+   
+   if 'USES_RCINIT' in env:
+       env.AddRCInitFunc(
+           HOST_RCINIT_IMAGES, # Executes in HOST to SPAWN audio
+           {
+               'sequence_group'             : 'RCINIT_GROUP_2', # Policy Based
+               'init_name'                  : 'pd_audio',
+               'init_function'              : 'pd_mon_audio',
+               'dependencies'               : ['apr_kdrv','adsppm','adsppm_qdi'],
+           })
+
+   

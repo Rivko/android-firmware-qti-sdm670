@@ -1,0 +1,136 @@
+#===============================================================================
+# Copyright (c) 2012 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===============================================================================
+Import('env')
+
+env = env.Clone()
+
+platform_root = '${BUILD_ROOT}/platform'
+env.Replace(ADSP_PLATFORM_ROOT = platform_root)
+build_folder = str(env.RealPath('${BUILDPATH}'))
+
+APIS=[
+  'ADSPMSGD',
+  'RTLD',
+  'FASTRPC_PROCESS',
+  'FASTRPC_THREAD_QUEUE',
+  'FASTRPC_PORT',
+  'FASTRPC_HEAP',
+  'FASTRPC_INVOKE',
+  'FASTRPC_LOADER',
+  'PLATFORM_LIBS',
+  'PLATFORM_QDI',
+  'MOD_TABLE',
+  'PERF',
+  'QAIC',
+  'HAPSDK',
+  'REMOTE',
+  'PLS',
+  'HAP_POOL',
+  'HAP_UTILS',
+  'QDI_PORTAL',
+  'APPS_MEM',
+  'STDDEF',
+  'A1STD',
+  'ATOMIC',
+  'UTILS',
+  'QLIST',
+  'HAP',
+  'QI',
+  ]
+
+if 'USES_FASTRPC_SHELL_IMG' in env:
+  APIS += ['FASTRPC_HEAP']
+
+if env['IMAGE_NAME'] == 'AVS_ADSP_USER':
+  APIS += ['FASTRPC_HEAP']
+  env.Append(CFLAGS='-DSTATIC_PD=1')  
+  
+env.RequireRestrictedApi(APIS)
+env.RequirePublicApi(APIS)
+
+
+core_public_apis = [
+   'KERNEL',
+   'DEBUGTOOLS',
+   'SERVICES',
+   ]
+
+env.RequirePublicApi(core_public_apis, area='core')
+env.PLRegister("fastrpc_exception",['FASTRPC_SHELL_IMG'])
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${ADSP_PLATFORM_ROOT}/fastrpc_process/src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+SHELL_DEBUG_SOURCES = [
+  env.AddQaicHeaderDep('${BUILDPATH}/fastrpc_uprocess.c', ['apps_mem']),
+  env.QaicSkelFromIdl('adsp_process_group'),
+  env.QaicSkelFromIdl('adsp_current_process'),
+  env.QaicSkelFromIdl('adsp_current_process1'),
+  env.QaicSkelFromIdl('adsp_default_listener'),
+  env.PLCreateDebugFile(str(build_folder + '/fastrpc_exception_debug.c'), str(env.RealPath('${ADSP_PLATFORM_ROOT}/fastrpc_process/src/fastrpc_exception.c'))),
+  ]
+
+SHELL_SOURCES = [
+  '${BUILDPATH}/fastrpc_uprocess.c',
+
+ env.AddQaicHeaderDep('${BUILDPATH}/fastrpc_exception.c', ['adspmsgd_adsp']),
+  env.QaicSkelFromIdl('adsp_process_group'),
+  env.QaicSkelFromIdl('adsp_current_process'),
+  env.QaicSkelFromIdl('adsp_current_process1'),
+  env.QaicSkelFromIdl('adsp_default_listener'),
+  ]
+
+
+SHELL_SOURCES_AVS = [
+  '${BUILDPATH}/fastrpc_uprocess.c',
+  env.QaicSkelFromIdl('adsp_process_group'),
+  env.QaicSkelFromIdl('adsp_current_process'),
+  env.QaicSkelFromIdl('adsp_current_process1'),
+  env.QaicSkelFromIdl('adsp_default_listener'),
+  ]
+
+
+SLPI_SOURCES =  [
+  '${BUILDPATH}/fastrpc_sprocess.c',
+  env.QaicSkelFromIdl('adsp_process_group'),
+  env.QaicSkelFromIdl('adsp_current_process'),
+  env.QaicSkelFromIdl('adsp_current_process1'),
+  env.QaicSkelFromIdl('adsp_default_listener'),
+  ]
+
+SOURCES =  [
+  '${BUILDPATH}/fastrpc_kprocess.c',
+  env.QaicSkelFromIdl('adsp_process_group'),
+  env.QaicSkelFromIdl('adsp_current_process'),
+  env.QaicSkelFromIdl('adsp_current_process1'),
+  env.QaicSkelFromIdl('adsp_default_listener'),
+  ]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+lib = env.AddBinaryLibrary(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+ 'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE'],'${BUILDPATH}/fastrpc_process', SOURCES)
+
+lib = env.AddBinaryLibrary(['SSC_SLPI_USER', 'SSC_ADSP_USER'],'${BUILDPATH}/fastrpc_sprocess', SLPI_SOURCES)
+lib = env.AddBinaryLibrary(['FASTRPC_SHELL_IMG'],'${BUILDPATH}/fastrpc_uprocess', SHELL_SOURCES)
+lib = env.AddBinaryLibrary(['AVS_ADSP_USER'],'${BUILDPATH}/fastrpc_uprocess', SHELL_SOURCES_AVS)
+lib = env.AddBinaryLibrary(['FASTRPC_SHELL_IMG', 'AVS_ADSP_USER'],'${BUILDPATH}/fastrpc_uprocess_debug', SHELL_DEBUG_SOURCES)
+
+#-------------------------------------------------------------------------------
+# Load Subunits (sys)
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+# Clean / pack rules
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.cpp', '*.h', '*.s'], '${ADSP_PLATFORM_ROOT}/fastrpc_process/src'))
+
+env.CleanPack(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+     'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'FASTRPC_SHELL_IMG', 'SSC_SLPI_USER','AVS_ADSP_USER', 'SSC_ADSP_USER'], CLEAN_LIST)

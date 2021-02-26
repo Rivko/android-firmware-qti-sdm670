@@ -1,0 +1,85 @@
+#===============================================================================
+#
+# AVS AU
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2009-2009 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/avs.adsp/2.8.5/elite/module_interfaces/shared_lib_api/build/SharedLibApi.scons#1 $
+#  $DateTime: 2017/11/07 23:00:25 $
+#  $Author: pwbldsvc $
+#  $Change: 14795016 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+
+core_public_apis = [
+   'DEBUGTOOLS',
+   'SERVICES',
+   'KERNEL',
+   ]
+
+env.PublishPrivateApi('AVS',[
+   '../inc',
+   '../auto_generated',
+   ])
+
+env.RequirePublicApi(core_public_apis, area='core')
+env.RequireRestrictedApi(['AVS', 'SHARED_LIBRARY_INC_PATHS'])
+env.RequireProtectedApi('AVS')
+
+env.Append(CFLAGS = ' -Werror ')
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = '..'
+EXPORTSPATH = '..'
+LIBNAME = 'SharedLibApi'
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+# Generate regular source file list
+avs_reg_sources = env.GlobSourceFiles(['/src/*.cpp', '/src/*.c', '/src/*.S'], SRCPATH,posix=True)
+
+# Generate stub source file list
+avs_stub_sources = []
+
+# Genate proprietary source file list
+avs_prop_sources = []
+
+#import pdb; pdb.set_trace()
+if 'USES_AVS_LIBRARY_BUILDER' in env:
+   env.AddAvsLibrary(['AVS_ADSP','AVS_ADSP_USER'], '${BUILDPATH}/'+LIBNAME,
+      [avs_reg_sources, avs_stub_sources, avs_prop_sources], PACK_SRC=True)
+
+#DLExposeFile is defined only when USES_FEATURE_DYNAMIC_LOADING is in env
+if 'USES_FEATURE_DYNAMIC_LOADING' in env:      
+   if "MDSPMODE" in env:
+      load_folder="audio_avs/main"
+   else:
+      load_folder="avs/main"
+   exports_root = str(env.get('BUILD_ROOT', None)) + '/' + load_folder +'/elite/module_interfaces/shared_lib_api/exports'
+
+   env.DLExposeFile(exports_root + '/shared_lib_api_exports.lst')
+
+   #for SIM expose some more symbols (mainly for logging/printf)
+   if 'USES_AVS_TEST' in env:
+      env.DLExposeFile(exports_root + '/shared_lib_api_exports_sim.lst')
+      ## as platform is not built for SIM, export from here.
+      platform_exports = str(env.get('BUILD_ROOT', None)) + '/platform/exports'
+      env.DLExposeFile(platform_exports + '/dl_base_symbols.lst')
+      #env.DLExposeFile(platform_exports + '/dl_hap_symbols.lst')
+      

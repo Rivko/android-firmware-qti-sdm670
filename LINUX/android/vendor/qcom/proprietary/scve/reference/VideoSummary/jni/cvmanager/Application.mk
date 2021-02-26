@@ -1,0 +1,1 @@
+APP_STL := libgnustl_static

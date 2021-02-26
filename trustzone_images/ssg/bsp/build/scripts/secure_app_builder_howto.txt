@@ -1,0 +1,322 @@
+
+This document covers the following:
+
+1. What is the SecureAppBuilder?
+2. What functionality does the SecureAppBuilder provide?
+3. What are the inputs to the SecureAppBuilder?
+4. Where do the build artifacts go when building the app with SecureAppBuilder?
+5. How to compose the inputs that you give to SecureAppBuilder?
+6. How do you compile a shared library using SecureAppLibBuilder?
+7. How to differentiate between 32 bit and 64 bit?
+8. High level app SConscript composition examples
+
+1. What is SecureAppBuilder?
+
+   SecureAppBuilder is a scons pseudo builder. By nature of a pseudo builder
+   it wraps other builders as needed to help compile TA's.
+
+2. What functionality does the SecureAppBuilder provide?
+
+   The SecureAppBuilder loads the tools and builders needed to 
+   compile and generate the image for the trusted application. It also builds
+   or links, as applicable, any platform dependencies that the app needs. This 
+   way, the app only has to consider its software composition and provide 
+   the necessary inputs to the builder to generate the trusted applications
+   image. The app does not have to worry about the formats of the image and
+   the intermediate steps needed to generate the image or the signing of 
+   the image. Given the right inputs to the SecureAppBuilder, it generates the appropriate
+   image.
+
+3. What are the inputs to SecureAppBuilder?
+
+   See section (5) below on how you can generate the input argument lists by
+   argument type such as sources, includes, user_libs.
+
+
+   The SecureAppBuilder takes the following arguments.
+   env.SecureAppBuilder(sources, includes, metadata, image, **kwargs)
+
+   Mandatory arguments:
+   -------------------
+
+     sources = A list of source files that belong to the app
+     includes = the list of directory paths to look for header file defines
+     metadata = the apps metadata dictionary
+     image    = this is the name of the intended apps artifact sans the extension
+
+   Optional arguments passed in as kwargs:
+   ---------------------------------------
+
+      user_libs :
+        pass in a list of app specific libs that the app depends on. These libs
+        could be binary libs in the apps software composition, they may be libs
+        that get compiled as part of the app invoking another libs SConscript or
+        it could even be generated from the apps own sources.
+
+      stack_size :
+        the string that defines the apps required stack size. If not passed,
+        the app gets allocated 0x8000 bytes of stack size
+        eg: stack_size = '0x1A00'
+
+      heap_size :
+        the string that defines the apps required heap size. If not passed,
+        the app gets allocated 0x8000 bytes of heap size
+        eg: heap_size = '0x1A00'
+
+      sec_xml_config :
+        the path to xml config file used to sign the app. By default,
+        the config file in the build config path for all apps is used.
+        The app should have an entry in that config file or the app should
+        provide the path to a config file in which it has its entry related to
+        signing the image. 
+        Default path: ${BUILD_ROOT}/apps/bsp/trustzone/qsapps/build/secimage.xml
+
+      deploy_objects:
+        the list of sources, the object files of which should be deployed to release
+        variant dir.
+
+      deploy_sources:
+        the list of sources that the TA wants to deploy to release variant dir.
+
+      deploy_variants:
+        the list of release variants where the requested deployments will be copied to.
+
+      user_app_id:
+        this is the unique app_id that is used for signing. If the value is not 
+        supplied secure app builder will generate one based on the image name and
+        supply that id to the signing tools. It is recommended to use the generated value
+        unless there is a real need to use a supplied value to sign the image.
+
+
+    The SecureAppBuilder will generate the final image using the mandatory
+    parameters and the other optional arguments provided by the apps SConscript.
+
+4. Where can I find the build artifacts?
+
+   The QC Scons environment generates an ID for every chipset. This ID is
+   referenced as the SHORT_BUILDPATH environment variable. There is another
+   environment variable defined - OUT_DIR. The apps artifacts are placed
+   under a directory : OUT_DIR/SHORT_BUILD_PATH/image where 'image' is the 
+   name passed in as the argument to the SecureAppBuilder.
+
+   The app SConscript can override the values of default SHORT_BUILDPATH and
+   OUT_DIR environment variables to control the output directory. By default,
+   these values are defined by the build environment inherited by the apps.
+
+   The app (elf/mbn) app image files are placed in this directory. The build 
+   objects of the source files are placed in the 'objects' directory of the 
+   above path. Separate directories are created to place the image files 
+   for the signed and signed+encrypted images.
+
+5. How do I write an App's SConscript to make use of the SecureAppBuilder?
+
+   The first thing you need to decide is the directory structure for the 
+   software organization of your App. Once you have broken down the directory
+   structure of your app, you can determine the software composition of the app.
+   (i)  Do you want to compile the sources from all directories all together into the app?
+   (ii) Do you want to build libraries from sources of different 
+        directories and then link the libraries in the final app image? 
+   (iii) Do you want to combine sources from most of the source directories together 
+         and only want a certain set of source directories generating libraries? Then 
+         you can compose the app as a combination of source files and libraries.
+
+   Based on the choice of software composition, you can decide the 
+   number of SConscript files you need and their directory location.
+
+   Every app needs one main SConscript file. In this SConscript file, it defines
+   the list of sources, includes, metadata and the image name. Now, based on
+   software configuration determined for the app, there may be a need to 
+   have libraries for the app. The examples in sections below provide
+   examples of generating these lists for various keys.
+
+   5a. Generating list of sources:
+   -------------------------------
+
+   The list of sources can be generated in two ways. One way is to explicitly 
+   list out the source files in a python list and second is to use the SCons 
+   Glob utility to generate the list of sources
+
+   (1): Explicitly specify list of sources:
+   
+   The list can have one or more sources defined. You can also mix source and 
+   pre-built object files in the list. The path to the source files in the list
+   is the file-relative path from the directory where the SConscript resides.
+
+   eg: sources = ['/path/to/source1.c',
+                  '/path/to/source2.c',
+                  '/path/to/pre-built/obj.o',
+                 ]
+
+   (2): Glob the source files from directory:
+
+   The list can be generated by Globing for one or more directories. Be aware
+   that this Glob function is a SCons utility and not the python glob. So
+   the list of sources will actually be a list of Node Objects referring to 
+   individual source files. The path to the source files in the list
+   is the file relative path from the directory where the SConscript resides.
+
+   eg: sources = Glob('/path/to/srcdir1/*.c') + \
+                 Glob('/path/to/srcdir2/*.c') 
+
+
+   5b. Generating list of include paths:
+   -------------------------------------
+
+   The list of include search paths can be generated by explicitly
+   specifying the path. Generally, there is no uniform name for include
+   paths, so globing for paths becomes a little difficult though not 
+   impossible. The recommended way is to specify the paths explicitly 
+   in the list.
+
+   eg: includes = ['/path/to/header/dir1',
+                   '/path/to/header/dir2'
+                  ]
+
+
+   5c. Generating list of libraries:
+   ---------------------------------
+
+   You need this section only if you determine that the apps software composition
+   model has libraries. Once you define the list of libraries
+   needed by your app, you pass it to the SecureAppBuilder with the keyword
+   argument of: 
+
+   user_libs = ['your list of libs']. 
+
+   The different ways to generate the list of libs are as follows:
+
+   (1): Packaging a third party library with your app:
+
+   Your app needs to package and link against a pre-built third party library. 
+   You may or may not have access to the sources for this library, but you
+   want to add the library to your app.
+
+   libs = ['/path/to/pre-built-lib']
+
+   (2): Generating libraries from source directories in your repository:
+
+   Your app depends on sources from some other directory which may or may not
+   be part of your app directory structure, but is available in your repository.
+   Moreover, these sources could be used by multiple apps, so it is better to
+   compile them into libraries and then link the library in the app. For this,
+   you will invoke the SConscript file for the library so your app has a handle
+   to the library. You then append this library in the list of your libs.
+
+   needed_lib_1 = SConscript('/path/to/sconscript/for/needed_lib_1/SConscript', 
+                             exports = 'env')
+   needed_lib_2 = SConscript('/path/to/sconscript/for/needed_lib_2/SConscript', 
+                             exports = 'env')
+ 
+   my_needed_libs = ['needed_lib_1', 'needed_lib_2']
+   
+   (3): Providing path to optional configuration library:
+
+   Your app may need to provide an optional configuration library. This library
+   may not currently exist in the workspace, but it can be added later.
+   If such a library is added later, you still need to recompile the app.
+   Such a library is referenced as a SCons node object and added to the list 
+   of libs conditionally if the Scons node object exists.
+ 
+   my_libs = []
+   config_lib = File('/path/to/config/lib')
+   if config_lib.exists():
+     my_libs.extend(config_lib)
+
+
+6. How can you write the SConscript to generate a library?
+
+   The library SConscript has to clone the environment by calling:
+   env = env.Clone()
+
+   The SConscript of the library should have the following mandatory parameters
+   defined.
+
+   libname = this is the name of the library
+   sources = the list of source files that get compiled to form the library
+   includes = the list of directory paths to search for header files
+
+   Optional arguments passed in as kwargs:
+   ---------------------------------------
+
+      deploy_sources:
+        the list of sources of the library that need to be deployed.
+
+      deploy_variants:
+        the list of release variants to deploy the sources or lib.
+
+      deploy_lib:
+        set to True if the lib should be deployed.
+
+   After this, the library SConscript can call the SecureAppLibBuilder to build
+   the library:
+
+   lib = env.SecureAppLibBuilder(includes, sources, libname)
+
+   The library builder returns back the reference to the SCons Node object
+   to the caller as follows:
+
+   Return('lib') # Here lib is the value returned by SecureAppLibBuilder
+
+7. How to differentiate between 32bit and 64bit?
+
+   The SCons environment has the PROC key. Its value is used to determine
+   if the compilation is intended for 32bit architecture or 64 bit.
+   If the value of the key equals the string 'scorpion' it is treated as 32bit.
+   If the value of the key equals the string 'A53_64' it is treated as 64.
+
+   So, in your SConscript file you can write code as follows:
+
+   if env['PROC'] == 'scorpion':
+     #32 bit related conditionals go here
+   else:
+     #64 bit related conditionals go here
+
+8. Example SConscript contents for different composition models:
+   In the examples below, the [] indicates list and {} indicates a dictionary.
+   The contents of these should be populated as appropriate for the app, based on
+   guidelines in section 5 above. We use the concept of scons Alias targets to 
+   associate the build target name with the app_units that get compiled with 
+   SecureAppBuilder.
+
+   7a. All sources in one directory. Assume SConscript resides alongside sources.
+
+   sources = []
+   includes = []
+   metadata = {}
+   image = 'app_name'
+   app_units = env.SecureAppBuilder(sources, includes, metadata, image)
+   app_op = env.Alias('target_name', app_units)
+
+
+   7b. One SConscript for sources in different directories. 
+
+   sources = []  #combined list of sources from multiple dirs
+   includes = []
+   metadata = {}
+   image = 'app_name'
+   app_units = env.SecureAppBuilder(sources, includes, metadata, image)
+   app_op = env.Alias('target_name', app_units)
+
+   7c. One main SConscript file and other SConscript file that compile the 
+       library.
+
+   Main SConcript file:
+   --------------------
+   lib1 = SConscript('/path/to/library_SConscript', exports = 'env')
+   lib2 = SConscript('/path/to/library_SConscript', exports = 'env')
+   sources = []  #combined list of sources from multiple dirs
+   includes = []
+   metadata = {}
+   image = 'app_name'
+   user_libs = [lib1, lib2]
+   app_units = env.SecureAppBuilder(sources, includes, metadata, image, user_libs)
+   app_op = env.Alias('target_name', app_units)
+   
+   Shared library SConscript file:
+   ------------------------------- 
+   env = env.Clone()
+   sources = []
+   includes = []
+   libname = 'my_lib_name'
+   lib = env.SecureAppLibBuilder(sources, includes, libname)
+   Return('lib')

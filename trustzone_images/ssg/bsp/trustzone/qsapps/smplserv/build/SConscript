@@ -1,0 +1,71 @@
+#===============================================================================
+#
+# smplserv  build script
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2010-2017 by QUALCOMM, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/ssg.tz/1.0.2/bsp/trustzone/qsapps/smplserv/build/SConscript#1 $
+#  $DateTime: 2018/02/06 03:00:17 $
+#  $Author: pwbldsvc $
+#  $Change: 15399933 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+#===============================================================================
+import os
+Import('env')
+
+env = env.Clone()
+#------------------------------------------------------------------------------
+# Check if we need to load this script or just bail-out
+#------------------------------------------------------------------------------
+# alias - First alias is always the target then the other possible aliases
+aliases = [
+   'smplserv', 'uefitzt', 'tzbsptest', 'deploy'
+]
+env.InitImageVars(
+   alias_list = aliases,       # list of aliases, unique name index [0]
+   proc = 'scorpion',          # proc settings
+   config = 'apps',            # config settings
+   build_tags = ['APPS_PROC',
+                 'SMPLSERV_IMAGE'
+                ],  # list of build tags for sub lib scripts
+)
+
+
+if not env.CheckAlias():
+  Return()
+#------------------------------------------------------------------------------
+# Configure and load in USES and path variables
+#------------------------------------------------------------------------------
+env.LoadToolScript('${BUILD_ROOT}/ssg/bsp/build/scripts/secure_app_builder.py')
+env.InitBuildConfig()
+env.Append(OUT_DIR = os.getcwd())
+sconspath = env.subst('${BUILD_ROOT}/ssg/securemsm/trustzone/qsapps/smplserv/src/SConscript')
+env.Replace(SRC_SCONS_ROOT = sconspath.split('SConscript')[0])
+env.Replace(DEPLOY_APP = True)
+SConscript( sconspath, exports='env',)
+env.Deploy(['SConscript',
+            'data_prov_assets/Encryption/Unified/default/l3_key.bin',
+            'data_prov_assets/Encryption/Unified/default/l1_key.bin',
+            'data_prov_assets/Encryption/Unified/default/l2_key.bin',
+            'data_prov_assets/Encryption/Unified/default/config.xml',
+            'data_prov_assets/General_Assets/Signing/openssl/opensslroot.cfg',
+            'data_prov_assets/General_Assets/Signing/openssl/v3.ext',
+            'data_prov_assets/General_Assets/Signing/openssl/v3_attest.ext',
+            'data_prov_assets/General_Assets/Signing/openssl/config.xml',
+            'data_prov_assets/Signing/Local/default/oem_secapp.key',
+            'data_prov_assets/Signing/Local/default/sha256rootcert.key',
+            'data_prov_assets/Signing/Local/default/oem_secapp.crt',
+            'data_prov_assets/Signing/Local/default/config.xml',
+           ])
+

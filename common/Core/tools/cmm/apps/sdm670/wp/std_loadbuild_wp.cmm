@@ -1,0 +1,409 @@
+//============================================================================
+//  Name:                                                                     
+//    std_loadbuild_wp.cmm 
+//
+//  Description:                                                              
+//    WP Specific Build loading script
+//                                                                            
+// Copyright (c) 2012 - 2017 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who           what, where, why
+// --------   ---           ---------------------------------------------------------
+// 04/06/2017 NAKKALA       Ported for SDM845
+// 01/06/2016 JBILLING      Revert storesec binary changes, ensure that tzapps.bin is from apps build not tz build
+// 11/08/2016 JBILLING      Add storesec binary
+// 09/08/2016 JBILLING      Further updates per Nakkala
+// 05/26/2016 JBILLING      WP updates per Nakkala
+// 04/25/2016 JBILLING      Ported for 8998
+
+//////////////////////////Top Level Variables///////////////////////
+
+//This script makes one big list of variables with all paths and loads all into each LUN.
+//However, some variables exist in multiple directories. If so, load those explicitly
+//by calling script recursively in LOADIMG mode, not as part of the group.
+LOCAL &load_alone_variables
+&load_alone_variables="tzapps.bin"
+&load_alone_image="appsboot"
+
+//////////////////////////Header to catch subroutine call/////////////////////////
+
+
+LOCAL &ArgumentLine &rvalue &SUBROUTINE
+ENTRY %LINE &ArgumentLine
+    
+    &SUBROUTINE="MAIN" 
+    AREA.SELECT
+    
+    GOSUB &SUBROUTINE &ArgumentLine
+    ENTRY %LINE &rvalue 
+
+    GOSUB EXIT &rvalue
+
+
+////////////////////////////////////////////////////////////////
+//
+//            MAIN
+//            Main std_loadbuild_le logic
+//            Expected input: 
+//                loadoption - Load option - Supported : ERASEONLY, LOADCOMMON, LOADFULL, LOADIMG
+//                loadimages - Valid image name. Can be used only with LOADIMG option.
+//                extraoptions - additional settings
+//                  
+//
+////////////////////////////////////////////////////////////////
+MAIN:
+    LOCAL &loadoption &loadimages &extraoptions
+    ENTRY &loadoption &loadimages &extraoptions
+    // We have checked for all the intercom sessions at this point and we don't need any error
+
+    //Execute with flavor for wp vs wd. FLAVOR_OPT should get set in std_buildoptions.cmm.
+    GLOBAL &FLAVOR_OPT
+    IF "&FLAVOR_OPT"!=""
+    (
+        do std_utils EXECUTESCRIPT EXIT &METAROOTDIR/common/build/app/gen_buildflavor.cmm &FLAVOR_OPT
+    )
+    
+    LOCAL &binary_list &temp 
+
+    LOCAL &CWD
+    LOCAL &jtagprogrammer_elf_location
+    // Switch to the tools directory
+    &CWD=OS.PWD()
+
+    // Check for the boot option
+    do hwio 
+    
+    GOSUB CONFIGURE_MEMORY_STORAGE_TYPE
+    LOCAL &StorageOption &Programmer &StorageType &MaxPartitions &XML_Location
+    ENTRY &StorageOption &Programmer &StorageType &MaxPartitions &XML_Location
+
+    //Always fill out jtagprogrammer.elf location
+    do std_utils FILEXIST DOFATALEXIT &BOOT_BUILDROOT/&BOOT_BINARY
+    &jtagprogrammer_elf_location=OS.FILE.PATH("&BOOT_BUILDROOT/&BOOT_BINARY")
+    &jtagprogrammer_elf_location="&jtagprogrammer_elf_location"+"/JtagProgrammer.elf"
+
+
+    // Erase only
+    IF (("&loadoption"=="ERASEONLY")||("&loadoption"=="LOADCOMMON")||("&loadoption"=="LOADFULL"))
+    (
+        //only erase UFS if specifically asked for
+        IF ("&StorageType"=="emmc")||("&StorageType"=="ufs")
+        (  
+            // Only erase the chip and exit
+            CD.DO &BOOT_BUILDROOT/&Programmer ERASE elfpath=&jtagprogrammer_elf_location
+        )
+    )
+
+    // Load common images
+    IF (("&loadoption"=="LOADCOMMON")||("&loadoption"=="LOADFULL"))
+    (
+        // Check for all the common images 
+
+        // Check for the presence of all the binaries
+        // Not needed because meta-build should have populated all this information
+        // XBL, AOP, TZ, APPS
+        //boot: xbl.elf,xbl_config.elf,pmic.elf,tools.fv
+        do std_utils FILEXIST DOFATALEXIT &BOOT_BUILDROOT/&BOOT_BINARY
+        do std_utils FILEXIST DOFATALEXIT &BOOT_BUILDROOT/&BOOT_CONFIG
+        do std_utils FILEXIST DOFATALEXIT &BOOT_BUILDROOT/&PMIC_BINARY
+        //do std_utils FILEXIST DOFATALEXIT &BOOT_BUILDROOT/&TOOLSFV_BINARY
+        //qup: qupv3fw.elf
+        do std_utils FILEXIST DOFATALEXIT &METAROOTDIR/&QUP_BINARY
+        //aop: aop.mbn
+        do std_utils FILEXIST DOFATALEXIT &AOP_BUILDROOT/&AOP_BINARY
+        //tz: tz.mbn,hyp.mbn,devcfg.mbn
+        do std_utils FILEXIST DOFATALEXIT &TZ_BUILDROOT/&TZ_BINARY
+        do std_utils FILEXIST DOFATALEXIT &TZ_BUILDROOT/&HYP_BINARY
+        do std_utils FILEXIST DOFATALEXIT &TZ_BUILDROOT/&TZDEVCFG_BINARY
+        //apps: tzapps.bin,efiesp.bin,fat16.bin
+        do std_utils FILEXIST DOFATALEXIT &APPS_BUILDROOT/&UEFISEC_BINARY
+        do std_utils FILEXIST DOFATALEXIT &APPS_BUILDROOT/&EFIESP_BINARY
+        do std_utils FILEXIST DOFATALEXIT &APPS_BUILDROOT/&APPSCONFIG_BINARY
+        
+        // Now flash each partition one by one
+        // Flash the partition table
+        &searchpaths="&XML_Location"
+        &partition=0
+        LOCAL &xml &files
+        WHILE (&partition<&MaxPartitions)
+        (
+            &xml="rawprogram"+FORMAT.DECIMAL(1, &partition)+".xml"
+            &files="gpt_main"+FORMAT.DECIMAL(1, &partition)+".bin,"+"gpt_backup"+FORMAT.DECIMAL(1,&partition)+".bin"
+            CD.DO &BOOT_BUILDROOT/&Programmer LOAD searchpaths=&searchpaths xml=&xml files=&files elfpath=&jtagprogrammer_elf_location
+            &partition=&partition+1
+        )
+        
+        ////create searchpath list/////
+        &searchpaths="&XML_Location,"+OS.FILE.PATH(&BOOT_BUILDROOT/&BOOT_BINARY)+","+OS.FILE.PATH(&BOOT_BUILDROOT/&BOOT_CONFIG)+","+OS.FILE.PATH(&BOOT_BUILDROOT/&PMIC_BINARY)+","+OS.FILE.PATH(&BOOT_BUILDROOT/&TOOLSFV_BINARY)+","+OS.FILE.PATH(&METAROOTDIR/&QUP_BINARY)+","+OS.FILE.PATH(&AOP_BUILDROOT/&AOP_BINARY)+","+OS.FILE.PATH(&TZ_BUILDROOT/&TZ_BINARY)+","+OS.FILE.PATH(&TZ_BUILDROOT/&HYP_BINARY)+","+OS.FILE.PATH(&TZ_BUILDROOT/&TZDEVCFG_BINARY)+","+OS.FILE.PATH(&APPS_BUILDROOT/&UEFISEC_BINARY)+","+OS.FILE.PATH(&APPS_BUILDROOT/&EFIESP_BINARY)+","+OS.FILE.PATH(&APPS_BUILDROOT/&APPSCONFIG_BINARY)
+        
+        LOCAL &metasearchpath
+        &metasearchpath="&METASCRIPTSDIR/../../../config"+","+"&XML_Location"
+        
+        
+        ////create binary list////////
+            //boot binaries
+                &binary_list=OS.FILE.NAME(&BOOT_BUILDROOT/&PMIC_BINARY)
+                &temp=OS.FILE.NAME(&BOOT_BUILDROOT/&BOOT_BINARY)
+                IF (STRING.SCAN("&load_alone_variables","&temp",0)==-1)
+                (
+                    &binary_list="&binary_list"+","+"&temp"
+                )
+                &temp=OS.FILE.NAME(&BOOT_BUILDROOT/&BOOT_CONFIG)
+                IF (STRING.SCAN("&load_alone_variables","&temp",0)==-1)
+                (
+                    &binary_list="&binary_list"+","+"&temp"
+                )
+                &temp=OS.FILE.NAME(&BOOT_BUILDROOT/&TOOLSFV_BINARY)
+                IF (STRING.SCAN("&load_alone_variables","&temp",0)==-1)
+                (
+                    &binary_list="&binary_list"+","+"&temp"
+                )
+            //QUP binaries
+                &temp=OS.FILE.NAME(&METAROOTDIR/&QUP_BINARY)
+                IF (STRING.SCAN("&load_alone_variables","&temp",0)==-1)
+                (
+                    &binary_list="&binary_list"+","+"&temp"
+                )
+            //AOP binaries
+                &temp=OS.FILE.NAME(&AOP_BUILDROOT/&AOP_BINARY)
+                IF (STRING.SCAN("&load_alone_variables","&temp",0)==-1)
+                (
+                    &binary_list="&binary_list"+","+"&temp"
+                )
+            //TZ binaries
+                &temp=OS.FILE.NAME(&TZ_BUILDROOT/&TZ_BINARY)
+                IF (STRING.SCAN("&load_alone_variables","&temp",0)==-1)
+                (
+                    &binary_list="&binary_list"+","+"&temp"
+                )
+                &temp=OS.FILE.NAME(&TZ_BUILDROOT/&HYP_BINARY)
+                IF (STRING.SCAN("&load_alone_variables","&temp",0)==-1)
+                (
+                    &binary_list="&binary_list"+","+"&temp"
+                )
+                &temp=OS.FILE.NAME(&TZ_BUILDROOT/&TZDEVCFG_BINARY)
+                IF (STRING.SCAN("&load_alone_variables","&temp",0)==-1)
+                (
+                    &binary_list="&binary_list"+","+"&temp"
+                )
+            //TZAPPS, bootmgr and ACPI binaries
+                &temp=OS.FILE.NAME(&APPS_BUILDROOT/&UEFISEC_BINARY)
+                IF (STRING.SCAN("&load_alone_variables","&temp",0)==-1)
+                (
+                    &binary_list="&binary_list"+","+"&temp"
+                )
+                &temp=OS.FILE.NAME(&APPS_BUILDROOT/&EFIESP_BINARY)
+                IF (STRING.SCAN("&load_alone_variables","&temp",0)==-1)
+                (
+                    &binary_list="&binary_list"+","+"&temp"
+                )
+                &temp=OS.FILE.NAME(&APPS_BUILDROOT/&APPSCONFIG_BINARY)
+                IF (STRING.SCAN("&load_alone_variables","&temp",0)==-1)
+                (
+                    &binary_list="&binary_list"+","+"&temp"
+                )
+        
+
+        &partition=0
+        WHILE (&partition<&MaxPartitions)
+        (
+            &xml="rawprogram"+FORMAT.DECIMAL(1, &partition)+".xml"
+            CD.DO &BOOT_BUILDROOT/&Programmer LOAD searchpaths=&searchpaths xml=&xml files=&binary_list elfpath=&jtagprogrammer_elf_location
+            &partition=&partition+1
+        )
+        
+        //Call script recursively to load only load_alone_images.
+        if ("&load_alone_variables"!="")
+        (
+            do std_loadbuild_wp LOADIMG &load_alone_image
+        )
+        
+        // Apply the disk patches
+        &searchpaths="&XML_Location"
+        &partition=0
+        WHILE (&partition<&MaxPartitions)
+        (
+            &xml="patch"+FORMAT.DECIMAL(1, &partition)+".xml"
+            CD.DO &BOOT_BUILDROOT/&Programmer PATCH searchpaths=&searchpaths xml=&xml elfpath=&jtagprogrammer_elf_location
+            &partition=&partition+1
+        )
+        
+
+    )
+
+    // Load common images
+    IF ("&loadoption"=="LOADIMG")
+    (
+        LOCAL &binary_list &binarypath
+        
+        // Check for the binary first 
+        IF ("&loadimages"=="xbl")
+        (
+            do std_utils FILEXIST DOFATALEXIT &BOOT_BUILDROOT/&BOOT_BINARY
+            do std_utils FILEXIST DOFATALEXIT &BOOT_BUILDROOT/&BOOT_CONFIG
+            do std_utils FILEXIST DOFATALEXIT &BOOT_BUILDROOT/&PMIC_BINARY
+            //do std_utils FILEXIST DOFATALEXIT &BOOT_BUILDROOT/&TOOLSFV_BINARY
+            
+            &binary_list=OS.FILE.NAME(&BOOT_BUILDROOT/&PMIC_BINARY)
+            &temp=OS.FILE.NAME(&BOOT_BUILDROOT/&BOOT_BINARY)
+            &binary_list="&binary_list"+","+"&temp"
+            &temp=OS.FILE.NAME(&BOOT_BUILDROOT/&BOOT_CONFIG)
+            &binary_list="&binary_list"+","+"&temp"
+            &temp=OS.FILE.NAME(&BOOT_BUILDROOT/&TOOLSFV_BINARY)
+            &binary_list="&binary_list"+","+"&temp"
+            
+            //"xbl.elf,xbl_config.elf,pmic.elf,tools.fv"
+            &binarypath=OS.FILE.PATH("&BOOT_BUILDROOT/&BOOT_BINARY")+","+OS.FILE.PATH("&BOOT_BUILDROOT/&BOOT_CONFIG")+","+OS.FILE.PATH("&BOOT_BUILDROOT/&PMIC_BINARY")+","+OS.FILE.PATH("&BOOT_BUILDROOT/&TOOLSFV_BINARY")
+        )
+        IF ("&loadimages"=="tz")
+        (
+            do std_utils FILEXIST DOFATALEXIT &TZ_BUILDROOT/&TZ_BINARY
+            do std_utils FILEXIST DOFATALEXIT &TZ_BUILDROOT/&HYP_BINARY
+            do std_utils FILEXIST DOFATALEXIT &TZ_BUILDROOT/&TZDEVCFG_BINARY
+            
+            &binary_list=OS.FILE.NAME(&TZ_BUILDROOT/&TZ_BINARY)
+            &temp=OS.FILE.NAME(&TZ_BUILDROOT/&HYP_BINARY)
+            &binary_list="&binary_list"+","+"&temp"
+            &temp=OS.FILE.NAME(&TZ_BUILDROOT/&TZDEVCFG_BINARY)
+            &binary_list="&binary_list"+","+"&temp"
+            
+            //"tz.mbn,hyp.mbn,devcfg.mbn"
+            &binarypath=OS.FILE.PATH("&TZ_BUILDROOT/&TZ_BINARY")+","+OS.FILE.PATH("&TZ_BUILDROOT/&HYP_BINARY")+","+OS.FILE.PATH("&TZ_BUILDROOT/&TZDEVCFG_BINARY")
+        )
+        IF ("&loadimages"=="qup")
+        (
+            do std_utils FILEXIST DOFATALEXIT &METAROOTDIR/&QUP_BINARY
+            
+            &binary_list=OS.FILE.NAME(&METAROOTDIR/&QUP_BINARY)
+            
+            //"qupv3fw.elf"
+            &binarypath=OS.FILE.PATH("&METAROOTDIR/&QUP_BINARY")
+        )
+        IF ("&loadimages"=="rpm")||("&loadimages"=="aop")
+        (
+            do std_utils FILEXIST DOFATALEXIT &AOP_BUILDROOT/&AOP_BINARY
+            
+            &binary_list=OS.FILE.NAME(&AOP_BUILDROOT/&AOP_BINARY)
+            
+            //"aop.mbn"
+            &binarypath=OS.FILE.PATH("&AOP_BUILDROOT/&AOP_BINARY")
+        )
+        
+        IF ("&loadimages"=="appsboot")
+        (
+            do std_utils FILEXIST DOFATALEXIT &APPS_BUILDROOT/&UEFISEC_BINARY
+            //do std_utils FILEXIST DOFATALEXIT &APPS_BUILDROOT/&APPSCONFIG_BINARY
+            
+            &binary_list=OS.FILE.NAME(&APPS_BUILDROOT/&UEFISEC_BINARY)
+            //&temp=OS.FILE.NAME(&APPS_BUILDROOT/&APPSCONFIG_BINARY)
+            //&binary_list="&binary_list"+","+"&temp"
+            
+            //"tzapps.bin"
+            &binarypath=OS.FILE.PATH("&APPS_BUILDROOT/&UEFISEC_BINARY")
+            //"tzapps.bin,fat16.bin"
+            //&binarypath=OS.FILE.PATH("&APPS_BUILDROOT/&UEFISEC_BINARY")+","+OS.FILE.PATH("&APPS_BUILDROOT/&APPSCONFIG_BINARY")
+        )
+        
+        // Flash the image now
+        &searchpaths="&XML_Location"+","+"&binarypath"
+        &partition=0
+        WHILE (&partition<&MaxPartitions)
+        (
+            &xml="rawprogram"+FORMAT.DECIMAL(1, &partition)+".xml"
+            CD.DO &BOOT_BUILDROOT/&Programmer LOAD searchpaths=&searchpaths xml=&xml files=&binary_list elfpath=&jtagprogrammer_elf_location
+            &partition=&partition+1
+        )
+		
+        B.DELETE /ALL
+		
+    )
+
+    // Load HLOS images
+    IF ("&loadoption"=="LOADFULL")
+    (
+        // Change the active partition. This is needed only if the user flashes an HLOS that needs a different partition
+        do std_utils EXECUTESCRIPT EXIT &BOOT_BUILDROOT/&Programmer 9 activeboot=1 elfpath=&jtagprogrammer_elf_location
+        
+        B.DELETE /ALL
+    )
+    
+    
+    // Return to the old directory
+    CD &CWD
+    
+    
+    //FIXME - get programmer scripts to return success or failure arguments
+    &result="SUCCESS"
+    RETURN &result
+    
+    
+////////////////////////////////////////////////////////////////
+//
+//            CONFIGURE_MEMORY_STORAGE_TYPE
+//            Sets loader, storage type, partition values etc based on storage type
+//            Expected input: 
+//                StorageOption - Load option - Supported : ERASEONLY, LOADCOMMON, LOADFULL, LOADIMG
+//                  
+//
+////////////////////////////////////////////////////////////////    
+CONFIGURE_MEMORY_STORAGE_TYPE:
+    LOCAL &StorageOption &Programmer &StorageType &MaxPartitions &XML_Location
+    do std_utils HWIO_INF BOOT_CONFIG FAST_BOOT
+    ENTRY &StorageOption
+    
+
+    //Only UFS for 845
+    IF (OS.DIR("&BOOT_BUILDROOT/QcomPkg"))
+    (
+        &Programmer="QcomPkg/SDM670Pkg/Tools/storage/UFS/jtagprogrammer"
+    )
+    ELSE
+    (
+        &Programmer="boot_images/QcomPkg/SDM670Pkg/Tools/storage/UFS/jtagprogrammer"
+    )
+    &XML_Location="&METASCRIPTSDIR/../../../build/ufs"
+    &StorageType="ufs"
+    &MaxPartitions=6
+
+    RETURN &StorageOption &Programmer &StorageType &MaxPartitions &XML_Location
+    
+
+
+
+EXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    ENDDO &rvalue
+    
+
+//Should never get here. 
+FATALEXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    IF STRING.SCAN("&FAILUREKEYWORD","FAILUREKEYWORD",0)==-1
+    (
+        GOSUB EXIT &FAILUREKEYWORD - &rvalue
+    )
+    ELSE
+    (
+        GOSUB EXIT &rvalue
+    )
+    
+//Should never get here
+    END
+
+
+
+    
+    
+    
+
+        
+

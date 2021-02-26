@@ -1,0 +1,398 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- edited with XMLSpy v2012 rel. 2 sp1 (http://www.altova.com) by John P. Domingo (Qualcomm Technologies, Inc.) -->
+<!--
+
+   Name:   signature.xsd
+   Author: jdomingo
+   Date:   11/27/2012
+
+   Description:
+   This schema describes the structure and content of a Signature Package.  A
+   Signature Package is a container that is used to record and return results
+   of generated signatures based on a corresponding Signing Package.
+   Essentially, a Signature Package is the response to the submission of a
+   Signing Package; it is constructed with a number of Signature Responses
+   EQUAL to the number of Signing Requets in the corresponding Signing Package.
+
+-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+   <!--
+      Custom types used within this schema...
+   -->
+   <xs:simpleType name="ST_SPDigest">
+      <xs:restriction base="xs:hexBinary"/>
+   </xs:simpleType>
+   <!--
+      Schema Elements...
+   -->
+   <xs:element name="StatusCode">
+      <xs:annotation>
+         <xs:documentation>
+Element:
+StatusCode
+
+Description:
+REQUIRED element under the SignatureResponse element, which specifies the
+status code returned from the processing of a Signing Request.
+         </xs:documentation>
+      </xs:annotation>
+      <xs:simpleType>
+         <xs:restriction base="xs:string"/>
+      </xs:simpleType>
+   </xs:element>
+   <xs:element name="SourceID">
+      <xs:annotation>
+         <xs:documentation>
+Element:
+SourceID
+
+Description:
+OPTIONAL element which can be used by a Client application to specify the
+source which created the original Signing Request that.  This content will
+be copied from the original Signing Request.
+         </xs:documentation>
+      </xs:annotation>
+      <xs:simpleType>
+         <xs:restriction base="xs:string"/>
+      </xs:simpleType>
+   </xs:element>
+   <xs:element name="Description">
+      <xs:annotation>
+         <xs:documentation>
+Element
+Description
+
+Description:
+OPTIONAL element which can be used by a Client application to provide
+additional context for the original Signing Request.  This content will
+typically be copied from the original Signing Request.
+         </xs:documentation>
+      </xs:annotation>
+      <xs:simpleType>
+         <xs:restriction base="xs:string"/>
+      </xs:simpleType>
+   </xs:element>
+   <xs:element name="SignatureResponse">
+      <xs:annotation>
+         <xs:documentation>
+Element:
+SignatureResponse
+
+Description:
+REQUIRED element which encapsulates a single Signing Request response.
+         </xs:documentation>
+      </xs:annotation>
+      <xs:complexType>
+         <xs:sequence>
+            <xs:element ref="SourceID" minOccurs="0"/>
+            <xs:element ref="Description" minOccurs="0"/>
+            <xs:element ref="StatusCode"/>
+            <xs:choice>
+               <xs:sequence>
+                  <xs:element ref="Result" minOccurs="0">
+                     <xs:annotation>
+                        <xs:documentation>
+Element:
+Result
+
+Description:
+OPTIONAL element which contains the processing result generated for a given
+Signing Request when the processing of a Signing Request was SUCCESSFUL! 
+
+NOTE:  The Client is exptected to have intimiate knowledge of the content
+contained inthe SignatureResponse's Result element, and know how to process it.
+         </xs:documentation>
+                     </xs:annotation>
+                  </xs:element>
+                  <xs:element ref="MetaDatum" minOccurs="0"/>
+               </xs:sequence>
+               <xs:sequence>
+                  <xs:element ref="Error" minOccurs="0">
+                     <xs:annotation>
+                        <xs:documentation>
+Element:
+Error
+
+Description:
+OPTIONAL element which will exist only if a processing of a Signing Requests
+results in an error.  The Error will contain a brief explanation of the error
+encountered, and possibly an error code which can be used to find more detailed
+information regarding the context of the error.
+         </xs:documentation>
+                     </xs:annotation>
+                  </xs:element>
+               </xs:sequence>
+            </xs:choice>
+         </xs:sequence>
+         <xs:attribute name="sequenceId" use="required">
+            <xs:annotation>
+               <xs:documentation>
+Attribute:
+sequenceId
+
+Description:
+This attribute in the SignatureResponse element will be set to a sequenceId 
+attribute of the original SigningRequest elements which corresponds the to
+curent SignatureResponse.
+               </xs:documentation>
+            </xs:annotation>
+            <xs:simpleType>
+               <xs:restriction base="xs:int"/>
+            </xs:simpleType>
+         </xs:attribute>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="SignaturePackage">
+      <xs:annotation>
+         <xs:documentation>
+Element:
+SignaturePackage
+
+Description:
+ROOT element which encapsulates a single Signing Package response.  This
+element will be used to "transport" content which has been signed.  A
+SignaturePackage should contain all related SignatureResponses for each Signing
+Request that was in the original corresponding Signing Package.
+         </xs:documentation>
+      </xs:annotation>
+      <xs:complexType>
+         <xs:sequence>
+            <xs:element ref="Count"/>
+            <xs:element ref="SPDigest"/>
+            <xs:element name="PackageStatus" type="xs:string"/>
+            <xs:element ref="SignatureResponse" maxOccurs="unbounded"/>
+         </xs:sequence>
+         <xs:attribute name="id" use="required">
+            <xs:annotation>
+               <xs:documentation>
+Attribute:
+id
+
+Description:
+This attribute in the SignaturePackage element will be set to a generated ID,
+which was assigned to the original SigningPackage.  This is a UNIQUE identifier
+established by the signing service application.
+               </xs:documentation>
+            </xs:annotation>
+            <xs:simpleType>
+               <xs:restriction base="xs:string"/>
+            </xs:simpleType>
+         </xs:attribute>
+         <xs:attribute name="encoding" use="optional">
+            <xs:annotation>
+               <xs:documentation>
+Attribute:
+encoding
+
+Description:
+The encoding as specified in the original SigningPackage.  The encoding scheme
+specified will be used to encode any binary content that is included in the
+Signature Responses.  Encoding will result in a text format (e.g., ASCII) that 
+will be limited to the character set supported by the XML file.  In most cases,
+the character set supported will be UTF-8.
+
+Clients will be responsible for decoding the binary encoded content.
+               </xs:documentation>
+            </xs:annotation>
+            <xs:simpleType>
+               <xs:restriction base="xs:string"/>
+            </xs:simpleType>
+         </xs:attribute>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="Result">
+      <xs:annotation>
+         <xs:documentation>
+Element:
+Result
+
+Description:
+REQUIRED element which contains the processing result generated for a given
+Signing Request when the processing of a Signing Request was SUCCESSFUL!
+
+NOTE:  The Client is exptected to have intimiate knowledge of the content
+contained inthe SignatureResponse's Result element, and know how to process it.
+         </xs:documentation>
+      </xs:annotation>
+      <xs:complexType>
+         <xs:simpleContent>
+            <xs:extension base="xs:string">
+               <xs:attribute name="name" use="optional">
+                  <xs:annotation>
+                     <xs:documentation>
+Attribute:
+name
+
+Description:
+OPTIONAL attribute of the Result element.  The name attribute can
+arbitrarily be used to provide a representation of the signature result content
+itself.
+                     </xs:documentation>
+                  </xs:annotation>
+                  <xs:simpleType>
+                     <xs:restriction base="xs:string"/>
+                  </xs:simpleType>
+               </xs:attribute>
+               <xs:attribute name="isEncoded" use="optional">
+                  <xs:annotation>
+                     <xs:documentation>
+Attribute:
+isEncoded
+
+Description:
+OPTIONAL attribute of the Result element.  The isEncoded attribute can be 
+used to indicate if the value of the Result element has been encoded.  This
+will typically be done if the content was binary and was encoded for transport
+purposes in the XML.
+                     </xs:documentation>
+                  </xs:annotation>
+                  <xs:simpleType>
+                     <xs:restriction base="xs:boolean"/>
+                  </xs:simpleType>
+               </xs:attribute>
+            </xs:extension>
+         </xs:simpleContent>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="MetaDatum">
+      <xs:annotation>
+         <xs:documentation>
+Element:
+MetaDatum
+
+Description:
+OPTIONAL element which encapsulates any additional Meta Data components that
+were generated as part of the Signature generation process.
+         </xs:documentation>
+      </xs:annotation>
+      <xs:complexType>
+         <xs:sequence>
+            <xs:element ref="MetaData" maxOccurs="unbounded"/>
+         </xs:sequence>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="MetaData">
+      <xs:annotation>
+         <xs:documentation>
+Element:
+MetaData
+
+Description:
+REQUIRED element if a MetaDatum element is created.  A MetaData element will
+contain any additional content created during the Signagure generation process.
+Metadata may include resultant attestation certificate files, etc.
+         </xs:documentation>
+      </xs:annotation>
+      <xs:complexType>
+         <xs:simpleContent>
+            <xs:extension base="xs:string">
+               <xs:attribute name="name" use="optional">
+                  <xs:annotation>
+                     <xs:documentation>
+Attribute:
+name
+
+Description:
+OPTIONAL attribute of the MetaData element.  The name attribute can
+arbitrarily be used to provide a representation of the metadata content
+itself.  For example, if the signature generation process generated an
+additional binary file along with the signature, the name can represent the
+file name of the additional file.
+                     </xs:documentation>
+                  </xs:annotation>
+                  <xs:simpleType>
+                     <xs:restriction base="xs:string"/>
+                  </xs:simpleType>
+               </xs:attribute>
+               <xs:attribute name="isEncoded" use="optional">
+                  <xs:annotation>
+                     <xs:documentation>
+Attribute:
+isEncoded
+
+Description:
+OPTIONAL attribute of the MetaData element.  The isEncoded attribute can be 
+used to indicate if the value of the MetaData element has been encoded.  This
+will typically be done if the content was binary and was encoded for transport
+purposes in the XML.
+                     </xs:documentation>
+                  </xs:annotation>
+                  <xs:simpleType>
+                     <xs:restriction base="xs:boolean"/>
+                  </xs:simpleType>
+               </xs:attribute>
+            </xs:extension>
+         </xs:simpleContent>
+      </xs:complexType>
+   </xs:element>
+   <xs:element name="Error">
+      <xs:annotation>
+         <xs:documentation>
+Element:
+Error
+
+Description:
+REQUIRED element which will exist only if a processing of a Signing Requests
+results in an error.  The Error will contain a brief explanation of the error
+encountered, and possibly an error code which can be used to find more detailed
+information regarding the context of the error.
+         </xs:documentation>
+      </xs:annotation>
+      <xs:simpleType>
+         <xs:restriction base="xs:string"/>
+      </xs:simpleType>
+   </xs:element>
+   <xs:element name="Count">
+      <xs:annotation>
+         <xs:documentation>
+Element:
+Count
+
+Description:
+REQUIRED element which will be used to specify the number of Signature
+Responses that are included in the Signature Package.  For the most part, the
+number of Signature Responses specified in an Signagure Package should be EQUAL
+to the amount of Signing Requests in the corresponding Signing Package.
+         </xs:documentation>
+      </xs:annotation>
+      <xs:simpleType>
+         <xs:restriction base="xs:int"/>
+      </xs:simpleType>
+   </xs:element>
+   <xs:element name="SPDigest">
+      <xs:annotation>
+         <xs:documentation>
+Element:
+SPDIgest
+
+Description:
+REQUIRED element which will be used to DIGEST of the original Signing Package
+for which the SignaturePackage corresponds to.
+         </xs:documentation>
+      </xs:annotation>
+      <xs:complexType>
+         <xs:simpleContent>
+            <xs:extension base="ST_SPDigest">
+               <xs:attribute name="digestAlgorithm" use="required">
+                  <xs:annotation>
+                     <xs:documentation>
+Attribute:
+digestAlgorithm
+
+Description:
+REQUIRED attribute of the SPDigest element.  This will represent the hash
+algorithm used to generate the specified Signing Package Digest.  Currently, we
+plan to initially support SHA-256.
+                     </xs:documentation>
+                  </xs:annotation>
+                  <xs:simpleType>
+                     <xs:restriction base="xs:string">
+                        <xs:enumeration value="SHA-256"/>
+                     </xs:restriction>
+                  </xs:simpleType>
+               </xs:attribute>
+            </xs:extension>
+         </xs:simpleContent>
+      </xs:complexType>
+   </xs:element>
+</xs:schema>

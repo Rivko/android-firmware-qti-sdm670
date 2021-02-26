@@ -1,0 +1,317 @@
+; ============================================================================
+;
+;  PMICRegisters.cmm
+;
+;  Script to configure and launch PMIC peripheral scripts.
+;
+;  Execution:
+;    PMICRegisters.cmm
+;
+;  ====================================================================
+;
+;  Copyright (c) 2014 Qualcomm Technologies Incorporated.  All Rights Reserved.
+;  QUALCOMM Proprietary and Confidential.
+;
+;  ====================================================================
+;
+;  $Header: //components/rel/core.glue/1.2/tools/tools/systemdrivers/pmic/hoya/PMICRegisters.cmm#2 $
+;  $DateTime: 2017/05/05 14:32:45 $
+;  $Author: pwbldsvc $
+;
+; ============================================================================
+;
+
+&script_dir=os.ppd()
+
+&TCSR_SOC_HW_VERSION_ADDR=0x1FC8000
+
+;-----------------------------------------------------------------------------
+; PMIC arbiter addresses
+;-----------------------------------------------------------------------------
+
+&PMIC_ARB_REG_ADDRp_pOFFS=0x4
+&PMIC_ARB_CHNLn_CMD_nOFFS=0x10000
+&PMIC_ARB_OWNER_OFFS=0x0
+
+&PMIC_ARB_BASE=0x0C400000
+
+&PMIC_ARB_REG_ADDRp_BASE=0x00040900
+&PMIC_ARB_CHNLn_CMD_BASE=0x00200000
+&PMIC_ARB_CHNLn_WDATA0_BASE=0x00200010
+&PMIC_ARB_CHNLn_RDATA0_BASE=0x00200018
+
+&PMIC_ARB_REG_ADDRp=0x0
+&PMIC_ARB_CHNLn_CMD=0x0
+&PMIC_ARB_CHNLn_WDATA0=0x0
+&PMIC_ARB_CHNLn_RDATA0=0x0
+
+&AOP_ADDRESS_MASK=0x60000000
+
+;-----------------------------------------------------------------------------
+; Defaults
+;-----------------------------------------------------------------------------
+
+&default_access_mode="EZAXI"
+&default_spmi_port="LPASS"
+&default_spmi_channel=511.
+&access_mode=""
+&pmic_arb_port=0
+
+;-----------------------------------------------------------------------------
+; PMIC variables
+;-----------------------------------------------------------------------------
+
+&max_pmics=8.
+
+&pmic_names_size=29.
+v.new char[&pmic_names_size][10] \pmic_names
+v.a \pmic_names[0]="UNKNOWN"
+v.a \pmic_names[1]="PM8941"
+v.a \pmic_names[2]="PM8841"
+v.a \pmic_names[3]="PM8019"
+v.a \pmic_names[4]="PM8026"
+v.a \pmic_names[5]="PM8110"
+v.a \pmic_names[6]="PMA8084"
+v.a \pmic_names[7]="PMI8962"
+v.a \pmic_names[8]="PMD9635"
+v.a \pmic_names[9]="PM8994"
+v.a \pmic_names[10]="PMI8994"
+v.a \pmic_names[11]="PM8916"
+v.a \pmic_names[12]="PM8004"
+v.a \pmic_names[13]="PM8909"
+v.a \pmic_names[14]="PM2433"
+v.a \pmic_names[15]="PMD9655"
+v.a \pmic_names[16]="PM8950"
+v.a \pmic_names[17]="PMI8950"
+v.a \pmic_names[18]="PMK8001"
+v.a \pmic_names[19]="PMI8996"
+v.a \pmic_names[20]="PM8998"
+v.a \pmic_names[21]="PMI8998"
+v.a \pmic_names[22]="PM8953"
+v.a \pmic_names[23]="SMB1380"
+v.a \pmic_names[24]="PM8005"
+v.a \pmic_names[25]="PM8937"
+v.a \pmic_names[26]="PM660L"
+v.a \pmic_names[27]="PM660"
+v.a \pmic_names[28]="SMB1355"
+
+v.new int[&max_pmics] \pmics
+v.new int[&max_pmics] \major_versions
+v.new int[&max_pmics] \minor_versions
+v.new int[&max_pmics] \sids
+
+&owners_size=6.
+v.new char[&owners_size][10] \owners
+v.a \owners[0]="APCS"
+v.a \owners[1]="TZ"
+v.a \owners[2]="MPSS"
+v.a \owners[3]="LPASS"
+v.a \owners[4]="AOP"
+v.a \owners[5]="SSC"
+
+;-----------------------------------------------------------------------------
+; main dialog
+;-----------------------------------------------------------------------------
+
+DIALOG
+(
+  HEADER "PMIC Registers"
+
+  POS 0. 0. 26. 7.
+  BOX "Configuration"
+
+  POS 1. 1. 12. 1.
+  TEXT "Access Mode:"
+  POS 13. 1. 12. 1.
+  ACCESS: PULLDOWN "A,ANC,AZ,AZNC,EAXI,EZAXI"
+  (
+  )
+
+  POS 1. 2. 12. 1.
+  TEXT "Owner:"
+  POS 13. 2. 12. 1.
+  PORT: DYNPULLDOWN ""
+  (
+  )
+
+  POS 1. 3. 12. 1.
+  TEXT "Channel:"
+  POS 13. 3. 12. 1.
+  CHAN: EDIT ""
+  (
+  )
+
+  POS 1. 5. 12. 1.
+  TEXT "PMIC:"
+  POS 13. 5. 12. 1.
+  PMIC: DYNPULLDOWN ""
+  (
+  )
+
+  POS 0. 7. 12. 2.
+  BUTTON "Detect PMICs"
+  (
+    gosub set_addresses
+
+    &num_pmics=0
+
+    gosub detect_pmics
+
+    &i=0
+    &pmic_options=""
+    while (&i<&num_pmics)
+    (
+      &pmic_options="&pmic_options"+v.str(\pmic_names[\pmics[&i]])+","
+      &i=&i+1
+    )
+
+    DIALOG.SET PMIC v.str(\pmic_names[\pmics[0]]) "&pmic_options"
+  )
+
+  POS 14. 7. 12. 2.
+  BUTTON "Load"
+  (
+    gosub set_addresses
+
+    ; Keep a global count of how many times the per script has been launched and
+    ; use it to label the per window. This way running the script again launches
+    ; an additional window, instead of replacing the old one.
+    global &pmioreg_count
+
+    &pmic=DIALOG.STRING(PMIC)
+    &i=0
+    while ("&pmic"!=v.str(\pmic_names[\pmics[&i]]))
+    (
+      &i=&i+1
+    )
+
+    &pmic=string.lower("&pmic")
+
+    ; Look for major.minor first, and fallback to major if it doesn't exist.
+    &version="v"+format.decimal(1, v.value(\major_versions[&i]))+"."+format.decimal(1, v.value(\minor_versions[&i]))
+    if os.dir("../pmioreg/&pmic/&version")==FALSE()
+    (
+      &version="v"+format.decimal(1, v.value(\major_versions[&i]))
+    )
+
+    &sid=v.value(\sids[&i])
+    &access_mode=DIALOG.STRING(ACCESS)
+    &access_mode=string.lower("&access_mode")
+    &pmioreg_count=&pmioreg_count+1
+
+    per "&script_dir/../pmioreg/&pmic/&version/arb2.1/pmioreg.per" "&access_mode" &sid &PMIC_ARB_CHNLn_CMD &PMIC_ARB_CHNLn_RDATA0 &PMIC_ARB_CHNLn_WDATA0 &PMIC_ARB_REG_ADDRp &pmioreg_count
+  )
+)
+
+DIALOG.SET ACCESS string.upper("&default_access_mode")
+DIALOG.SET CHAN format.decimal(1, &default_spmi_channel)+"."
+
+&i=0
+&owner_options=""
+while (&i<&owners_size)
+(
+  &owner_options="&owner_options"+v.str(\owners[&i])+","
+  &i=&i+1
+)
+DIALOG.SET PORT "&default_spmi_port" "&owner_options"
+
+&min_version=61584.
+if (version.build()<&min_version)
+(
+  DIALOG.OK "Warning: T32 out of date. Minimum build version "+\
+format.decimal(1, &min_version)+" required for full support. Register \
+values and fields wider than 3-bits will be read-only, and runtime access \
+will not work."
+)
+
+STOP
+
+DIALOG.END
+enddo
+
+
+;-----------------------------------------------------------------------------
+; set_addresses
+;-----------------------------------------------------------------------------
+
+set_addresses:
+  &access_mode=DIALOG.STRING(ACCESS)
+  &owner=DIALOG.STRING(PORT)
+  &channel=DIALOG.STRING(CHAN)
+  &aop_mask=0
+
+  &major_version=(data.long(&access_mode:&TCSR_SOC_HW_VERSION_ADDR)&0xFF00)>>8.
+  if (&major_version<2)
+  (
+    &PMIC_ARB_OWNER_OFFS=0x010000
+    &PMIC_ARB_CHNLn_CMD_nOFFS=0x80
+    &PMIC_ARB_REG_ADDRp_BASE=0x00040900
+    &PMIC_ARB_CHNLn_CMD_BASE=0x02200000
+    &PMIC_ARB_CHNLn_WDATA0_BASE=0x02200010
+    &PMIC_ARB_CHNLn_RDATA0_BASE=0x02200018
+  )
+
+  ; Force the channel into a hex format so the internal address stay that way
+  ; and are easier to read in the PER window title.
+  &channel="0x"+format.hex(1,&channel)
+
+  &pmic_arb_port=0
+  while ("&owner"!=v.str(\owners[&pmic_arb_port]))
+  (
+    &pmic_arb_port=&pmic_arb_port+1
+  )
+  if ("&owner"=="AOP")
+  (
+    &aop_mask=&AOP_ADDRESS_MASK
+  )
+
+  if (&channel>&default_spmi_channel)
+  (
+    DIALOG.SET CHAN format.decimal(1, &default_spmi_channel)+"."
+    &channel="0x"+format.hex(1,&default_spmi_channel)
+  )
+
+  &PMIC_ARB_REG_ADDRp=(&PMIC_ARB_REG_ADDRp_BASE+&PMIC_ARB_BASE+(&channel*&PMIC_ARB_REG_ADDRp_pOFFS))|&aop_mask
+
+  &REG_OFFS=&PMIC_ARB_BASE+(&pmic_arb_port*&PMIC_ARB_OWNER_OFFS)+(&channel*&PMIC_ARB_CHNLn_CMD_nOFFS)
+  &PMIC_ARB_CHNLn_CMD=(&PMIC_ARB_CHNLn_CMD_BASE+&REG_OFFS)|&aop_mask
+  &PMIC_ARB_CHNLn_WDATA0=(&PMIC_ARB_CHNLn_WDATA0_BASE+&REG_OFFS)|&aop_mask
+  &PMIC_ARB_CHNLn_RDATA0=(&PMIC_ARB_CHNLn_RDATA0_BASE+&REG_OFFS)|&aop_mask
+  return
+
+
+;-----------------------------------------------------------------------------
+; detect_pmics
+;-----------------------------------------------------------------------------
+
+detect_pmics:
+  local &sid
+  &sid=0
+
+  while (&sid<&max_pmics*2)
+  (
+    do pmic_io.cmm read &pmic_arb_port &access_mode &sid 0x105
+    entry &status &data
+    v.a \major_versions[&num_pmics]=&data
+
+    if (&status==1)
+    (
+      v.a \pmics[&num_pmics]=&data
+      v.a \sids[&num_pmics]=&sid
+
+      do pmic_io.cmm read &pmic_arb_port &access_mode &sid 0x103
+      entry &status &data
+      v.a \major_versions[&num_pmics]=&data
+
+      do pmic_io.cmm read &pmic_arb_port &access_mode &sid 0x102
+      entry &status &data
+      v.a \minor_versions[&num_pmics]=&data
+
+      &num_pmics=&num_pmics+1
+    )
+
+    &sid=&sid+2
+  )
+
+  return
+

@@ -1,0 +1,124 @@
+/*=============================================================================
+   Readme file for Debugging in UEFI.
+
+  Copyright (c) 2013, 2015 - 2016 Qualcomm Technologies, Inc. All rights reserved.
+
+                              EDIT HISTORY
+
+
+ when       who     what, where, why
+ --------   ---     -----------------------------------------------------------
+ 03/08/16   yg      Update documentation
+ 10/28/15   bh      Update after path-related changes
+ 10/27/15   bh      Update for multiple driver debugging
+ 03/05/15   bh      Update after unification of 32/64-bit scripts
+ 06/05/13   yg      Initial version
+=============================================================================*/
+
+
+Debugging UEFI
+--------------
+
+Note:
+Replace all instance of <TargetPkg> with valid target folder in QcomPkg:
+e.g: QcomPkg\<TargetPkg> is "QcomPkg\Msm8996Pkg" or "QcomPkg\SDM845Pkg"
+
+ ---------------------------
+| Pre requisites and Setup  |
+ ---------------------------
+
+  1) Supported T32 sofware
+  2) Startup scripts and shortcuts from the source tree
+  3) JTAG connected and Target powered
+     - If sys.m.a on Core 0 should be able to establish sync with CPU
+  4) Source tree with built binaries including symbols available
+
+
+ -----------
+| Debugging |
+ -----------
+
+  Main UEFI debug scripts are common across all targets and architecture states. Some of the params change per
+  target, so the starting scripts are located in the target tools folders. The script instructions hold good for
+  both 32-bit and 64-bit UEFI builds. 
+
+  Usage:
+    do debug_uefi.cmm [[ram,][rel,][tools,][menu]] [sec|dxe|go|drvr|drvr1,drvr2,drvr2] 
+
+  Optional Arguments: choose any or all of the following options, separated by commas as the first argument 
+    REL   :     Debug RELEASE build instead of the DEBUG builds (DEBUG builds debugging is default)
+    RAM   :     Load the UEFI binary built from the source tree into RAM and start debugging (without needing to flash)
+    TOOLS :     Load the tools binary built from the source tree into RAM and star tusing tools (no need to flash)
+    MENU  :     Stop in the BDS menu without needing to press hotkeys or change variables
+  
+  Modules to debug: specify the modules to debug 
+    SEC   :     Debug Sec module and stop at SEC entry point function. If need to debug further modules, then press enter
+                in the area window. This also continues to debug Dxe and stops at Dxe entry point
+    DXE   :     Debug Dxe module, stop at Dxe entry point as debugging starts
+    go    :     Mostly used in conjunction with RAM loading. Load image into RAM and go without needing to load
+                any symbols further. This is the fastest way of seeing if things work fine without flashing UEFI.
+                Symbols can be loaded later using symbol_load.cmm as needed.
+    drvr  :     This is string that can be used to search in the driver name/path to stop and debug.
+                For example: "do debug_uefi runtime" would stop at the entry point functions of the drivers 
+                CapsuleRuntimeDxe, RuntimeDxe, ResetRuntimeDxe etc. Search is NOT case sensitive.
+    mult drvrs: String containing up to 3 comma-separate driver or application names, that each work similar to
+                the "drvr" command mentioned above. 
+
+
+  Debugging using T32 can be done in the following ways
+  1) Load the UEFI image into RAM for temporary debugging
+     - This method helps when the code changes in development is not proven yet to flash it,
+       or just plain to try in easiest way without flashing
+
+     a) In RPM T32 session, cd to QcomPkg\<TargetPkg>\Tools
+     b) run command "do debug_uefi.cmm ram"
+          Loads the image into ram and continues to debug images by loading symbols as drivers load
+     c) run command "do debug_uefi.cmm ram go"
+          Loads the image into ram and just runs without loading symbols
+     d) run command "do debug_uefi.cmm ram sec"
+          Loads the image into ram and load symbols and stop at entry points of Sec and Dxe for debugging
+     e) run command "do debug_uefi.cmm ram dxe"
+          Loads the image into ram and load symbols and stop at entry point of Dxe for debugging
+     e) run command "do debug_uefi.cmm ram test"
+          Loads the image into ram and load symbols as drivers load and stop at entry point of 
+          the image whose name matches "test" anywhere in the path
+     f) run command "do debug_uefi.cmm ram test1,test2,test3"
+          Loads the image into ram and load symbols as drivers load and stop at entry point of 
+          the images whose names match any of the comma separated arguments, anywhere in the path
+     g) run command "do debug_uefi.cmm ram,tools go"
+          Loads both UEFI and tools images into ram and continues
+     h) run command "do debug_uefi.cmm ram,menu go"
+          Loads UEFI image into RAM and automatically stops in BDS menu
+
+  2) The image is flashed to the storage device and debug by loading symbols when interested driver images get loaded
+     - In this method, source and built binaries are available for the image that's flashed on the device
+     - SBL's load the UEFI image into RAM to execute
+
+     a) In Apps Boot Core T32 session, cd to QcomPkg\<TargetPkg>\Tools
+     b) run command "do debug_uefi.cmm sec"
+          start debug session by synchronously loading the symbols as drivers load. Stops at entry points of Sec and Dxe
+     c) run command "do debug_uefi.cmm dxe"
+          start debug session by synchronously loading the symbols as drivers load. Stops at entry point of Dxe
+     d) run command "do debug_uefi.cmm test"
+          start debug session by synchronously loading the symbols as drivers load. Stops at entry
+          point of the image whose name matches "test" anywhere in the path
+     e) run command "do debug_uefi.cmm test"
+          start debug session by synchronously loading the symbols as drivers load. Stops at entry
+          point of the image whose names match any of the comma separated arguements, anywhere in the path
+
+  3) The image is already flashed to the storage device and debug by loading
+     all symbols one shot when the target can be stopped (eg in shell) or
+     target crashed in UEFI
+       - In this method, source and built binaries are available for the image
+         that's programmed
+       - target is in crashed state in UEFI or is in UEFI doing something
+
+     a) In Apps Boot Core T32 session, 
+          - cd to QcomPkg\<TargetPkg>\Tools
+          - sys.m.a
+          - do symbol_load.cmm
+
+
+NOTE: Subsequent calls to debug scritps can be made from any directory after executing debug_uefi script from TargetPkg once
+
+

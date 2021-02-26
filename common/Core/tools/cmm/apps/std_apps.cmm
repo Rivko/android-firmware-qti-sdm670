@@ -1,0 +1,751 @@
+//============================================================================
+//  Name:                                                                     
+//    std_do_apps.cmm 
+//
+//  Description:                                                              
+//    Tool for multi T32 window help on apps
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who     		what, where, why
+// --------   ---     		---------------------------------------------------------
+// 12/03/2014 JBilling      Created
+//
+
+//
+//
+
+//###################Arguments passed #####################
+LOCAL &ArgumentLine
+ENTRY %LINE &ArgumentLine
+LOCAL &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+ENTRY &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+
+IF (STRING.SCAN("&AliveAppsList","Al",0)!=-1)
+(
+    GLOBAL &AliveAppsList &AliveAppsPorts
+    &AliveAppsList=""
+    &AliveAppsPorts=""
+)
+
+
+//#####################Select Subroutine###################
+// Name of the utility we are calling
+LOCAL &SUBROUTINE
+// Any subroutine specific options
+// Default exists for each subroutine
+
+AREA.SELECT
+// Input Argument 0 is the name of the utility
+&SUBROUTINE=STR.UPR("&UTILITY")
+IF !(("&SUBROUTINE"=="SYMBOLS")||("&SUBROUTINE"=="SYM")||("&SUBROUTINE"=="TRACE")||("&SUBROUTINE"=="CHECKSESSIONS")||("&SUBROUTINE"=="SESSIONS")||("&SUBROUTINE"=="RIGHT")||("&SUBROUTINE"=="R")||("&SUBROUTINE"=="LEFT")||("&SUBROUTINE"=="L")||("&SUBROUTINE"=="FULLSCREEN")||("&SUBROUTINE"=="F")||("&SUBROUTINE"=="FULL")||("&SUBROUTINE"=="GETCORENUMBER")||("&SUBROUTINE"=="DOALL")||("&SUBROUTINE"=="HELP"))
+(
+    &SUBROUTINE="MAIN"   
+    GOSUB MAIN &ArgumentLine
+)
+ELSE
+(
+   GOSUB &SUBROUTINE &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+ 
+
+)
+
+    ENTRY &PASS &RVAL0 &RVAL1 &RVAL2
+
+    ENDDO &PASS &RVAL0 &RVAL1 &RVAL2
+
+    
+////////////////////////////////////////
+//
+//            MAIN
+//            Main std_apps logic
+//          Expected input:
+//
+/////////////////////////////////////////
+MAIN:
+DOALL:
+LOCAL &ArgumentLine
+ENTRY %LINE &ArgumentLine
+
+
+IF "&AliveAppsPorts"==""
+(
+    //LOCAL &corelist &portlist
+    GOSUB CHECKSESSIONS
+    
+    IF ((STRING.SCAN("&AliveAppsPorts","APPSC",0)!=-1)&&(STRING.SCAN("&AliveAppsPorts","APPS0",0)!=-1))
+    (
+        WINCLEAR
+        AREA.CREATE 0004
+        AREA.CLEAR 0004
+        AREA.SELECT 0004
+        WINPOS 5. 2. 100. 6.
+        AREA.VIEW 0004
+        PRINT %ERROR "Detected that both cluster apps and single core apps windows are open."
+        PRINT %ERROR "Single core view and cluster view cannot operate concurrently"
+        PRINT %ERROR "Please close one or the other and restart"
+        PRINT %ERROR " "
+        PRINT %ERROR " "
+        GOTO FATALEXIT
+
+    )
+    
+)
+
+    LOCAL &count &maxcount &current_core &size_of_core &string_length &string_size &value_to_cut 
+    
+    &Rvalue= ""
+    &current_string="&AliveAppsPorts"
+    &count=0
+    &maxcount=30 
+    
+    //parse out corelist
+    while (&count<&maxcount)
+    (
+        &string_length=String.Length("&current_string")
+        &string_size=string.scan("&current_string",",",0)
+        
+        IF (&string_size!=-1)
+        (
+            &value_to_cut=&string_size-&string_length    
+            //separate the first master from the rest of the string
+            &current_core=string.cut("&current_string",&value_to_cut)
+            &size_of_core=STRING.LENGTH("&current_core")
+            &current_string=STRING.CUT("&current_string",&size_of_core+1) //remove comma
+        )
+        ELSE //if no "," found
+        (
+            &current_core="&current_string"
+            &count=&maxcount
+        )
+        
+        do std_intercom_cmds &(&current_core) NOWAIT &ArgumentLine
+        
+        &count=&count+1
+    )    
+
+RETURN
+
+////////////////////////////////////////
+//
+//            SYMBOLS
+//            Main std_apps logic
+//          Expected input:
+//
+/////////////////////////////////////////
+SYMBOLS:
+SYM:
+LOCAL &localelffile
+
+    IF "&AliveAppsPorts"==""
+    (
+        GOSUB CHECKSESSIONS
+    )
+
+    //////////select elf, copy it locally////////////
+    do std_loadsyms_apps SELECT_ELF_FILE apps NULL savelocalelf
+        ENTRY &localelffile
+    
+    //////////////Load symbols to each apps core////////////////////
+    LOCAL &ArgumentLine
+    &ArgumentLine="do std_loadsyms_apps ELFLOADLOCAL"
+    LOCAL &count &maxcount &current_core &size_of_core &string_length &string_size &value_to_cut 
+    
+    &Rvalue= ""
+    &current_string="&AliveAppsPorts"
+    &count=0
+    &maxcount=30 
+    
+    //parse out corelist
+    while (&count<&maxcount)
+    (
+        &string_length=String.Length("&current_string")
+        &string_size=string.scan("&current_string",",",0)
+        
+        IF (&string_size!=-1)
+        (
+            &value_to_cut=&string_size-&string_length    
+            //separate the first master from the rest of the string
+            &current_core=string.cut("&current_string",&value_to_cut)
+            &size_of_core=STRING.LENGTH("&current_core")
+            &current_string=STRING.CUT("&current_string",&size_of_core+1) //remove comma
+        )
+        ELSE //if no "," found
+        (
+            &current_core="&current_string"
+            &count=&maxcount
+        )
+        
+        do std_intercom_cmds &(&current_core) NOWAIT &ArgumentLine
+        
+        &count=&count+1
+    )    
+
+
+
+RETURN
+
+
+////////////////////////////////////////
+//
+//            GETCORENUMBER
+//            Returns the number of the apps core and its name
+//            If core window is a cluster window, return will be c0, c1 etc.
+//
+/////////////////////////////////////////
+GETCORENUMBER:
+LOCAL &Rvalue_corenum &Rvalue_corename
+
+    LOCAL &corelist
+    do std_apps_&CHIPSET APPSLIST
+        ENTRY &corelist
+
+        
+    LOCAL &count &maxcount &current_core &size_of_core &string_length &string_size &value_to_cut 
+    &current_string="&corelist"
+    do std_utils SANITIZEQUOTATIONS NULL &current_string
+        ENTRY &current_string
+    
+    &count=0
+    &maxcount=30 
+    while (&count<&maxcount)
+    (
+        &string_length=String.Length("&current_string")
+        &string_size=string.scan("&current_string",",",0)
+        
+        IF (&string_size!=-1)
+        (
+            &value_to_cut=&string_size-&string_length    
+            //separate the first master from the rest of the string
+            &current_core=string.cut("&current_string",&value_to_cut)
+            &size_of_core=STRING.LENGTH("&current_core")
+            &current_string=STRING.CUT("&current_string",&size_of_core+1) //remove comma
+        )
+        ELSE //if no "," found
+        (
+            &current_core="&current_string"
+            &count=&maxcount
+        )
+        
+        &current_port="&current_core"+"_PORT"
+        do std_utils SANITIZEQUOTATIONS NULL &&current_port
+            entry &current_port
+        IF (&LOCALHOST==&current_port)
+        (
+            &Rvalue_corename="&current_core"
+            &count=&maxcount
+        )
+        &count=&count+1
+        
+    )
+    
+    
+
+    IF (STRING.SCAN("&Rvalue_corename","APPSC",0)==1)  //if the core is a cluster window
+    (
+        &Rvalue_corenum=STRING.REPLACE("&Rvalue_corename","APPSC","",0)
+    )
+    ELSE
+    (
+        &Rvalue_corenum=STRING.REPLACE("&Rvalue_corename","APPS","",0)
+    )
+
+RETURN &Rvalue_corenum &Rvalue_corename
+////////////////////////////////////////
+//
+//            TRACE
+//            All existing apps windows start tracing
+//
+/////////////////////////////////////////
+TRACE:
+    LOCAL &ACTION &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5 &ARG6 &ARG7 &ARG8 &ARG9 &ARG10 &ARG11
+    ENTRY &ACTION &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5 &ARG6 &ARG7 &ARG8 &ARG9 &ARG10 &ARG11
+    LOCAL &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &cti_bootproc &extraoption
+    LOCAL &tracesource &tracesink &cycleaccuratecommand &traceconfiguration &portsizecommand
+    
+    
+    &tracesource=           "&ARG0"
+    &tracesink=             "&ARG1"
+    &cycleaccuratecommand=  "&ARG2"
+    &traceconfiguration=    "&ARG3"
+    &portsizecommand=       "&ARG4"
+    &ACTION=STR.UPR("&ACTION")
+    IF ("&ACTION"=="ETB")||("&ACTION"=="TPIUA")||("&ACTION"=="TPIUB")||("&ACTION"=="TPIU")
+    (
+        &tracesink="&ACTION"
+    )
+    
+        ///////////get target specific debug defaults////////////////
+    //get chipset specific defaults for this image
+    do std_debug_&CHIPSET GETDEBUGDEFAULTS NONE &image &lpm_option &cti_enable &alternateelf &extraoption
+    ENTRY &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &cti_bootproc &extraoption
+
+
+    ////////////get target specific trace defaults////////////////
+    &tracesource="&targetprocessor"
+    &tracescript="std_trace_apps_"+"&CHIPSET"
+    
+    do &tracescript GETTRACEDEFAULTS &tracesource &tracesink &tpiusink &cycleaccurate &traceconfiguration &portsize 
+        ENTRY &tracesource &tracesink &tpiusink &portsize &cycleaccuratecommand &traceconfiguration &portsizecommand 
+        
+        
+    IF "&AliveAppsPorts"==""
+    (
+        GOSUB CHECKSESSIONS
+    )
+    
+    IF ("&tracesink"=="tpiua")||("&tracesink"=="tpiub")
+    (
+        do std_intercom_do &bootprocessorport std_trace_&CHIPSET NULL &tracesink
+    )
+    
+    
+    LOCAL &count &maxcount &current_core &size_of_core &string_length &string_size &value_to_cut 
+    &current_string="&AliveAppsPorts"
+    &count=0
+    &maxcount=30 
+        
+    while (&count<&maxcount)
+    (
+        &string_length=String.Length("&current_string")
+        &string_size=string.scan("&current_string",",",0)
+        
+        IF (&string_size!=-1)
+        (
+            &value_to_cut=&string_size-&string_length    
+            //separate the first master from the rest of the string
+            &current_core=string.cut("&current_string",&value_to_cut)
+            &size_of_core=STRING.LENGTH("&current_core")
+            &current_string=STRING.CUT("&current_string",&size_of_core+1) //remove comma
+        )
+        ELSE //if no "," found
+        (
+            &current_core="&current_string"
+            &count=&maxcount
+        )
+        
+        do std_intercom_cmds &(&current_core) NOWAIT do std_trace_apps_&CHIPSET STARTTRACEAPPS &tracesource &tracesink &tpiusink &portsize &cycleaccuratecommand &traceconfiguration &portsizecommand 
+        
+        
+        &count=&count+1
+        
+    )
+    
+    
+
+
+RETURN
+////////////////////////////////////////
+//
+//            CHECKSESSIONS
+//            returns a string list of current windows.
+//
+/////////////////////////////////////////
+CHECKSESSIONS:
+SESSIONS:
+
+    
+    LOCAL &corelist
+    do std_apps_&CHIPSET APPSLIST
+        ENTRY &corelist
+        
+    do std_utils SANITIZEQUOTATIONS none &corelist
+        ENTRY &corelist
+    
+    LOCAL &count &maxcount &current_core &size_of_core &string_length &string_size &value_to_cut 
+    LOCAL &intercom_alive &Rvalue1 &Rvalue2
+    &Rvalue1= ""
+    &Rvalue2= ""
+    &current_string="&corelist"
+    &count=0
+    &maxcount=30 
+    
+    //parse out corelist
+    while (&count<&maxcount)
+    (
+        &string_length=String.Length("&current_string")
+        &string_size=string.scan("&current_string",",",0)
+        
+        IF (&string_size!=-1)
+        (
+            &value_to_cut=&string_size-&string_length    
+            //separate the first master from the rest of the string
+            &current_core=string.cut("&current_string",&value_to_cut)
+            &size_of_core=STRING.LENGTH("&current_core")
+            &current_string=STRING.CUT("&current_string",&size_of_core+1) //remove comma
+        )
+        ELSE //if no "," found
+        (
+            &current_core="&current_string"
+            &count=&maxcount
+        )
+        
+        //Function to call here:
+        do std_intercom_init CHECKSESSION 1 &current_core
+            ENTRY &intercom_alive
+        IF (&intercom_alive==1.)
+        (
+            IF ("&Rvalue1"=="")
+            (
+                &Rvalue1="&current_core"
+                &Rvalue2="&current_core"+"_PORT"
+                
+            )
+            ELSE
+            (
+                &Rvalue1="&Rvalue1"+","+"&current_core"
+                &Rvalue2="&Rvalue2"+","+"&current_core"+"_PORT"
+            )
+        )
+
+        &count=&count+1
+    )
+    
+    //Update Globals    
+    &AliveAppsList="&Rvalue1"
+    &AliveAppsPorts="&Rvalue2"
+    
+    RETURN &Rvalue1 &Rvalue2
+
+////////////////////////////////////////
+//
+//            RIGHT
+//            Main std_apps logic
+//            Expected input:
+//
+/////////////////////////////////////////
+RIGHT:
+R:
+
+    LOCAL &primaryHstart &primaryVstart &primaryHsize &primaryVsize
+    &primaryHstart=50.
+    &primaryVstart=0.
+    &primaryHsize=32.
+    &primaryVsize=82.
+
+    LOCAL &secondaryHstart &secondaryVstart &secondaryHsize &secondaryVsize
+    &secondaryHstart=&primaryHstart+&primaryHsize+1
+    &secondaryVstart=0.
+    &secondaryHsize=100.-&secondaryHstart
+    &secondaryVsize=82.
+    LOCAL &mimimumVsizeSpacing
+    &mimimumVsizeSpacing=7
+
+    IF "&AliveAppsPorts"==""
+    (
+        GOSUB CHECKSESSIONS
+    )
+ 
+ 
+    //If only one window open, align it and return
+    IF (STRING.SCAN("&AliveAppsPorts",",",0)==-1)
+    (
+        FRAMEPOS 50% 0 50% 82%
+        RETURN
+    )
+    
+    //ELSE find how many windows are open
+    LOCAL &idx &numbersecondarywindows
+    &idx=1
+    WHILE (STRING.SCAN(STRING.REPLACE("&AliveAppsPorts",",","",&idx),",",0)!=-1)&&(&idx<30.)
+    (
+        &idx=&idx+1
+    )
+    //num secondary windows= total num of windows -1 = num of commas in list
+    &numbersecondarywindows=&idx
+    &mimimumVsizeSpacing=5+3*&idx //for every additional window opened, more spacing is needed
+    
+    
+    //align primary frame
+    //Turn decimals to percent
+    &line="&primaryHstart"+"% "+"&primaryVstart"+"% "+"&primaryHsize"+"% "+"&primaryVsize"+"%"
+    &line=STRING.REPLACE("&line",".","",0.)
+    FRAMEPOS &line
+    FRAMEPOS &line
+    FRAMEPOS &line
+    
+    //split up secondary frame area
+    &secondarydivision=(&secondaryVsize-&secondaryVstart)/&numbersecondarywindows
+    
+    //Now cycle through 
+    LOCAL &count &maxcount &current_core &size_of_core &string_length &string_size &value_to_cut 
+    LOCAL &Current &index
+    
+    &Rvalue= ""
+    &current_string="&AliveAppsPorts"
+    &count=0
+    &index=0
+    &maxcount=&numbersecondarywindows+1 
+    
+    //parse out corelist
+    while (&count<&maxcount)
+    (
+        &string_length=String.Length("&current_string")
+        &string_size=string.scan("&current_string",",",0)
+        
+        IF (&string_size!=-1)
+        (
+            &value_to_cut=&string_size-&string_length    
+            //separate the first master from the rest of the string
+            &current_core=string.cut("&current_string",&value_to_cut)
+            &size_of_core=STRING.LENGTH("&current_core")
+            &current_string=STRING.CUT("&current_string",&size_of_core+1) //remove comma
+        )
+        ELSE //if no "," found
+        (
+            &current_core="&current_string"
+            &count=&maxcount
+        )
+        
+        
+        IF !("&LOCALNAME"=="&current_core")
+        (
+            //&secondaryHstart=75.
+            //&secondaryVstart=0.
+            //&secondaryHsize=25.
+            //&secondaryVsize=82.
+            
+            //align things from bottom up
+            IF (&index==0x0)
+            (
+                &secondaryVstart=&secondaryVsize-(&secondarydivision)-1 //-&mimimumVsizeSpacing
+            )
+            ELSE
+            (
+                &secondaryVstart=&secondaryVsize-(&secondarydivision)*&index //-1*&index //-&mimimumVsizeSpacing
+                if &secondaryVstart<0.
+                (
+                    &secondaryVstart=0.
+                )
+                //&secondaryVstart=(&secondarydivision)*(&index)+&mimimumVsizeSpacing
+            )
+            &index=&index+1
+            
+            &secondaryVsize=&secondarydivision-&mimimumVsizeSpacing
+            
+            
+            &line="&secondaryHstart"+"% "+"&secondaryVstart"+"% "+"&secondaryHsize"+"% "+"&secondaryVsize"+"%"
+            &line=STRING.REPLACE("&line",".","",0.)
+    
+            //INTERCOM.EXECUTE &(&current_string) FRAMEPOS &line
+            do std_intercom_cmds &(&current_core) NOWAIT FRAMEPOS &line TOP
+            do std_intercom_cmds &(&current_core) NOWAIT FRAMEPOS &line
+            do std_intercom_cmds &(&current_core) NOWAIT FRAMEPOS &line
+        )
+        
+        &count=&count+1
+    )
+    
+    FRAMEPOS , , , , TOP
+    
+RETURN
+
+
+/////top down align approach////
+
+            IF (&index==0x0)
+            (
+                &secondaryVstart=0.
+            )
+            ELSE
+            (
+                &secondaryVstart=(&secondarydivision)*(&index)+&mimimumVsizeSpacing
+            )
+            &index=&index+1
+            
+            &secondaryVsize=&secondarydivision-&mimimumVsizeSpacing
+
+
+    LOCAL &count &maxcount &current_core &size_of_core &string_length &string_size &value_to_cut 
+    
+    LOCAL &Current
+    
+    &Rvalue= ""
+    &current_string="&AliveAppsPorts"
+    &count=0
+    &maxcount=30 
+    
+    //parse out corelist
+    while (&count<&maxcount)
+    (
+        &string_length=String.Length("&current_string")
+        &string_size=string.scan("&current_string",",",0)
+        
+        IF (&string_size!=-1)
+        (
+            &value_to_cut=&string_size-&string_length    
+            //separate the first master from the rest of the string
+            &current_core=string.cut("&current_string",&value_to_cut)
+            &size_of_core=STRING.LENGTH("&current_core")
+            &current_string=STRING.CUT("&current_string",&size_of_core+1) //remove comma
+        )
+        ELSE //if no "," found
+        (
+            &current_core="&current_string"
+            &count=&maxcount
+        )
+        
+        
+        
+    )
+
+
+RETURN
+////////////////////////////////////////
+//
+//            LEFT
+//            Main std_apps logic
+//          Expected input:
+//
+/////////////////////////////////////////
+LEFT:
+L:
+RETURN
+////////////////////////////////////////
+//
+//            FULLSCREEN
+//            Main std_apps logic
+//          Expected input:
+//
+/////////////////////////////////////////
+FULLSCREEN:
+FULL:
+F:
+RETURN
+
+
+////////////////////////////////////////
+//
+//            LOADELF
+//            Main std_apps logic
+//          Expected input:
+//
+/////////////////////////////////////////
+
+
+LOCAL &ELFFILE  &LOCAL_BUILDROOT
+
+LOCAL &processor_root_name
+LOCAL &targetprocessorport
+&targetprocessorport=&APPS0_PORT
+
+&ELFFILE="NONE" 
+&LOCAL_BUILDROOT="NONE"
+
+LOCAL &file &filename &what_to_cut &location &filepath &elf_filename &elf_filepath &elf_fullpath
+
+LOCAL &LocalSubSystem &APPSBUILD &RemoteOption &LiveAttach &extra_option
+ENTRY &LocalSubSystem &APPSBUILD &RemoteOption &LiveAttach &extra_option
+
+
+    GOSUB SELECT_ELF_FILE &LocalSubSystem
+
+
+    
+    IF ("&RemoteOption"=="remotely")
+    (
+        &targetprocessorport=&APPS0_PORT
+        GOSUB LOAD_SYMBOLS_ON_REMOTE_T32
+    )
+    ELSE
+    (
+        GOSUB LOAD_SYMBOLS_ON_THIS_T32
+    )
+
+    
+    GOTO EXIT
+    
+    
+SELECT_ELF_FILE:
+            LOCAL &image
+            ENTRY &image
+            
+            
+
+            /////////////////////////
+            /////HLOS symbol file////
+            /////////////////////////
+            IF (("&image"=="appsboot")||("&image"=="apps"))
+            (
+            
+                &processor_root_name="null"
+                IF (FILE.EXIST("&APPSBUILD/&APPS_ELF"))
+                (
+                
+                    &elf_fullpath="&APPSBUILD/&APPS_ELF"
+                    &elf_filename=OS.FILE.NAME("&elf_fullpath")
+                    &elf_filepath=STRING.REPLACE("&elf_fullpath","&elf_filename","*.*",0)
+                    DIALOG.FILE "&elf_filepath"
+                    
+                    ENTRY &ELFFILE
+                )
+                ELSE IF (FILE.EXIST("&APPS_BUILDROOT/&APPS_ELF"))
+                (
+                
+                    &elf_fullpath="&APPS_BUILDROOT/&APPS_ELF"
+                    &elf_filename=OS.FILE.NAME("&elf_fullpath")
+                    &elf_filepath=STRING.REPLACE("&elf_fullpath","&elf_filename","*.*",0)
+                    DIALOG.FILE "&elf_filepath"
+                    
+                    ENTRY &ELFFILE
+                )
+                ELSE IF (OS.DIR("&APPS_BUILDROOT"))
+                (
+                    DIALOG.FILE "&APPS_BUILDROOT/*.*"
+                    ENTRY &ELFFILE
+                )
+                ELSE //last resort, point to a default directory
+                (
+                    DIALOG.FILE "*.elf" 
+                    ENTRY &ELFFILE
+                )
+                
+                //Check if an elf was given
+                IF ("&ELFFILE"=="")
+                (
+                    PRINT "No Elf File selected. Exiting"
+                    GOTO EXIT
+                )
+            
+            )            
+            ELSE
+            (
+                PRINT %ERROR "std_loadsyms_apps: error! Unknown image &image selected"
+                GOTO FATAL EXIT            
+            )
+
+
+    RETURN
+    
+LOAD_SYMBOLS_ON_THIS_T32:
+
+            PRINT "Loading Elf"
+    
+            d.load.elf &ELFFILE /nocode /noclear /strippart "&processor_root_name" /sourcepath "&LOCAL_BUILDROOT/&processor_root_name"
+
+            
+    RETURN
+    
+LOAD_SYMBOLS_ON_REMOTE_T32:
+
+            INTERCOM.EXECUTE &targetprocessorport PRINT "Loading Elf"
+            
+            INTERCOM.EXECUTE &targetprocessorport d.load.elf &ELFFILE /nocode /noclear /strippart "&processor_root_name" /sourcepath "&LOCAL_BUILDROOT/&processor_root_name"
+            
+    RETURN
+
+
+
+
+EXIT:
+    ENDDO
+
+FATALEXIT:
+    END

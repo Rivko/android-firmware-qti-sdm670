@@ -1,0 +1,82 @@
+;============================================================================
+;
+; Diag Service Info Parser
+;
+;   To be called by ssc_parser.cmm to walk the Diag Service DB
+;
+; Version: 1.0
+;
+; Copyright (c) 2017 Qualcomm Technologies, Inc.
+; All Rights Reserved.
+; Qualcomm Technologies, Inc. Confidential and Proprietary.
+;============================================================================
+
+ENTRY
+
+print "##### Diag Service #####"
+print
+
+&max_logs_to_list=10.
+&idx=0
+&total_mem=0
+&num_logs=V.VALUE(((sns_list*)&sns_diag_list)->cnt)
+&log=V.VALUE(((sns_list*)&sns_diag_list)->item.next->item)
+
+&mem_block_header_size=V.VALUE(sizeof(sns_mem_block_header_type))
+&mem_block_header_size=(&mem_block_header_size+7.)/8.
+&mem_block_header_size=&mem_block_header_size*8
+
+print "Number of outstanding log packets = "+format.decimal(1,&num_logs)
+print
+while (&idx<&num_logs)
+(
+  &code=V.VALUE((((sns_diag_log_info*)&log)->info).diag_log_code)
+  &ts=V.VALUE((((sns_diag_log_info*)&log)->info).log_time_stamp)
+  &type=V.VALUE((((sns_diag_log_info*)&log)->info).data_type)
+  &size=0
+  if &heap_info_avail!=0
+  (
+    &mem_block=&log-&mem_block_header_size
+    &size=V.VALUE(((sns_mem_block_header_type*)&mem_block)->forw_offset)
+    &total_mem=&total_mem+&size
+  )
+
+  if (&idx<&max_logs_to_list)||((&num_logs>(&max_logs_to_list*2))&&(&idx>=&num_logs-&max_logs_to_list))
+  (
+    print "  Log #"+format.decimal(4,&idx+1)
+    print %CONTinue "  (sns_diag_log_info*)0x"+format.HEX(8,&log)
+    if &heap_info_avail!=0
+    (
+      print %CONTinue "  size="+format.decimal(4,&size)
+    )
+
+    print %CONTinue "  code=0x"+format.HEX(4,&code)
+    print %CONTinue "  ts="+format.decimal(4,&ts)
+    print %CONTinue "  type='"+DATA.STRing(D:&type)+"'"
+  )
+
+  if (&num_logs>(&max_logs_to_list*2))&&(&idx==&max_logs_to_list)
+  (
+    print "  . . ."
+  )
+  &log=V.VALUE((*((*(((sns_diag_log_info*)&log))).info.list_entry.next)).item)
+  &idx=&idx+1
+)
+if (&num_logs>0)&&(&heap_info_avail!=0)
+(
+  print
+  print "Memory (in bytes) used by log packets = "+format.decimal(1,&total_mem)
+)
+
+&main_alloc=V.VALUE(((sns_fw_diag_service*)&diag_service)->main_alloc_size)
+&island_alloc=V.VALUE(((sns_fw_diag_service*)&diag_service)->island_alloc_size)
+
+print "------------------------------------------------------------"
+print
+print "Main   heap alloc size = "+format.decimal(1,&main_alloc)
+print "Island heap alloc size = "+format.decimal(1,&island_alloc)
+
+print "==================================================================================="
+print ""
+enddo
+

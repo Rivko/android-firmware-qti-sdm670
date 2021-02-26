@@ -1,0 +1,52 @@
+#===============================================================================
+#
+# QSocket Client Manager
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2016-2018 by Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Id: //components/rel/ssc.slpi/3.2/framework/qcm/build/cm_qsocket.scons#5 $
+#  $DateTime: 2018/04/19 13:12:31 $
+#  $Change: 15973601 $
+#
+#===============================================================================
+Import('env')
+import inspect
+
+#-------------------------------------------------------------------------------
+# Adds self
+#-------------------------------------------------------------------------------
+
+if 'SSC_TARGET_X86' in env['CPPDEFINES']:
+  Return()
+
+if "SNS_ISLAND_INCLUDE_QCM" in env:
+  sections = ['.text.sns', '.data.sns', '.rodata.sns']
+  env.Append(CPPDEFINES = ['SNS_ISLAND_INCLUDE_QCM'])
+else:
+  sections = []
+
+if "SENSORS_DD_DEV_FLAG" in env:
+  clean_pack_sections = ['*.c','*.h','*.idl','*.json']
+else:
+  clean_pack_sections = ['*.pb.c','*.pb.h','*.json']
+
+is_binary_lib = True
+if 'SENSORS_DD_DEV_FLAG' not in env:
+  is_binary_lib = False
+
+env.RequirePublicApi(['COMMON'], area='QMIMSGS')
+
+if 'USES_SSC_STATIC_LIB_BUILDER' in env:
+  env.AddSSCSU(inspect.getfile(inspect.currentframe()),
+             core_public_api = ['MPROC'],
+             clean_pack_list = clean_pack_sections ,
+             binary_lib = is_binary_lib,
+             register_func_name = "sns_register_qcm",
+             island_sections = sections)

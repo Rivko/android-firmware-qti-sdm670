@@ -1,0 +1,108 @@
+#===============================================================================
+#
+# DAL UART Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009-2014 by QUALCOMM, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1/buses/uart/dal/build/SConscript#1 $
+#  $DateTime: 2017/07/21 22:10:47 $
+#  $Author: pwbldsvc $
+#  $Change: 13907704 $
+#                      EDIT HISTORY FOR FILE
+#                      
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#  
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+
+SRCPATH = "${BUILD_ROOT}/core/buses/uart/dal/src"
+
+if not env.PathExists( SRCPATH ):
+   SRCPATH = "${BUILD_ROOT}/drivers/uart"
+
+if not env.PathExists( SRCPATH ):
+   SRCPATH = "${BUILD_ROOT}/drivers/sio"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+#-------------------------------------------------------------------------------
+# External depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+env.RequireExternalApi([
+   'MODEM_PMIC',
+   'MODEM_RF',
+   'MODEM_SERVICES',
+])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+CBSP_APIS = [
+   'BUSES',
+   'DAL',
+   'HAL',
+   'HWENGINES',
+   'POWER',
+   'SYSTEMDRIVERS',
+   'SERVICES',
+   'KERNEL',   
+]
+
+env.RequirePublicApi( CBSP_APIS )
+env.RequireRestrictedApi( CBSP_APIS )
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+DAL_UART_SOURCES = [
+   '${BUILDPATH}/DalUart.c',
+   '${BUILDPATH}/DalUartDma.c',
+   '${BUILDPATH}/DalUartFwk.c',
+]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+IMAGES = []
+
+if env['MSM_ID'] in ['6615','6695']:
+   IMAGES = ['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE']
+elif env['MSM_ID'] in ['7x30','8660','8x60']:
+   IMAGES = ['MODEM_IMAGE', 'CBSP_MODEM_IMAGE', 'APPS_IMAGE', 'CBSP_APPS_IMAGE']
+else:
+   #  Do this for all targets moving forward (8960,9x15,8974,etc.).  We don't want to add 
+   #  a line for each new target.
+   IMAGES = ['MODEM_IMAGE', 'CBSP_MODEM_IMAGE', 'APPS_IMAGE', 'CBSP_APPS_IMAGE', 'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'CORE_QDSP6_SW']
+
+env.AddLibrary(IMAGES,'${BUILDPATH}/DALuart',DAL_UART_SOURCES)
+
+if 'USES_DEVCFG' in env:
+   DEVCFG_IMG = ['DAL_DEVCFG_IMG']
+   env.AddDevCfgInfo(DEVCFG_IMG,
+   {
+            '8084_xml' : ['${BUILD_ROOT}/core/buses/uart/config/uart_adsp_8084.xml'],
+            '8994_xml' : ['${BUILD_ROOT}/core/buses/uart/config/uart_adsp_8994.xml'],
+            '8996_xml' : ['${BUILD_ROOT}/core/buses/uart/config/uart_adsp_8996.xml'],
+            '8998_xml' : ['${BUILD_ROOT}/core/buses/uart/config/uart_adsp_8996.xml']
+   })

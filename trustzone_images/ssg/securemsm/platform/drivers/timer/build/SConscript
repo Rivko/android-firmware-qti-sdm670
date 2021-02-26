@@ -1,0 +1,73 @@
+Import('env')
+env = env.Clone()
+
+env.LoadSoftwareUnits()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "../"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'KERNEL',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+]
+
+env.RequirePublicApi(CBSP_API, area='core')
+
+SSG_API = [
+   'SECUREMSM',
+   'MINK',
+   'MON_CALL',
+   'MONITOR_API',
+   'SSGPLATFORM',
+   'TZCHIPSET',
+]
+env.RequirePublicApi(SSG_API, area = 'ssg')
+env.RequireRestrictedApi(SSG_API)
+
+# -------------------------------------------------------------------------------
+# Local Include Path. 
+# -------------------------------------------------------------------------------
+
+INC_PATH = ['${INC_ROOT}/ssg/securemsm/platform/drivers/inc/timer'            
+]
+
+env.Append(CPPPATH = INC_PATH)
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+SOURCES = ['${BUILDPATH}/src/timer.c',
+]
+
+if 'USES_DEVCFG' in env:
+    DEVCFG_IMG = ['DAL_DEVCFG_IMG']
+    env.AddDevCfgInfo(DEVCFG_IMG,
+    {
+       'devcfg_xml' : '${BUILD_ROOT}/ssg/securemsm/platform/drivers/timer/cfg/timer_${CHIPSET}.xml'
+    })
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+env.AddBinaryObject('TZOS_IMAGE', SOURCES)
+if 'USES_RCINIT' in env:
+  RCINIT_IMGS = ['CTZL64_IMAGE', 'TZOS_IMAGE', 'CTZL_IMAGE']
+  env.AddRCInitFunc(
+    RCINIT_IMGS,
+    {
+      'sequence_group'             : 'RCINIT_GROUP_1',
+      'init_name'                  : 'timer',
+      'init_function'              : 'tzbsp_timer_init',
+      'dependencies'               : ['configure_hw'],
+	  'policy_optin'               : ['default', 'warm']
+    })

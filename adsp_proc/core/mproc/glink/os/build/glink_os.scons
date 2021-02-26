@@ -1,0 +1,124 @@
+#===============================================================================
+#
+# G-LINK OS Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2014-2015 Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Qualcomm Technologies, Inc. Confidential and Proprietary.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1/mproc/glink/os/build/glink_os.scons#1 $
+#  $DateTime: 2017/07/21 22:10:47 $
+#  $Author: pwbldsvc $
+#  $Change: 13907704 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 06/30/15   bc       Add spss update
+# 05/13/15   db       Removed unused RCINIT initialization
+# 05/04/15   db       Added DAL cache maintenance function for APSS image 
+# 11/21/14   an       Support for RPM DAL
+# 09/09/14   rs       Initial version for GLink core driver
+#
+#===============================================================================
+Import('env')
+Import('GLINK_BUILD_ROOT')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = GLINK_BUILD_ROOT + "/os/src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+#  Publish Private APIs
+#-------------------------------------------------------------------------------
+OS_INC_PATH = GLINK_BUILD_ROOT+"/os/inc"
+
+env.PublishPrivateApi('MPROC_GLINK', [
+   OS_INC_PATH,
+] )
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'BOOT',
+   'DEBUGTOOLS',
+   'HAL',
+   'DAL',
+   'HWENGINES',
+   'MPROC',
+   'MEMORY',
+   'POWER',
+   'SERVICES',
+   'SECUREMSM',
+   'SYSTEMDRIVERS',
+   'WIREDCONNECTIVITY',
+
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+env.RequireProtectedApi(['MPROC_GLINK'])
+
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+OS_UTILS = [
+   '${BUILDPATH}/glink_os_utils_dal.c',
+]
+
+OS_CACHE_QURT = [
+   '${BUILDPATH}/glink_os_cache_qurt.c',
+]
+
+OS_CACHE_DAL = [
+   '${BUILDPATH}/glink_os_cache_dal.c',
+] 
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+QURT_BASED_IMAGES = ['CORE_QDSP6_SW', 'CORE_MPSS_ROOT', 'CORE_ADSP_ROOT',
+                     'CORE_SLPI_ROOT', 'CORE_ADSP_SLPI_ROOT', 'CORE_CDSP_ROOT']
+
+APPS_IMAGES = ['CBSP_APPS_IMAGE', 'APPS_IMAGE']
+
+SENSOR_IMAGES = ['CORE_QDSP6_SENSOR_SW']
+
+# Add Image-specific Libraries, whose sources should be packed out.
+env.AddBinaryLibrary(QURT_BASED_IMAGES + SENSOR_IMAGES, 
+                     '${BUILDPATH}/glink_os',
+                     [OS_UTILS, OS_CACHE_QURT])
+					 
+env.AddBinaryLibrary(['WCN_IMAGE'] + APPS_IMAGES,
+                     '${BUILDPATH}/glink_os',
+                     [OS_UTILS, OS_CACHE_DAL])					 
+
+env.AddBinaryLibrary(['RPM_IMAGE', 'MISSIONROM_IMAGE'],
+                      '${BUILDPATH}/glink_os',
+                      [OS_UTILS])
+
+#-------------------------------------------------------------------------------
+# CleanPack (Remove) all remaining files for peripheral processors
+#-------------------------------------------------------------------------------
+PACK_OUT = env.FindFiles(['*.h', '*.c', '*.s'], SRCPATH)
+# Don't include RPM in this list, because it already does we want automatically.
+env.CleanPack(QURT_BASED_IMAGES + ['WCN_IMAGE'], PACK_OUT)
+
+#-------------------------------------------------------------------------------
+# RCINIT not required
+#-------------------------------------------------------------------------------

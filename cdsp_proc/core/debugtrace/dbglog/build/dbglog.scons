@@ -1,0 +1,84 @@
+#===============================================================================
+#
+# GENERAL DESCRIPTION
+#    Build script for HAL QDSS-CSR Library.
+#
+# Copyright (c) 2012-2016 Qualcomm Technologies, Inc. 
+# All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1.c4/debugtrace/dbglog/build/dbglog.scons#1 $
+#
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 09/07/17   rs      Warlock specific changes
+#===============================================================================
+
+Import('env')
+import qdss
+
+
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "../src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+env.RequirePublicApi(['SERVICES','BUSES','DAL','DEBUGTOOLS','DEBUGTRACE','KERNEL'])
+env.RequireRestrictedApi(['DEBUGTRACE'])
+env.RequireProtectedApi(['DEBUGTRACE'])
+
+
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+DBGLOG_SRC= [
+    '${BUILDPATH}/dbglog.c'
+]
+
+DBGLOG_SRC_MICRO = [
+   '${BUILDPATH}/dbglog_micro.c',
+]
+
+DBGLOG_SRC_MICRO_CLNT = [
+   '${BUILDPATH}/dbglog_micro_clnt.c',
+]
+
+qdss_micro_root_tag = qdss.BuildTags(['adsp'])
+qdss_micro_user_tag = qdss.BuildTags(['sensor2'])
+
+env.AddLibrary(qdss_micro_root_tag,
+    '${BUILDPATH}/dbglog',DBGLOG_SRC)
+dbglog_micro_lib = env.AddLibrary(qdss_micro_root_tag, 
+    '${BUILDPATH}/dbglog_micro', DBGLOG_SRC_MICRO)
+dbglog_micro_clnt_lib = env.AddLibrary(qdss_micro_user_tag, 
+    '${BUILDPATH}/dbglog_micro_clnt', DBGLOG_SRC_MICRO_CLNT)
+
+if 'USES_ISLAND' in env:
+   env.AddIslandLibrary(qdss_micro_root_tag, dbglog_micro_lib)
+   env.AddIslandLibrary(qdss_micro_user_tag, dbglog_micro_clnt_lib)
+#Below enables UART logging
+#env.Replace(USES_UART_LOGGING=True)
+
+if ('USES_RCINIT' in env) and ('USES_UART_LOGGING' in env):
+   RCINIT_IMG = qdss.BuildTags(['adsp'])
+   env.AddRCInitTask(
+    RCINIT_IMG,
+    {
+      'sequence_group'             : 'RCINIT_GROUP_2',                  # required
+      'thread_name'                : 'qdss_dbglog',                     # required
+      'thread_entry'               : 'qdss_dbglog_task',
+      'thread_type'                : 'RCINIT_TASK_QURTTASK',
+      'stack_size_bytes'           : '2048',
+      'priority_amss_order'        : 'SHARED_IDLE_SERVICE_PRI_ORDER',
+      'cpu_affinity'               : 'REX_ANY_SMT_MASK',
+    })

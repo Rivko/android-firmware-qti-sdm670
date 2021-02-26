@@ -1,0 +1,161 @@
+#===============================================================================
+#
+# Secure camera tz and hyp implementation
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2017 by Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 09/02/18    tkuo   Add support for qheebsp.
+# 07/01/17    dr     Initial commit
+#===============================================================================
+Import('env')
+
+
+#-------------------------------------------------------------------------------
+# Load sub scripts
+#-------------------------------------------------------------------------------
+#env.LoadSoftwareUnits()
+
+
+env = env.Clone()
+
+SRCPATH = "${BUILD_ROOT}/ssg/securemsm/seccam/src/"
+INCPATH = "${BUILD_ROOT}/ssg/securemsm/seccam/inc/"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_APIS = [
+   'DAL',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'KERNEL_API',
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_APIS, area='core')
+
+SSG_API = [
+   'SECUREMSM',
+   'MINK',
+   'KERNEL',
+   'SSGPLATFORM',
+]
+
+env.RequirePublicApi(SSG_API, area='ssg')
+env.RequireRestrictedApi(SSG_API)
+
+
+INC_PATH = [
+    INCPATH,
+    SRCPATH + "/common",
+    SRCPATH + "$/{MSM_ID}/hyp",
+    SRCPATH + "$/{MSM_ID}/tz",
+    ]
+env.Append(CPPPATH = INC_PATH)
+
+
+#check if the target is supported, if not in list just exit the sconscript file
+if not env['MSM_ID'] in ['845', '670']:
+  env.PrintWarning("Secure camera is not implemented for this target... Skipping.")
+  Return();
+
+#-------------------------------------------------------------------------------
+# Common Sources (shared between tz and hyp)
+#-------------------------------------------------------------------------------
+
+COMMON_SOURCES = [
+  '${BUILDPATH}/common/seccam_cfg.c'
+]
+
+#-------------------------------------------------------------------------------
+# TZBSP Sources, libraries
+#-------------------------------------------------------------------------------
+TZ_SOURCES = [
+  '${BUILDPATH}/${MSM_ID}/tz/smc_camerass_tz.c',
+  '${BUILDPATH}/${MSM_ID}/tz/camera_hw.c',
+  '${BUILDPATH}/${MSM_ID}/tz/seccam_tz.c',
+]
+
+TZ_SMC_SOURCES = [
+  '${BUILDPATH}/${MSM_ID}/tz/seccam_syscall_def_tz.c',
+]
+
+env.AddBinaryLibrary(['TZOS_IMAGE'], '${BUILDPATH}/seccam_tz', COMMON_SOURCES + TZ_SOURCES)
+env.AddBinaryObject(['TZOS_IMAGE'], TZ_SMC_SOURCES)
+
+
+#-------------------------------------------------------------------------------
+# HYP Sources, libraries
+#-------------------------------------------------------------------------------
+
+HYP_SOURCES = [
+  '${BUILDPATH}/${MSM_ID}/hyp/seccam_hyp.c',
+  '${BUILDPATH}/${MSM_ID}/hyp/smc_camerass_hyp.c',
+]
+
+HYP_SMC_SOURCES = [
+  '${BUILDPATH}/${MSM_ID}/hyp/seccam_syscall_def_hyp.c',
+]
+
+env.AddBinaryLibrary(['HYPERVISOR_IMAGE'], '${BUILDPATH}/seccam_hyp', COMMON_SOURCES + HYP_SOURCES)
+env.AddBinaryObject(['HYPERVISOR_IMAGE'], HYP_SMC_SOURCES)
+#add support for third party hypervisor
+env.AddBinaryObject(['QHEEBSP_IMAGE'], COMMON_SOURCES + HYP_SOURCES + HYP_SMC_SOURCES)
+
+#-------------------------------------------------------------------------------
+# devcfg HYP and TZ
+#-------------------------------------------------------------------------------
+
+#Add devcfg configuration for secure camera feature
+SECURE_CAMERA_CONFIG = 'secure_camera_config.xml'
+SECURE_CAMERA_CONFIG_FILE_XML = env.GlobFiles('../cfg/${MSM_ID}/'+SECURE_CAMERA_CONFIG, posix=True)
+SECURE_CAMERA_CONFIG_FILE_XML = ', '.join(SECURE_CAMERA_CONFIG_FILE_XML) #convert list to string
+
+if 'USES_DEVCFG' in env:
+  DEVCFG_IMG = ['DAL_DEVCFG_OEM_QSEE_IMG']
+  env.AddDevCfgInfo(DEVCFG_IMG,
+    {
+        'devcfg_xml' : [SECURE_CAMERA_CONFIG_FILE_XML]
+    }
+  )
+
+  if env['TARGET_FAMILY'] != 'bear':
+    DEVCFG_IMG = ['DAL_DEVCFG_OEM_HYP_IMG']
+    env.AddDevCfgInfo(DEVCFG_IMG,
+      {
+          'devcfg_xml' : [SECURE_CAMERA_CONFIG_FILE_XML]
+      }
+    )
+
+env.Deploy('SConscript')
+
+if 'USES_RCINIT' in env:
+  RCINIT_IMGS = ['CTZL64_IMAGE', 'TZOS_IMAGE', 'CTZL_IMAGE']
+  if env['CHIPSET'] in ['sdm845','sdm670']:
+   env.AddRCInitFunc(
+    RCINIT_IMGS,
+    {
+      'sequence_group'             : 'RCINIT_GROUP_2',
+      'init_name'                  : 'seccam_init',
+      'init_function'              : 'seccam_tz_init',
+      'dependencies'               : ['ac_init'],
+      'policy_optin'               : ['default']
+    })
+

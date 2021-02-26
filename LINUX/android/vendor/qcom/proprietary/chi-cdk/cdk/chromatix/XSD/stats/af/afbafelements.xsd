@@ -1,0 +1,476 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--========================================================================-->
+<!-- Copyright (c) 2016-2017 Qualcomm Technologies, Inc.                    -->
+<!-- All Rights Reserved.                                                   -->
+<!-- Confidential and Proprietary - Qualcomm Technologies, Inc.             -->
+<!--========================================================================-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified" attributeFormDefault="unqualified">
+	<xs:include schemaLocation="afglobalelements.xsd"/>
+	<xs:element name="chromatixBAF" type="chromatixBAFType"/>
+	<xs:complexType name="chromatixBAFType">
+		<xs:sequence>
+			<xs:element name="module_version">
+				<xs:complexType>
+					<xs:attribute name="major_revision" type="xs:int" default="3"/>
+					<xs:attribute name="minor_revision" type="xs:int" default="4"/>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="parameter_version">
+				<xs:complexType>
+					<xs:attribute name="major_revision" type="xs:int" default="0"/>
+					<xs:attribute name="minor_revision" type="xs:int" default="0"/>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="sets" type="chromatixBAFSetsType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixBAFSetsType">
+		<xs:sequence>
+			<xs:element name="elements" type="chromatixBAFSetType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:simpleType name="chromatixBAFPresetEnumType">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="AF_TUNING_CUSTOM"/>
+			<xs:enumeration value="AF_TUNING_PRESET_0"/>
+			<xs:enumeration value="AF_TUNING_PRESET_1"/>
+			<xs:enumeration value="AF_TUNING_PRESET_2"/>
+			<xs:enumeration value="AF_TUNING_PRESET_3"/>
+			<xs:enumeration value="AF_TUNING_PRESET_4"/>
+			<xs:enumeration value="AF_TUNING_PRESET_5"/>
+			<xs:enumeration value="AF_TUNING_PRESET_MAX"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:complexType name="chromatixBAFChannelSettings">
+		<xs:sequence>
+			<xs:element name="ChannelSelect">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="enable_flag_type">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="If value is set as 0 then G channel would be selected, if the value is 1 the Y channel would be selected."/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="gbgrChannelSelect">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="enable_flag_type">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="If ch_sel is set as 0 then the flag g_sel would be valid, where g_sel = 0 would pick GR pixel while g_sel = 1 would pick GB pixel."/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="yConversionEnable">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="enable_flag_type">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Not used for now."/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="RGBToYCoefficients" minOccurs="3" maxOccurs="3">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="If the value set for ch_sel as 1, then RGBToYCoefficients has to be configured. That is Y component will be used to compute FV If the value set for ch_sel as 0 then G component will be used the values set in RGBToYCoefficients[] wont take effect."/>
+							<xs:attribute name="range" type="xs:string" default="[0,1]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixBAFGammaType">
+		<xs:sequence>
+			<xs:element name="channelSettings" type="chromatixBAFChannelSettings"/>
+			<xs:element name="gammaEnable">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="enable_flag_type">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Enable this flag if we want to use the gamma looks up table."/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="gammaLUT" minOccurs="32" maxOccurs="32">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Gamma LUT for R/{Gr,Gb}/B channels. Default value: [0, 3390, 4646, 5586, 6367, 7047, 7655, 8211, 8725, 9205, 9656, 10084, 10491, 10879, 11252, 11610, 11956, 12290, 12614, 12927, 13232, 13529, 13818, 14100, 14376, 14645, 14908, 15166, 15419, 15667, 15910, 16149]. Constraints: This gamma table represents the 1/2.2 gamma curve."/>
+							<xs:attribute name="range" type="xs:string" default="[0,0x7FFFFFFF]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixBAFGammaParamType">
+		<xs:sequence>
+			<xs:element name="presetID" type="chromatixBAFPresetEnumType"/>
+			<xs:element name="gammaCustom" type="chromatixBAFGammaType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixBAFCoringType">
+		<xs:sequence>
+			<xs:element name="coringEnable">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="enable_flag_type">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Flag to enable/disable BAF coring."/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="LUT" minOccurs="17" maxOccurs="17">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Coring table indices, range [0, 1, ..., 16]. Constraints: None."/>
+							<xs:attribute name="range" type="xs:string" default="[0,16]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="coringThreshold">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Coring threshold value. Default value: Refer to the default values for IIR filters from the tuning guideline under BAF settings. Constraints: Each light level has different coring thresholds."/>
+							<xs:attribute name="range" type="xs:string" default="[0,0x1FFFF]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="coringGain">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Coring gain value."/>
+							<xs:attribute name="range" type="xs:string" default="[0,0x3FF]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixBAFFIRType">
+		<xs:sequence>
+			<xs:element name="FIREnable">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="enable_flag_type">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Enable/disable FIR filter."/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="coefficients" minOccurs="13" maxOccurs="13">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="1 x 13 FIR filter 6s for coefficients. Constraints: None."/>
+							<xs:attribute name="range" type="xs:string" default="[0,32]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixBAFIIRType">
+		<xs:sequence>
+			<xs:element name="IIREnable">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="enable_flag_type">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Enable/disable IIR filter."/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="coefficients" minOccurs="10" maxOccurs="10">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="10 coefficients for IIR, float, b10, b11, b12, -a11, -a12, b20, b21, b22, -a21, -a22, Constraints: Each light level has different IIR configuration. Refer to the default values for IIR filters from the tuning guideline under BAF settings."/>
+							<xs:attribute name="range" type="xs:string" default="[0,4]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixBAFHVFilterSettingsType">
+		<xs:sequence>
+			<xs:element name="IIR" type="chromatixBAFIIRType"/>
+			<xs:element name="FIR" type="chromatixBAFFIRType"/>
+			<xs:element name="nFilterShiftBits">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="4s, shift between FIR and IIR. The bit_shift would change based on the chipset. Refer to the default values for bit_shift from the tuning guideline under BAF settings."/>
+							<xs:attribute name="range" type="xs:string" default="[-8,7]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixBAFilterSettingsType">
+		<xs:sequence>
+			<xs:element name="presetID" type="chromatixBAFPresetEnumType"/>
+			<xs:element name="coring" type="chromatixBAFCoringType"/>
+			<xs:element name="filterCustom" type="chromatixBAFHVFilterSettingsType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixBAFScalerSettings">
+		<xs:sequence>
+			<xs:element name="scalerEnable">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="enable_flag_type">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Scaler enable for this filter."/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="MNScalerMval">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Scaler factor for numerator."/>
+							<xs:attribute name="range" type="xs:string" default="[1,unbounded]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="MNScalerNval">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Scaler factor for denominator, M/N is the scaler factor, maximum 8/1."/>
+							<xs:attribute name="range" type="xs:string" default="[1,unbounded]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixBAFFilterType">
+		<xs:sequence>
+			<xs:element name="HVFilter" type="chromatixBAFilterSettingsType" minOccurs="2" maxOccurs="2"/>
+			<xs:element name="scaler" type="chromatixBAFScalerSettings"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixBAFROISettingsType">
+		<xs:sequence>
+			<xs:element name="flag">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="enable_flag_type">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Flag to indicate whether the ROI is primary or secondary."/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="startXOffset">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Start location x of a ROI. Range is [64+12, Width-12-w]."/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="startYOffset">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Start location y of a ROI. Range is [32+4, Width-4-h]."/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="widthRatio">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="ROI width. Range is [0..Width/2]."/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="heightRatio">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="ROI height, Range is [0..Height/2]."/>
+							<xs:attribute name="range" type="xs:string" default="[0,unbounded]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixTouchROISettingsType">
+		<xs:sequence>
+			<xs:element name="touchScalingFactorNormalLight">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Factor by how much we will reduce the touch AF ROI in addition to the normal ROI in normal light. NOTE: For Touch the ROI is scaled down based on the ROI calculated in normal light For example: if ROI_width = 400, ROI_height= 300 and touch_scaling_factor_normal_light = 0.75 then the Touch ROI width size is 400 *  0.75 = 300 pixelsthen the Touch ROI height size is 300 * 0.75 = 225 pixels."/>
+							<xs:attribute name="range" type="xs:string" default="[0,1]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="touchScalingFactorLowLight">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Factor by how much we will reduce the touch AF ROI in addition to the normal ROI in low light. NOTE: For Touch the ROI is scaled down based on the ROI calculated in low light For example: if ROI_width = 400, ROI_height= 300 and touch_scaling_factor_lowlight_light = 1.0 then the Touch ROI width size is 400 *  1 = 400 pixels then the Touch ROI height size is 300 * 1 = 300 pixels."/>
+							<xs:attribute name="range" type="xs:string" default="[0,1]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:simpleType name="chromatixBAFROIPatternEnumType">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="BAF_ROI_PATTERN_CUSTOM"/>
+			<xs:enumeration value="BAF_ROI_PATTERN_RECT"/>
+			<xs:enumeration value="BAF_ROI_PATTERN_CROSS"/>
+			<xs:enumeration value="BAF_ROI_PATTERN_DIAMOND"/>
+			<xs:enumeration value="BAF_ROI_PATTERN_SPARSE"/>
+			<xs:enumeration value="BAF_ROI_PATTERN_MAX"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:complexType name="chromatixBAFROIParamsType">
+		<xs:sequence>
+			<xs:element name="presetID" type="chromatixBAFROIPatternEnumType"/>
+			<xs:element name="widthRatio">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="ROI width ratio with repect to CAMIF width"/>
+							<xs:attribute name="range" type="xs:string" default="[0,1]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="heightRatio">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="ROI height ratio with repect to CAMIF height"/>
+							<xs:attribute name="range" type="xs:string" default="[0,1]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="gridSizeH">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="ROI grid width ratio with respect to ROI width."/>
+							<xs:attribute name="range" type="xs:string" default="[0,1]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="gridSizeV">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="ROI grid height ratio with respect to ROI height."/>
+							<xs:attribute name="range" type="xs:string" default="[0,1]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="gridGapH">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="ROI grid gap width ratio with respect to ROI width."/>
+							<xs:attribute name="range" type="xs:string" default="[0,1]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="gridGapV">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="ROI grid gap width ratio with respect to ROI height."/>
+							<xs:attribute name="range" type="xs:string" default="[0,1]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="numROI">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Number of ROI used in custom ROI configuration."/>
+							<xs:attribute name="range" type="xs:string" default="[0,181]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="ROICustom" type="chromatixBAFROISettingsType" maxOccurs="181"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixBAFSetType">
+		<xs:sequence>
+			<xs:element name="BAFID">
+				<xs:simpleType>
+					<xs:restriction base="xs:string">
+						<xs:pattern value="BAFIDDefault"/>
+						<xs:pattern value="BAFIDLowLight"/>
+						<xs:pattern value="BAFIDFace"/>
+						<xs:pattern value="BAFIDSpotLight"/>
+					</xs:restriction>
+				</xs:simpleType>
+			</xs:element>
+			<xs:element name="ROIConfig" type="chromatixBAFROIParamsType" minOccurs="4" maxOccurs="4"/>
+			<xs:element name="gamma" type="chromatixBAFGammaParamType" minOccurs="4" maxOccurs="4"/>
+			<xs:element name="filter" type="chromatixBAFFilterType" minOccurs="4" maxOccurs="4"/>
+			<xs:element name="touchROI" type="chromatixTouchROISettingsType"/>
+		</xs:sequence>
+	</xs:complexType>
+</xs:schema>

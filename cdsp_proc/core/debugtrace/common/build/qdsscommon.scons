@@ -1,0 +1,104 @@
+#===============================================================================
+#
+# GENERAL DESCRIPTION
+#    Build script for QDSS common.
+#
+# Copyright (c) 2011 Qualcomm Technologies Incorporated.
+# All Rights Reserved.
+# Qualcomm Confidential and Proprietary
+#
+#-------------------------------------------------------------------------------
+#
+# $Header:$
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 09/07/17   rs      Warlock specific changes
+#===============================================================================
+
+Import('env')
+import qdss
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "../src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+if 'USES_QDSS_CLK_ALWAYS_ON' in env:
+   env.Append(CCFLAGS = " -DQDSS_CLK_ALWAYS_ON=1")
+
+if 'USES_QDSS_DISABLED' in env:
+   env.Append(CCFLAGS = " -DQDSS_DISABLED=1")
+
+#-------------------------------------------------------------------------------
+# Publish Private APIs
+#-------------------------------------------------------------------------------
+
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_APIS = [
+   'HAL',
+   'DAL',
+   'DEBUGTOOLS',
+   'DEBUGTRACE',
+   'SERVICES',
+   'POWER',
+   'SYSTEMDRIVERS',
+   'KERNEL'
+]
+
+env.RequirePublicApi(CBSP_APIS)
+env.RequireRestrictedApi(['DEBUGTRACE'])
+env.RequireProtectedApi(['DEBUGTRACE'])
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+
+if env.IsTargetEnable(qdss.BuildTags(['rpm'])):
+   QDSS_COMMON_SRC=['${BUILDPATH}/qdss_fuse_check.c',
+                    '${BUILDPATH}/qdss_imem_nondal.c']
+
+else:
+   QDSS_COMMON_SRC=['${BUILDPATH}/qdss_init.c',
+                    '${BUILDPATH}/qdss_imem_dal.c',
+                    '${BUILDPATH}/qdss_fuse_check_dal.c'
+
+                   ]
+   env.RequireProtectedApi(['DEBUGTRACE'])
+
+if env.IsTargetEnable(qdss.BuildTags(['sensor2'])):
+   env.Append(CCFLAGS = " -DQDSS_SENSOR_USERPD=1")
+
+#QDSSInit is always called. However component drivers are initialized
+#only in standalone mode.
+if 'USES_RCINIT' in env:
+   RCINIT_IMG = qdss.BuildTags(['adsp', 'audio', 'sensor2', 'cdsp'])
+   env.AddRCInitFunc(       # Code Fragment in TMC: NO
+      RCINIT_IMG,
+      {
+         'sequence_group'             : 'RCINIT_GROUP_0',       # required
+         'init_name'                  : 'qdss',                 # required
+         'init_function'              : 'QDSSInit',             # required
+         'dependencies'               : ['dalsys']
+      })
+   env.AddRCInitFunc(
+      RCINIT_IMG,
+      {
+         'sequence_group'             : 'RCINIT_GROUP_1',
+         'init_name'                  : 'qdss_err',
+         'init_function'              : 'QDSSErrInit',
+         'dependencies'               : ['qdss','err_init']
+      })
+
+
+env.AddLibrary(qdss.BuildTags(['adsp', 'audio', 'sensor2', 'cdsp']),
+   '${BUILDPATH}/qdss_common',QDSS_COMMON_SRC)

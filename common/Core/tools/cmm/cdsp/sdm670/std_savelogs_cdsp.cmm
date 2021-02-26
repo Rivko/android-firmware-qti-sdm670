@@ -1,0 +1,101 @@
+//============================================================================
+//  Name:                                                                     
+//    std_savelogs_cdsp.cmm 
+//
+//  Description:                                                              
+//    Script to save CDSP memory locations
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who     		what, where, why
+// --------   ---     		---------------------------------------------------------
+// 02/01/2017 JBILLING      Created for SDM845
+
+
+///////////////////IMPORTANT!//////////////////////////
+//////////////////////////////////////////////////////
+////This function deprecated. Limited functionality///
+//////////////////////////////////////////////////////
+
+// We support one argument for this script
+// &ARG0 - Output location for the logs
+ENTRY &ARG0
+
+LOCAL &LOGLOCATION
+
+MAIN:
+	&LOGLOCATION="&ARG0"
+
+	// Sanity check
+	IF ("&LOGLOCATION"=="")
+	(
+	    PRINT %ERROR "Location to save logs not provided"
+		GOTO FATALEXIT
+	)
+
+	// Load the memory map
+	do std_memorymap
+	
+	// Flush the caches or anything else we need to do 
+	// before we save the binaries 
+	GOSUB SYNCSTATE
+	
+	// We need to disable the MMU for some reason
+	GOSUB SETUPMMU
+
+	// Save the memories first
+	GOSUB SAVEBIN
+
+	// Save the registers
+	GOSUB SAVESTATE
+
+	GOTO EXIT
+
+SAVEBIN:
+	do std_utils SAVEBIN &LOGLOCATION &SHARED_IMEM_log &SHARED_IMEM_start &SHARED_IMEM_size
+	do std_utils SAVEBIN &LOGLOCATION &DDR_Periph_log &DDR_Periph_start &DDR_Periph_size
+	RETURN 
+	
+
+// Any MMU settings that need to be performed
+SETUPMMU:
+	MMU.OFF
+	RETURN
+	
+
+SYNCSTATE:
+	// Flush the cache
+	do std_flushcache QDSP6V60
+	RETURN 
+
+SAVESTATE:
+	LOCAL &CURR_THREAD
+	&CURR_THREAD=REGISTER(HTID)
+	
+    // Cycle through all the threads and save the regs one at a time
+	THREAD 0
+	do std_utils SAVEREGS &LOGLOCATION &CDSP_Thread0_regs
+	THREAD 1
+	do std_utils SAVEREGS &LOGLOCATION &CDSP_Thread1_regs
+	THREAD 2
+	do std_utils SAVEREGS &LOGLOCATION &CDSP_Thread2_regs
+    THREAD 3
+    do std_utils SAVEREGS &LOGLOCATION &CDSP_Thread3_regs
+	// Return to the original thread
+	THREAD &CURR_THREAD	
+
+FATALEXIT:
+	END
+
+EXIT:
+	ENDDO
+
+
+

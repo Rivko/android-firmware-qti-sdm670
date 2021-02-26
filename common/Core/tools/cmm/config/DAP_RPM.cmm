@@ -1,0 +1,472 @@
+//============================================================================
+//  Name:                                                                     
+//    DAP_RPM.cmm
+//
+//  Description:                                                              
+//    Setup script for the RPM 
+//                                                                            
+// Copyright (c) 2012 - 2018 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who             what, where, why
+// --------   ---             ------------------------------------
+// 08/26/2017 Martham         Updated for sdm670
+// 06/15/2017 MARTHAM         Corrected the SDX20 DAP settings.
+// 02/01/2017 JBILLING        Updated for SDM845
+// 03/29/2016 JBILLING        Updated for 8998
+// 07/22/2015 RSSRIDHA        Ported for MDM9x45
+// 02/20/2015 JBILLING        Remove JTAG/SWD Hack
+// 02/09/2015 JBILLING        Port for 8996
+// 04/15/2014 AJCheriyan      SWDTARGET removed
+// 04/04/2014 AJCheriyan      SWD support auto-detect
+// 11/21/2013 AJCheriyan      Update for Luxor
+// 04/13/2013 AJCheriyan      Support for QDSS Gen 2
+// 04/02/2013 AJCheriyan      Added SWD support
+// 02/11/2013 AJCheriyan      Added 8x26 support
+// 08/26/2012 AJCheriyan      Dropped JTAG clock down to 20 MHz
+// 08/25/2012 AJCheriyan      Boosted JTAG clock speed
+// 07/10/2012 AJCheriyan      Created for B-family
+//
+
+// The script accepts two input arguments
+// ARG0 - Chipset name
+// ARG1 - Core number
+// Ideal case, the argument 'ARG0' would not have to be used
+// as the parameters for a sub-system should be the same
+// across the entire family of chipsets
+
+ENTRY &ARG0 &ARG1 &ARG2
+GLOBAL &RPM_HW_BLOCK_NAME &CURRENT_HW_BLOCK_NAME
+&RPM_HW_BLOCK_NAME="RPM-CORTEXM3"
+MAIN:
+    &ARG0=STR.UPR("&ARG0")
+    
+    IF (("&ARG0"=="SDM845")||("&ARG0"=="SDM670"))
+    (
+        &RPM_HW_BLOCK_NAME="AOP-CORTEXM3"
+        SYStem.CPU CortexM3
+        
+        
+        IF "&RUMI"=="TRUE"
+        (
+            SYSTEM.JTAGCLOCK 500khz
+        )
+        ELSE
+        (
+            SYSTEM.JTAGCLOCK 5Mhz
+        )
+        SYStem.OPTION WAITRESET OFF
+        ;SYStem.OPTION ENRESET ON
+        SYStem.OPTION ENRESET OFF
+        SYStem.OPTION RESBREAK OFF
+
+        SYStem.CONFIG SLAVE ON
+
+
+        //SYStem.CONFIG COREBASE         E:0xE000E000
+        //SYStem.CONFIG ITMBASE          E:0xE0000000
+        //SYStem.CONFIG DWTBASE          E:0xE0010000
+        SYStem.CONFIG ETMBASE          E:0xE0041000
+        //SYStem.CONFIG TPIUBASE         DAP:0x86040000
+        SYStem.CONFIG TPIUBASE         0
+
+        SYStem.CONFIG MEMORYACCESSPORT 19.
+        SYStem.CONFIG DEBUGACCESSPORT  17.
+        SYStem.CONFIG AHBACCESSPORT    19.
+        SYStem.CONFIG APBACCESSPORT    1.
+        SYStem.CONFIG AXIACCESSPORT    0.
+
+        SYStem.CONFIG DAPIRPOST 0.
+        SYStem.CONFIG DAPDRPOST 0.
+        SYStem.CONFIG DAPIRPOST 11.
+        SYStem.CONFIG DAPDRPOST 1.
+
+        SYStem.MEMACCESS DAP
+        
+        IF "&RUMI"=="TRUE"
+        (
+            SYStem.CONFIG DAPIRPOST 0.
+            SYStem.CONFIG DAPDRPOST 0.
+        )
+        
+        LOCAL &currdir
+        &currdir=os.pwd()
+        GLOBAL &AOP_ATTACH_DIR
+        &AOP_ATTACH_DIR="&currdir/rpm/sdm845"
+        //AOP Attach/detach scripts for software watchdog
+        GLOBALON SYSUP DO &AOP_ATTACH_DIR/aop_attach_actions.cmm
+        
+        GLOBALON SYSDOWN DO &AOP_ATTACH_DIR/aop_deattach_actions.cmm
+        
+        SYS.OPTION.DAPSYSPWRUPREQ OFF
+
+    )
+    IF (("&ARG0"=="MSM8974"))
+    (
+        SYSTEM.CPU CORTEXM3
+        SYSTEM.OPTION ENRESET ON
+        SYSTEM.JTAGCLOCK 15.0MHZ 
+        SYSTEM.OPTION RESBREAK OFF
+        SYSTEM.CONFIG SLAVE OFF
+        SYSTEM.CONFIG MEMORYACCESSPORT 3.
+        SYSTEM.CONFIG DEBUGACCESSPORT 1. 
+        SYSTEM.MEMACCESS DAP
+        SYSTEM.CONFIG DAPIRPOST 16.
+        SYSTEM.CONFIG DAPDRPOST 2.
+        SYSTEM.CONFIG DAPIRPRE 0.
+        SYSTEM.CONFIG DAPDRPRE 0.
+        SYSTEM.OPTION RESBREAK ON
+        SYSTEM.OPTION WAITRESET 3ms
+    )
+
+    IF (("&ARG0"=="MSM8X26"))
+    (
+        SYSTEM.CPU CORTEXM3
+        SYSTEM.OPTION ENRESET ON
+        SYSTEM.JTAGCLOCK 15.0MHZ 
+        SYSTEM.OPTION RESBREAK OFF
+        SYSTEM.CONFIG SLAVE OFF
+        SYSTEM.CONFIG MEMORYACCESSPORT 3.
+        SYSTEM.CONFIG DEBUGACCESSPORT 1. 
+        SYSTEM.CONFIG.DAPIRPOST 16.
+        SYSTEM.CONFIG.DAPDRPOST 2.
+        SYSTEM.CONFIG.DAPIRPRE 0.
+        SYSTEM.CONFIG.DAPDRPRE 0.
+        SYSTEM.MEMACCESS DAP
+        SYSTEM.OPTION RESBREAK ON
+        SYSTEM.OPTION WAITRESET 3ms
+    )
+
+    IF (("&ARG0"=="MSM8X10"))
+    (
+        SYSTEM.CPU CORTEXM3
+        SYSTEM.OPTION ENRESET ON
+        SYSTEM.JTAGCLOCK 15.0MHZ 
+        SYSTEM.OPTION RESBREAK OFF
+        SYSTEM.CONFIG SLAVE OFF
+        SYSTEM.CONFIG MEMORYACCESSPORT 3.
+        SYSTEM.CONFIG DEBUGACCESSPORT 1.
+        SYSTEM.CONFIG AXIACCESSPORT 0.    
+        SYSTEM.CONFIG.DAPIRPOST 16.
+        SYSTEM.CONFIG.DAPDRPOST 2.
+        SYSTEM.CONFIG.DAPIRPRE 0.
+        SYSTEM.CONFIG.DAPDRPRE 0.
+        SYSTEM.MEMACCESS DAP
+        SYSTEM.OPTION RESBREAK ON
+        SYSTEM.OPTION WAITRESET 3ms
+    )
+
+    IF (("&ARG0"=="APQ8084"))
+    (
+        SYSTEM.CPU CORTEXM3
+        SYSTEM.OPTION ENRESET ON
+        SYSTEM.JTAGCLOCK 10.0MHZ 
+        SYSTEM.OPTION RESBREAK OFF
+        SYSTEM.CONFIG SLAVE OFF
+        SYSTEM.CONFIG MEMORYACCESSPORT 3.
+        SYSTEM.CONFIG DEBUGACCESSPORT 1.
+        SYSTEM.CONFIG AXIACCESSPORT 0.    
+        SYSTEM.CONFIG.DAPIRPOST 16.
+        SYSTEM.CONFIG.DAPDRPOST 2.
+        SYSTEM.CONFIG.DAPIRPRE 0.
+        SYSTEM.CONFIG.DAPDRPRE 0.
+        SYSTEM.MEMACCESS DAP
+        SYSTEM.OPTION RESBREAK ON
+        SYSTEM.OPTION WAITRESET 3ms
+        // Commented out for now
+        //SYSTEM.CONFIG SWDPTARGETSEL 0X109000E1
+    )
+    
+    IF (("&ARG0"=="MDM9X25"))
+    (
+
+        SYSTEM.CPU CORTEXM3
+        SYSTEM.JTAGCLOCK 10.0MHZ
+
+        SYSTEM.OPTION WAITRESET OFF
+        SYSTEM.OPTION ENRESET ON
+        SYSTEM.OPTION RESBREAK OFF
+        SYSTEM.CONFIG SLAVE OFF
+        SYSTEM.CONFIG MEMORYACCESSPORT 3.
+        SYSTEM.CONFIG DEBUGACCESSPORT  1.
+        SYSTEM.CONFIG AHBACCESSPORT 0.
+        SYSTEM.CONFIG DAPIRPOST 16.
+        SYSTEM.CONFIG DAPDRPOST 2.
+        SYSTEM.CONFIG DAPIRPOST 0.
+        SYSTEM.CONFIG DAPDRPOST 0.
+        SYSTEM.CONFIG COREBASE         E:0XE000E000
+        SYSTEM.CONFIG ITMBASE          E:0XE0000000
+        SYSTEM.CONFIG DWTBASE          E:0XE0010000
+        SYSTEM.CONFIG ETMBASE          E:0XE0041000
+        SYSTEM.CONFIG TPIUBASE         DAP:0X80018000
+        // SYSTEM.CONFIG SWDPTARGETSEL    0x107F50E1
+    )
+
+    IF (("&ARG0"=="MSM8994"))
+    (
+
+        SYSTEM.CPU CORTEXM3
+        SYSTEM.OPTION ENRESET ON
+        SYSTEM.JTAGCLOCK 10.0MHZ 
+        SYSTEM.OPTION RESBREAK ON
+        SYSTEM.CONFIG SLAVE OFF
+        SYSTEM.CONFIG MEMORYACCESSPORT 3.
+        SYSTEM.CONFIG DEBUGACCESSPORT 1.
+        SYSTEM.CONFIG AXIACCESSPORT 0.    
+        SYSTEM.CONFIG.DAPIRPOST 16.
+        SYSTEM.CONFIG.DAPDRPOST 2.
+        SYSTEM.CONFIG.DAPIRPRE 0.
+        SYSTEM.CONFIG.DAPDRPRE 0.
+        SYSTEM.MEMACCESS DAP
+    )
+    IF (("&ARG0"=="MSM8996")||("&ARG0"=="MSM8998"))
+    (
+
+        SYSTEM.CPU CORTEXM3
+        
+        SYSTEM.JTAGCLOCK 10.0MHZ 
+        SYStem.OPTION WAITRESET OFF
+        SYSTEM.OPTION ENRESET OFF
+        SYSTEM.OPTION RESBREAK OFF
+        SYSTEM.CONFIG SLAVE ON
+        
+        SYSTEM.CONFIG MEMORYACCESSPORT 3.
+        SYSTEM.CONFIG DEBUGACCESSPORT 1.
+        SYSTEM.CONFIG AHBACCESSPORT 3.    
+        SYSTEM.CONFIG APBACCESSPORT 1.    
+        SYSTEM.CONFIG AXIACCESSPORT 0.    
+        
+        SYStem.CONFIG DAPIRPOST 0.
+        SYStem.CONFIG DAPDRPOST 0.
+        SYStem.CONFIG DAPIRPOST 16.
+        SYStem.CONFIG DAPDRPOST 2.
+        
+        SYSTEM.MEMACCESS DAP
+        
+        SYStem.CONFIG COREBASE          E:0xE000E000
+        SYStem.CONFIG ITMBASE           E:0xE0000000
+        SYStem.CONFIG DWTBASE           E:0xE0010000
+        SYStem.CONFIG ETMBASE           E:0xE0041000
+        ;SYStem.CONFIG TPIUBASE         DAP:0x86040000
+        
+    )
+    IF (("&ARG0"=="MSM8992"))
+    (
+
+        SYSTEM.CPU CORTEXM3
+        SYSTEM.OPTION ENRESET ON
+        SYSTEM.JTAGCLOCK 10.0MHZ 
+        SYSTEM.OPTION RESBREAK ON
+        SYSTEM.CONFIG SLAVE OFF
+        SYSTEM.CONFIG MEMORYACCESSPORT 3.
+        SYSTEM.CONFIG DEBUGACCESSPORT 1.
+        SYSTEM.CONFIG AXIACCESSPORT 0.    
+        SYSTEM.CONFIG.DAPIRPOST 16.
+        SYSTEM.CONFIG.DAPDRPOST 2.
+        SYSTEM.CONFIG.DAPIRPRE 0.
+        SYSTEM.CONFIG.DAPDRPRE 0.
+        SYSTEM.MEMACCESS DAP
+    )
+    
+    IF ("&ARG0"=="MDM9645")
+    (
+
+        SYSTEM.CPU CORTEXM3
+    SYSTEM.JTAGCLOCK  CTCK 20.0MHZ
+    SYSTEM.OPTION WAITRESET OFF
+    SYSTEM.OPTION ENRESET ON
+    SYSTEM.OPTION RESBREAK ON
+    SYSTEM.CONFIG SLAVE ON
+    SYStem.CONFIG MEMORYACCESSPORT 3.
+    SYStem.CONFIG DEBUGACCESSPORT  1.
+    SYStem.CONFIG AXIACCESSPORT    0.
+    SYStem.CONFIG DAPIRPOST 0.
+    SYStem.CONFIG DAPDRPOST 0.
+    SYStem.CONFIG DAPIRPOST 16.
+    SYStem.CONFIG DAPDRPOST 2.
+    SYStem.MEMACCESS DAP
+    SYStem.CONFIG COREBASE         E:0xE000E000
+    SYStem.CONFIG ITMBASE          E:0xE0000000
+    SYStem.CONFIG DWTBASE          E:0xE0010000
+    SYStem.CONFIG ETMBASE          E:0xE0041000
+    SYStem.CONFIG TPIUBASE         DAP:0x80018000
+    SYStem.Config ETBBASE          DAP:0x80007000
+    SYStem.Config STMBASE          DAP:0x80021000
+    ETM.OFF
+    // SYSTEM.CONFIG SWDPTARGETSEL    0x107F50E1
+    )
+    
+    IF ("&ARG0"=="MDM9655")
+    (
+
+    SYSTEM.CPU CORTEXM3
+    SYSTEM.JTAGCLOCK  CTCK 20.0MHZ
+    SYSTEM.OPTION WAITRESET OFF
+    SYSTEM.OPTION ENRESET ON
+    SYSTEM.OPTION RESBREAK ON
+    SYSTEM.CONFIG SLAVE ON
+    SYStem.CONFIG MEMORYACCESSPORT 3.
+    SYStem.CONFIG DEBUGACCESSPORT  1.
+    SYStem.CONFIG AXIACCESSPORT    0.
+    SYStem.CONFIG DAPIRPOST 0.
+    SYStem.CONFIG DAPDRPOST 0.
+    SYStem.CONFIG DAPIRPOST 16.
+    SYStem.CONFIG DAPDRPOST 2.
+    SYStem.MEMACCESS DAP
+    SYStem.CONFIG COREBASE         E:0xE000E000
+    SYStem.CONFIG ITMBASE          E:0xE0000000
+    SYStem.CONFIG DWTBASE          E:0xE0010000
+    SYStem.CONFIG ETMBASE          E:0xE0041000
+    SYStem.CONFIG TPIUBASE         DAP:0x80018000
+    SYStem.Config ETBBASE          DAP:0x80007000
+    SYStem.Config STMBASE          DAP:0x80021000
+    ETM.OFF
+    // SYSTEM.CONFIG SWDPTARGETSEL    0x107F50E1
+    )
+    
+    
+    IF ("&ARG0"=="SDX50")||("&ARG0"=="SDX50M")
+    (
+
+        SYSTEM.CPU CORTEXM3
+        SYSTEM.JTAGCLOCK  CTCK 20.MHZ
+        SYSTEM.OPTION WAITRESET OFF
+        SYSTEM.OPTION ENRESET ON
+        SYSTEM.OPTION RESBREAK ON
+        SYSTEM.CONFIG SLAVE ON
+        SYStem.CONFIG MEMORYACCESSPORT 3.
+        SYStem.CONFIG DEBUGACCESSPORT  1.
+        SYStem.CONFIG AXIACCESSPORT    0.
+        SYStem.CONFIG DAPIRPOST 0.
+        SYStem.CONFIG DAPDRPOST 0.
+        SYStem.CONFIG DAPIRPOST 11.
+        SYStem.CONFIG DAPDRPOST 1.
+         //SYStem.CONFIG DAPIRPOST 0.
+         //SYStem.CONFIG DAPDRPOST 0.
+         //SYStem.CONFIG DAPIRPOST 0.
+         //SYStem.CONFIG DAPDRPOST 0.
+        SYStem.MEMACCESS DAP
+        SYStem.CONFIG COREBASE         E:0xE000E000
+        SYStem.CONFIG ITMBASE          E:0xE0000000
+        SYStem.CONFIG DWTBASE          E:0xE0010000
+        SYStem.CONFIG ETMBASE          E:0xE0041000
+        SYStem.CONFIG TPIUBASE         DAP:0x80018000
+        SYStem.Config ETBBASE          DAP:0x80007000
+        SYStem.Config STMBASE          DAP:0x80021000
+        ETM.OFF
+        // SYSTEM.CONFIG SWDPTARGETSEL    0x107F50E1
+    )
+    IF ("&ARG0"=="MDM9665")||("&ARG0"=="SDX20")||("&ARG0"=="SDX20M")
+    (
+
+        SYSTEM.CPU CORTEXM3
+        SYSTEM.JTAGCLOCK  CTCK 20.MHZ
+        SYSTEM.OPTION WAITRESET OFF
+        SYSTEM.OPTION ENRESET ON
+        SYSTEM.OPTION RESBREAK ON
+        SYSTEM.CONFIG SLAVE ON
+        SYStem.CONFIG MEMORYACCESSPORT 3.
+        SYStem.CONFIG DEBUGACCESSPORT  1.
+        SYStem.CONFIG AXIACCESSPORT    0.
+        SYStem.CONFIG DAPIRPOST 0.
+        SYStem.CONFIG DAPDRPOST 0.
+        SYStem.CONFIG DAPIRPOST 16.
+        SYStem.CONFIG DAPDRPOST 2.
+         //SYStem.CONFIG DAPIRPOST 0.
+         //SYStem.CONFIG DAPDRPOST 0.
+         //SYStem.CONFIG DAPIRPOST 0.
+         //SYStem.CONFIG DAPDRPOST 0.
+        SYStem.MEMACCESS DAP
+        SYStem.CONFIG COREBASE         E:0xE000E000
+        SYStem.CONFIG ITMBASE          E:0xE0000000
+        SYStem.CONFIG DWTBASE          E:0xE0010000
+        SYStem.CONFIG ETMBASE          E:0xE0041000
+        SYStem.CONFIG TPIUBASE         DAP:0x80018000
+        SYStem.Config ETBBASE          DAP:0x80007000
+        SYStem.Config STMBASE          DAP:0x80021000
+        ETM.OFF
+        // SYSTEM.CONFIG SWDPTARGETSEL    0x107F50E1
+    )
+	
+	 IF ("&ARG0"=="MDM9675")||("&ARG0"=="SDX24")
+    (
+
+        SYSTEM.CPU CORTEXM3
+        IF "&RUMI"=="TRUE"
+		(
+        SYSTEM.JTAGCLOCK  CTCK 1.MHz
+		)
+		ELSE 
+		(
+		SYSTEM.JTAGCLOCK  CTCK 20.MHz
+		)
+        SYSTEM.OPTION WAITRESET OFF
+        SYSTEM.OPTION ENRESET ON
+        SYSTEM.OPTION RESBREAK ON
+        SYSTEM.CONFIG SLAVE ON
+        SYStem.CONFIG MEMORYACCESSPORT 19.
+        SYStem.CONFIG DEBUGACCESSPORT  17.
+        SYStem.CONFIG AXIACCESSPORT    0.
+        SYStem.CONFIG DAPIRPOST 0.
+        SYStem.CONFIG DAPDRPOST 0.
+        SYStem.CONFIG DAPIRPOST 11.
+        SYStem.CONFIG DAPDRPOST 1.
+         //SYStem.CONFIG DAPIRPOST 0.
+         //SYStem.CONFIG DAPDRPOST 0.
+         //SYStem.CONFIG DAPIRPOST 11.
+         //SYStem.CONFIG DAPDRPOST 1.
+        SYStem.MEMACCESS DAP
+        SYStem.CONFIG COREBASE         E:0xE000E000
+        SYStem.CONFIG ITMBASE          E:0xE0000000
+        SYStem.CONFIG DWTBASE          E:0xE0010000
+        SYStem.CONFIG ETMBASE          E:0xE0041000
+        SYStem.CONFIG TPIUBASE         DAP:0x86040000
+        SYStem.Config ETBBASE          DAP:0x80007000
+        SYStem.Config STMBASE          DAP:0x80021000
+		
+		IF "&RUMI"=="TRUE"
+        (
+          SYStem.CONFIG DAPIRPOST 0.
+          SYStem.CONFIG DAPDRPOST 0.
+         )
+        ETM.OFF
+        // SYSTEM.CONFIG SWDPTARGETSEL    0x107F50E1
+        LOCAL &currdir
+        &currdir=os.pwd()
+        GLOBAL &AOP_ATTACH_DIR
+        &AOP_ATTACH_DIR="&currdir/rpm/sdm845"
+        //AOP Attach/detach scripts for software watchdog
+        GLOBALON SYSUP DO &AOP_ATTACH_DIR/aop_attach_actions.cmm
+        
+        GLOBALON SYSDOWN DO &AOP_ATTACH_DIR/aop_deattach_actions.cmm
+        
+        SYS.OPTION.DAPSYSPWRUPREQ OFF
+    )
+    &CURRENT_HW_BLOCK_NAME="&RPM_HW_BLOCK_NAME"
+    // Common settings for all chipsets
+    IF ((("&ARG2"=="SWD")||("&ARG2"=="swd"))&&(CABLE.TWOWIRE()))
+    (
+        SYSTEM.CONFIG SWDP ON 
+        SYSTEM.CONFIG DEBUGPORTTYPE SWD
+    )
+
+    // Launch startup scripts
+    IF (OS.ENV(STARTUPCMM)!="")
+    (
+        &STARTUPSCRIPT=OS.ENV(STARTUPCMM)
+        do &STARTUPSCRIPT
+    )
+    IF "&EUD"!="TRUE"
+    (
+        AUTOSTORE DAP_RPM HISTORY
+    )
+
+
+EXIT:
+    ENDDO

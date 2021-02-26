@@ -1,0 +1,124 @@
+;============================================================================
+;  Name:
+;    load_uefi_dump.cmm
+;
+;  Description:
+;     Load UEFI crashdumps to T32 simulator
+;
+; Copyright (c) 2016 Qualcomm Technologies Incorporated.
+; All Rights Reserved.
+; Qualcomm Technologies Confidential and Proprietary
+;
+;----------------------------------------------------------------------------
+;============================================================================
+;
+;                        EDIT HISTORY FOR MODULE
+
+;
+;when         who     what, where, why
+;----------   ---     ----------------------------------------------------------
+;2017-10-05   mk      Added Multicore debugging steps
+;2016-10-14   ai      Initial Version
+;============================================================================;
+
+area.clear
+area.reset
+
+ENTRY &DumpPath &CoreNum &DbiBaseAddr
+  LOCAL &Offset
+  
+  ; Sanity check - no argument
+  if ("&DumpPath"=="")
+  (
+    dialog.ok "Argument required!" "load_uefi_dump.cmm <path> <CoreNum> <DbiBaseAddr>"
+    end
+  )
+  if ("&CoreNum"=="")
+  (
+    ;if no parameter passed Default CoreNum = 0 
+    &CoreNum=0
+    
+    ;dialog.ok "Argument required!" "load_uefi_dump.cmm <path> <CoreNum> <DbiBaseAddr>"
+    ;end
+  )
+  if ("&DbiBaseAddr"=="")
+  (
+    ;if no parameter passed, Default to "DBI Dump" address
+    &DbiBaseAddr=0x9D330000
+  )
+  
+  ; Sanity check - incorrect argument
+  &LoadCmmPath="&DumpPath/load.cmm"
+  if (os.access("&LoadCmmPath", "r")!=TRUE())
+  (
+    dialog.ok "&DumpPath" "does not contain load.cmm!"
+    end
+  )
+  
+  ; Execute load script
+  &CwDir=os.ppd()
+  sys.u
+  cd.do &LoadCmmPath
+  
+  ; Load UEFI symbols
+  cd &CwDir
+  do symbol_Load.cmm "NoAttach"
+  
+  ; EL1h
+  r.s M 0x05
+  
+  ; nsec
+  r.s NS 1
+  
+  ;Offset between two Dump Table Data 
+  &Offset=0X400
+  
+  ;add the offset to the base reg value
+  &DbiBaseAddr=&DbiBaseAddr+(&CoreNum*&Offset)
+
+  r.s   X0        data.quad(NSD:(&DbiBaseAddr+0x10))
+  r.s   X1        data.quad(NSD:(&DbiBaseAddr+0x18))
+  r.s   X2        data.quad(NSD:(&DbiBaseAddr+0x20))
+  r.s   X3        data.quad(NSD:(&DbiBaseAddr+0x28))
+  r.s   X4        data.quad(NSD:(&DbiBaseAddr+0x30))
+  r.s   X5        data.quad(NSD:(&DbiBaseAddr+0x38))
+  r.s   X6        data.quad(NSD:(&DbiBaseAddr+0x40))
+  r.s   X7        data.quad(NSD:(&DbiBaseAddr+0x48))
+  r.s   X8        data.quad(NSD:(&DbiBaseAddr+0x50))
+  r.s   X9        data.quad(NSD:(&DbiBaseAddr+0x58))
+  r.s   X10       data.quad(NSD:(&DbiBaseAddr+0x60))
+  r.s   X11       data.quad(NSD:(&DbiBaseAddr+0x68))
+  r.s   X12       data.quad(NSD:(&DbiBaseAddr+0x70))
+  r.s   X13       data.quad(NSD:(&DbiBaseAddr+0x78))
+  r.s   X14       data.quad(NSD:(&DbiBaseAddr+0x80))
+  r.s   X15       data.quad(NSD:(&DbiBaseAddr+0x88))
+  r.s   X16       data.quad(NSD:(&DbiBaseAddr+0x90))
+  r.s   X17       data.quad(NSD:(&DbiBaseAddr+0x98))
+  r.s   X18       data.quad(NSD:(&DbiBaseAddr+0xA0))
+  r.s   X19       data.quad(NSD:(&DbiBaseAddr+0xA8))
+  r.s   X20       data.quad(NSD:(&DbiBaseAddr+0xB0))
+  r.s   X21       data.quad(NSD:(&DbiBaseAddr+0xB8))
+  r.s   X22       data.quad(NSD:(&DbiBaseAddr+0xC0))
+  r.s   X23       data.quad(NSD:(&DbiBaseAddr+0xC8))
+  r.s   X24       data.quad(NSD:(&DbiBaseAddr+0xD0))
+  r.s   X25       data.quad(NSD:(&DbiBaseAddr+0xD8))
+  r.s   X26       data.quad(NSD:(&DbiBaseAddr+0xE0))
+  r.s   X27       data.quad(NSD:(&DbiBaseAddr+0xE8))
+  r.s   X28       data.quad(NSD:(&DbiBaseAddr+0xF0))
+  r.s   X29       data.quad(NSD:(&DbiBaseAddr+0xF8))
+  r.s   X30       data.quad(NSD:(&DbiBaseAddr+0x100))
+  r.s   PC        data.quad(NSD:(&DbiBaseAddr+0x108))
+  r.s   SP_EL3    data.quad(NSD:(&DbiBaseAddr+0x118))
+  r.s   ELR_EL3   data.quad(NSD:(&DbiBaseAddr+0x120))
+  r.s   SPSR_EL3  data.quad(NSD:(&DbiBaseAddr+0x128))
+  r.s   SP_EL2    data.quad(NSD:(&DbiBaseAddr+0x130))
+  r.s   ELR_EL2   data.quad(NSD:(&DbiBaseAddr+0x138))
+  r.s   SPSR_EL2  data.quad(NSD:(&DbiBaseAddr+0x140))
+  r.s   SP_EL1    data.quad(NSD:(&DbiBaseAddr+0x148))
+  r.s   ELR_EL1   data.quad(NSD:(&DbiBaseAddr+0x150))
+  r.s   SPSR_EL1  data.quad(NSD:(&DbiBaseAddr+0x158))
+  r.s   SP_EL0    data.quad(NSD:(&DbiBaseAddr+0x160))  
+    ; Restore GPRS
+  ;r.s   X0 data.quad(v.address("(*((*(\\Sec\Global\UefiInfoBlockPtr)).CrashContext.SystemContextAArch64)).X0"))
+  ; Restore SPRS
+  ;r.s  X29 data.quad(v.address("(*((*(\\Sec\Global\UefiInfoBlockPtr)).CrashContext.SystemContextAArch64)).FP"))

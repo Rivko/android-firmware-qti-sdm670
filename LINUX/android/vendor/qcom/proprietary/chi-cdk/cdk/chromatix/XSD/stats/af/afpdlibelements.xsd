@@ -1,0 +1,502 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--========================================================================-->
+<!-- Copyright (c) 2016-2017 Qualcomm Technologies, Inc.                    -->
+<!-- All Rights Reserved.                                                   -->
+<!-- Confidential and Proprietary - Qualcomm Technologies, Inc.             -->
+<!--========================================================================-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified" attributeFormDefault="unqualified">
+	<xs:include schemaLocation="afglobalelements.xsd"/>
+	<xs:element name="chromatixPDLib" type="chromatixPDLibType"/>
+	<xs:complexType name="chromatixPDLibType">
+		<xs:sequence>
+			<xs:element name="module_version">
+				<xs:complexType>
+					<xs:attribute name="major_revision" type="xs:int" default="3"/>
+					<xs:attribute name="minor_revision" type="xs:int" default="4"/>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="parameter_version">
+				<xs:complexType>
+					<xs:attribute name="major_revision" type="xs:int" default="0"/>
+					<xs:attribute name="minor_revision" type="xs:int" default="0"/>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="preProcess" type="chromatixTuningPreProcess"/>
+			<xs:element name="correlation" type="chromatixTuningCorrelation"/>
+			<xs:element name="postProcess" type="chromatixTuningPostProcess"/>
+			<xs:element name="adaptiveK" type="chromatixTuningAdaptiveK"/>
+			<xs:element name="enablePeripheralWindows" type="enable_flag_type" default="0"/>
+			<xs:element name="singleWindowProcessingLevel" type="chromatixTuningProcessLevel"/>
+			<xs:element name="gridProcessingLevel" type="chromatixTuningProcessLevel"/>
+			<xs:element name="PeripheralProcessing" type="chromatixTuningProcessLevel"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixPDRange">
+		<xs:sequence>
+			<xs:element name="from">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="PD search range near limit."/>
+							<xs:attribute name="range" type="xs:string" default="[-48,-16]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="to">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="PD search range far limit."/>
+							<xs:attribute name="range" type="xs:string" default="[16,32]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixPDLIBPreprocessingFilterSettings">
+		<xs:sequence>
+			<xs:element name="AECTrigger" type="trigger_pt_type_aec"/>
+			<xs:element name="verticalMode">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Vertical skip for preprocessing. Use of 2 means process 1 row and skip 1 row."/>
+							<xs:attribute name="range" type="xs:string" default="[1,32]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="horizontalMode">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Horizontal skip for preprocessing. Use of 2 means process 2 columns to generate 1 column."/>
+							<xs:attribute name="range" type="xs:string" default="[1,8]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="boxFilterLength">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Not used."/>
+							<xs:attribute name="range" type="xs:string" default="[1,8]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="antiAliasFilterThreshold">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Not used."/>
+							<xs:attribute name="range" type="xs:string" default="[80,120]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixDPDFilterTrigger">
+		<xs:sequence>
+			<xs:element name="filterSet" type="chromatixPDLIBPreprocessingFilterSettings" minOccurs="3" maxOccurs="3"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixLCRFilterTrigger">
+		<xs:sequence>
+			<xs:element name="filterSet" type="chromatixPDLIBPreprocessingFilterSettings" minOccurs="3" maxOccurs="3"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:simpleType name="chromatixSparsePDProcMode">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="SPARSE_PD_PROC_SIMPLE"/>
+			<xs:enumeration value="SPARSE_PD_PROC_LCR"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="chromatixHDRChannelSelection">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="DPD_HDR_AUTO_MODE"/>
+			<xs:enumeration value="DPD_HDR_LONG_MODE"/>
+			<xs:enumeration value="DPD_HDR_SHORT_MODE"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:complexType name="chromatixTuningHDRCfg">
+		<xs:sequence>
+			<xs:element name="channelSelection" type="chromatixHDRChannelSelection"/>
+			<xs:element name="longThreshold">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Selection of PD processing on long-exposure frame (1), short-exposure frame (2), or auto selection (0)."/>
+							<xs:attribute name="range" type="xs:string" default="[0,2]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:simpleType name="chromatixLCRBinningMode">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="PDAF_LCR_BINNING_DEFAULT"/>
+			<xs:enumeration value="PDAF_LCR_BINNING_ALL"/>
+			<xs:enumeration value="PDAF_LCR_BINNING_SHIELD"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="chromatixLCRRawType">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="PDAF_BAYER_RAW"/>
+			<xs:enumeration value="PDAF_IDEAL_RAW"/>
+			<xs:enumeration value="PDAF_CAMIF_RAW"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:complexType name="chromatixTuningPreProcess">
+		<xs:sequence>
+			<xs:element name="sparseProcessingMode" type="chromatixSparsePDProcMode"/>
+			<xs:element name="HDR" type="chromatixTuningHDRCfg"/>
+			<xs:element name="boxFilterLength">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Box filter legenth for sparse PDAF sensors."/>
+							<xs:attribute name="range" type="xs:string" default="[1,8]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="antiAliasFilterThreshold">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Anti-aliasing filter threshold for sparse PDAF sensors."/>
+							<xs:attribute name="range" type="xs:string" default="[80,120]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="filterTrigger" type="chromatixDPDFilterTrigger"/>
+			<xs:element name="lcrFilterTrigger" type="chromatixLCRFilterTrigger"/>
+			<xs:element name="lcrBinningMode">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="chromatixLCRBinningMode">
+							<xs:attribute name="description" type="xs:string" default="This parameter specify LCR binning strategy."/>
+							<xs:attribute name="range" type="xs:string" default="[0,2]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="lcrRawType">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="chromatixLCRRawType">
+							<xs:attribute name="description" type="xs:string" default="This parameter specify raw data type for LCR virtual pixel generation."/>
+							<xs:attribute name="range" type="xs:string" default="[0,2]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="lcrMaxBinningNum">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Max pixel number for generate the virtual center pixel for advanced sparse PD mode. "/>
+							<xs:attribute name="range" type="xs:string" default="[1,4]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixTuningPostProcess">
+		<xs:sequence>
+			<xs:element name="biasVectorStrength">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Strength of bias to be applied to disparity vector for the case of repeating patterns."/>
+							<xs:attribute name="range" type="xs:string" default="[0.0,0.4]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="temporalFilterStaticWeight">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Weight of temporal filter while lens is not moving. Weight=1.0 disables temporal filter."/>
+							<xs:attribute name="range" type="xs:string" default="[0.0,1.0]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="temporalFilterDynamicWeight">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Weight of temporal filter while lens is moving. Weight=1.0 disables temporal filter."/>
+							<xs:attribute name="range" type="xs:string" default="[0.0,1.0]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="enableGridOverlap">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="enable_flag_type">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Enables PD statistics to be computed in overlapping grids."/>
+							<xs:attribute name="range" type="xs:string" default="[0,1]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="confIntegralWidth">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Tuning parameter for confidence level. Increasing this tuning increases confidence level."/>
+							<xs:attribute name="range" type="xs:string" default="[24,32]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixTuningAdaptiveK">
+		<xs:sequence>
+			<xs:element name="enable">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="enable_flag_type">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="A flag for enabling adaptive k feature or not."/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="timeoutFrameCntThres">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="A timeout frame number. If frame counter meets the threshold as adaptive k is in state 1, it will return to state 0."/>
+							<xs:attribute name="range" type="xs:string" default="[1,255]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="filterSize">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Size of the median filter. The median filter process is utilized as estimating DCC value from adaptive k data history."/>
+							<xs:attribute name="range" type="xs:string" default="[1,9]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="state0StableCntThres">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Stable count threshold as adaptive k is in state 0. Before entering state 1, all adaptive k input stats should meet state-0-requirements for at least state0StableCntThres frames."/>
+							<xs:attribute name="range" type="xs:string" default="[1,255]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="state1StableCntThres">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Stable count threshold as adaptive k is in state 1. Before entering state 2, all adaptive k input stats should meet state-2-requirements for at least state1StableCntThres frames."/>
+							<xs:attribute name="range" type="xs:string" default="[1,255]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="minimumLensPosDelta">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Minimum number of lens position delta as estimating K value in state 2. If the lens position delta is less than the value, the K estimate will be abandoned."/>
+							<xs:attribute name="range" type="xs:string" default="[1,400]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="state0ConfThres">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Minimum confidence value before entering state 1 as adaptive k is in state 0."/>
+							<xs:attribute name="range" type="xs:string" default="[1,1024]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="state1ConfThres">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Minimum confidence value before entering state 2 as adaptive k is in state 1."/>
+							<xs:attribute name="range" type="xs:string" default="[1,1024]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="state0PhaseDiffThres">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Minimum phase difference value before entering state 1 as adaptive k is in state 0."/>
+							<xs:attribute name="range" type="xs:string" default="[0,100]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="state1PhaseDiffThres">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Minimum phase difference value before entering state 2 as adaptive k is in state 1."/>
+							<xs:attribute name="range" type="xs:string" default="[0,100]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="tolNearTargetUpperBound">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Upper bound ratio with respect to golden module K value as target is at near end (MACRO). If estimated K is within the bound, this means K value is valid for proper AF behavior."/>
+							<xs:attribute name="range" type="xs:string" default="[0,100]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="tolNearTargetLowerBound">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Lower bound ratio with respect to golden module K value as target is at near end (MACRO). If estimated K is within the bound, this means K value is valid for proper AF behavior."/>
+							<xs:attribute name="range" type="xs:string" default="[0,100]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="tolFarTargetUpperBound">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Upper bound ratio with respect to golden module K value as target is at far end (INFINITY). If estimated K is within the bound, this means K value is valid for proper AF behavior."/>
+							<xs:attribute name="range" type="xs:string" default="[0,100]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="tolFarTargetLowerBound">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Lower bound ratio with respect to golden module K value as target is at far end (INFINITY). If estimated K is within the bound, this means K value is valid for proper AF behavior.   "/>
+							<xs:attribute name="range" type="xs:string" default="[0,100]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:simpleType name="chromatixPDProcessingMode">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="PD_PROCESSING_MODE_DYNAMIC"/>
+			<xs:enumeration value="PD_PROCESSING_MODE_LOW"/>
+			<xs:enumeration value="PD_PROCESSING_MODE_MED"/>
+			<xs:enumeration value="PD_PROCESSING_MODE_HIGH"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:complexType name="chromatixTuningProcessLevel">
+		<xs:sequence>
+			<xs:element name="processingMode" type="chromatixPDProcessingMode"/>
+			<xs:element name="dynamicLevel">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Tuning parameter for dynamic adjustment of vertical density at which PD is computed."/>
+							<xs:attribute name="range" type="xs:string" default="[50,200]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixTuningCorrelation">
+		<xs:sequence>
+			<xs:element name="minimumConfidenceLevel">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Minimum confidence level threshold for binary confidence flag provided to aut focus algorithms."/>
+							<xs:attribute name="range" type="xs:string" default="[50,200]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="defocusConfidenceThreshold">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Minimum confidence level threshold for triggering PD computation on additional ROI for sparse PDAF sensors."/>
+							<xs:attribute name="range" type="xs:string" default="[50,200]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="PDRangeControl">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Tuning for Confident Range."/>
+							<xs:attribute name="range" type="xs:string" default="[0.02,0.10]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="searchRange" type="chromatixPDRange"/>
+			<xs:element name="lcrSearchRange" type="chromatixPDRange"/>
+		</xs:sequence>
+	</xs:complexType>
+</xs:schema>

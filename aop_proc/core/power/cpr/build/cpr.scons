@@ -1,0 +1,164 @@
+#===============================================================================
+# CPR Libs
+#
+# GENERAL DESCRIPTION
+#    CPR Build Script
+#
+# Copyright (c) 2016-2017 by Qualcomm Technologies Incorporated. All Rights Reserved.
+#-------------------------------------------------------------------------------
+# $Header: //components/rel/aop.ho/1.1.c1/aop_proc/core/power/cpr/build/cpr.scons#2 $
+# $Author: pwbldsvc $
+# $Date  : $
+# $Change: 22163810 $
+#===============================================================================
+import os, sys
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Target Checks
+#-------------------------------------------------------------------------------
+# This check is used to build correct version of the new cpr driver depending
+# on targets. Once we have PW that has all targets which supports same cpr
+# implementation, this check can be skipped.
+supported_cpr_targets = ['845', '24','670', '855', '855au', '640']
+if env['MSM_ID'] not in supported_cpr_targets:
+    env.PrintError('CPR driver not supported on this target')
+    Return()
+#SDM640_CHANGES
+if env['MSM_ID'] in ['640']:
+   env['MSM_ID'] = '670'
+
+#855au for now compiles with 855 config
+if env['MSM_ID'] == '855au': 
+  env['MSM_ID'] = '855'
+
+if env['CHIPSET_PMIC'] in ['pm605']:
+   env.Append(CPPDEFINES = 'QCS605_CPR_CONFIG')
+
+CPR_ROOT = "${BUILD_ROOT}/core/power/cpr"
+TARGET_DIR  = '../target/${MSM_ID}'
+CFG_FILE = env.RealPath(TARGET_DIR + '/Voltage_Plan_${MSM_ID}.xlsx')
+env.VariantDir('${BUILDPATH}', CPR_ROOT, duplicate=0)
+
+def set_image_params(image, loglevel, enableFatalAssert=1, cflags=''):
+    env['CPR_LOG_LEVEL'] = loglevel
+    env['CPR_LOG_ENABLE_FATAL_ASSERT'] = str(enableFatalAssert)
+    env['CPR_IMAGE'] = image
+    env['CPR_CFLAGS'] = cflags
+
+if 'CORE_AOP' in env:
+    set_image_params('AOP', 'CPR_LOG_LEVEL_FATAL', '--c99')
+else:
+    env.PrintError('CPR driver not supported on this image')
+    sys.exit(1)
+
+#-------------------------------------------------------------------------------
+# Get RInit
+#-------------------------------------------------------------------------------
+def autogen(target, source, env):
+    from subprocess import check_call
+    args = ['python']
+    args.extend([File(s).abspath for s in source])
+    args.extend([File(s).abspath for s in target])
+    check_call(args)
+
+VP_SRC = TARGET_DIR + '/cpr_voltage_plan_${MSM_ID}.rinit'
+
+#check if XL and config files exist or
+#else use the files generated (especially for packed builds)
+if os.path.isfile(CFG_FILE):
+    env.Execute( 'python {dir}/../tools/cpr_cfg.py {img} {target} {dir}/{out}'.format(
+                img = env['CPR_IMAGE'],
+                dir = env.RealPath('.'),
+                target = env['MSM_ID'],
+                out = TARGET_DIR)
+                )
+    print "configuration files exist" 
+else:
+    print "configuration file does not exist"
+
+no_clean_list = [VP_SRC]
+
+#to prevent cpr_voltage_plan_${MSM_ID}.rinit
+#from getting removed by clean build command
+env.NoClean(no_clean_list)
+
+#---------------------------------------------------------------------
+# Process RInit
+#---------------------------------------------------------------------
+if 'USES_RINIT_PARSER' in env:
+  env.AddRinitInfo('CORE_AOP', 
+          {'files' : '${BUILD_ROOT}/core/power/cpr/target/${MSM_ID}'})
+#---------------------------------------------------------------------
+# Generate HWIO
+#---------------------------------------------------------------------
+if env.has_key('HWIO_IMAGE'):
+  env.AddHWIOFile('HWIO', [
+    # Note: The 'filename' argument must have the correct path filled in.
+    {
+      'filename': '${BUILDPATH}/target/${MSM_ID}/hwio/cpr_hwio.h',
+      'modules': [
+        'CX_CPR3',
+      ],
+      'output-offsets': True,
+      'output-phys': True,
+      'output-fvals': True,
+      'explicit-addressing': True,
+      'ignore-prefixes': True,
+      'header': '''#include "msmhwiobase.h"
+                   #include "msmhwio.h"''',
+    },
+  ])
+#----------------------------------------------------------------------
+# Compile Sources.
+#----------------------------------------------------------------------
+env.PublishPrivateApi('CPR', [
+    '${BUILD_ROOT}/core/power/cpr/inc',
+    '${BUILD_ROOT}/core/power/cpr/target/inc',
+    '${BUILD_ROOT}/core/power/cpr/target/${MSM_ID}',
+    '${BUILD_ROOT}/core/power/cpr/target/${MSM_ID}/hwio',
+])
+
+IMAGES = ['CORE_AOP']
+
+#APIs
+CBSP_API = [
+    'DAL',
+    'POWER',
+    'POWER_UTILS',
+    'SYSTEMDRIVERS',
+    'CPR',
+    'MPROC',
+    'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+env.RequireProtectedApi(CBSP_API)
+
+if env.has_key('HWIO_IMAGE'):
+    env.AddHWIOFile('HWIO', [
+    # Note: The 'filename' argument must have the correct path filled in.
+        {
+            'filename': '${BUILDPATH}/target/${MSM_ID}/hwio/cprf_hwio.h',
+            'modules': [
+                'RPMH_CPRF_CPRF',
+            ],
+            'output-offsets': True,
+            'output-phys': True,
+            'output-fvals': True,
+            'header': '''#include "msmhwiobase.h"''',
+        },
+    ])
+
+CPR_SOURCES = [
+    '${BUILDPATH}/target/${MSM_ID}/cpr_target_init.c',
+    '${BUILDPATH}/target/${MSM_ID}/cpr_retention.c',
+    '${BUILDPATH}/target/${MSM_ID}/cpr_target.c',
+    '${BUILDPATH}/src/cpr_image.c',
+    '${BUILDPATH}/src/cpr_smem.c',
+    '${BUILDPATH}/src/cpr.c',
+]
+
+env.AddLibrary(IMAGES, '${BUILDPATH}/cpr.lib', CPR_SOURCES)

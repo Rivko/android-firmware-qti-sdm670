@@ -1,0 +1,43 @@
+#===============================================================================
+#
+# Magnitude Change Motion Detection Sensor
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2017 by Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#
+#
+#===============================================================================
+Import('env')
+import inspect, os
+
+#-------------------------------------------------------------------------------
+# Adds self
+#-------------------------------------------------------------------------------
+mcmd_island_enable = False
+
+if 'SENSORS_DD_DEV_FLAG' not in env:
+  mcmd_clean_pack_list = ['*.c','*.h']
+else:
+  mcmd_clean_pack_list = ['*.c','*.h','*.proto']
+
+if 'SNS_ISLAND_INCLUDE_MCMD' in env:
+  mcmd_island_enable = True
+
+if 'USES_SSC_STATIC_LIB_BUILDER' in env and 'USES_CHRE' in env:
+  env.AddSSCSU(inspect.getfile(inspect.currentframe()),
+             clean_pack_list = mcmd_clean_pack_list,
+             register_func_name = "sns_mcmd_register",
+             add_island_files = mcmd_island_enable,
+             binary_lib = True)
+else:
+  # Module not compiled. Clean all files.
+  ME = inspect.getfile(inspect.currentframe())
+  MY_ROOT = os.path.dirname(os.path.dirname(ME))
+  REMOVE_FILES =  env.FindFiles(['*.*'], MY_ROOT)
+  env.CleanPack(env['SSC_BUILD_TAGS'], REMOVE_FILES)

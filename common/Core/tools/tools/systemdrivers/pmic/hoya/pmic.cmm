@@ -1,0 +1,591 @@
+; ============================================================================
+;
+;  pmic.cmm
+;
+;  Script to configure pmic rails and also get rails status (supported only for new unified peripheral registers)
+;
+;  Execution:
+;  do pmic.cmm <rsrc_names> <rsrc_config_optional>
+
+;  <rsrc_names>: Resource names (, separated) for which status needs to be printed (e.g s1a,l1a,s2a)
+;  <rsrc_config_optional>: Optional configs to be set on resource (, separated) (e.g. enable=1,mode=npm,volt=2704.,access=<a or ezaxi>,debug=<true or false>)
+;
+;  Example:
+;  do pmic.cmm smpsa -> Get status of all SMPS rails from primary pmic a
+;  do pmic.cmm ldob -> Get status of all LDO rails from secondary pmic b
+;  do pmic.cmm s2c,l1a,l5a -> Get SMPSC2, LDOA1, LDO5A status
+;  do pmic.cmm l10a volt=2704. -> Set LDOA10 at 2704 milli volts
+;  do pmic.cmm l5a mode=npm,enable=1 -> Set LDOA5 in NPM mode and enable the LDO
+;  ====================================================================
+;
+;  Copyright (c) 2016 - 2017 QUALCOMM Technologies Incorporated.  All Rights Reserved.
+;  QUALCOMM Proprietary and Confidential.
+;
+;  ====================================================================
+;
+;  $Header: //components/rel/core.glue/1.2/tools/tools/systemdrivers/pmic/hoya/pmic.cmm#3 $
+;  $DateTime: 2017/05/30 13:48:12 $
+;  $Author: pwbldsvc $
+;
+; ============================================================================
+;
+
+entry &periph_names &pmic_config
+
+;-----------------------------------------------------------------------------
+; PERIPHERAL TYPES
+;-----------------------------------------------------------------------------
+local &PM_SMPS_HF_PERIPH_TYPE &PM_SMPS_FTS_PERIPH_TYPE &PM_LDO_PERIPH_TYPE
+local &PM_SMPS_ULT_PERIPH_TYPE &PM_LDO_ULT_PERIPH_TYPE &PM_VS_PERIPH_TYPE
+local &PM_BOOST_PERIPH_TYPE &PM_BOOST_BYP_PERIPH_TYPE &PM_BOB_PERIPH_TYPE
+
+&PM_SMPS_HF_PERIPH_TYPE=0x3
+&PM_SMPS_FTS_PERIPH_TYPE=0x1C
+&PM_LDO_PERIPH_TYPE=0x4
+&PM_SMPS_ULT_PERIPH_TYPE=0x22
+&PM_LDO_ULT_PERIPH_TYPE=0x21
+&PM_VS_PERIPH_TYPE=0x5
+&PM_BOOST_PERIPH_TYPE=0x1B
+&PM_BOOST_BYP_PERIPH_TYPE=0x1F
+&PM_BOB_PERIPH_TYPE=0x1F
+
+
+local &PM_SMPS_PERIPH_BASE_ADDR
+&PM_SMPS_PERIPH_BASE_ADDR=0x11400
+
+;-----------------------------------------------------------------------------
+; PMIC INDEX NAMES
+;-----------------------------------------------------------------------------
+local &PM_MAX_NUM_PMICS
+&PM_MAX_NUM_PMICS=7.
+VAR.NEW char[&PM_MAX_NUM_PMICS][2] \pmic_index_name_arr
+
+VAR.SET \pmic_index_name_arr[0]="A"
+VAR.SET \pmic_index_name_arr[1]="B"
+VAR.SET \pmic_index_name_arr[2]="C"
+VAR.SET \pmic_index_name_arr[3]="D"
+VAR.SET \pmic_index_name_arr[4]="E"
+VAR.SET \pmic_index_name_arr[5]="F"
+VAR.SET \pmic_index_name_arr[6]="G"
+
+;-----------------------------------------------------------------------------
+; Default bus access mode and owner
+;-----------------------------------------------------------------------------
+
+local &spmi_owner_channel
+&spmi_owner_channel=3  ; LPASS Channel by default
+
+local &current_dir
+&current_dir=OS.PWD()
+
+local &pmic_io_script
+&pmic_io_script="&current_dir"+"\pmic_io.cmm"
+
+local &parse_arg_script
+&parse_arg_script="&current_dir"+"\pmic_parse_arg.cmm"
+
+local &bus_access_mode
+&bus_access_mode="EZAXI"
+
+local &pmic_flag
+&pmic_flag=TRUE()
+
+local &debug_flag
+&debug_flag=FALSE()
+
+local &temp_debug_flag
+&temp_debug_flag=""
+
+local &temp_access_mode
+&temp_access_mode=""
+
+local &temp_mode &temp_volt &temp_enable
+&temp_mode=""
+&temp_volt=""
+&temp_enable=""
+
+local &cfg_mode &cfg_volt &cfg_enable
+&cfg_mode="unknown"
+&cfg_volt="unknown"
+&cfg_enable="unknown"
+
+&pmic_config=string.trim("&pmic_config")
+&pmic_config=string.lower("&pmic_config")
+&pmic_config=string.replace("&pmic_config",","," ",0.)
+if ("&pmic_config"!="")
+(
+  &temp_access_mode=string.scanandextract("&pmic_config","access=","")
+  &temp_debug_flag=string.scanandextract("&pmic_config","debug=","")
+  &temp_mode=string.scanandextract("&pmic_config","mode=","")
+  &temp_volt=string.scanandextract("&pmic_config","volt=","")
+  &temp_enable=string.scanandextract("&pmic_config","enable=","")
+)
+
+if ("&temp_access_mode"!="")
+(
+  &bus_access_mode="&temp_access_mode"
+)
+
+if (string.compare("&temp_debug_flag","true"))
+(
+  &debug_flag=TRUE()
+)
+
+if (string.lower("&bus_access_mode")=="a")
+(
+  &spmi_owner_channel=4
+)
+
+if ("&temp_mode"!="")
+(
+  &cfg_mode="&temp_mode"
+)
+
+if ("&temp_volt"!="")
+(
+  &cfg_volt="&temp_volt"
+)
+
+if ("&temp_enable"!="")
+(
+  &cfg_enable="&temp_enable"
+)
+
+area.clear
+
+area.create pmic_status
+area.view pmic_status
+area.select pmic_status
+
+print "*****************************************************************************************"
+
+;-----------------------------------------------------------------------------
+; Check for non-interactive mode.
+;-----------------------------------------------------------------------------
+
+local &error_status &pmic_index &periph_baseaddr &periph_id &periph_index
+
+local &periph_name &name_index
+&periph_name=""
+&name_index=0
+
+if ("&periph_names"!="")
+(
+  repeat
+  (
+    &periph_name=string.split("&periph_names",",",&name_index)
+  
+    if ("&periph_name"!="")
+    (
+      &error_status=1
+      &pmic_index=0
+      &periph_baseaddr=0
+      &periph_id=0
+      &periph_index=0
+      
+      do &parse_arg_script &periph_name
+      entry &pmic_index &periph_baseaddr &periph_id
+      
+      if (("&pmic_config"!="")&&(&periph_baseaddr!=0)&&(&periph_id!=0))
+      (
+        &periph_index=&periph_id-1.
+        gosub pwr_rail_config &pmic_index &periph_baseaddr &periph_index &cfg_mode &cfg_volt &cfg_enable
+        entry &error_status
+        if (&error_status!=0x1)
+        (
+          gosub Usage
+        )
+      )
+      else if (&periph_baseaddr!=0)
+      (
+        if (&periph_id!=0)
+        (
+          &periph_index=&periph_id-1.
+          gosub pwr_rail_config &pmic_index &periph_baseaddr &periph_index &cfg_mode &cfg_volt &cfg_enable
+          entry &error_status
+        )
+        else
+        (
+          &periph_id=1
+          while (&periph_id>0)&&(&error_status==0x1)
+          (
+            &periph_index=&periph_id-1.
+            gosub pwr_rail_config &pmic_index &periph_baseaddr &periph_index &cfg_mode &cfg_volt &cfg_enable
+            entry &error_status
+            &periph_id=&periph_id+1.
+          )
+        )
+      )
+      else
+      (
+        gosub Usage
+      )
+    )
+    &name_index=&name_index+1
+  )
+  while ("&periph_name"!="")
+)
+else
+(
+  gosub Usage
+)
+print "*****************************************************************************************"
+enddo
+
+;=============================================================================
+; SUB: Usage
+;=============================================================================
+Usage:
+  print " "
+  print %color.blue "Usage examples"
+  print " "
+  print %color.blue "do pmic.cmm <rsrc_names> <rsrc_config_optional>"
+  print " "
+  print %color.blue "<rsrc_names>: Resource names (, separated) for which status needs to be printed (e.g s1a,l1a,s2a)"
+  print %color.blue "<rsrc_config_optional>: Optional configs to be set on resource (, separated) (e.g. enable=1,mode=npm,volt=2704.)"
+  print " "
+  print %color.maroon "do pmic.cmm smpsa" %color.black " -> Get status of all SMPS rails from primary pmic a "
+  print %color.maroon "do pmic.cmm ldob" %color.black " -> Get status of all LDO rails from secondary pmic b "
+  print %color.maroon "do pmic.cmm s2c,l1a,l5a" %color.black " -> Get SMPSC2, LDOA1, LDO5A status"
+  print %color.maroon "do pmic.cmm l10a volt=2704." %color.black " -> Set LDOA10 at 2704 milli volts"
+  print %color.maroon "do pmic.cmm l5a mode=npm,enable=1" %color.black " -> Set LDOA5 in NPM mode and enable the LDO"
+  return
+
+;=============================================================================
+; sub: periph_info_read
+;=============================================================================
+
+periph_info_read:
+
+  entry &pmic_index &periph_baseaddr &periph_index
+
+  local &read_status
+  local &periph_type
+  local &periph_subtype
+  local &periph_index_addr
+  local &periph_type_addr
+  local &periph_subtype_addr
+  local &periph_offset
+
+  &read_status=0
+  &periph_type=0
+  &periph_subtype=0
+  &periph_index_addr=0
+  &periph_type_addr=0
+  &periph_subtype_addr=0
+  &periph_offset=0x100
+
+  if (&periph_baseaddr==&PM_SMPS_PERIPH_BASE_ADDR)
+  (
+    &periph_offset=0x300
+  )
+
+  &periph_index_addr=(&periph_baseaddr+(&periph_index*&periph_offset))
+  &periph_type_addr=&periph_index_addr+0x04
+
+  gosub pmic_read &periph_type_addr &pmic_index 
+  entry &read_status &periph_type
+  if ((&read_status==1.)&&(&periph_type!=0.))
+  (
+    &periph_subtype_addr=&periph_index_addr+0x05
+    gosub pmic_read &periph_subtype_addr &pmic_index 
+    entry &read_status &periph_subtype
+  )
+  
+  return &read_status &periph_type &periph_subtype &periph_index_addr
+
+
+;=============================================================================
+; sub: pwr_rail_config
+;=============================================================================
+pwr_rail_config:
+  entry &pmic_index &periph_baseaddr &periph_index &mode &volt &enable
+
+  local &read_status &periph_type &periph_subtype &periph_index_addr
+  &read_status=0
+  &periph_type=0
+  &periph_subtype=0
+  &periph_index_addr=0 
+
+  local &periph_unified_reg &pwrrail_str &error_status &reg_data &reg_data1
+  &periph_unified_reg=0
+  &pwrrail_str=""
+  &error_status=1
+  &reg_data=0
+  &reg_data1=0
+
+  local &pmic_volt &pmic_mode &pmic_enable &pmic_pin &pmic_sec_mode
+  &pmic_volt=0
+  &pmic_mode=0
+  &pmic_enable=0
+  &pmic_pin=0
+  &pmic_sec_mode=0
+
+  gosub periph_info_read &pmic_index &periph_baseaddr &periph_index
+  entry &read_status &periph_type &periph_subtype &periph_index_addr
+
+  if (&read_status==0)||(&periph_type==0)||(&periph_subtype==0)||(&periph_index_addr==0)
+  (
+    &error_status=0
+    return &error_status
+  )
+
+  local &status_addr &vset_lb_addr &vset_ub_addr &vset_valid_lb_addr &vset_valid_ub_addr 
+  local &mode_ctl1_addr &en_ctl_addr &pin_ctl_addr &mode_ctl2_addr
+
+  &status_addr=&periph_index_addr+0x08
+  &vset_lb_addr=&periph_index_addr+0x40
+  &vset_ub_addr=&periph_index_addr+0x41
+  &vset_valid_lb_addr=&periph_index_addr+0x42
+  &vset_valid_ub_addr=&periph_index_addr+0x43
+  &mode_ctl1_addr=&periph_index_addr+0x45
+  &en_ctl_addr=&periph_index_addr+0x46
+  &pin_ctl_addr=&periph_index_addr+0x47
+  &mode_ctl2_addr=&periph_index_addr+0x49
+
+  if ((&periph_type==&PM_LDO_PERIPH_TYPE)&&(&periph_subtype>=0x30))
+  (
+    &pwrrail_str="LDO"
+    &periph_unified_reg=0x1
+  )
+  else if ((&periph_type==&PM_SMPS_HF_PERIPH_TYPE)&&(&periph_subtype>=0xA))
+  (
+    &pwrrail_str="SMPS"
+    &periph_unified_reg=0x1
+  )
+  else if ((&periph_type==&PM_SMPS_FTS_PERIPH_TYPE)&&(&periph_subtype>=0xA))
+  (
+    &pwrrail_str="SMPS"
+    &periph_unified_reg=0x1
+  )
+  else
+  (
+    &error_status=0
+    return &error_status
+  )
+  &pwrrail_str="&pwrrail_str"+FORMAT.DECIMAL(0,&periph_index+1)+VAR.STRING(\pmic_index_name_arr[&pmic_index])
+
+  if ("&mode"!="unknown")
+  (
+    if (&periph_unified_reg==0x1)
+    (
+      if (("&mode"=="npm")||("&mode"=="pwm"))
+      (
+        &reg_data=0x7
+      )
+      else if (("&mode"=="auto")&&(&periph_type!=&PM_LDO_PERIPH_TYPE))
+      (
+        &reg_data=0x6
+      )
+      else if (("&mode"=="lpm")||("&mode"=="pfm"))
+      (
+        &reg_data=0x5
+      )
+      else if (("&mode"=="retention")||("&mode"=="ret"))
+      (
+        &reg_data=0x4
+      )
+      else
+      (
+        print "Not supported mode: &mode!"
+        print " "
+        gosub Usage
+        &error_status=0
+        return &error_status
+      )
+    )
+
+    gosub pmic_write &mode_ctl1_addr &pmic_index &reg_data
+    entry &error_status
+
+    if (&error_status==0x1)
+    (
+      print %color.maroon "&pwrrail_str mode configured to "+string.upper("&mode")
+    )
+    else
+    (
+      print %color.maroon "&pwrrail_str mode config error"
+      return &error_status
+    )
+  )
+
+  if ("&volt"!="unknown")
+  (
+    &reg_data=(&volt&0xFF)
+    &reg_data1=((&volt>>8)&0xFF)
+    gosub pmic_write &vset_lb_addr &pmic_index &reg_data
+    entry &error_status
+    gosub pmic_write &vset_ub_addr &pmic_index &reg_data1
+    entry &error_status
+
+    if (&error_status==0x1)
+    (
+      print %color.maroon "&pwrrail_str voltage configured to "+format.decimal(0,&volt)+"mV"
+    )
+    else
+    (
+      print %color.maroon "&pwrrail_str voltage config error"
+      return &error_status
+    )
+  )
+
+  if ("&enable"!="unknown")
+  (
+    &reg_data=0xFF
+    if (("&enable"=="on")||(&enable==0x1))
+    (
+      &enable="ON"
+      &reg_data=0x80
+    )
+    else if (("&enable"=="off")||(&enable==0x0))
+    (
+      &enable="OFF"
+      &reg_data=0x0
+    )
+    else
+    (
+      print "Not supported enable: &enable!"
+      print " "
+      gosub Usage
+      &error_status=0
+      return &error_status
+    )
+
+    gosub pmic_write &en_ctl_addr &pmic_index &reg_data
+    entry &error_status
+
+    if (&error_status==0x1)
+    (
+      print %color.maroon "&pwrrail_str enable configured to &enable"
+    )
+    else
+    (
+      print %color.maroon "&pwrrail_str enable config error"
+      return &error_status
+    )
+  )
+
+
+  gosub pmic_read &status_addr &pmic_index 
+  entry &error_status &reg_data
+
+  if ((&reg_data&0x80)==0x80)
+  (
+    &pmic_enable="ON"
+    gosub pmic_read &vset_valid_lb_addr &pmic_index 
+    entry &error_status &reg_data
+
+    gosub pmic_read &vset_valid_ub_addr &pmic_index 
+    entry &error_status &reg_data1
+  )
+  else
+  (
+    &pmic_enable="OFF"
+    gosub pmic_read &vset_lb_addr &pmic_index 
+    entry &error_status &reg_data
+
+    gosub pmic_read &vset_ub_addr &pmic_index 
+    entry &error_status &reg_data1
+  )
+
+  if (&periph_unified_reg==0x1)
+  (
+    &pmic_volt=(&reg_data1<<8)|(&reg_data)
+  )
+
+  gosub pmic_read &mode_ctl1_addr &pmic_index 
+  entry &error_status &reg_data
+
+  if (&periph_unified_reg==0x1)
+  (
+    if (&reg_data==0x7)
+    (
+      &pmic_mode="NPM"
+    )
+    else if ((&reg_data==0x6)&&(&periph_type!=&PM_LDO_PERIPH_TYPE))
+    (
+      &pmic_mode="AUTO"
+    )
+    else if (&reg_data==0x5)
+    (
+      &pmic_mode="LPM"
+    )
+    else if (&reg_data==0x4)
+    (
+      &pmic_mode="RETENTION"
+    )
+    else if ((&reg_data<=0x3)&&(&reg_data>=0x1)&&(&periph_type==&PM_LDO_PERIPH_TYPE))
+    (
+      &pmic_mode="BYPASS"
+    )
+    else
+    (
+      &pmic_mode="NPM(U)"
+    )
+  )
+
+  print %color.blue "&pwrrail_str: &pmic_enable &pmic_mode "+format.decimal(0,&pmic_volt)+"mV"
+  print " "
+
+  return &error_status
+
+;=============================================================================
+; SUB: pmic_to_spmi
+;=============================================================================
+
+pmic_to_spmi:
+
+  entry &addr &devid
+  local &spmi_sid &spmi_addr
+
+  &spmi_sid=2*&devid
+
+  &pmic_sid=&addr>>16.
+  if &pmic_sid==1
+  (
+    &spmi_sid=&spmi_sid+1
+  )
+
+  &spmi_addr=&addr&0xFFFF
+
+  return &spmi_sid &spmi_addr
+
+
+;=============================================================================
+; SUB: pmic_read
+;=============================================================================
+
+pmic_read:
+  local &pmic_addr &pmic_index
+  entry &pmic_addr &pmic_index
+
+  &read_status=0
+  &read_data=0
+
+  gosub pmic_to_spmi &pmic_addr &pmic_index
+  entry &spmi_sid &spmi_addr
+
+  do &pmic_io_script read &spmi_owner_channel &bus_access_mode &spmi_sid &spmi_addr &read_data &debug_flag
+  entry &read_status &read_data
+
+  return &read_status &read_data
+
+
+;=============================================================================
+; SUB: pmic_write
+;=============================================================================
+
+pmic_write:
+  local &pmic_addr &pmic_index &pmic_data
+  entry &pmic_addr &pmic_index &pmic_data
+
+  &write_status=0
+
+  gosub pmic_to_spmi &pmic_addr &pmic_index
+  entry &spmi_sid &spmi_addr
+
+  do &pmic_io_script write &spmi_owner_channel &bus_access_mode &spmi_sid &spmi_addr &pmic_data &debug_flag
+  entry &write_status
+
+  return &write_status
+

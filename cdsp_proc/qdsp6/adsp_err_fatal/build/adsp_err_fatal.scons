@@ -1,0 +1,83 @@
+#===============================================================================
+#
+# main AU
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2014 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#===============================================================================
+Import('env')
+
+# Core API 
+#  KERNEL for qube.h used by qurt_elite.h and qurt.h
+#  SERVICES for msg.h and msgcfg.h
+#  DEBUGTOOLS for err.h
+if 'USES_CDSP_IMG' in env:
+   Return()
+
+core_public_apis = [
+   'KERNEL',
+   'SERVICES',
+   'DEBUGTOOLS',
+   'ADSPPM',
+   'POWER',
+   'MPROC',
+   'SYSTEMDRIVERS',
+   'DEBUGTRACE',
+   'DAL',
+   'DIAG',
+   ]
+
+env.RequirePublicApi(core_public_apis, area='core')
+env.RequirePublicApi(['AVS',], area='avs')
+env.RequireRestrictedApi('QDSP6')
+
+if 'USES_ENABLE_ADSP_FATAL_ERROR' in env:
+    env.Append(CFLAGS = ' -DFEATURE_ENABLE_ADSP_FATAL_ERROR ')
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/qdsp6/adsp_err_fatal/src"
+#LIBNAME = 'adsp_err_fatal'
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+
+SRC_FATALERR_GUESTOS_DIRS = [
+                 '${BUILDPATH}/adspfatalerr_qdi_server.c',
+              ]
+
+SRC_FATALERR_USER_DIRS = [
+                 '${BUILDPATH}/adspfatalerr_qdi_client.c',
+              ]
+
+env.AddObject(['QDSP6_SW_IMAGE'], [SRC_FATALERR_GUESTOS_DIRS])
+env.AddObject(['CORE_AVS_ADSP_USER'], [SRC_FATALERR_USER_DIRS])
+
+
+
+env.AddRCInitFunc(['QDSP6_SW_IMAGE'],
+ {
+  'sequence_group'             : 'RCINIT_GROUP_2',                   # required
+  'init_name'                  : 'adspfatalerr_qdi_server',          # required
+  'init_function'              : 'QDI_adspfatalerr_init',            # required
+  'dependencies'               : []
+ })
+
+env.AddRCInitFunc(['CORE_AVS_ADSP_USER'],
+ {
+  'sequence_group'             : 'RCINIT_GROUP_0',                   # required
+  'init_name'                  : 'adspfatalerr_qdi_client',          # required
+  'init_function'              : 'Adspfatalerr_Init_Client',         # required
+  'dependencies'               : []
+ })
+
+
+# Add the PD Spawn Call to the Root PD.
+env.Append(CFLAGS = '-D__qdsp6__')
+

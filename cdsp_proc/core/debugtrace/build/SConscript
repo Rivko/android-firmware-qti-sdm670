@@ -1,0 +1,101 @@
+#===============================================================================
+#
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009-2009 by QUALCOMM, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1.c4/debugtrace/build/SConscript#1 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 09/07/17   rs      Warlock specific changes
+#===============================================================================
+import os
+Import('env')
+import qdss
+
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Convert warnings to errors
+#-------------------------------------------------------------------------------
+env.Append(CCFLAGS = '-Werror')
+
+#-------------------------------------------------------------------------------
+# Publish Protected APIs
+# these are accesible within QDSS
+#-------------------------------------------------------------------------------
+
+CORE_SETTINGS_CONFIG = env['CHIPSET']
+IMAGE = env['IMAGE']
+env.PublishProtectedApi('DEBUGTRACE',[
+   "${DEBUGTRACE_INC_ROOT}/core/debugtrace/common/hal/inc",
+   "${DEBUGTRACE_INC_ROOT}/core/debugtrace/csr/hal/inc",
+   "${DEBUGTRACE_INC_ROOT}/core/debugtrace/csr/hal/src",   
+   "${DEBUGTRACE_INC_ROOT}/core/debugtrace/csr/config/" + IMAGE + '/' + CORE_SETTINGS_CONFIG,  
+   "${DEBUGTRACE_INC_ROOT}/core/settings/debugtrace/lpa_replicator/config/" + IMAGE + '/' + CORE_SETTINGS_CONFIG,
+   "${DEBUGTRACE_INC_ROOT}/core/debugtrace/lpa_replicator/hal/inc",
+   "${DEBUGTRACE_INC_ROOT}/core/debugtrace/lpa_replicator/hal/src",
+   "${DEBUGTRACE_INC_ROOT}/core/settings/debugtrace/csr/config/" + IMAGE + '/' + CORE_SETTINGS_CONFIG,    
+   "${DEBUGTRACE_INC_ROOT}/core/debugtrace/common/src",
+   "${DEBUGTRACE_INC_ROOT}/core/debugtrace/tlmm/hal/inc",
+   "${DEBUGTRACE_INC_ROOT}/core/debugtrace/ctrl/src",
+   "${DEBUGTRACE_INC_ROOT}/core/debugtrace/tracer/src",
+
+   "${DEBUGTRACE_INC_ROOT}/core/debugtrace/tpdm/dal/inc",
+   "${DEBUGTRACE_INC_ROOT}/core/debugtrace/tpdm/hal/inc",
+   "${DEBUGTRACE_INC_ROOT}/core/debugtrace/tpdm/dal/src",
+   "${DEBUGTRACE_INC_ROOT}/core/debugtrace/tpdm/hal/src",  
+   "${DEBUGTRACE_INC_ROOT}/core/debugtrace/tpda/dal/inc",
+   "${DEBUGTRACE_INC_ROOT}/core/debugtrace/tpda/hal/inc",
+   "${DEBUGTRACE_INC_ROOT}/core/debugtrace/tpda/dal/src",
+   "${DEBUGTRACE_INC_ROOT}/core/debugtrace/tpda/hal/src",    
+])
+
+if env.IsTargetEnable(qdss.BuildTags(['venus'])):
+   env.PublishPrivateApi('DEBUGTRACE',[
+      "${DEBUGTRACE_INC_ROOT}/core/debugtrace/common/hal/inc",
+      "${DEBUGTRACE_INC_ROOT}/core/debugtrace/common/inc",
+   ])
+
+#-------------------------------------------------------------------------------
+#Define QDSS features here
+#----------------------------------
+### Place qdss_init in standalone mode ###
+#env.Replace(USES_QDSS_STANDALONE=True)
+
+if 'USES_QDSS_STANDALONE' in env:
+   if ((not env.IsTargetEnable(qdss.BuildTags(['sensor2']))) and
+       (not env.IsTargetEnable(qdss.BuildTags(['audio'])))):
+      env.Append(CCFLAGS = " -DQDSS_STANDALONE_MODE=1")
+
+
+#Uncomment below line to enable UART logging of SW event ids
+#env.Replace(USES_QDSS_UART_LOGGING=True)
+
+if 'USES_QDSS_UART_LOGGING' in env:
+   env.Append(CCFLAGS = " -DQDSS_UART_LOG")
+
+
+if env.IsTargetEnable(qdss.BuildTags(['venus'])):
+   env.Append(CCFLAGS = " -DTRACER_VENUS_BUILD")
+
+#-------------------------------------------------------------------------------
+# Require Public API within core
+#-------------------------------------------------------------------------------
+env.RequirePublicApi(['KERNEL'])
+   
+#-------------------------------------------------------------------------------
+# Load sub scripts
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()

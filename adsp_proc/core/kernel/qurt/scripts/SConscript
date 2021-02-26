@@ -1,0 +1,245 @@
+#=============================================================================
+#
+#                                    SConscript
+#
+# GENERAL DESCRIPTION
+#
+# EXTERNAL FUNCTIONS
+#        None.
+#
+# INITIALIZATION AND SEQUENCING REQUIREMENTS
+#        None.
+#
+#             Copyright (c) 2013  by Qualcomm Technologies, Inc.  All Rights Reserved.
+#=============================================================================
+#########################################################################
+# This SConscript installs the destination "install/scripts" directory. #
+#  Most files are simply copied from elsewhere in the tree.             #
+#  A few files get extra processing.                                    #
+#########################################################################
+
+#############################################################
+# Files in this list are copied from the scripts directory. #
+#############################################################
+
+copy_script_files = '''
+   analy_qurt_error.cmm
+   build_flags.py
+   kernel_mem.py
+   pctrace_parser.py
+   qurt-island-link.py
+   qurt-object-scan.py
+   qurt_run_db.py
+   trace_parser.py
+   trace_profile.py
+   island_analysis.py
+   list_extref.py
+
+   Input/cust_config_template.c
+   Input/default_build_config.def
+   Input/static_build_config.def
+   Input/qurt_tlb_unlock.xml
+   Input/qurt_default.lcs
+   Input/qurt_whitelist.txt
+
+   lib/__init__.py
+   lib/basefile.py
+   lib/build_qurt_config.py
+   lib/build_xml.py
+   lib/cfgvars.py
+   lib/elf_info_patch.py
+   lib/ezxml.py
+   lib/genheader.py
+   lib/genkernel.py
+   lib/interrupt_xml.py
+   lib/kernel_xml.py
+   lib/l2cfg_xml.py
+   lib/machine_xml.py
+   lib/memsection_xml.py
+   lib/merge.py
+   lib/parse_build_params.py
+   lib/parse_spec.py
+   lib/physpool_xml.py
+   lib/program_xml.py
+   lib/qiblog.py
+   lib/qurt.py
+   lib/StaticSyscfgComposer.py
+'''
+
+##############################################################
+# Files in this list are copied from the QURT_TOP directory. #
+##############################################################
+
+copy_root_files = '''
+   qurt_builders.py
+   target_tools.py
+   qurtutils.py
+'''
+
+###################################################################
+# Begin the real processing; the above code is located at the top #
+#  of the file as it is most likely to be of interest.            #
+###################################################################
+
+Import('env')
+
+######################################################
+# Clone env; we add a builder and we don't want that #
+#  to propagate out into the main environment.       #
+######################################################
+
+env = env.Clone()
+
+####################################
+# Install the files from QURT_TOP. #
+####################################
+
+scripts = []
+
+for name in copy_root_files.split():
+    src_name = env.GetBuildPath('$QURT_TOP/%s' % name)
+    dst_name = '$INSTALL_DIR/scripts/%s' % name
+    scripts.append(env.InstallAs(dst_name, src_name))
+
+##################################################
+# Install those files from the scripts directory #
+#  which are copied unchanged.                   #
+##################################################
+
+for name in copy_script_files.split():
+    src_name = env.GetBuildPath(name)
+    dst_name = '$INSTALL_DIR/scripts/%s' % name
+    scripts.append(env.InstallAs(dst_name, src_name))
+
+##########################################
+# Build the Input/build_params.txt file. #
+##########################################
+
+build_params = env.build_param_builder(env.subst('$INSTALL_DIR/scripts/Input/build_params.txt'), scripts)
+scripts.append(build_params)
+
+#######################################
+# Build the Input/cust_config.c file. #
+#######################################
+
+cust_config_c = env.InstallAs(env.subst('$INSTALL_DIR/scripts/Input/cust_config.c'),
+                              'Input/cust_config_template.c')
+scripts.append(cust_config_c)
+
+##################################################################
+# Build the qurt_config.py file.  Copy the file from its source, #
+#  and append a digest of all of the files in the Input and lib  #
+#  subdirectories to the end as a comment.                       #
+##################################################################
+
+def signed_file_digest(target, source, env):
+    # target[0] is the output file
+    # source[0] is the input file
+    # source[1:] are the files to be included in the digest
+
+    f = open(str(source[0]), 'rU')
+    output_value = f.read()
+    f.close()
+    output_value += '\n# Signatures of the files that this depends on\n'
+    for s in source[1:]:
+        output_value += '# %s %s\n' % (s.get_csig(), str(s))
+
+    f = open(str(target[0]), 'w')
+    f.write(output_value)
+    f.close()
+
+    import os
+    os.chmod(str(target[0]), 0755)    # rwxr-xr-x
+
+    return 0
+
+env['BUILDERS']['SignedFileDigest'] = Builder(action = signed_file_digest)
+
+use_new_builder = False
+if 'CONFIG_PRIVATE_UKERNEL' in env.subst('$BUILD_CONFIG_FLAGS'):
+    use_new_builder = True
+if 'CONFIG_QURT_IN_ROM' in env.subst('$BUILD_CONFIG_FLAGS'):
+    use_new_builder = True
+
+if use_new_builder:
+    qib = env.SignedFileDigest(env.subst('$INSTALL_DIR/scripts/qurt-image-build.py'),
+                               ['qurt-image-build1.py',
+                                env.subst('$INSTALL_DIR/scripts/lib/basefile.py'),
+                                env.subst('$INSTALL_DIR/scripts/lib/elf_info_patch.py'),
+                                env.subst('$INSTALL_DIR/scripts/lib/qurt.py')])
+else:
+    qib = env.SignedFileDigest(env.subst('$INSTALL_DIR/scripts/qurt-image-build.py'),
+                               ['qurt-image-build0.py',
+                                env.subst('$INSTALL_DIR/scripts/lib/basefile.py'),
+                                env.subst('$INSTALL_DIR/scripts/lib/elf_info_patch.py'),
+                                env.subst('$INSTALL_DIR/scripts/lib/qurt.py')])
+
+scripts.append(qib)
+
+qrb = env.SignedFileDigest(env.subst('$INSTALL_DIR/scripts/qurt-ramfs-builder.py'),
+                           ['qurt-ramfs-builder.py',
+                            env.subst('$INSTALL_DIR/scripts/lib/qurt.py')])
+
+scripts.append(qrb)
+
+scripts.append(env.SignedFileDigest(env.subst('$INSTALL_DIR/scripts/build-qurt-ukernel.py'),
+                                    ['build-qurt-ukernel.py',
+                                     env.subst('$INSTALL_DIR/scripts/lib/qurt.py')]))
+
+scripts.append(env.SignedFileDigest(env.subst('$INSTALL_DIR/scripts/qurt-srm-build.py'),
+                                    ['qurt-srm-build.py',
+                                     env.subst('$INSTALL_DIR/scripts/lib/qurt.py')]))
+
+scripts.append(env.SignedFileDigest(env.subst('$INSTALL_DIR/scripts/obj_check_alignment.py'),
+                                    ['obj_check_alignment.py',
+                                     env.subst('$INSTALL_DIR/scripts/lib/qurt.py')]))
+
+scripts.append(env.SignedFileDigest(env.subst('$INSTALL_DIR/scripts/qurt_size_checker.py'),
+                                    ['qurt_size_checker.py',
+                                     env.subst('$INSTALL_DIR/scripts/lib/qurt.py')]))
+
+def make_python_consts(fname):
+    fi = open(fname, 'r')
+    triple_quote = "'" * 3
+    for LI in fi:
+        parse = LI.strip().split(None,2)
+        if len(parse) == 3:
+            if parse[0] == '#define':
+                # If parse[2] evaluates as a valid Python expression, insert it
+                try:
+                    z = eval(parse[2])
+                    yield '%s = %r\n' % (parse[1],z)
+                except (SystemExit, KeyboardInterrupt):
+                    raise
+                except Exception:
+                    pass
+                except:
+                    raise
+    fi.close()
+
+python_consts = env.FileFromIterableDeferred('$INSTALL_DIR/scripts/lib/qurt_consts.py',
+                                             make_python_consts,
+                                             env.subst('$CONSTS_AUTOGEN'))
+env.Depends(python_consts, '$CONSTS_AUTOGEN')
+scripts.append(python_consts)
+
+srcs=['qurt_config.py']
+
+for src in Flatten(scripts):
+    installed_name = env.GetBuildPath(src).replace('\\','/')
+    if ('/Input/' in installed_name) or ('/lib/' in installed_name):
+        srcs.append(src)
+    elif ('qurt-image-build') in installed_name:
+        srcs.append(src)
+scripts.append(env.SignedFileDigest(env.subst('$INSTALL_DIR/scripts/qurt_config_x.py'), srcs))
+if 'CONFIG_PRIVATE_UKERNEL' in env.subst('$BUILD_CONFIG_FLAGS'):
+    installed_private_lcs = env.InstallAs('$INSTALL_DIR/scripts/Input/private_ukernel.lcs',
+                                          'Input/private_ukernel.lcs')
+    scripts.append(installed_private_lcs)
+    srcs.append(installed_private_lcs)
+    scripts.append('$INSTALL_DIR/scripts/Input/qurt_ukernel.o')
+    srcs.append('$INSTALL_DIR/scripts/Input/qurt_ukernel.o')
+scripts.append(env.SignedFileDigest(env.subst('$INSTALL_DIR/scripts/qurt_config.py'), srcs))
+
+Return('scripts')
+

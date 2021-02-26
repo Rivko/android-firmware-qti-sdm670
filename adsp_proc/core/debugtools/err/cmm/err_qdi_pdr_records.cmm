@@ -1,0 +1,166 @@
+;============================================================================
+;  Name:
+;    ERR_QDI_PDR_RECORDS.CMM
+;
+;  Description:
+;    This script is used to help with the development 
+;     and debugging of ERR QDI PDR RECORDS
+;
+; Copyright (c) 2016 by Qualcomm Technologies, Inc.  All Rights Reserved.
+; Qualcomm Confidential and Proprietary
+;----------------------------------------------------------------------------
+;============================================================================
+;
+;                        EDIT HISTORY FOR MODULE
+;
+; when        who       what, where, why
+; ----------  --------  -----------------------------------------------------
+; 02/21/2017  dlohia    Updated.
+; 09/21/2015  dlohia    Created.
+;============================================================================;
+
+GLOBAL &num_pdr_records
+GLOBAL &threshold_timeout
+GLOBAL &item_ptr
+GLOBAL &item_ptr_inner
+
+;============================================================================
+
+;============================================================================
+; Get the arguments passed in.
+;============================================================================
+ENTRY 
+
+WE.AREA.RESet
+WE.WINPOS 0. 0. 35% 100%
+WE.AREA.Create ERR_QDI_PDR_RECORDS
+AREA ERR_QDI_PDR_RECORDS
+;RADIX.DECIMAL
+;setup.var.%SYMBOL
+;setup.var.%HEX
+  
+  ; Setup vars to use hex, strings, symbols & index 
+  SETUP.VAR %H %S %Y %I
+
+  ; setup the scrip variables to use hex symbols
+  radix HEX
+
+
+GOSUB PRINT_HELPER " "
+GOSUB PRINT_HELPER "######################################################################"
+GOSUB PRINT_HELPER " "
+GOSUB PRINT_HELPER "                     ERR_QDI_PDR_RECORDS SCRIPT                       "
+GOSUB PRINT_HELPER " "
+GOSUB PRINT_HELPER "######################################################################"
+GOSUB PRINT_HELPER " "
+
+;GOSUB PRINT_HELPER "Dest: &destination"
+
+;&output_directory="C:\temp"
+
+;IF "&destination"==""
+;(
+;  GOSUB PRINT_HELPER "No destination directory listed!"
+;)
+;ELSE
+;(
+;  &output_directory="&destination"
+;)
+
+&item_ptr=v.value(err_qdi_pdr_records.queue_per_pd_log.link.next_ptr)
+&item_ptr_copy=&item_ptr
+&item_ptr_next=0
+var.if (&item_ptr==0)
+(  
+  RETURN
+)
+
+RePeaT
+(
+  &pd_name=v.string(((err_qdi_pdr_user_pd_header_s*)&item_ptr)->pd_name)
+  &num_pdr_crash=v.value(((err_qdi_pdr_user_pd_header_s*)&item_ptr)->num_pdr_crash)
+
+  GOSUB PRINT_HELPER "--------------------------------------------------------------------"
+  GOSUB PRINT_HELPER "PD_NAME : &pd_name"
+  GOSUB PRINT_HELPER "Totals PDRs :"
+  PRINT %Continue %Decimal &num_pdr_crash 
+  GOSUB PRINT_HELPER "START"
+  GOSUB PRINT_HELPER "--------------------------------------------------------------------"
+  GOSUB PRINT_HELPER "Details of logged PDRs. At Max, only logs last 10 PDRs are recorded"
+  GOSUB PRINT_HELPER "--------------------------------------------------------------------"
+
+  &item_ptr_inner=v.value(((err_qdi_pdr_user_pd_header_s*)&item_ptr)->queue_single_event.link.next_ptr)
+ 
+  GOSUB PRINT_INNER_QUEUE &item_ptr_inner
+  
+  &item_ptr=v.value(((q_link_type*)&item_ptr)->next_ptr)
+  &item_ptr_next=v.value(((q_link_type*)&item_ptr)->next_ptr)
+
+  GOSUB PRINT_HELPER "--------------------------------------------------------------------"
+  GOSUB PRINT_HELPER "PD_NAME : &pd_name END"
+  GOSUB PRINT_HELPER "--------------------------------------------------------------------"
+)
+while &item_ptr_next!=&item_ptr_copy
+
+ENDDO
+
+;============================================================================
+; PRINT_INNER_QUEUE SUBROUTINE
+;============================================================================
+PRINT_INNER_QUEUE:
+  ENTRY &item_ptr_inner1
+
+  &iterator=1
+  &item_ptr_inner_next=0
+  &item_ptr_inner_copy=&item_ptr_inner1
+
+  var.if (&item_ptr_inner1==0) 
+  (
+    RETURN
+  )
+
+  GOSUB PRINT_HELPER "ITER   PID   ERR_START_TIME   ERR_END_TIME   PD_EXIT_TIME   TIME_SPENT_ERR_US   TIME_SPENT_PD_EXIT_US   PFR "
+  GOSUB PRINT_HELPER ".............................................................................................................................................................."
+  RePeaT
+  (
+      &pid=v.value(((err_qdi_pdr_event_s*)&item_ptr_inner1)->pid)
+      &start_time=v.value(((err_qdi_pdr_event_s*)&item_ptr_inner1)->start_time)
+      &end_time=v.value(((err_qdi_pdr_event_s*)&item_ptr_inner1)->end_time)
+      &pd_exit_end_time=v.value(((err_qdi_pdr_event_s*)&item_ptr_inner1)->pd_exit_end_time)
+      &pd_time_spent_err_cb_us=(CONVert.INTTOFLOAT(&end_time-&start_time))/(19.2)
+      &pd_time_spent_pd_exit_us=(CONVert.INTTOFLOAT(&pd_exit_end_time-&end_time))/(19.2)
+      &pfr=v.string(((err_qdi_pdr_event_s*)&item_ptr_inner1)->pfr)
+      
+      PRINT FORMAT.DecimalU(4., &iterator)
+      PRINT %Continue "  |" 
+      PRINT %Continue FORMAT.DecimalU(3., &pid)
+      PRINT %Continue "  |" 
+      PRINT %Continue FORMAT.DecimalU(14., &start_time)
+      PRINT %Continue "  |" 
+      PRINT %Continue FORMAT.DecimalU(12., &end_time)
+      PRINT %Continue "  |" 
+      PRINT %Continue FORMAT.DecimalU(12., &pd_exit_end_time)
+      PRINT %Continue "  |" 
+      PRINT %Continue FORMAT.FLOAT(17.,5, &pd_time_spent_err_cb_us)
+      PRINT %Continue "  |" 
+      PRINT %Continue FORMAT.FLOAT(21.,5, &pd_time_spent_pd_exit_us)
+      PRINT %Continue "  |" 
+      PRINT %Continue "&pfr"
+
+      &item_ptr_inner1=v.value(((q_link_type*)&item_ptr_inner1)->next_ptr)
+      &item_ptr_inner_next=v.value(((q_link_type*)&item_ptr_inner1)->next_ptr)
+
+      &iterator=&iterator+1
+  )
+  while &item_ptr_inner_copy!=&item_ptr_inner_next
+
+  RETURN
+
+
+;============================================================================
+; PRINT SUBROUTINE
+;============================================================================
+PRINT_HELPER:
+  ENTRY &str
+  PRINT &str
+RETURN

@@ -1,0 +1,105 @@
+## @file
+#  
+#  Capsule Runtime Driver produces two UEFI capsule runtime services.
+#  (UpdateCapsule, QueryCapsuleCapabilities)
+#  It installs the Capsule Architectural Protocol defined in PI1.0a to signify 
+#  the capsule runtime services are ready.
+#  
+#  Copyright (c) 2012-2015,2017, Qualcomm Technologies, Inc. All Rights Reserved.
+#  Qualcomm Technologies Proprietary and Confidential.
+#  Portions Copyright (c) 2006 - 2010, Intel Corporation. All rights reserved.<BR>
+#  This program and the accompanying materials
+#  are licensed and made available under the terms and conditions of the BSD License
+#  which accompanies this distribution.  The full text of the license may be found at
+#  http://opensource.org/licenses/bsd-license.php
+#  
+#  THE PROGRAM IS DISTRIBUTED UNDER THE BSD LICENSE ON AN "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.
+#  
+##
+#=============================================================================
+#                              EDIT HISTORY
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+#
+#
+# when       who      what, where, why
+# --------   ---      --------------------------------------------------------
+# 03/05/15   jb       Adding FMP support
+# 10/25/13   vk       Remove warning as error
+# 02/19/13   vk       Warning as error
+# 02/12/13   niting   Added capsule protocol.
+# 03/13/12   niting   Moved CapsuleLib into driver. Added firmware update support.
+# 03/01/12   jdt      ScatterGatherHeader conversion to Runtime-accessible memory moved to SEC.
+# 02/06/12   jdt      Initial revision
+#
+#=============================================================================
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = CapsuleRuntimeDxe
+  FILE_GUID                      = 55CE7A0C-5598-4B1F-8065-1816F40DCFF2
+  MODULE_TYPE                    = DXE_RUNTIME_DRIVER
+  VERSION_STRING                 = 1.0
+  ENTRY_POINT                    = CapsuleServiceInitialize
+
+#
+# The following information is for reference only and not required by the build tools.
+#
+#  VALID_ARCHITECTURES           = IA32 X64 IPF EBC
+#
+
+[Sources]
+  CapsuleService.c
+  CapsuleCoalesce.c
+  ProcessCapsules.c
+  CapsuleLib.c
+
+[Packages]
+  ArmPkg/ArmPkg.dec
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+  QcomPkg/QcomPkg.dec
+  ShellPkg/ShellPkg.dec
+
+[LibraryClasses]
+  UefiBootServicesTableLib
+  PcdLib
+  DebugLib
+  UefiRuntimeServicesTableLib
+  UefiDriverEntryPoint
+  UefiRuntimeLib
+  BaseLib
+  PrintLib
+  QcomLib
+  QcomBaseLib
+  UncachedMemoryAllocationLib
+  GenericBdsLib
+  SortLib
+  
+[Guids]
+  gEfiCapsuleVendorGuid                         ## SOMETIMES_PRODUCED (Process across reset capsule image) ## Variable:L"CapsuleUpdateData" for capsule updated data
+  gQcomScatterGatherListHeaderGuid              ## CONSUMED
+  gUpdateCapsulePartitionGuid                   ## CONSUMED
+  gBdsEventGroupGuid                            ## CONSUMED
+  gEfiFmpCapsuleGuid                            ## CONSUMED
+  gEfiPartTypeSystemPartGuid                    ## CONSUMED
+
+[Protocols]
+  gEfiCapsuleArchProtocolGuid                   ## PRODUCED
+  gEfiCapsuleProtocolGuid                       ## PRODUCED
+  gEfiFirmwareManagementProtocolGuid            ## CONSUMED
+
+[FeaturePcd]
+  gEfiMdeModulePkgTokenSpaceGuid.PcdSupportUpdateCapsuleReset
+
+[Pcd]
+  gEfiMdeModulePkgTokenSpaceGuid.PcdMaxSizeNonPopulateCapsule
+  gEfiMdeModulePkgTokenSpaceGuid.PcdMaxSizePopulateCapsule || PcdSupportUpdateCapsuleReset  ## Populate Image requires reset support.
+
+[BuildOptions.AARCH64]
+GCC:*_*_*_CC_FLAGS = -O0
+
+[Depex]
+  TRUE

@@ -1,0 +1,272 @@
+//============================================================================
+//  Name:                                                                     
+//    std_debug.cmm 
+//
+//  Description:                                                              
+//    Top level debug script
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who             what, where, why
+// --------   ---             ---------------------------------------------------------
+// 11/22/2016 JBILLING        Call to std_results added
+// 03/10/2016 JBILLING        Updated temp path for host OS
+// 01/06/2015 JBILLING        Print error message to main screen
+// 12/18/2015 JBILLING        Minor change - error type not passed to MAIN
+// 09/30/2015 JBLLING         Errortype added
+// 08/18/2015 JBILLING        Created
+
+//**************************************************
+//                  Declarations 
+//**************************************************
+LOCAL &ErrorMessage
+LOCAL &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+LOCAL &targetprocessor
+LOCAL &ErrorType
+&ErrorType="SYSTEM"
+//**************************************************
+//                  Arguments Passed 
+//**************************************************
+ENTRY &ErrorType %LINE &ErrorMessage
+
+
+//**************************************************
+//                  Defaults 
+//**************************************************
+
+//Clear error handler as that may be how we got here
+ON ERROR
+
+// See if logs have been enabled
+IF STRING.SCAN("&OUTPUTFILE","OUTPUTFILE",0)!=-1
+(
+    GLOBAL &OUTPUTFILE &LOGSENABLED    
+    LOCAL &temp
+    GLOBAL &TEMPDIR
+    LOCAL &ostype
+    &ostype=OS.NAME()
+    IF ("&ostype"=="Windows")
+    (
+        &TEMPDIR=OS.ENV(TEMP)
+    )
+    ELSE
+    (
+        &TEMPDIR="~~~"
+    )
+    &OUTPUTFILE="&TEMPDIR/std_debug.log"
+    &LogsEnabled="FALSE"
+
+    GLOBAL &FAILUREKEYWORD &SUCCESSKEYWORD
+    &FAILUREKEYWORD="FAILURE"
+    &SUCCESSKEYWORD="SUCCESS"
+)
+
+//Create an output file for pmacro
+GLOBAL &OUTPUTFILE_PMACRO
+//Get host os type
+GLOBAL &TEMPDIR &HOSTOS
+IF (VERSION.BUILD()<65625.)
+(
+    &HOSTOS="Windows"
+)
+ELSE
+(
+    &HOSTOS=OS.NAME()
+)
+IF ("&HOSTOS"=="Windows")
+(
+    &TEMPDIR=OS.ENV(TEMP)
+)
+ELSE
+(
+    &TEMPDIR="~~~"
+)
+&OUTPUTFILE_PMACRO="&TEMPDIR\std_debug_pmacro.log"
+
+
+
+//**************************************************
+//                  Subroutine Checks
+//**************************************************
+// Name of the utility we are calling
+LOCAL &SUBROUTINE
+// Any subroutine specific options
+// Default exists for each subroutine
+LOCAL &OPTION
+
+
+//**************************************************
+//                  Basic Options Check
+//**************************************************
+
+    IF (STRING.UPR("&ErrorType")=="HELP")
+    (
+        &SUBROUTINE="HELP"
+    )
+    ELSE
+    (
+        &SUBROUTINE="MAIN"
+    )
+
+
+    LOCAL &rvalue
+    // This should be created by some top level script. The setupenv for each proc would
+    // set this up
+    AREA.SELECT
+    // Call the required utility
+    GOSUB &SUBROUTINE &ErrorMessage
+    ENTRY %LINE &rvalue
+
+    GOSUB EXIT &rvalue
+
+
+
+
+
+//**************************************************
+//
+// @Function: MAIN
+// @Description : Main logic of the script
+//
+//**************************************************
+MAIN:
+PRINTRESULTLOG:
+//&ErrorType can be user, attach, system
+
+    LOCAL &result 
+    ENTRY %LINE &result 
+    
+    //Check if directory exists. Exit if not.
+    LOCAL &tempdir
+    &tempdir=OS.FILE.PATH("&OUTPUTFILE")
+    IF !(OS.DIR(&tempdir))
+    (
+        PRINT %ERROR "Fatal exit detected and could not access log directory &tempdir. Cannot print logs"
+        &LOGSENABLED="FALSE"
+        GOSUB EXIT
+    )
+    
+
+    
+    //Don't want to get caught here
+    ON ERROR CONTINUE
+    PRINTER.FILE &OUTPUTFILE_PMACRO
+    PRINTER.FILETYPE ASCII
+    PRINTER.SIZE 0xFA, 0xFA
+    
+    
+    AREA.CREATE std_fatalexit_message 125. 49.
+    AREA.SELECT std_fatalexit_message
+    WINPOS 0. 70% 100. 10.
+    AREA.VIEW std_fatalexit_message
+    //winpos 0, 0, 100. 10. , , , PMACROWINDOW
+    //AREA.CREATE PMACROAreaWindow
+    //AREA.SELECT PMACROAreaWindow
+    //area.view PMACROAreaWindow
+    PRINT %ERROR "Fatal error detected. Scripts stack printed to &OUTPUTFILE_PMACRO"
+    WP.PMACRO
+    
+    //AREA.CLOSE PMACROAreaWindow
+    
+    ON ERROR DEFAULT
+    
+    //Reset sentinal value for multiple runs in same window
+    IF (STRING.SCAN("&LOGGINGSETUP","LOGGINGSETUP",0)!=-1)&&("&LOGGINGSETUP"=="1.")
+    (
+        &LOGGINGSETUP=0.
+    )
+    
+    //Append keyword if it's not already there, so that other scripts can search logs.
+    IF STRING.SCAN("&result","&FAILUREKEYWORD",0)==-1
+    (
+        &result="&FAILUREKEYWORD - "+"&result"
+    )
+    
+    //Don't want to get caught here
+    ON ERROR CONTINUE
+    PRINTER.FILE &OUTPUTFILE
+    PRINTER.FILETYPE ASCII
+    PRINTER.SIZE 0xFA, 0xFA
+    
+    
+    winpos 0, 0, 1000. 10. , , , RESULTWINDOW
+    AREA.CREATE ResultAreaWindow
+    AREA.SELECT ResultAreaWindow
+    area.view ResultAreaWindow
+    PRINT "&result"
+    WINPRT RESULTWINDOW
+    WINCLEAR TOP
+    AREA.CLOSE ResultAreaWindow
+    //IF ("&LOGSENABLED"!="TRUE")
+    //(
+    // 
+    //   GOSUB EXIT
+    //)
+    
+    LOCAL &std_result_result &result_temp
+    &result_temp=STR.UPPER("&result")
+    IF STRING.SCAN("&result_temp","FAILURE",0)!=-1
+    (
+        &std_result_result="FAILURE"
+    )
+    ELSE IF STRING.SCAN("&result_temp","SUCCESS",0)!=-1
+    (
+        &std_result_result="SUCCESS"
+    )
+    ELSE
+    (
+        &std_result_result="UNKNOWN"
+    )
+    do std_results CALL_REPORTER &OUTPUTFILE_PMACRO &std_result_result UNKNOWN
+    ON ERROR
+    RETURN
+    
+
+    RETURN SUCCESS
+
+    
+    
+help:
+HELP:
+    AREA.RESET
+    AREA.CREATE std_debug_help 125. 49.
+    AREA.SELECT std_debug_help
+    WINPOS 0. 29. 125. 49.
+    AREA.VIEW std_debug_help
+
+    //HEADER "std_cti help window"
+    
+
+    
+    PRINT " ////////////////////////////////////////////////////////////////////"
+    PRINT " /////////////////////// std_fatalexit Help /////////////////////////////"
+    PRINT " ////////////////////////////////////////////////////////////////////"
+    PRINT " "
+    RETURN
+//only spot other than top level scripts that 'end' is called
+FATALEXIT:
+EXIT:
+    
+    //Print to fatal exit area window
+    PRINT %ERROR "&ErrorMessage"
+    //Print to command console
+    AREA.SELECT A000
+    PRINT %ERROR "&ErrorMessage"
+    //Only end here if we're in automation mode
+    IF ("&DEBUGLEVEL"=="AUTOMATION")||("&ErrorType"=="USER")
+    (
+        END
+    )
+    ELSE IF ("&ErrorType"=="SYSTEM")||("&ErrorType"=="ATTACH")
+    (
+        ENDDO
+    )
+    
+

@@ -1,0 +1,64 @@
+#===============================================================================
+# Copyright (c) 2016 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/platform/zlib/src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+env.PublishPrivateApi('PLATFORM_ZLIB_INC', [
+   "${INC_ROOT}/platform/zlib/inc",
+])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'SERVICES',
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+ZLIB_SOURCES = [
+   '${BUILDPATH}/adler32.c',
+   '${BUILDPATH}/compress.c',
+   '${BUILDPATH}/crc32.c',
+   '${BUILDPATH}/deflate.c',
+   '${BUILDPATH}/infback.c',
+   '${BUILDPATH}/inffast.c',
+   '${BUILDPATH}/inflate.c',
+   '${BUILDPATH}/inftrees.c',
+   '${BUILDPATH}/trees.c',
+   '${BUILDPATH}/uncompr.c',   
+   '${BUILDPATH}/zutil.c',   
+]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+env.AddBinaryLibrary(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+ 'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'SSC_SLPI_USER', 'SSC_ADSP_USER'],'${BUILDPATH}/zlib', ZLIB_SOURCES)
+
+#-------------------------------------------------------------------------------
+# Load Subunits (sys)
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+# Clean / pack rules
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.cpp', '*.h', '*.s'], '${BUILD_PATH}/zlib/src'))
+
+env.CleanPack(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+     'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'SSC_SLPI_USER', 'SSC_ADSP_USER'], CLEAN_LIST)

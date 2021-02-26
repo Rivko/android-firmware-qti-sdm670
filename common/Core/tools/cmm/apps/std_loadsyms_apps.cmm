@@ -1,0 +1,781 @@
+//============================================================================
+//  Name:                                                                     
+//    std_loadsyms_apps.cmm 
+//
+//  Description:                                                              
+//    Script to load various Apps symbols
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who           what, where, why
+// --------   ---           ---------------------------------------------------------
+// 07/07/2017 JBILLING          KASLR debug updates
+// 03/03/2017 JBILLING          KASLR offset updates
+// 03/28/2016 JBILLING          Moved sessioncfg logic to std_sessioncfg..
+// 03/04/2016 JBILLING          Updated for MDM MN/LE menu loading
+// 02/16/2016 JBILLING          APPS_BUILDID and context menu search
+// 12/14/2015 JBILLING          Remote subroutine added for session-specific loading
+// 09/08/2015 JBILLING          Bug fixes for symbol loading
+// 08/24/2015 JBILLING          Minor comment updates and sync to updated logic from other loadsyms scripts
+// 08/05/2015 JBILLING          Automation supportupdated for elf chosen apart from given build usecase
+// 06/18/2015 JBILLING          Add plusvm for tracing
+// 06/04/2015 JBILLING          Bug fix for default buildroot
+// 05/11/2015 JBILLING          Parsing overhaul
+// 02/05/2015 JBILLING          Fix parsing, copy elf locally and issue to all apps via std_apps
+// 07/01/2014 JBilling          Updated logic to match newer loadsyms format
+// 10/25/2012 AJCheriyan        Fixed script to load symbols from any build
+// 08/08/2012 AJCheriyan        Changed the strippart option
+// 07/10/2012 AJCheriyan        Created for B-family 
+//
+
+//###################Arguments passed #####################
+LOCAL &ArgumentLine
+ENTRY %LINE &ArgumentLine
+LOCAL &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+ENTRY &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+
+//###################Variables #####################
+LOCAL &ELFFILE  &LOCAL_BUILDROOT &LocalElfFile  &Elf_Directory
+
+LOCAL &Processor_Root_Name &Image 
+LOCAL &targetprocessorport
+
+GLOBAL &APPS_ELFFILE
+
+&Image="appsboot"
+&ELFFILE="NULL" 
+&LOCAL_BUILDROOT="NULL"
+
+LOCAL &file &filename &what_to_cut &location &filepath &elf_filename &elf_filepath &elf_fullpath &secondPD_elf_filename
+
+
+//#####################Select Subroutine###################
+// Name of the utility we are calling
+LOCAL &SUBROUTINE
+// Any subroutine specific options
+// Default exists for each subroutine
+
+
+// Input Argument 0 is the name of the utility
+&SUBROUTINE="&UTILITY"
+&SUBROUTINE=STR.UPR("&SUBROUTINE")
+IF !(("&SUBROUTINE"=="HELP"))
+(
+    GOSUB MAIN &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    GOSUB EXIT &rvalue
+
+)
+
+    // This should be created by some top level script. The setupenv for each proc would
+    // set this up
+    AREA.SELECT
+    // Call the required utility
+    GOSUB &SUBROUTINE &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    GOSUB EXIT &rvalue
+
+
+
+MAIN:
+    LOCAL &APPSBUILD &RemoteOption &LiveAttach &loadsecondelf &alternateelf &extraoption
+    ENTRY &APPSBUILD &RemoteOption &LiveAttach &loadsecondelf &alternateelf &extraoption
+
+    
+    LOCAL &buildroot &elffile
+    LOCAL &given_buildroot &default_buildroot &default_elf 
+    
+    LOCAL &RootElfSuffix &SuffixSearchValue_NonReloc &SuffixSearchValue_Reloc &Suffix_NonReloc &Suffix_Reloc
+    LOCAL &Elf_Directory &Backup_Elf
+
+    IF (STRING.SCAN("&CHIPSET","mdm",0)!=-1)||(STRING.SCAN("&CHIPSET","sdx",0)!=-1)||(STRING.SCAN("&extraoption","mdm",0)!=-1)||(STRING.SCAN("&extraoption","sdx",0)!=-1)
+    (
+        IF ("&HLOS"=="LE")
+        (
+            &RootElfSuffix=""
+            &SuffixSearchValue_NonReloc=""
+            &SuffixSearchValue_Reloc=""
+            &Suffix_NonReloc=""
+            &Suffix_Reloc=""
+            &Processor_Root_Name="apps_proc"
+            &Elf_Directory="apps_proc/oe-core/build/tmp-glibc/sysroots/mdmcalifornium/boot"
+            &Backup_Elf="apps_proc/oe-core/build/tmp-glibc/sysroots/mdmcalifornium/boot/vmlinux"
+        )
+        ELSE
+        (
+            &RootElfSuffix=".elf"
+            &SuffixSearchValue_NonReloc=".elf"
+            &SuffixSearchValue_Reloc=".elf"
+            &Suffix_NonReloc=".elf"
+            &Suffix_Reloc=".elf"
+            &Processor_Root_Name="apps_proc"
+            &Elf_Directory="apps_proc/build/ms"
+            &Backup_Elf="apps_proc/build/ms/M9x55ACINAAAAA1234.elf"
+        )
+    )
+    ELSE
+    (
+        &RootElfSuffix=""
+        &SuffixSearchValue_NonReloc=""
+        &SuffixSearchValue_Reloc=""
+        &Suffix_NonReloc=""
+        &Suffix_Reloc=""
+        &Processor_Root_Name="out"
+        &Elf_Directory="out/target/product/&CHIPSET/obj/KERNEL_OBJ"
+        &Backup_Elf="LINUX/android/out/target/product/&CHIPSET/obj/KERNEL_OBJ/vmlinux"
+    )
+
+
+
+    IF ("&APPSBUILD"!="")
+    (
+        &given_buildroot="&APPSBUILD"
+    )
+    ELSE
+    (
+        &given_buildroot="NULL"
+    )
+    
+    IF ("&APPS_BUILDROOT"!="")
+    (
+        &default_buildroot="&APPS_BUILDROOT"
+    )
+    ELSE
+    (
+        &default_buildroot="NULL"
+    )
+    
+    IF ("&alternateelf"=="")
+    (
+        &alternateelf="NULL"
+    )
+    
+    IF ("&APPS_ELF"!="")
+    (
+        &default_elf="&APPS_ELF"
+    )
+    ELSE IF ("&APSS_ELF"!="")
+    (
+        &default_elf="&APSS_ELF"
+    )
+    ELSE
+    (
+        &default_elf="NULL"
+    )
+    
+     
+              
+   
+    GOSUB SELECT_ELF_FILE &given_buildroot &default_buildroot &alternateelf &default_elf
+    ENTRY &buildroot &elffile
+    //Update global variable
+    &APPS_BUILDROOT="&buildroot"
+    &APPS_ELF="&elffile"
+
+    ON ERROR CONTINUE
+    IF SYSTEM.MODE()==0xB
+    (
+        
+        IF STATE.RUN()||STRING.SCAN("&extraoption","kaslr",0)!=-1
+        (
+            do std_memorymap KASLR_SIMEM_PARSE_LOCATION
+        )
+    )
+    ON ERROR DEFAULT
+    
+    
+    LOCAL &rvalue
+    IF ("&RemoteOption"=="remotely")||(STRING.SCAN("&RemoteOption","15",0)!=-1)
+    (
+        IF (STRING.SCAN("&RemoteOption","15",0)!=-1)
+        (
+            &targetprocessorport=&RemoteOption
+            GOSUB LOAD_SYMBOLS_ON_REMOTE_T32 &buildroot &elffile &RemoteOption
+        )
+        ELSE
+        (
+            &targetprocessorport=&APPS0_PORT
+        
+            GOSUB LOAD_SYMBOLS_ON_ALL_APPS_T32 &buildroot &elffile
+            
+        )
+        ENTRY &rvalue
+    )
+    ELSE 
+    (
+        GOSUB LOAD_SYMBOLS_ON_THIS_T32 &buildroot &elffile
+        ENTRY &rvalue
+    )
+    
+
+    //No need for secondary elf loading
+    //IF ("&loadsecondelf"=="loadsecondelf")
+    //(
+    //    LOCAL &new_extraoption
+    //    &new_extraoption="silent,"+"&extraoption"
+    //    do std_loadsyms_apps &buildroot &RemoteOption &LiveAttach NULL NULL &new_extraoption
+    //    ENTRY %LINE &rvalue
+    //)
+
+    GOSUB EXIT &rvalue
+    
+    
+SELECT_ELF_FILE:
+        LOCAL &given_buildroot &default_buildroot &alternateelf &default_elf
+        ENTRY &given_buildroot &default_buildroot &alternateelf &default_elf
+
+        LOCAL &rvalue_buildroot &rvalue_elffile 
+        
+            //If buildroot and  elf given, use those
+            IF (OS.DIR("&given_buildroot")&&(FILE.EXIST("&alternateelf")))
+            (
+                &rvalue_elffile="&alternateelf"
+                &rvalue_buildroot="&given_buildroot"
+                RETURN &rvalue_buildroot &rvalue_elffile
+            )
+            
+            //If no given build directory, use the default one
+            IF (!OS.DIR("&given_buildroot"))
+            (
+                &given_buildroot="&default_buildroot"
+            )
+            
+            //If just alternate elf is given use that for elf and build root
+            //However if we can't parse the path for the buildroot, 
+            //Then rely on the GUI to give us a good build root
+            IF FILE.EXIST("&alternateelf")
+            (
+                &rvalue_elffile="&alternateelf"
+                GOSUB GET_ELF_BUILDROOT &alternateelf
+                ENTRY &rvalue_buildroot
+                
+                IF OS.DIR("&rvalue_buildroot")
+                (
+                    PRINT "Using &alternateelf as base buildroot and elf file"
+                    RETURN &rvalue_buildroot &rvalue_elffile
+                )
+                //Else drop to GUI
+            )
+            ELSE IF FILE.EXIST("&given_buildroot/&default_elf")
+            (
+                IF STRING.SCAN("&extraoption","silent",0)!=-1
+                (
+                    &rvalue_elffile=("&given_buildroot/&default_elf")
+                    &rvalue_buildroot="&given_buildroot"
+                    RETURN &rvalue_buildroot &rvalue_elffile
+                )
+                ELSE
+                (
+                    //Nothing. Drop to GUI
+                )
+            
+            )
+            ELSE IF FILE.EXIST("&given_buildroot/&Backup_Elf")
+            (
+                IF STRING.SCAN("&extraoption","silent",0)!=-1
+                (
+                    &rvalue_elffile=("&given_buildroot/&Backup_Elf")
+                    &rvalue_buildroot="&given_buildroot"
+                    RETURN &rvalue_buildroot &rvalue_elffile
+                )
+                ELSE
+                (
+                    //Nothing. Drop to GUI
+                )
+            
+            )
+            //We couldn't find a valid elf path by now. Exit if forcesilent specified.
+            ELSE IF STRING.SCAN("&extraoption","forcesilent",0)!=-1
+            (
+                PRINT %ERROR "std_loadsyms_&Image error! Elf parsing error found and forcesilent specified. Exiting"
+                GOSUB FATALEXIT "std_loadsyms_&Image error! Elf parsing error found and forcesilent specified. Exiting"
+            )
+            ELSE
+            (
+                //Nothing. drop to GUI.
+            )
+
+            //////////////////////Use GUI//////////////////////
+            
+            //Use GUI if alternateelf not specified or if buildroot directory is wrong
+            
+            
+            IF FILE.EXIST("&given_buildroot/&default_elf")||FILE.EXIST("&given_buildroot/&Backup_Elf")
+            (
+                IF FILE.EXIST("&given_buildroot/&default_elf")
+                (
+                    &filepath=OS.FILE.PATH("&given_buildroot/&default_elf")
+                )
+                ELSE
+                (
+                    &filepath=OS.FILE.PATH("&given_buildroot/&Backup_Elf")
+                )
+                
+                DIALOG.FILE "&filepath/*&RootElfSuffix"
+                ENTRY &rvalue_elffile
+                
+
+                GOSUB GET_ELF_BUILDROOT &rvalue_elffile
+                ENTRY &rvalue_buildroot
+                
+                
+                //If alternateelf specified and buildroot is good, use alternate elf with buildroot
+                IF FILE.EXIST("&alternateelf")&&(OS.DIR("&rvalue_buildroot"))
+                (
+                    &rvalue_elffile="&alternateelf"
+                    PRINT "Root build is &rvalue_buildroot, but Alternate Elf specified to be used: &rvalue_elffile"
+                )
+                //If no alternate elf given but rvalue_buildroot is good, then use that.
+                ///////This is the default usecase/////////
+                ELSE IF (OS.DIR("&rvalue_buildroot"))
+                (
+                    PRINT "Using build root &rvalue_buildroot with elf file &rvalue_elffile"
+                    //Leave rvalue_buildroot and rvalue_elffile as is.
+                )
+                //If rvalue_buildroot was bad, then some bad directory given. Default to given_buildroot
+                ELSE IF FILE.EXIST("&alternateelf")
+                (
+                    PRINT "Alternate Elf given, but could not find specified build root directory. Using Alternate Elf with default build root: &given_buildroot"
+                    &rvalue_elffile="&alternateelf"
+                    &rvalue_buildroot="&given_buildroot"
+                )
+                //If rvalue_buildroot was bad and no alternate elf given, default to given_buildroot.
+                ELSE
+                (
+                    PRINT "Could not find build root structure from selected elf. Will use selected elf with default build root: &given_buildroot"
+                    &rvalue_buildroot="&given_buildroot"
+                )
+            )
+            ELSE IF (OS.DIR("&given_buildroot"))
+            (
+                LOCAL &filepath
+                IF (OS.DIR("&given_buildroot/&Elf_Directory"))
+                (
+                    &filepath="&given_buildroot/&Elf_Directory"
+                )
+                ELSE IF (STRING.SCAN("&APPS_ELF","&given_buildroot",0)!=-1)&&("&APPS_ELF"!="")
+                (
+                    &filepath="&APPS_ELF"
+                )
+                ELSE
+                (
+                    &filepath="&given_buildroot"
+                )
+                IF (STRING.SCAN(STR.UPR("&CHIPSET"),"MDM",0)!=-1)&&("&HLOS"=="LE")
+                (
+                    PRINT "Please point to VMLINUX file"
+                )
+                ELSE
+                (
+                    PRINT "Please point to HLOS BOOT symbol file"
+                )
+                
+                IF FILE.EXIST("&filepath")
+                (
+                    DIALOG.FILE "&filepath*"
+                )
+                ELSE
+                (
+                    DIALOG.FILE "&filepath/*&RootElfSuffix"
+                )
+                ENTRY &rvalue_elffile
+                
+                
+                GOSUB GET_ELF_BUILDROOT &rvalue_elffile
+                ENTRY &rvalue_buildroot
+                //If alternateelf specified, use that path.
+                //This case should only hit if alternate elf specified but bad buildrootparsed out from it.
+                //If alternateelf specified and buildroot is good, use alternate elf with buildroot
+                IF FILE.EXIST("&alternateelf")&&(OS.DIR("&rvalue_buildroot"))
+                (
+                    &rvalue_elffile="&alternateelf"
+                    PRINT "Root build is &rvalue_buildroot, but Alternate Elf specified to be used: &rvalue_elffile"
+                )
+                //If no alternate elf given but rvalue_buildroot is good, then use that.
+                ///////This is the default usecase/////////
+                ELSE IF (OS.DIR("&rvalue_buildroot"))
+                (
+                    PRINT "Using build root &rvalue_buildroot with elf file &rvalue_elffile"
+                    //Leave rvalue_buildroot and rvalue_elffile as is.
+                )
+                //If rvalue_buildroot was bad, then some bad directory given. Default to given_buildroot
+                ELSE IF FILE.EXIST("&alternateelf")
+                (
+                    PRINT "Alternate Elf given, but could not find specified build root directory. Using Alternate Elf with default build root: &given_buildroot"
+                    &rvalue_elffile="&alternateelf"
+                    &rvalue_buildroot="&given_buildroot"
+                )
+                //If rvalue_buildroot was bad and no alternate elf given, default to given_buildroot.
+                
+                ELSE
+                (
+                    PRINT "Could not find build root structure from selected elf. Will use selected elf with default build root: &given_buildroot"
+                    &rvalue_buildroot="&given_buildroot"
+                )
+            )
+            ELSE
+            (
+                DIALOG.FILE "*&RootElfSuffix"
+                ENTRY &rvalue_elffile
+                
+                IF ("&rvalue_elffile"!="")
+                (
+                    GOSUB GET_ELF_BUILDROOT &rvalue_elffile
+                    ENTRY &rvalue_buildroot
+                )
+                
+            )
+            
+            
+            //Check if an elf was given
+            IF ("&rvalue_elffile"=="")
+            (
+                PRINT "No Elf File selected. Exiting"
+                GOSUB EXIT SUCCESS
+            )
+            
+            
+            RETURN &rvalue_buildroot &rvalue_elffile
+          
+            
+GET_ELF_BUILDROOT:
+            LOCAL &local_elffile &local_buildroot
+            ENTRY &local_elffile
+            
+            LOCAL &location &what_to_cut &filepath
+            &location=STRING.SCAN("&local_elffile","&Processor_Root_Name",0)
+            &what_to_cut=&location-STRING.LENGTH("&local_elffile")-1
+            &filepath=STRING.CUT("&local_elffile",&what_to_cut)
+
+            //If not a legitimate  path, return NULL
+            IF (OS.DIR("&filepath")&&("&filepath"!=""))
+            (
+                &local_buildroot=OS.FILE.PATH(&filepath/&Processor_Root_Name)
+            )
+            ELSE
+            (
+                &local_buildroot="NULL"
+            )
+
+            
+            RETURN &local_buildroot
+            
+            
+            
+            
+
+            
+            
+            
+    
+LOAD_SYMBOLS_ON_THIS_T32:
+    LOCAL &buildroot &elffile
+    ENTRY &buildroot &elffile
+    
+    /////////////////////////////////////////////////////////
+    //////////////////Load ELF File//////////////////////////
+    /////////////////////////////////////////////////////////
+            PRINT "Loading Elf &elffile with build root &buildroot"
+            
+            
+            LOCAL &commandlineoptions
+            &commandlineoptions=""
+            //include "/nocode" unless pushbinary specified.
+            IF (STRING.SCAN("&extraoption","pushbinary",0)==-1)
+            (
+                &commandlineoptions=" /nocode "+"&commandlineoptions"
+            )
+            //This for tracing. Loads elf file to T32 pod for faster trace analysis, but takes up space on pod memory
+            IF (STRING.SCAN("&extraoption","plusvm",0)!=-1)
+            (
+                &commandlineoptions=" /plusvm"+"&commandlineoptions"
+            )
+            IF (STRING.SCAN("&extraoption","noclear",0)!=-1)
+            (
+                &commandlineoptions=" /noclear"+"&commandlineoptions"
+            )
+            LOCAL &offset
+            IF "&KASLR_ENABLED"=="TRUE"
+            (
+                
+                &offset=&KASLR_OFFSET_ADDR
+                
+            )
+            ELSE IF (("&CHIPSET"=="sdm845")||("&CHIPSET"=="sdm670"))
+            (
+                &APPS_ELFFILE="&elffile"
+                do std_debug_&CHIPSET GETDEBUGDEFAULTS NONE appsboot
+                LOCAL        &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+                ENTRY &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+                y.create.l &entry_bkpt 0x0
+                y.create.done
+                RETURN SUCCESS
+            )
+            ELSE
+            (
+                &offset=0x0
+            )
+            IF y.exist("&entry_bkpt")
+            (
+                y.delete &entry_bkpt
+            )
+            d.load.elf &elffile &offset &commandlineoptions /strippart "&Processor_Root_Name" /sourcepath "&buildroot/&Processor_Root_Name"
+            
+            y.create.l PrimarySymbolsLoadedFlag 1
+            y.create.l PrimarySymbolsLoadedFlag_&HLOS 1
+            y.create.done        
+    /////////////////////////////////////////////////////////        
+    //////////////////Setup T32 environment//////////////////
+    /////////////////////////////////////////////////////////
+            IF (STRING.SCAN("&APPS_BUILDID","APPS_BUILDID",0)!=-1)||("&APPS_BUILDID"=="")
+            (
+                GLOBAL &APPS_BUILDID
+                &APPS_BUILDID="&APSS_BUILDID"
+            )
+            IF (("&HLOS"=="MN")||("&HLOS"=="TN"))&&("&T32PROP"=="sim")
+            (
+                IF FILE.EXIST(&buildroot/&Processor_Root_Name/build/bsp/devcfg_img/build/&APSS_BUILDID/kernel.reloc)
+                (
+                    D.LOAD.ELF &buildroot\&Processor_Root_Name\core\kernel\build_A\&APSS_BUILDID\bootimg.pbn a: /nocode /noclear 
+                )
+                IF FILE.EXIST(&buildroot\&Processor_Root_Name\build\bsp\devcfg_img\build\&APSS_BUILDID\kernel.reloc)
+                (
+                    D.LOAD.ELF &buildroot\&Processor_Root_Name\build\bsp\devcfg_img\build\&APSS_BUILDID\kernel.reloc a: /nocode /noclear
+                )
+            )
+            
+            
+            do std_sessioncfg_apps SYM &CHIPSET &HLOS &buildroot &Processor_Root_Name &APPS_BUILDID
+            
+            
+    RETURN SUCCESS
+
+    
+    
+LOAD_SYMBOLS_ON_ALL_APPS_T32:
+    LOCAL &buildroot &elffile
+    ENTRY &buildroot &elffile
+    
+    /////////////////////////////////////////////////////////
+    //////////////////Load ELF File//////////////////////////
+    /////////////////////////////////////////////////////////
+            PRINT "Loading Elf on remote T32 Session. Elf file &elffile with build root &buildroot"
+
+            LOCAL &commandlineoptions
+            &commandlineoptions=""
+            //include "/nocode" unless pushbinary specified.
+            IF (STRING.SCAN("&extraoption","pushbinary",0)==-1)
+            (
+                &commandlineoptions=" /nocode "+"&commandlineoptions"
+            )
+            //This for tracing. Loads elf file to T32 pod for faster trace analysis, but takes up space on pod memory
+            IF (STRING.SCAN("&extraoption","plusvm",0)!=-1)
+            (
+                &commandlineoptions=" /plusvm"+"&commandlineoptions"
+            )
+            IF (STRING.SCAN("&extraoption","noclear",0)!=-1)
+            (
+                &commandlineoptions=" /noclear"+"&commandlineoptions"
+            )
+            LOCAL &offset
+            IF "&KASLR_ENABLED"=="TRUE"
+            (
+                &offset=&KASLR_OFFSET_ADDR
+            )
+            ELSE IF (("&CHIPSET"=="sdm845")||("&CHIPSET"=="sdm670"))
+            (
+                &APPS_ELFFILE="&elffile"
+                do std_debug_&CHIPSET GETDEBUGDEFAULTS NONE appsboot
+                LOCAL        &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+                ENTRY &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+                y.create.l &entry_bkpt 0x0
+                y.create.done
+
+                RETURN SUCCESS
+            )
+            ELSE
+            (
+                &offset=0x0
+            )
+            IF y.exist("&entry_bkpt")
+            (
+                y.delete &entry_bkpt
+            )
+            do std_apps d.load.elf &elffile &offset &commandlineoptions /strippart "&Processor_Root_Name" /sourcepath "&buildroot/&Processor_Root_Name"
+            
+            do std_apps y.create.l PrimarySymbolsLoadedFlag 1
+            do std_apps y.create.l PrimarySymbolsLoadedFlag_&HLOS 1
+            do std_apps y.create.done    
+            
+    /////////////////////////////////////////////////////////        
+    //////////////////Setup T32 environment//////////////////
+    /////////////////////////////////////////////////////////
+            
+            IF (STRING.SCAN("&APPS_BUILDID","APPS_BUILDID",0)!=-1)||("&APPS_BUILDID"=="")
+            (
+                GLOBAL &APPS_BUILDID
+                &APPS_BUILDID="&APSS_BUILDID"
+            )
+            IF (("&HLOS"=="MN")||("&HLOS"=="TN"))&&("&T32PROP"=="sim")
+            (
+                IF (STRING.SCAN("&CHIPSET","sdx24",0)==-1
+                (
+                    IF FILE.EXIST(&buildroot/&Processor_Root_Name/build/bsp/devcfg_img/build/&APSS_BUILDID/kernel.reloc)
+                    (
+                        do std_apps D.LOAD.ELF &buildroot\&Processor_Root_Name\core\kernel\build_A\&APSS_BUILDID\bootimg.pbn a: /nocode /noclear 
+                    )
+                    IF FILE.EXIST(&buildroot\&Processor_Root_Name\build\bsp\devcfg_img\build\&APSS_BUILDID\kernel.reloc)
+                    (
+                        do std_apps D.LOAD.ELF &buildroot\&Processor_Root_Name\build\bsp\devcfg_img\build\&APSS_BUILDID\kernel.reloc a: /nocode /noclear
+                    )
+                )
+                ELSE
+                (
+                    IF FILE.EXIST(&buildroot\&Processor_Root_Name\build\bsp\apps_proc_img\build\&APSS_BUILDID\kernel.reloc)
+                    (
+                        do std_apps D.LOAD.ELF &buildroot\&Processor_Root_Name\build\bsp\apps_proc_img\build\&APSS_BUILDID\kernel.reloc a: /nocode /noclear
+                    )
+                )
+
+            )
+            
+            
+            do std_apps do std_sessioncfg_apps SYM &CHIPSET &HLOS &buildroot &Processor_Root_Name &APPS_BUILDID
+            
+
+            
+    RETURN SUCCESS
+
+    
+LOAD_SYMBOLS_ON_REMOTE_T32:
+    LOCAL &buildroot &elffile
+    LOCAL &buildroot &elffile &targetprocessorport
+    ENTRY &buildroot &elffile &targetprocessorport
+    
+    /////////////////////////////////////////////////////////
+    //////////////////Load ELF File//////////////////////////
+    /////////////////////////////////////////////////////////
+            PRINT "Loading Elf on remote T32 Session. Elf file &elffile with build root &buildroot"
+
+            LOCAL &commandlineoptions
+            &commandlineoptions=""
+            //include "/nocode" unless pushbinary specified.
+            IF (STRING.SCAN("&extraoption","pushbinary",0)==-1)
+            (
+                &commandlineoptions=" /nocode "+"&commandlineoptions"
+            )
+            //This for tracing. Loads elf file to T32 pod for faster trace analysis, but takes up space on pod memory
+            IF (STRING.SCAN("&extraoption","plusvm",0)!=-1)
+            (
+                &commandlineoptions=" /plusvm"+"&commandlineoptions"
+            )
+            IF (STRING.SCAN("&extraoption","noclear",0)!=-1)
+            (
+                &commandlineoptions=" /noclear"+"&commandlineoptions"
+            )
+            
+
+
+            INTERCOM.EXECUTE &targetprocessorport d.load.elf &elffile &commandlineoptions /strippart "&Processor_Root_Name" /sourcepath "&buildroot/&Processor_Root_Name"
+            INTERCOM.WAIT &targetprocessorport
+            
+            INTERCOM.EXECUTE &targetprocessorport y.create.l PrimarySymbolsLoadedFlag 1
+            INTERCOM.WAIT &targetprocessorport
+            INTERCOM.EXECUTE &targetprocessorport y.create.l PrimarySymbolsLoadedFlag_&HLOS 1
+            INTERCOM.WAIT &targetprocessorport
+            INTERCOM.EXECUTE &targetprocessorport y.create.done
+            INTERCOM.WAIT &targetprocessorport
+            
+    /////////////////////////////////////////////////////////        
+    //////////////////Setup T32 environment//////////////////
+    /////////////////////////////////////////////////////////
+            IF (STRING.SCAN("&APPS_BUILDID","APPS_BUILDID",0)!=-1)||("&APPS_BUILDID"=="")
+            (
+                GLOBAL &APPS_BUILDID
+                &APPS_BUILDID="&APSS_BUILDID"
+            )
+            
+            do std_intercom_do &targetprocessorport std_sessioncfg_apps SYM &CHIPSET &HLOS &buildroot &Processor_Root_Name &APPS_BUILDID
+            
+            
+            
+    RETURN SUCCESS
+
+
+help:
+HELP:
+    AREA.RESET
+    AREA.CREATE std_loadsyms_apps 125. 50.
+    AREA.SELECT std_loadsyms_apps
+    WINPOS 0. 0. 125. 50.
+    AREA.VIEW std_loadsyms_apps
+
+    //HEADER "std_cti help window"
+    
+
+    
+    PRINT " ////////////////////////////////////////////////////////////////////"
+    PRINT " /////////////// std_loadsyms_apps Help ////////////////"
+    PRINT " ////////////////////////////////////////////////////////////////////"
+    PRINT " Usage: "
+    PRINT "     do std_loadsyms_apps <APPSBUILDPATH> <RemoteOption> <LiveAttach> NULL <AlternateELF> <extraoption>"
+    PRINT " Where required arguments are (enter 'NULL' if not used): "
+    PRINT "     BUILDROOT   == path to tz build, or 'NULL' "
+    PRINT "     RemoteOption  == 'remotely' or 'NULL' - Load elf on all apps t32 windows. Mon and Hyp elf should be copied locally"
+    PRINT "     LiveAttach    == 'liveattach' or 'NULL' - T32 is attached to apps"
+    PRINT "     loadsecondelf == Always NULL (this keeps commands for all std_loadsyms scripts same"
+    PRINT "     AlternateELF  == Load elf file that is different from buildpath given"
+    PRINT "                      this can be given as the monitor and hypervisor elfs, e.g."
+    PRINT "                      AlternateELF=HypervisorElf=\\hypervisorpath\hyp.elf,MonitorElf=\\monitorpath\mon.elf"
+    PRINT "                      ->Make sure to specify 'silent' if you don't want prompts to show up"
+    PRINT "     extraoption == comma,deliminated,options"
+    PRINT "                 Which may be:"
+    PRINT "                     pushbinary - pushes binary onto target (useful for simulation environments)"
+    PRINT "                     silent - attempts to not use GUI. If paths don't resolve, use GUI"
+    PRINT "                     forcesilent - doesn't use GUI. If paths don't resolve, FATALEXIT"
+    PRINT "                                   forcesilent is for automation where GUI's cannot be used"
+    PRINT "                     plusvm    - For ETM Tracing. Loads elf file to t32 pod for faster trace processing"
+    PRINT "                                 So that T32 doesn't need to scan memory for trace symbol matching."
+    PRINT "                                 However, it takes up space on the pod that could be used for traces"
+    PRINT " "
+    PRINT " "
+    PRINT "E.G:"
+    PRINT " do std_loadsyms_apps \\mypath remotely NULL \\hypervisorpath\hyp.elf,MonitorElf=\\monitorpath\mon.elf pushbinary,silent"
+    
+    
+    RETURN SUCCESS
+
+EXIT:
+
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    ENDDO &rvalue
+    
+FATALEXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    IF STRING.SCAN("&FAILUREKEYWORD","FAILUREKEYWORD",0)==-1
+    (
+        GOSUB EXIT &FAILUREKEYWORD - &rvalue
+    )
+    ELSE
+    (
+        GOSUB EXIT &rvalue
+    )
+    
+//Should never get here
+    END
+
+
+
+
+

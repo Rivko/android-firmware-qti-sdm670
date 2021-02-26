@@ -1,0 +1,1046 @@
+//============================================================================
+//  Name:                                                                     
+//    std_loadbuild.cmm 
+//
+//  Description:                                                              
+//    Generates GUI for std_loadbuild and returns user's specifications
+//    Also contains information on what images are part of this target and the buildroot paths for them.
+//                                                                            
+//  Copyright (c) 2012 - 2016 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who             what, where, why
+// --------   ---             ---------------------------------------------------------
+// 10/27/2017 SONELALG      Added perf boot and system image loading support
+// 03/14/2017 JBILLING      Set up for Napali
+// 02/02/2016 JBILLING      Updates for automation
+// 12/14/2015 JBILLING      Added Fusion build menu
+// 09/29/2015 JBILLING      Warnings added for non-common images
+// 08/24/2015 JBILLING      Help menu added
+// 04/17/2015 JBILLING      Deviceprogrammer changes
+// 02/01/2015 JBILLING      Updated for 8996
+// 02/08/2012 AJCheriyan    Fixed issue with buttons
+// 07/19/2012 AJCheriyan    Created for B-family 
+
+//###################Arguments passed #####################
+LOCAL &ArgumentLine
+ENTRY %LINE &ArgumentLine
+LOCAL &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+ENTRY &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+LOCAL &PASS &RVAL0 &RVAL1 &RVAL2 &RVAL3 &RVAL4 &RVAL5 &RVAL6 &RVAL7 &RVAL8 &RVAL9 &RVAL10 &RVAL11
+
+
+
+
+//#####################Select Subroutine###################
+    // Name of the utility we are calling
+    LOCAL &SUBROUTINE
+    // Any subroutine specific options
+    // Default exists for each subroutine
+
+    &SUBROUTINE=STR.UPR("&UTILITY")
+    IF !(("&SUBROUTINE"=="INIT"))
+    (
+        &SUBROUTINE="MAIN" 
+    )
+
+    // This should be created by some top level script. The setupenv for each proc would
+    // set this up
+    AREA.SELECT
+    // Call the required utility
+    GOSUB &SUBROUTINE &ArgumentLine
+    ENTRY %LINE &rvalue 
+
+    GOSUB EXIT &rvalue
+    
+    
+
+
+
+//////////////////////////////////////////
+//
+//      Subroutine: MAIN
+//
+//      Main functionality. Starts dialog and calls std_loadbuild
+//
+////////////////////////////////////////////
+MAIN:
+
+
+    // Global variables populated by the the build options utility
+    LOCAL &NEW_BOOTBUILD &NEW_TZBUILD &NEW_AOPBUILD &NEW_APPSBUILD &NEW_MPSSBUILD &NEW_ADSPBUILD &NEW_CDSPBUILD &NEW_SLPIBUILD &NEW_WLANBUILD 
+    LOCAL &NEW_MDM_AOPBUILD &NEW_MDM_BOOTBUILD &NEW_MDM_TZBUILD &NEW_MDM_APPSBUILD &NEW_MDM_MPSSBUILD
+    GLOBAL &AOP_BUILDROOT
+    IF ("&AOP_BUILDROOT"=="")&&(OS.DIR("&aop_BUILDROOT"))
+    (
+        &AOP_BUILDROOT="&aop_BUILDROOT"
+    )
+    LOCAL &NEW_PDFLAVOR
+
+    LOCAL &HLOS_LOADBUILD &LOAD_OPT &LOAD_METHOD &LOAD_IMG &FLAVOR_OPT
+
+    LOCAL &BOOT_IMAGE_DIR
+
+    IF OS.DIR("&BOOT_BUILDROOT\QcomPkg")
+    (
+        &BOOT_IMAGE_DIR="QcomPkg"
+    )
+    ELSE
+    (
+        &BOOT_IMAGE_DIR="boot_images"
+    )
+
+    &LOAD_IMG="NULL"
+
+
+    IF "&FUSION_PLATFORM"=="TRUE"
+    (
+        &NEW_AOPBUILD=0.
+        &NEW_BOOTBUILD=0.
+        &NEW_TZBUILD=0.
+        &NEW_APPSBUILD=0.
+        //&NEW_MPSSBUILD=0.
+        &NEW_ADSPBUILD=0.
+        &NEW_CDSPBUILD=0.
+        &NEW_SLPIBUILD=0.
+        &NEW_WLANBUILD=0.
+        &NEW_PDFLAVOR=0.
+        
+        &NEW_MDM_AOPBUILD=0.
+        &NEW_MDM_BOOTBUILD=0.
+        &NEW_MDM_TZBUILD=0.
+        &NEW_MDM_APPSBUILD=0.
+        &NEW_MDM_MPSSBUILD=0.
+        GLOBAL &APPS_BUILDROOT_MDM
+        &APPS_BUILDROOT_MDM="&APSS_BUILDROOT_MDM"
+        
+        
+        // Create the dialog for the script
+        GOSUB CREATEDIALOG_FUSION
+    )
+    ELSE
+    (
+
+        &NEW_AOPBUILD=0.
+        &NEW_BOOTBUILD=0.
+        &NEW_TZBUILD=0.
+        &NEW_APPSBUILD=0.
+        &NEW_MPSSBUILD=0.
+        &NEW_ADSPBUILD=0.
+        &NEW_CDSPBUILD=0.
+        &NEW_SLPIBUILD=0.
+        &NEW_WLANBUILD=0.
+        &NEW_PDFLAVOR=0.
+        
+        // Create the dialog for the script
+        GOSUB CREATEDIALOG
+    )
+    // Wait for the person to do something
+    STOP
+
+    //Go right into loadbuild and end things after this
+LOADBUILD:
+    // We will not return to this script after this point
+    
+    LOCAL &result
+
+    // Call the utility to map all the builds to the other sessions
+    GOSUB BUILDSYNCUP
+
+    
+
+    // Call the top level load scripts
+    &result="Option=&LOAD_OPT Images=&LOAD_IMG Method=&LOAD_METHOD"
+
+    
+    DIALOG.END
+    do std_loadbuild &result
+    //stop stack here.
+    END
+    
+//////////////////////////////////////////
+//
+//      Subroutine: CREATEDIALOG
+//
+//      Sub-routine to create the dialog
+//
+////////////////////////////////////////////
+CREATEDIALOG:
+    
+    // Check if the window exists
+    WINTOP BUILDOPTIONS
+    IF FOUND()
+       RETURN 
+    WINPOS ,,,,,, LOADSIM
+
+    DIALOG
+    (&
+        HEADER "Build Options"
+        
+        POS 0. 0. 71. 33.
+        BOX "Select Image Sources"
+        POS 1. 1. 70. 1.
+        BOOTTEXT: TEXT "Boot Build"
+        BOOTEDIT: EDIT "&BOOT_BUILDROOT" "GOSUB VERIFYBOOTBUILD"
+
+        AOPTEXT: TEXT "AOP Build"
+        AOPEDIT: DEFEDIT "&AOP_BUILDROOT" "GOSUB VERIFYAOPBUILD"
+
+        TZTEXT: TEXT "TZ Build"
+        TZEDIT: DEFEDIT "&TZ_BUILDROOT" "GOSUB VERIFYTZBUILD"
+
+        APPSTEXT: TEXT "APPS Build"
+        APPSEDIT: DEFEDIT "&APPS_BUILDROOT" "GOSUB VERIFYAPPSBUILD"
+
+        MPSSTEXT: TEXT "MPSS Build"
+        MPSSEDIT: DEFEDIT "&MPSS_BUILDROOT" "GOSUB VERIFYMPSSBUILD"
+
+        ADSPTEXT: TEXT "ADSP Build"
+        ADSPEDIT: DEFEDIT "&ADSP_BUILDROOT" "GOSUB VERIFYADSPBUILD"
+        
+        CDSPTEXT: TEXT "CDSP Build"
+        CDSPEDIT: DEFEDIT "&CDSP_BUILDROOT" "GOSUB VERIFYCDSPBUILD"
+        
+        //SLPITEXT: TEXT "SLPI Build"
+        //SLPIEDIT: DEFEDIT "&SLPI_BUILDROOT" "GOSUB VERIFYSLPIBUILD"
+        
+        WLANTEXT: TEXT "WLAN Build"
+        WLANEDIT: DEFEDIT "&WLAN_BUILDROOT" "GOSUB VERIFYWLANBUILD"
+
+
+        POS 1. 19. 6. 1. 
+        HELPBUTTON: DEFBUTTON "?"
+        (
+            DIALOG.OK "Paste the paths of the various builds for this debug session. Click the map button after that. The defaults are provided by the meta build."
+        )
+        POS 64. 19. 6. 1.
+        MAPBUTTON: DEFBUTTON "Map" "GOSUB BUILDSYNCUP"
+
+        POS 1. 21. 37. 11.
+        BOX "Load Options"
+        POS 2. 22. 34. 1.
+        LOAD.ERASEONLY: CHOOSEBOX "Erase Storage only" "GOSUB SETLOADOPTION"
+        LOAD.COMMON: CHOOSEBOX "Load Common Images Only(BOOT,TZ,HYP,AOP)" "GOSUB SETLOADOPTION"
+        LOAD.FULL: CHOOSEBOX "Load Full Build" "GOSUB SETLOADOPTION"
+		LOAD.FULL.SECONDARY: CHOOSEBOX "Load Full Build with Secondary Boot and System" "GOSUB SETLOADOPTION"
+        LOAD.SINGLEIMG: CHOOSEBOX "Load single image" "GOSUB SETLOADOPTION"
+        LOADIMGSELECT: DYNPULLDOWN "xbl,tz,aop,appsboot,qup" "GOSUB SETLOADOPTION" 
+
+        POS 2. 28. 14. 1.
+        LOADMETHODTEXT: TEXT "Loading Method"
+        POS 3. 29. 14. 1.
+        LOADMETHOD.JTAG: CHOOSEBOX "JTag" "GOSUB SET_LOADMETHOD"
+        LOADMETHOD.DEVPROGRAMMER: CHOOSEBOX "Device Programmer" "GOSUB SET_LOADMETHOD"
+        
+        POS 29. 30. 8. 1. 
+        HELPBUTTON: DEFBUTTON "?"
+        (
+            DIALOG.OK "Common Images option will load the bootloaders, AOP and TZ images. Full Build option will load all images including HLOS images. Single image option lets you choose single binary to load. Device programmer will load the full build via Sahara and FireHose protocol over USB"
+        )
+
+
+        POS 45. 21. 25. 3.
+        BOX "Product Flavor"
+        POS 46. 22. 23. 1.
+        PDFLAVOR: DYNPULLDOWN "&PRODUCT_FLAVORS" "GOSUB LOADPDFLAVORS"
+
+        POS 63. 26. 6. 1.
+        LOADBUTTON: DEFBUTTON "Help" "GOSUB HELP"
+
+        
+        POS 59. 29. 10. 2.
+        LOADBUTTON: DEFBUTTON "Load" "GOSUB LOADBUILD"
+
+
+    )
+    // Set the default options here
+    GOSUB CHECKLOAD
+    DIALOG.SET LOAD.FULL
+    &LOAD_OPT="LOADFULL"
+    IF FILE.EXIST("&METASCRIPTSDIR/../deviceprogrammer/deviceprogrammer.cmm")
+    (
+        //keep this on JTAG for now. 
+        //Later will make default device programmer
+        DIALOG.SET LOADMETHOD.JTAG
+        &LOAD_METHOD="JTAG"
+    )
+    //If Deviceprogrammer has been disabled
+    ELSE
+    (
+        DIALOG.DISABLE LOADMETHOD.DEVPROGRAMMER
+        DIALOG.SET LOADMETHOD.JTAG
+        &LOAD_METHOD="JTAG"
+    )
+    /////////////Return from CREATEDIALOG//////////////////
+    RETURN
+
+
+// Sub-routine to create the dialog
+CREATEDIALOG_FUSION:
+    
+    // Check if the window exists
+    WINTOP BUILDOPTIONS
+    IF FOUND()
+       RETURN 
+    WINPOS 30% 0. 80. 44. ,,, LOADSIM
+    
+    DIALOG
+    (&
+        HEADER "Build Options"
+        
+        POS 0. 0. 74. 44.
+        BOX "Select Image Sources"
+        POS 1. 1. 72. 16.
+        BOX "APQ Symbols"
+        POS 2. 2. 70. 1.
+        BOOTTEXT: TEXT "APQ Boot Build"
+        BOOTEDIT: EDIT "&BOOT_BUILDROOT" "GOSUB VERIFYBOOTBUILD"
+
+        AOPTEXT: TEXT "APQ AOP Build"
+        AOPEDIT: DEFEDIT "&AOP_BUILDROOT" "GOSUB VERIFYAOPBUILD"
+
+        TZTEXT: TEXT "APQ TZ Build"
+        TZEDIT: DEFEDIT "&TZ_BUILDROOT" "GOSUB VERIFYTZBUILD"
+
+        APPSTEXT: TEXT "APQ APPS Build"
+        APPSEDIT: DEFEDIT "&APPS_BUILDROOT" "GOSUB VERIFYAPPSBUILD"
+
+        //MPSSTEXT: TEXT "MPSS Build"
+        //MPSSEDIT: DEFEDIT "&MPSS_BUILDROOT" "GOSUB VERIFYMPSSBUILD"
+
+        ADSPTEXT: TEXT "APQ ADSP Build"
+        ADSPEDIT: DEFEDIT "&ADSP_BUILDROOT" "GOSUB VERIFYADSPBUILD"
+
+        CDSPTEXT: TEXT "APQ CDSP Build"
+        CDSPEDIT: DEFEDIT "&CDSP_BUILDROOT" "GOSUB VERIFYCDSPBUILD"
+
+        //SLPITEXT: TEXT "APQ SLPI Build"
+        //SLPIEDIT: DEFEDIT "&SLPI_BUILDROOT" "GOSUB VERIFYSLPIBUILD"
+        
+        WLANTEXT: TEXT "APQ WLAN Build"
+        WLANEDIT: DEFEDIT "&WLAN_BUILDROOT" "GOSUB VERIFYWLANBUILD"
+
+        
+        POS 1. 17. 72. 15.
+        BOX "MDM Symbols"
+        POS 2. 18. 70. 1.
+        MDM_BOOTTEXT: TEXT "MDM Boot Build"
+        MDM_BOOTEDIT: EDIT "&BOOT_BUILDROOT_MDM" "GOSUB VERIFYBOOTBUILD_MDM"
+
+        MDM_AOPTEXT: TEXT "MDM AOP Build"
+        MDM_AOPEDIT: DEFEDIT "&AOP_BUILDROOT_MDM" "GOSUB VERIFYAOPBUILD_MDM"
+
+        MDM_TZTEXT: TEXT "MDM TZ Build"
+        MDM_TZEDIT: DEFEDIT "&TZ_BUILDROOT_MDM" "GOSUB VERIFYTZBUILD_MDM"
+
+        MDM_APPSTEXT: TEXT "MDM APPS Build"
+        MDM_APPSEDIT: DEFEDIT "&APPS_BUILDROOT_MDM" "GOSUB VERIFYAPPSBUILD_MDM"
+
+        MDM_MPSSTEXT: TEXT "MDM MPSS Build"
+        MDM_MPSSEDIT: DEFEDIT "&MPSS_BUILDROOT_MDM" "GOSUB VERIFYMPSSBUILD_MDM"
+
+        
+        POS 2. 29. 8. 1. 
+        HELPBUTTON: DEFBUTTON "Help"
+        (
+            DIALOG.OK "Paste the paths of the various builds for this debug session. Click the map button after that. The defaults are provided by the meta build."
+        )
+        POS 64. 29. 6. 1.
+        MAPBUTTON: DEFBUTTON "Map" "GOSUB BUILDSYNCUP"
+
+        POS 1. 33. 37. 10.
+        BOX "Load Options"
+        POS 2. 34. 34. 1.
+        LOAD.ERASEONLY: CHOOSEBOX "Erase Storage only" "GOSUB SETLOADOPTION"
+        LOAD.COMMON: CHOOSEBOX "Load Common Images Only(BOOT,TZ,HYP,AOP)" "GOSUB SETLOADOPTION"
+        LOAD.FULL: CHOOSEBOX "Load Full Build" "GOSUB SETLOADOPTION"
+        LOAD.SINGLEIMG: CHOOSEBOX "Load single image" "GOSUB SETLOADOPTION"
+        LOADIMGSELECT: DYNPULLDOWN "xbl,tz,aop,appsboot,qup" "GOSUB SETLOADOPTION" 
+
+        POS 2. 39. 14. 1.
+        LOADMETHODTEXT: TEXT "Loading Method"
+        POS 3. 40. 14. 1.
+        LOADMETHOD.JTAG: CHOOSEBOX "JTag" "GOSUB SET_LOADMETHOD"
+        LOADMETHOD.DEVPROGRAMMER: CHOOSEBOX "Device Programmer" "GOSUB SET_LOADMETHOD"
+        
+        POS 29. 41. 8. 1. 
+        HELPBUTTON: DEFBUTTON "?"
+        (
+            DIALOG.OK "Common Images option will load the bootloaders, AOP and TZ images. Full Build option will load all images including HLOS images. Single image option lets you choose single binary to load. Device programmer will load the full build via Sahara and FireHose protocol over USB"
+        )
+
+
+        POS 45. 32. 25. 3.
+        BOX "Product Flavor"
+        POS 46. 33. 23. 1.
+        PDFLAVOR: DYNPULLDOWN "&PRODUCT_FLAVORS" "GOSUB LOADPDFLAVORS"
+
+        POS 63. 37. 6. 1.
+        LOADBUTTON: DEFBUTTON "Help" "GOSUB HELP"
+
+        
+        POS 59. 40. 10. 2.
+        LOADBUTTON: DEFBUTTON "Load" "GOSUB LOADBUILD"
+
+
+    )
+    // Set the default options here
+    GOSUB CHECKLOAD
+    DIALOG.SET LOAD.FULL
+    &LOAD_OPT="LOADFULL"
+    IF FILE.EXIST("&METASCRIPTSDIR/../deviceprogrammer/deviceprogrammer.cmm")
+    (
+        //keep this on JTAG for now. 
+        //Later will make default device programmer
+        DIALOG.SET LOADMETHOD.JTAG
+        &LOAD_METHOD="JTAG"
+    )
+    //If Deviceprogrammer has been disabled
+    ELSE
+    (
+        DIALOG.DISABLE LOADMETHOD.DEVPROGRAMMER
+        DIALOG.SET LOADMETHOD.JTAG
+        &LOAD_METHOD="JTAG"
+    )
+    
+    /////////////Return from CREATEDIALOG_FUSION//////////////////
+    RETURN 
+    
+    
+SET_LOADMETHOD:
+    IF DIALOG.BOOLEAN(LOADMETHOD.DEVPROGRAMMER)
+    (
+        &LOAD_METHOD="DEVPROG"
+    )
+    ELSE
+    (
+        &LOAD_METHOD="JTAG"
+        DIALOG.SET LOADMETHOD.JTAG
+    )
+    
+    
+
+    
+SETLOADOPTION:
+    IF DIALOG.BOOLEAN(LOAD.ERASEONLY)
+    (
+        &LOAD_OPT="ERASEONLY"
+        DIALOG.DISABLE LOADMETHOD.DEVPROGRAMMER
+        DIALOG.SET LOADMETHOD.JTAG
+    )
+    IF DIALOG.BOOLEAN(LOAD.COMMON)
+    (
+        &LOAD_OPT="LOADCOMMON"
+        DIALOG.DISABLE LOADMETHOD.DEVPROGRAMMER
+        DIALOG.SET LOADMETHOD.JTAG
+    )
+    IF DIALOG.BOOLEAN(LOAD.FULL)
+    (
+        &LOAD_OPT="LOADFULL"
+        IF FILE.EXIST("&METASCRIPTSDIR/../deviceprogrammer/deviceprogrammer.cmm")
+        (
+            DIALOG.ENABLE LOADMETHOD.DEVPROGRAMMER
+        )
+    )
+	IF DIALOG.BOOLEAN(LOAD.FULL.SECONDARY)
+    (
+        &LOAD_OPT="LOADFULLSECONDARY"
+        IF FILE.EXIST("&METASCRIPTSDIR/../deviceprogrammer/deviceprogrammer.cmm")
+        (
+            DIALOG.ENABLE LOADMETHOD.DEVPROGRAMMER
+        )
+    )
+    IF DIALOG.BOOLEAN(LOAD.SINGLEIMG)
+    (
+        &LOAD_OPT="LOADIMG"
+        &LOAD_IMG=DIALOG.STRING(LOADIMGSELECT)
+        IF ("&LOAD_IMG"=="")
+        (
+            DIALOG.DISABLE LOADBUTTON
+        )
+        ELSE
+        (
+            DIALOG.ENABLE LOADBUTTON
+        )
+        DIALOG.DISABLE LOADMETHOD.DEVPROGRAMMER
+        DIALOG.SET LOADMETHOD.JTAG
+    )
+    
+    IF ("&LOAD_OPT"=="LOADFULL")
+    (
+        GOSUB CHECKLOAD
+    )
+    RETURN
+
+// Macros to check for valid build locations
+// Expand to include more comprehensive checks
+VERIFYBOOTBUILD:
+    LOCAL &DIR
+
+    &DIR=DIALOG.STRING(BOOTEDIT)
+    &DIR=STRING.TRIM("&DIR")
+    IF OS.DIR("&DIR/QcomPkg")
+    (
+        &BOOT_BUILDROOT="&DIR"
+        DIALOG.SET BOOTEDIT "&BOOT_BUILDROOT"
+        // We have a new build
+        &NEW_BOOTBUILD=1.
+        &BOOT_IMAGE_DIR="QcomPkg"
+        GOSUB CHECKLOAD
+
+    )
+    ELSE IF OS.DIR("&DIR/boot_images/QcomPkg")
+    (
+        &BOOT_BUILDROOT="&DIR"
+        DIALOG.SET BOOTEDIT "&BOOT_BUILDROOT"
+        // We have a new build
+        &NEW_BOOTBUILD=1.
+        &BOOT_IMAGE_DIR="boot_images"
+        GOSUB CHECKLOAD
+
+    )
+    ELSE
+    (
+        DIALOG.SET BOOTEDIT "Invalid Boot Build"
+        DIALOG.DISABLE LOADBUTTON
+        DIALOG.DISABLE MAPBUTTON
+    )
+
+
+
+    RETURN
+
+VERIFYTZBUILD:
+    LOCAL &DIR
+
+    &DIR=DIALOG.STRING(TZEDIT)
+    &DIR=STRING.TRIM("&DIR")
+    IF !OS.DIR("&DIR/trustzone_images")
+    (
+        DIALOG.SET TZEDIT "Invalid TZ Build"
+        DIALOG.DISABLE LOADBUTTON
+        DIALOG.DISABLE MAPBUTTON
+    )
+    ELSE
+    (
+        &TZ_BUILDROOT="&DIR"
+        DIALOG.SET TZEDIT "&TZ_BUILDROOT"
+        &NEW_TZBUILD=1.
+        GOSUB CHECKLOAD
+    )
+    RETURN
+
+VERIFYAOPBUILD:
+    LOCAL &DIR
+
+    &DIR=DIALOG.STRING(AOPEDIT)
+    &DIR=STRING.TRIM("&DIR")
+    IF !OS.DIR("&DIR/aop_proc")
+    (
+        DIALOG.SET AOPEDIT "Invalid AOP Build"
+        DIALOG.DISABLE LOADBUTTON
+        DIALOG.DISABLE MAPBUTTON
+    )
+    ELSE
+    (
+        &AOP_BUILDROOT="&DIR"
+        DIALOG.SET AOPEDIT "&AOP_BUILDROOT"
+        &NEW_AOPBUILD=1.
+        GOSUB CHECKLOAD
+    )
+    RETURN
+
+VERIFYAPPSBUILD:
+    LOCAL &DIR
+    
+    &DIR=DIALOG.STRING(APPSEDIT)
+    &DIR=STRING.TRIM("&DIR")
+    &APPS_BUILDROOT="&DIR"
+    &NEW_APPSBUILD=1.
+    GOSUB CHECKLOAD
+    
+    RETURN
+
+VERIFYMPSSBUILD:
+    LOCAL &DIR
+
+    &DIR=DIALOG.STRING(MPSSEDIT)
+    &DIR=STRING.TRIM("&DIR")
+    IF !OS.DIR("&DIR/modem_proc")
+    (
+        DIALOG.SET MPSSEDIT "Invalid MPSS Build"
+        //DIALOG.DISABLE LOADBUTTON
+        DIALOG.DISABLE MAPBUTTON
+    )
+    ELSE
+    (
+        &MPSS_BUILDROOT="&DIR"
+        DIALOG.SET MPSSEDIT "&MPSS_BUILDROOT"
+        &NEW_MPSSBUILD=1.
+        GOSUB CHECKLOAD
+    )
+    
+    GOSUB WARN_NON_COMMON_IMAGE_UPDATE
+    RETURN
+
+VERIFYADSPBUILD:
+    LOCAL &DIR
+
+    &DIR=DIALOG.STRING(ADSPEDIT)
+    &DIR=STRING.TRIM("&DIR")
+    IF !OS.DIR("&DIR/adsp_proc")
+    (
+        DIALOG.SET ADSPEDIT "Invalid ADSP Build"
+        //DIALOG.DISABLE LOADBUTTON
+        DIALOG.DISABLE MAPBUTTON
+    )
+    ELSE
+    (
+        &ADSP_BUILDROOT="&DIR"
+        DIALOG.SET ADSPEDIT "&ADSP_BUILDROOT"
+        &NEW_ADSPBUILD=1.
+        GOSUB CHECKLOAD
+    )
+    
+    GOSUB WARN_NON_COMMON_IMAGE_UPDATE
+    
+    RETURN
+
+VERIFYCDSPBUILD:
+    LOCAL &DIR
+
+    &DIR=DIALOG.STRING(CDSPEDIT)
+    &DIR=STRING.TRIM("&DIR")
+    IF !OS.DIR("&DIR/cdsp_proc")
+    (
+        DIALOG.SET CDSPEDIT "Invalid CDSP Build"
+        //DIALOG.DISABLE LOADBUTTON
+        DIALOG.DISABLE MAPBUTTON
+    )
+    ELSE
+    (
+        &CDSP_BUILDROOT="&DIR"
+        DIALOG.SET CDSPEDIT "&CDSP_BUILDROOT"
+        &NEW_CDSPBUILD=1.
+        GOSUB CHECKLOAD
+    )
+    
+    GOSUB WARN_NON_COMMON_IMAGE_UPDATE
+    
+    RETURN
+    
+VERIFYSLPIBUILD:
+    LOCAL &DIR
+
+
+    &DIR=DIALOG.STRING(SLPIEDIT)
+    &DIR=STRING.TRIM("&DIR")
+    IF !OS.DIR("&DIR/slpi_proc")
+    (
+        DIALOG.SET SLPIEDIT "Invalid SLPI Build"
+        //DIALOG.DISABLE LOADBUTTON
+        DIALOG.DISABLE MAPBUTTON
+    )
+    ELSE
+    (
+        &SLPI_BUILDROOT="&DIR"
+        DIALOG.SET SLPIEDIT "&SLPI_BUILDROOT"
+        &NEW_SLPIBUILD=1.
+        GOSUB CHECKLOAD
+    )
+    
+    GOSUB WARN_NON_COMMON_IMAGE_UPDATE
+    
+    RETURN
+VERIFYWLANBUILD:
+    LOCAL &DIR
+    
+    &DIR=DIALOG.STRING(WLANEDIT)
+    &DIR=STRING.TRIM("&DIR")
+    IF !OS.DIR("&DIR/wlan_proc")
+    (
+        DIALOG.SET WLANEDIT "Invalid WLAN Build"
+        //DIALOG.DISABLE LOADBUTTON
+        DIALOG.DISABLE MAPBUTTON
+    )
+    ELSE
+    (
+        &WLAN_BUILDROOT="&DIR"
+        DIALOG.SET WLANEDIT "&WLAN_BUILDROOT"
+        &NEW_WLANBUILD=1.
+        GOSUB CHECKLOAD
+    )
+    
+    GOSUB WARN_NON_COMMON_IMAGE_UPDATE
+    RETURN
+        
+
+///////////////////////////////////////////
+/////////MDM Verify build subroutines//////
+///////////////////////////////////////////    
+VERIFYAOPBUILD_MDM:
+    LOCAL &DIR
+
+
+    &DIR=DIALOG.STRING(MDM_AOPEDIT)
+    &DIR=STRING.TRIM("&DIR")
+    IF !OS.DIR("&DIR/aop_proc")
+    (
+        DIALOG.SET MDM_AOPEDIT "Invalid MDM AOP Build"
+        //DIALOG.DISABLE LOADBUTTON
+        DIALOG.DISABLE MAPBUTTON
+    )
+    ELSE
+    (
+        &AOP_BUILDROOT_MDM="&DIR"
+        DIALOG.SET MDM_AOPEDIT "&AOP_BUILDROOT_MDM"
+        &NEW_MDM_AOPBUILD=1.
+        GOSUB CHECKLOAD
+    )
+    
+    GOSUB WARN_NON_COMMON_IMAGE_UPDATE
+    
+    RETURN
+    
+VERIFYBOOTBUILD_MDM:
+    LOCAL &DIR
+
+
+    &DIR=DIALOG.STRING(MDM_BOOTEDIT)
+    &DIR=STRING.TRIM("&DIR")
+    IF !OS.DIR("&DIR/boot_images")
+    (
+        DIALOG.SET MDM_BOOTEDIT "Invalid MDM BOOT Build"
+        //DIALOG.DISABLE LOADBUTTON
+        DIALOG.DISABLE MAPBUTTON
+    )
+    ELSE
+    (
+        &BOOT_BUILDROOT_MDM="&DIR"
+        DIALOG.SET MDM_BOOTEDIT "&BOOT_BUILDROOT_MDM"
+        &NEW_MDM_BOOTBUILD=1.
+        GOSUB CHECKLOAD
+    )
+    
+    GOSUB WARN_NON_COMMON_IMAGE_UPDATE
+    
+    RETURN
+
+VERIFYTZBUILD_MDM:
+    LOCAL &DIR
+
+
+    &DIR=DIALOG.STRING(MDM_TZEDIT)
+    &DIR=STRING.TRIM("&DIR")
+    IF !OS.DIR("&DIR/trustzone_images")
+    (
+        DIALOG.SET MDM_TZEDIT "Invalid MDM TZ Build"
+        //DIALOG.DISABLE LOADBUTTON
+        DIALOG.DISABLE MAPBUTTON
+    )
+    ELSE
+    (
+        &TZ_BUILDROOT_MDM="&DIR"
+        DIALOG.SET MDM_TZEDIT "&TZ_BUILDROOT_MDM"
+        &NEW_MDM_TZBUILD=1.
+        GOSUB CHECKLOAD
+    )
+    
+    GOSUB WARN_NON_COMMON_IMAGE_UPDATE
+    
+    RETURN
+    
+
+VERIFYAPPSBUILD_MDM:
+    LOCAL &DIR
+
+
+    &DIR=DIALOG.STRING(MDM_APPSEDIT)
+    &DIR=STRING.TRIM("&DIR")
+    IF !OS.DIR("&DIR/apps_proc")
+    (
+        DIALOG.SET MDM_APPSEDIT "Invalid MDM Apps Build"
+        //DIALOG.DISABLE LOADBUTTON
+        DIALOG.DISABLE MAPBUTTON
+    )
+    ELSE
+    (
+        &APSS_BUILDROOT_MDM="&DIR"
+        &APPS_BUILDROOT_MDM="&DIR"
+        DIALOG.SET MDM_APPSEDIT "&APSS_BUILDROOT_MDM"
+        &NEW_APPSBUILD_MDM=1.
+        GOSUB CHECKLOAD
+    )
+    
+    GOSUB WARN_NON_COMMON_IMAGE_UPDATE
+    
+    RETURN
+    
+
+VERIFYMPSSBUILD_MDM:
+    LOCAL &DIR
+
+
+    &DIR=DIALOG.STRING(MDM_MPSSEDIT)
+    &DIR=STRING.TRIM("&DIR")
+    IF !OS.DIR("&DIR/modem_proc")
+    (
+        DIALOG.SET MDM_MPSSEDIT "Invalid MDM MPSS Build"
+        //DIALOG.DISABLE LOADBUTTON
+        DIALOG.DISABLE MAPBUTTON
+    )
+    ELSE
+    (
+        &MPSS_BUILDROOT_MDM="&DIR"
+        DIALOG.SET MDM_MPSSEDIT "&MPSS_BUILDROOT_MDM"
+        &NEW_MDM_MPSSBUILD=1.
+        GOSUB CHECKLOAD
+    )
+    
+    GOSUB WARN_NON_COMMON_IMAGE_UPDATE
+    
+    RETURN
+    
+    
+
+CHECKLOAD:
+    LOCAL &DIR
+
+    IF (OS.DIR("&AOP_BUILDROOT/aop_proc"))&&(OS.DIR("&BOOT_BUILDROOT/&BOOT_IMAGE_DIR"))&&(OS.DIR("&TZ_BUILDROOT/trustzone_images"))
+    (
+        DIALOG.ENABLE LOADBUTTON
+        DIALOG.ENABLE MAPBUTTON
+    )
+    ELSE
+    (
+        DIALOG.DISABLE LOADBUTTON
+        DIALOG.ENABLE MAPBUTTON
+    )
+
+    RETURN
+
+
+LOADPDFLAVORS:
+    // Basically call the script generated by the meta-build with the image information
+    // using the user specified product flavor
+    GLOBAL &FLAVOR_OPT
+    &FLAVOR_OPT=DIALOG.STRING(PDFLAVOR)
+    
+    IF !FILE.EXIST(&BUILD_FLAVOR_SCRIPT)
+    (
+        PRINT %ERROR "Error! Could not find <root>/common/build/app/gen_buildflavor.cmm"
+        do std_fatalexit SYSTEM "Error! Could not find <root>/common/build/app/gen_buildflavor.cmm"
+    )
+    do &BUILD_FLAVOR_SCRIPT &FLAVOR_OPT
+    // Change the global that indicates the product flavor chosen
+    &PRODUCT_FLAVOR="&FLAVOR_OPT"
+    &NEW_PDFLAVOR=1.
+
+    RETURN
+
+
+BUILDSYNCUP:
+    // Assumptions: 
+    // 1. &NEW_XYZBUILD variable is populated correctly to indicate the state 
+    // of the build. A non-zero value indicates that user has changed the build from what 
+    // was present in the meta build.
+    // 2. Utility is always run from the AOP T32 session
+    // 3. Every processor cares only about its own image. Apps is the only exception (at times).
+    // So we notify only necessary procs that their build has changed. 
+    IF ("&NEW_AOPBUILD">"0.")
+    (
+        // We never need to update the AOP session as it always has the latest
+        do std_intercom_do &APPS0_PORT std_mapbuilds AOP &AOP_BUILDROOT
+        //do std_intercom_do &MPSS_PORT  std_mapbuilds AOP &AOP_BUILDROOT
+        //do std_intercom_do &ADSP_PORT  std_mapbuilds AOP &AOP_BUILDROOT
+        //do std_intercom_do &WLAN_PORT std_mapbuilds AOP &AOP_BUILDROOT
+        //
+        // Reload the session configs again 
+        do std_intercom_do &AOP_PORT std_sessioncfg_rpm
+    )
+    IF ("&NEW_BOOTBUILD">"0.")
+    (
+         // We never need to update the AOP session as it always has the latest
+        //do std_intercom_do &AOP_PORT   std_mapbuilds BOOT &BOOT_BUILDROOT
+        do std_intercom_do &APPS0_PORT std_mapbuilds BOOT &BOOT_BUILDROOT
+        //do std_intercom_do &MPSS_PORT  std_mapbuilds BOOT &BOOT_BUILDROOT
+        //do std_intercom_do &ADSP_PORT  std_mapbuilds BOOT &BOOT_BUILDROOT
+        //do std_intercom_do &WLAN_PORT std_mapbuilds BOOT &BOOT_BUILDROOT
+    )
+    IF ("&NEW_TZBUILD">"0.")
+    (
+        // We never need to update the AOP session as it always has the latest
+        //do std_intercom_do &AOP_PORT   std_mapbuilds TZ &TZ_BUILDROOT
+        do std_intercom_do &APPS0_PORT std_mapbuilds TZ &TZ_BUILDROOT
+        //do std_intercom_do &MPSS_PORT  std_mapbuilds TZ &TZ_BUILDROOT
+        //do std_intercom_do &ADSP_PORT  std_mapbuilds TZ &TZ_BUILDROOT
+        //do std_intercom_do &WLAN_PORT std_mapbuilds TZ &TZ_BUILDROOT
+    )
+    IF ("&NEW_APPSBUILD">"0.")
+    (
+        // We never need to update the AOP session as it always has the latest
+        //do std_intercom_do &AOP_PORT   std_mapbuilds APPS &APPS_BUILDROOT
+        do std_intercom_do &APPS0_PORT std_mapbuilds APPS &APPS_BUILDROOT
+        //do std_intercom_do &MPSS_PORT  std_mapbuilds APPS &APPS_BUILDROOT
+        //do std_intercom_do &ADSP_PORT  std_mapbuilds APPS &APPS_BUILDROOT
+        //do std_intercom_do &WLAN_PORT std_mapbuilds APPS &APPS_BUILDROOT
+        // Reload the session configs again 
+        do std_intercom_do &APPS0_PORT std_sessioncfg_apps
+    )
+    IF ("&NEW_MPSSBUILD">"0.")
+    (
+        // We never need to update the AOP session as it always has the latest
+        do std_intercom_do &APPS0_PORT std_mapbuilds MPSS &MPSS_BUILDROOT
+        do std_intercom_do &MPSS_PORT  std_mapbuilds MPSS &MPSS_BUILDROOT
+        //do std_intercom_do &ADSP_PORT  std_mapbuilds MPSS &MPSS_BUILDROOT
+        //do std_intercom_do &WLAN_PORT std_mapbuilds MPSS &MPSS_BUILDROOT
+        // Reload the session configs again 
+        do std_intercom_do &MPSS_PORT std_sessioncfg_mpss
+    )
+    IF ("&NEW_ADSPBUILD">"0.")
+    (
+        // We never need to update the AOP session as it always has the latest
+        do std_intercom_do &APPS0_PORT std_mapbuilds ADSP &ADSP_BUILDROOT
+        //do std_intercom_do &MPSS_PORT  std_mapbuilds ADSP &ADSP_BUILDROOT
+        do std_intercom_do &ADSP_PORT  std_mapbuilds ADSP &ADSP_BUILDROOT
+        //do std_intercom_do &WLAN_PORT std_mapbuilds ADSP &ADSP_BUILDROOT
+        // Reload the session configs again 
+        do std_intercom_do &ADSP_PORT std_sessioncfg_adsp
+    )
+    IF ("&NEW_CDSPBUILD">"0.")
+    (
+        // We never need to update the AOP session as it always has the latest
+        do std_intercom_do &APPS0_PORT std_mapbuilds CDSP &CDSP_BUILDROOT
+        //do std_intercom_do &MPSS_PORT  std_mapbuilds ADSP &ADSP_BUILDROOT
+        do std_intercom_do &CDSP_PORT  std_mapbuilds CDSP &CDSP_BUILDROOT
+        //do std_intercom_do &WLAN_PORT std_mapbuilds ADSP &ADSP_BUILDROOT
+        // Reload the session configs again 
+        do std_intercom_do &CDSP_PORT std_sessioncfg_adsp
+    )
+    IF ("&NEW_SLPIBUILD">"0.")
+    (
+        // We never need to update the AOP session as it always has the latest
+        do std_intercom_do &APPS0_PORT std_mapbuilds SLPI &SLPI_BUILDROOT
+        //do std_intercom_do &MPSS_PORT  std_mapbuilds ADSP &ADSP_BUILDROOT
+        do std_intercom_do &ADSP_PORT  std_mapbuilds SLPI &SLPI_BUILDROOT
+        //do std_intercom_do &WLAN_PORT std_mapbuilds ADSP &ADSP_BUILDROOT
+        // Reload the session configs again 
+        do std_intercom_do &ADSP_PORT std_sessioncfg_slpi
+    )
+    IF ("&NEW_WLANBUILD">"0.")
+    (
+        // We never need to update the AOP session as it always has the latest
+        do std_intercom_do &APPS0_PORT std_mapbuilds WLAN &WLAN_BUILDROOT
+        // do std_intercom_do &MPSS_PORT  std_mapbuilds WLAN &WLAN_BUILDROOT
+        // do std_intercom_do &ADSP_PORT  std_mapbuilds WLAN &WLAN_BUILDROOT
+         do std_intercom_do &MPSS_PORT std_mapbuilds WLAN &WLAN_BUILDROOT
+        // Reload the session configs again 
+        
+        // do std_intercom_do &MPSS_PORT std_sessioncfg_wcnss
+    )
+    
+    
+    IF ("&FUSION_PLATFORM"=="TRUE")
+    (
+        IF ("&NEW_MDM_AOPBUILD">"0.")
+        (
+            // We never need to update the AOP session as it always has the latest
+             do std_intercom_do &MDM_AOP_PORT std_mapbuilds AOP &AOP_BUILDROOT_MDM
+            
+        )
+        IF ("&NEW_MDM_BOOTBUILD">"0.")
+        (
+            // We never need to update the AOP session as it always has the latest
+            do std_intercom_do &MDM_APPS0_PORT std_mapbuilds BOOT &BOOT_BUILDROOT_MDM
+            
+        )
+        IF ("&NEW_MDM_TZBUILD">"0.")
+        (
+            // We never need to update the AOP session as it always has the latest
+            do std_intercom_do &MDM_APPS0_PORT std_mapbuilds TZ &TZ_BUILDROOT_MDM
+            
+        )
+        IF ("&NEW_MDM_APPSBUILD">"0.")
+        (
+            // We never need to update the AOP session as it always has the latest
+            do std_intercom_do &MDM_APPS0_PORT std_mapbuilds APPS &APPS_BUILDROOT_MDM
+        )
+
+        IF ("&NEW_MDM_MPSSBUILD">"0.")
+        (
+            // We never need to update the AOP session as it always has the latest
+            do std_intercom_do &MDM_MPSS_PORT std_mapbuilds MPSS &MPSS_BUILDROOT_MDM
+            
+        )
+    )
+    IF ("&NEW_PDFLAVOR">"0.")
+    (
+         // New product flavor has been selected and has to be broadcast to all
+        // sessions
+        do std_intercom_do &APPS0_PORT &BUILD_FLAVOR_SCRIPT &FLAVOR_OPT
+        do std_intercom_do &APPS1_PORT &BUILD_FLAVOR_SCRIPT &FLAVOR_OPT
+        do std_intercom_do &APPS2_PORT &BUILD_FLAVOR_SCRIPT &FLAVOR_OPT
+        do std_intercom_do &APPS3_PORT &BUILD_FLAVOR_SCRIPT &FLAVOR_OPT
+        do std_intercom_do &MPSS_PORT  &BUILD_FLAVOR_SCRIPT &FLAVOR_OPT
+        do std_intercom_do &ADSP_PORT  &BUILD_FLAVOR_SCRIPT &FLAVOR_OPT
+        do std_intercom_do &CDSP_PORT  &BUILD_FLAVOR_SCRIPT &FLAVOR_OPT
+        do std_intercom_do &SLPI_PORT  &BUILD_FLAVOR_SCRIPT &FLAVOR_OPT
+    )
+
+    RETURN
+                      
+////////////////////////////////////////
+//
+//          WARN_NON_COMMON_IMAGE_UPDATE
+//          public function
+//          Prints usage information
+//          Expected input: None
+//
+/////////////////////////////////////////
+WARN_NON_COMMON_IMAGE_UPDATE:
+    AREA.CREATE std_loadbuild_warning 75. 16.
+    AREA.SELECT std_loadbuild_warning
+    WINPOS 0. 0. 75. 16.
+    AREA.VIEW std_loadbuild_warning
+    
+
+    PRINT " "
+    PRINT "    *********************WARNING*********************"
+    PRINT " "
+    PRINT "    **Updating non-common image paths (e.g. MPSS, ADSP, CDSP, SLPI, WLAN)**"
+    PRINT "    **in this dialog box WILL NOT update their associated binaries **"
+    PRINT "    **for build loading                                            **"
+    PRINT " "
+    PRINT "    However, updating common image paths (e.g. TZ, AOP, BOOT, APPS)        "
+    PRINT "    in this dialog box WILL push their associated binaries during loading. "
+    PRINT " "
+    PRINT "    Non-common binaries need to be updated via USB, either through        "
+    PRINT "    an HLOS-specific process or by regenerating the NON-HLOS.bin"
+    PRINT "    locally and pushing that binary into the file system  "
+    
+    
+    IF "&HLOS"=="WP"
+    (
+        PRINT "    (e.g. for WP FFU tool is used, which also then overwrites common binaries as well)"
+    )
+    ELSE
+    (
+        PRINT "    (e.g. for Android - via fastboot or ADB push)"
+    )
+    PRINT " "
+
+RETURN
+
+
+
+
+EXIT:
+    LOCAL &result
+    ENTRY %LINE &result 
+    ENDDO &result

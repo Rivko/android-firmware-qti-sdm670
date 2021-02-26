@@ -1,0 +1,178 @@
+#===============================================================================
+#
+# SPI Libs
+#
+# GENERAL DESCRIPTION
+#    Public build script for SPI BUS driver.
+#
+# Copyright (c) 2016-2018 Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Qualcomm Technologies, Inc. Confidential and Proprietary.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1/buses/spi/build/spi.scons#4 $
+#  $DateTime: 2018/01/29 06:10:05 $
+#  $Author: pwbldsvc $
+#  $Change: 15338812 $
+#
+#===============================================================================
+#-------------------------------------------------------------------------------
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 01/18/17   ska     Added Logging changes
+# 08/01/17   ska     Ported for sdm670
+#===============================================================================
+import os
+
+Import('env')
+env = env.Clone()
+
+#------------------------------------------------------------------------------
+# Debug logging options
+#------------------------------------------------------------------------------ 
+if 'SPI_LOG_ENABLE' in env:
+   #env.Append(CFLAGS = '-DTOUCH_USES_PRAM_BUFF')
+   env.Append(CCFLAGS = ' -DSPI_ENABLE_ULOG')
+   env.Append(CCFLAGS = ' -DSPI_ENABLE_MICRO_ULOG')
+   env.Append(CCFLAGS = ' -DSPI_LOG_ENABLE_ERROR')
+   env.Append(CCFLAGS = ' -DSPI_LOG_ENABLE_INFO')
+   #env.Append(CCFLAGS = ' -DSPI_LOG_ENABLE_DATA')
+   #env.Append(CCFLAGS = ' -DSPI_LOG_ENABLE_REGS')
+   #env.Append(CCFLAGS = ' -DSPI_LOG_ENABLE_PERF')
+   env.Append(CCFLAGS = ' -DSPI_LOG_ENABLE_VERBOSE')
+   
+#------------------------------------------------------------------------------
+# Add API folders
+#------------------------------------------------------------------------------
+
+SPI_BUILD_ROOT = os.getcwd();
+if env['MSM_ID'] in ['670']:
+   SPI_DRV_IMAGES = ['CORE_SLPI_ADSP_ROOT']
+   SPI_USR_IMAGES = ['CORE_SLPI_USER']
+else:   
+   SPI_DRV_IMAGES = ['CORE_SLPI_SDC', 'CORE_SLPI_ROOT']
+   SPI_USR_IMAGES = ['CORE_SLPI_USER']
+
+
+env.PublishPrivateApi('BUSES', [
+   "${BUILD_ROOT}/core/buses/spi/src",
+   "${BUILD_ROOT}/core/buses/spi/inc",
+   "${BUILD_ROOT}/core/buses/spi/config"
+])
+
+#-----------------------------------------------------------------------------
+# Define paths
+#-----------------------------------------------------------------------------
+
+SRCPATH = "../"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-----------------------------------------------------------------------------
+# Define any features or compiler flags
+#-----------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+CBSP_API = [
+   'BUSES',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'BUSYWAIT',
+   'HWENGINES',
+   'KERNEL',
+   'PRODUCTS',
+   'SERVICES',
+   'POWER',
+   'DEBUGTRACE',
+   'SPI_SETTINGS',
+   'DAL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Define sources
+#-------------------------------------------------------------------------------
+
+SPI_DRV_SOURCES = [
+   '${BUILDPATH}/src/spi_api.c',
+   '${BUILDPATH}/src/spi_plat.c',
+   '${BUILDPATH}/src/spi_gpi.c',
+   '${BUILDPATH}/src/spi_qdi_root.c',
+   '${BUILDPATH}/src/spi_devcfg.c',
+]
+
+if 'SPI_LOG_ENABLE' in env:
+   SPI_DRV_SOURCES += [
+   '${BUILDPATH}/src/spi_log.c',
+   ]
+   
+SPI_USR_SOURCES = [
+   '${BUILDPATH}/src/spi_qdi_user.c',
+#  '${BUILDPATH}/test/spi_test.c',
+]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+SPIDriverLib = env.AddLibrary( SPI_DRV_IMAGES, '${BUILDPATH}/SpiDriver', SPI_DRV_SOURCES )
+SPIUserLib = env.AddLibrary( SPI_USR_IMAGES, '${BUILDPATH}/SpiClient', SPI_USR_SOURCES )
+
+if 'USES_ISLAND' in env:
+   env.AddIslandLibrary(SPI_DRV_IMAGES, SPIDriverLib)
+   env.AddIslandLibrary(SPI_USR_IMAGES, SPIUserLib)
+
+if 'TOUCH_USES_PRAM' in env:
+   env.Append(CFLAGS = '-DTOUCH_USES_PRAM_BUFF')
+
+if 'USES_POLL_MODE_BUS_DRIVERS' in env:
+   env.Append(CFLAGS = '-DPOLL_MODE_BUS_DRIVERS')
+  
+#-------------------------------------------------------------------------------
+# Register initialization function and dependencies.
+#-------------------------------------------------------------------------------
+
+if 'USES_RCINIT' in env:
+#  env.AddRCInitFunc(
+#    SPI_USR_IMAGES,
+#     {
+#       'sequence_group'             : 'RCINIT_GROUP_7',   # required
+#        'init_name'                  : 'spi_thread_test_init',    # required
+#        'init_function'              : 'spi_thread_test_init',    # required
+#        'dependencies'               : ['spi_plat_init']
+#     })
+
+   env.AddRCInitFunc(
+      SPI_DRV_IMAGES,
+      {
+         'sequence_group'             : 'RCINIT_GROUP_1',   # required
+         'init_name'                  : 'spi_plat_init',         # required
+         'init_function'              : 'spi_plat_init',         # required
+         'dependencies'               : ['gpi_drv']
+      })
+   env.AddRCInitFunc(
+      SPI_DRV_IMAGES,
+      {
+         'sequence_group'             : 'RCINIT_GROUP_1',    # required
+         'init_name'                  : 'spi_qdi_root_init', # required
+         'init_function'              : 'spi_qdi_root_init', # required
+         'dependencies'               : ['spi_plat_init']
+      })
+
+   env.AddRCInitFunc(
+      SPI_USR_IMAGES,
+      {
+         'sequence_group'             : 'RCINIT_GROUP_1',    # required
+         'init_name'                  : 'spi_qdi_user_init', # required
+         'init_function'              : 'spi_qdi_user_init', # required
+      })
+

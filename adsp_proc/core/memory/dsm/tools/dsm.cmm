@@ -1,0 +1,81 @@
+;****************************************************************************
+;**                            dsm.cmm
+;**
+;** This script dumps dsm pool item data onto a file upon a crash. It 
+;** generates dsm_memory_pool_dump.txt.
+;**  
+;** Usage: do dsm.cmm
+;**         
+;** Copyright (c) 2009 by Qualcomm Technologies, Incorporated.  All Rights Reserved.
+;**
+;****************************************************************************
+;**
+;**                        EDIT HISTORY FOR MODULE
+;**
+;**  $Header: //source/qcom/qct/modem/mcs/dsm/rel/1h09/tools/dsm.cmm#1 
+;**
+;** when       who     what, where, why
+;** --------   ---     ------------------------------------------------------
+;** 05/04/09   ag      Merged from CVS.
+;**
+;** --------------------------------------------------------------------------
+
+local &pool_id
+local &dsm_item_ptr
+local &pkt_ptr
+local &dup_ptr
+local &link
+local &references
+local &used
+local &size
+local &data_ptr
+local &kind
+local &priority
+local &app_field
+local &app_ptr
+local &tracer
+local &file
+local &line
+
+OPEN  #4 dsm_memory_pool_dump.txt /CREATE
+CLOSE #4
+OPEN #4 dsm_memory_pool_dump.txt /WRITE
+
+&pool_id=0
+while &pool_id<4
+(
+&item_count=v.value(dsmi_pool_mgmt_table[&pool_id].item_count)
+&pool_item_size=v.value(dsmi_pool_mgmt_table[&pool_id].pool_item_size)
+
+WRITE #4 "#POOL_ID,ADDR,PKT_PTR,DUP_PTR,LINK,REFERENCES,USED,SIZE,DATA_PTR,KIND,PRIORITY,APP_FIELD,APP_PTR,TRACER,FILE,LINE"
+
+&y=0
+while &y<&item_count
+(
+  &dsm_item_ptr=v.value((dsm_item_type *)(dsmi_pool_mgmt_table[&pool_id].item_array+((&pool_item_size+52)*&y)))
+  &pkt_ptr=v.value(((dsm_item_type *)&dsm_item_ptr)->pkt_ptr)
+  &dup_ptr=v.value(((dsm_item_type *)&dsm_item_ptr)->dup_ptr)
+  &link=v.value(((dsm_item_type *)&dsm_item_ptr)->link.next_ptr)
+  &references=v.value(((dsm_item_type *)&dsm_item_ptr)->references)
+  &used=v.value(((dsm_item_type *)&dsm_item_ptr)->used)
+  &size=v.value(((dsm_item_type *)&dsm_item_ptr)->size)
+  &data_ptr=v.value(((dsm_item_type *)&dsm_item_ptr)->data_ptr)
+  &kind=v.value(((dsm_item_type *)&dsm_item_ptr)->kind)
+  &priority=v.value(((dsm_item_type *)&dsm_item_ptr)->priority)
+  &app_field=v.value(((dsm_item_type *)&dsm_item_ptr)->app_field)
+  &app_ptr=v.value(((dsm_item_type *)&dsm_item_ptr)->app_ptr)
+  &tracer=v.value(((dsm_item_type *)&dsm_item_ptr)->tracer)
+  &file=v.value(((dsm_item_type *)&dsm_item_ptr)->file)
+  &file_name=Data.String(RD:&file)
+  &line=v.value(((dsm_item_type *)&dsm_item_ptr)->line)
+    
+  WRITE #4 "&pool_id,&dsm_item_ptr,&pkt_ptr,&dup_ptr,&link,&references,&used,&size,&data_ptr,&kind,&priority,&app_field,&app_ptr,&tracer,&file_name,&line"
+  &y=&y+1
+ )
+&pool_id=&pool_id+1
+
+WRITE #4 " "
+)
+
+CLOSE #4
+

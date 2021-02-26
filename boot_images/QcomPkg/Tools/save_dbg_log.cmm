@@ -1,0 +1,93 @@
+;============================================================================
+;  Name:
+;    save_dbg_log.cmm
+;
+;  Description:
+;     Save UART debug log
+;
+; Copyright (c) 2012-2013, 2015, 2017 Qualcomm Technologies, Inc.
+; All Rights Reserved. Qualcomm Technologies Proprietary and Confidential.
+;
+;----------------------------------------------------------------------------
+;============================================================================
+;
+;                        EDIT HISTORY FOR MODULE
+;
+;
+;
+;   when        who     what, where, why
+;  ----------   ---     -----------------------------------------------------
+;  2017-09-12   vk       Remove PATH
+;  2016-02-18   vk       Use physical address so we can pull logs
+;  2016-02-18   vk       Use T32 editor instead of notepad
+;  2015-09-14   yg       Make file name argument optional
+;  2015-02-12   bh       Change RD: to A:
+;  2015-01-27   bh       Unifying 32/64-bit scripts, take offsets from InitOffsets.cmm
+;  2015-01-22   bh       Fix offsets, based values off of AARCH state
+;  2013-06-17   vk       open up file in text editor
+;  2012-12-10   yg       Initial version
+;============================================================================;
+
+;
+;  Need UEFI FD memory address and Filename as entry point argument
+;
+
+local &InfoPtr
+local &BuffPtr
+local &BuffSize
+local &TempFile
+
+ENTRY &SecAddr &FileName
+
+  ; Get the pointer to the Buffer and size
+  do &CwDir/../../Tools/InitOffsets.cmm
+
+  gosub GetLogBuffer &SecAddr
+  entry &BuffPtr &BuffSize
+
+  if ("&FileName"=="")
+  (
+    &TempFile=OS.TMPFILE()
+    &TempFile="&TempFile.txt"
+    print "&TempFile"
+    &FileName="&TempFile"
+  )
+
+  data.save.binary &FileName &BuffPtr++(&BuffSize-1)
+
+  print "Saved UEFI Logs to file &FileName"
+
+  edit &FileName
+enddo
+
+GetLogBuffer:
+  entry &SecPtrTemp
+
+  local &Ptr
+  local &Size
+  local &Sig
+  local &InfBlkPtr
+
+  ; 0x15C is the offset where our Object image starts
+  ; This number corresponds to FV header size
+  &InfoBlkPtrOffset=0x3FF000
+  &InfBlkPtr=&SecPtrTemp+&InfoBlkPtrOffset
+  &Sig=data.long(A:&InfBlkPtr)
+
+  ; Check signature before dereference
+  if (&Sig!=0x6B6C4249)
+  (
+    print "Unable to locate UEFI Info Block with ref to the Base Addr : &SecAddr"
+    return 0 0
+  )
+
+  ; Refer to UefiInfoBlk.h for the structure definition
+  ; Get the info for UartLogBuffer
+  &Ptr=data.long(A:&InfBlkPtr+&IBlkUartLogBufferPtr)
+  &Size=data.long(A:&InfBlkPtr+&IBlkUartLogBufferLen)
+
+  print "Log Buffer : &Ptr   Size : &Size"
+
+return &Ptr &Size
+
+

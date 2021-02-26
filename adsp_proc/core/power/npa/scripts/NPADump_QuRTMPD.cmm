@@ -1,0 +1,687 @@
+; NPADump_QuRTMPD.cmm
+; ------------------------------------------------------------------
+;
+; Copyright (c) 2009-2012, 2016 Qualcomm Technologies Incorporated.
+; All Rights Reserved.
+; QUALCOMM Proprietary/GTDR
+; $Header: //components/rel/core.qdsp6/2.1/power/npa/scripts/NPADump_QuRTMPD.cmm#1 $
+;
+; When to use this script 
+; -----------------------
+; This script should be used to dump NPA state from T32.  It will dump
+; the NPA Ulog and then append all in-memory NPA state.
+;
+; 
+; How to use this script
+; ----------------------
+; After after breaking, retrieve NPA state by running
+;
+; do NPADump_QuRTMPD <logPath> [state]
+;
+; If <logPath> is given, a "NPA Log.ulog" file will be created in the given directory
+; If <logPath> is not given, the output will be dumped to the screen.
+; If SHORT is on the command line, then the output will just be the State information
+;  appended to the existing files.
+;
+ENTRY &logPath &statedump
+; This global is  set by ULogDump
+GLOBAL &ULogTimestamp
+GLOBAL &sub_return
+GLOBAL &scheduler_exists
+GLOBAL &ULOG_OUTPUT_RESETCOUNT_INFO
+LOCAL &link &dump &mypath &ulogdump &string &image_name
+
+if "&logPath"==""
+(
+  &logPath="stdout"
+  ; Select the output area for messages
+  AREA.SELECT A000
+
+  &dump="PRINT"
+)
+
+; Check the logPath string for validity
+IF string.char("&(logPath)", string.len("&(logPath)")-1)=='\'
+(
+  &logPath=string.cut("&(logPath)", -1)
+)
+
+; Locate the core directory (by doing \..\ three times in the current working directory)
+&coredir=os.ppd()
+&coredir=os.file.path(&coredir)
+&coredir=os.file.path(&coredir)
+&coredir=os.file.path(&coredir)
+
+IF y.exist(npa_qdi_pd_image_name)
+(
+  &image_name=DATA.STRING(D:V.VALUE(npa_qdi_pd_image_name))
+  &ulogdump="&(coredir)\services\diag\diagbuffer\scripts\ULogDump_QuRTMPD.cmm"
+)
+ELSE
+(
+  &ulogdump="&(coredir)\services\diag\diagbuffer\scripts\ULogDump.cmm"
+)
+
+; Dump scheduler information if exists
+; It would be nice to replace with some CMM test
+; on if a symbol exists.
+&scheduler_exists=V.VALUE(npa_scheduler_exists)
+IF &scheduler_exists!=0x0
+(
+  IF "&statedump"!="state"
+  ( ; not a short dump so don't do full dump
+  
+    ; Tell ULogDump to output reset data if it's seen log resets. 
+    ; Seeing log resets indicates an unstable memory system
+    &ULOG_OUTPUT_RESETCOUNT_INFO=1
+    
+    ; Dump Scheduler information
+    IF "&(image_name)"==""
+    (
+      DO &ulogdump &logPath "NPA Scheduler Log"  
+    )
+    ELSE
+    (
+      DO &ulogdump &logPath &image_name "NPA Scheduler Log"
+    )
+    
+    ; Set the ULogDump reset data back to it's default off state.  
+    &ULOG_OUTPUT_RESETCOUNT_INFO=0
+  )
+
+  if "&logPath"!="stdout"
+  (
+    OPEN #1 "&(logPath)\NPA Scheduler Log.ulog" /Append
+    PRINT "Dumping NPA Scheduler state"
+    &dump="WRITE #1"
+  )
+
+  ; Dump npa_scheduler structure
+  GOSUB DumpNpaScheduler
+)
+
+if "&logPath"!="stdout"
+(
+  CLOSE #1
+  PRINT "NPA Scheduler Dump Complete"
+)
+
+IF "&statedump"!="state"
+( ; Not a short dump so grab full logs
+
+  ; Tell ULogDump to output reset data if it's seen log resets. 
+  ; Seeing log resets indicates an unstable memory system
+  &ULOG_OUTPUT_RESETCOUNT_INFO=1
+
+  ; Dump NPA information
+  IF "&(image_name)"==""
+  (
+    DO &ulogdump &logPath "NPA Log"
+  )
+  ELSE
+  (
+    DO &ulogdump &logPath &image_name "NPA Log"
+  )
+  
+  ; Set the ULogDump reset data back to it's default off state.  
+  &ULOG_OUTPUT_RESETCOUNT_INFO=0
+  
+)
+
+if "&logPath"!="stdout"
+(
+
+  OPEN #1 "&(logPath)\NPA Log.ulog" /Append
+  PRINT "Dumping NPA state"
+  &dump="WRITE #1"
+)
+
+&dump "&(ULogTimestamp): npa_dump"
+
+IF "&(image_name)"==""
+(
+  &link=V.VALUE(npa.resources)
+)
+ELSE
+(
+  &link=V.VALUE((\\&(image_name)\Global\npa).resources)
+)
+
+WHILE &link!=0
+(
+  GOSUB DumpLink &link  
+  &link=V.VALUE(((npa_link *)&link).next)
+)
+&dump "&(ULogTimestamp): end npa_dump"
+
+if "&logPath"!="stdout"
+(
+  CLOSE #1
+  PRINT "NPA Dump Complete"
+)
+ENDDO
+
+; Dump Link Subroutine
+DumpLink:
+  ENTRY &link
+  LOCAL &link_name &resource &resource_name &definition
+  &link_name=DATA.STRING(D:V.VALUE(((npa_link *)&link).name))
+  &resource=V.VALUE(((npa_link *)&link).resource)
+  &definition=V.VALUE(((npa_resource *)&resource).definition)
+
+  if &definition==0
+  (
+     GOSUB DumpPlaceholder "&link_name"
+  )
+  else
+  (
+    &resource_name=DATA.STRING(D:V.VALUE(((npa_resource_definition *)&definition).name))
+    if "&resource_name"=="&link_name"
+    (
+      GOSUB DumpResource &resource "&resource_name"
+    ) 
+    ELSE if "&resource_name"=="marker resource"
+    (
+      GOSUB DumpMarker "&link_name"
+    )   
+    ELSE
+    (
+      GOSUB DumpAlias "&link_name" "&resource_name"
+    )
+  )  
+  RETURN
+
+DumpPlaceholder:
+  ENTRY &placeholder
+  &dump "&(ULogTimestamp): npa_placeholder (name: &(placeholder))"
+  RETURN
+
+DumpMarker:
+  ENTRY &marker
+  &dump "&(ULogTimestamp): npa_marker (name: &(marker))"
+  RETURN
+
+DumpAlias:
+  ENTRY &link_name &resource_name
+  &dump "&(ULogTimestamp): npa_alias (alias_name: &(link_name)) (resource_name: &(resource_name))"
+  RETURN
+
+DumpResource:
+  ENTRY &resource &resource_name
+
+  GOSUB DumpResourceState &resource &resource_name
+  GOSUB DumpResourceClients &resource
+  GOSUB DumpResourceEvents &resource
+
+  &dump "&(ULogTimestamp):         end npa_resource (handle: &(resource))"
+
+  RETURN
+
+DumpResourceState:
+  ENTRY &resource &resource_name
+  LOCAL &active_state &active_max &active_headroom &request_state &resource_attributes
+  LOCAL &sequence
+  LOCAL &units &resource_max
+  LOCAL &node_lock &event_lock &transaction &internal_data
+  LOCAL &sync_dur &async_dur
+  LOCAL &internal_str
+
+  &units=DATA.STRING(D:V.VALUE(((npa_resource *)&resource).definition.units))
+  &resource_max=FORMAT.DECIMAL(0,V.VALUE(((npa_resource *)&resource).definition.max))
+  &active_state=FORMAT.DECIMAL(0,V.VALUE(((npa_resource *)&resource).active_state))
+  &active_max=FORMAT.DECIMAL(0,V.VALUE(((npa_resource *)&resource).active_max))
+  &active_headroom=FORMAT.DECIMAL(0,V.VALUE(((npa_resource *)&resource).active_headroom))
+  &request_state=FORMAT.DECIMAL(0,V.VALUE(((npa_resource *)&resource).request_state))
+  &resource_attributes=FORMAT.HEX(8,V.VALUE(((npa_resource *)&resource).definition.attributes))
+  &sequence=FORMAT.HEX(8,V.VALUE(((npa_resource *)&resource).sequence))
+  &node_lock=V.VALUE(((npa_resource *)&resource).node_lock)
+  &event_lock=V.VALUE(((npa_resource *)&resource).event_lock)
+  &transaction=V.VALUE(((npa_resource *)&resource).transaction)
+
+  GOSUB DumpResourceNpaInternal &resource
+  &internal_str="&sub_return"
+
+  &dump  "&(ULogTimestamp): npa_resource (name: &(resource_name)) (handle: &(resource)) (sequence: 0x&(sequence)) (units: &(units)) (resource max: &(resource_max)) (active max: &(active_max)) (active state: &(active_state))  (active headroom: &(active_headroom)) (request state: &(request_state)) (resource attributes: 0x&(resource_attributes)) (node_lock: &(node_lock)) (event_lock: &(event_lock)) (transaction: &(transaction)) &(internal_str)"
+  RETURN
+
+DumpNpaScheduler:
+  LOCAL &config_ptr
+  LOCAL &data_pool
+  LOCAL &current_timeout &timedout_at &timer &group
+  LOCAL &timer_up &next_timeout_state &next_scheduler_time
+  LOCAL &clk_cpu_client &busy_query_client
+  LOCAL &enter &lpr_state_on &no_lpr_forking &lpr_client &duration
+  LOCAL &wakeup_time_ticks &wakeup_query_client
+  LOCAL &last_sleep_deadline
+  LOCAL &request_queue &forked_queue &complete_queue
+  LOCAL &scheduler_work_lock
+  LOCAL &log
+  LOCAL &adjust
+  LOCAL &num_run_scheduler_requests &sched_requests_handled
+  LOCAL &lpr_enter &lpr_exit &forked &fork_short_circuits &on_time &late
+  LOCAL &implied_completes &saved_request_work 
+  LOCAL &forced_notifies &very_early &soft_wakes_used
+  LOCAL &durptr
+  LOCAL &sleep_lpr_supported
+
+  &dump "&(ULogTimestamp) npa_scheduler struct"
+
+  &config_ptr=V.VALUE(npa_scheduler.config_ptr);
+  &dump "&(ULogTimestamp):  config_ptr : &config_ptr"
+  ; data_pool is a structure so this won't work
+  ; expand if the information is needed.
+;  &data_pool=V.VALUE(npa_scheduler.data_pool)
+;  &dump "&(ULogTimestamp):  data_pool : &data_pool"
+
+  &dump "&(ULogTimestamp):  timer"
+  &current_timeout=V.VALUE(npa_scheduler.timer.current_timeout)
+  &dump "&(ULogTimestamp):   current_timeout : &current_timeout"
+  &timedout_at=V.VALUE(npa_scheduler.timer.timedout_at)
+  &dump "&(ULogTimestamp):   timedout_at : &timedout_at"
+;  &timer=V.VALUE(npa_scheduler.timer.timer)
+;  &dump "&(ULogTimestamp):   timer : &timer"
+;  &group=V.VALUE(npa_scheduler.timer.group)
+;  &dump "&(ULogTimestamp):   group : &group"
+  &timer_up=V.VALUE(npa_scheduler.timer_up)
+  &dump "&(ULogTimestamp):  timer_up : &timer_up"
+  &next_timeout_state=V.VALUE(npa_scheduler.next_timeout_state)
+  &dump "&(ULogTimestamp):  next_timeout_state : &next_timeout_state"
+  &next_scheduler_time=V.VALUE(npa_scheduler.next_scheduler_time)
+  &dump "&(ULogTimestamp):  next_scheduler_time : &next_scheduler_time"
+
+  &clk_cpu_client=V.VALUE(npa_scheduler.clk_cpu_client)
+  &dump "&(ULogTimestamp):  clk_cpu_client : &clk_cpu_client"
+
+  &busy_query_client=V.VALUE(npa_scheduler.core_cpu_busy_query_handle)
+  &dump "&(ULogTimestamp):  core_cpu_busy_query_handle : &busy_query_client"
+
+  &dump "&(ULogTimestamp):  sleep"
+  &enter=V.VALUE(npa_scheduler.sleep.enter)
+  &dump "&(ULogTimestamp):   enter : &enter"
+  &lpr_state_on=V.VALUE(npa_scheduler.sleep.lpr_state_on)
+  &dump "&(ULogTimestamp):   lpr_state_on : &lpr_state_on"
+  &lpr_client=V.VALUE(npa_scheduler.sleep.lpr_client)
+  &dump "&(ULogTimestamp):   lpr_client : &lpr_client"
+  &wakeup_query_client=V.VALUE(npa_scheduler.sleep.cpu_wakeup_query_handle)
+  &dump "&(ULogTimestamp):   cpu_wakeup_query_handle : &wakeup_query_client"
+
+  &duration=FORMAT.DECIMAL(0,V.VALUE(npa_scheduler.sleep.duration))
+  &dump "&(ULogTimestamp):   duration : &duration"
+  &wakeup_time_ticks= V.VALUE(npa_scheduler.sleep.wakeup_time_ticks)
+  &dump "&(ULogTimestamp):   wakeup_time_ticks : &wakeup_time_ticks"
+  &last_sleep_deadline= V.VALUE(npa_scheduler.sleep.last_sleep_deadline)
+  &dump "&(ULogTimestamp):   last_sleep_deadline : &last_sleep_deadline"
+
+  &request_queue=V.VALUE(&npa_scheduler.request_queue)
+  &dump "&(ULogTimestamp):  request_queue &request_queue"
+  GOSUB DumpNpaStructureQueueStruct &request_queue
+
+  &forked_queue= V.VALUE(&npa_scheduler.forked_queue)
+  &dump "&(ULogTimestamp):  forked_queue : &forked_queue"
+  GOSUB DumpNpaStructureQueueStruct &forked_queue
+
+  &complete_queue= V.VALUE(&npa_scheduler.complete_queue)
+  &dump "&(ULogTimestamp):  complete_queue : &complete_queue"
+  GOSUB DumpNpaStructureQueueStruct &complete_queue
+
+  &scheduler_work_lock= V.VALUE(npa_scheduler.scheduler_work_lock)
+  &dump "&(ULogTimestamp):  scheduler_work_lock : &scheduler_work_lock"
+
+  &log= V.VALUE(npa_scheduler.log)
+  &dump "&(ULogTimestamp):  log : &log"
+
+  &dump "&(ULogTimestamp):  adjust"
+  &adjust= V.VALUE(npa_scheduler.adjust.timer)
+  &dump "&(ULogTimestamp):    timer : &adjust"
+  &adjust= V.VALUE(npa_scheduler.adjust.lpr)
+  &dump "&(ULogTimestamp):    lpr : &adjust"
+
+  &dump "&(ULogTimestamp):  stats"
+  &num_run_scheduler_requests=FORMAT.DECIMAL(0,V.VALUE(npa_scheduler.stats.num_run_scheduler_requests))
+  &dump "&(ULogTimestamp):   num_run_scheduler_requests : &num_run_scheduler_requests"
+  &sched_requests_handled=FORMAT.DECIMAL(0,V.VALUE(npa_scheduler.stats.sched_requests_handled))
+  &dump "&(ULogTimestamp):   sched_requests_handled : &sched_requests_handled"
+  &lpr_enter=FORMAT.DECIMAL(0,V.VALUE(npa_scheduler.stats.lpr_enter)) 
+  &dump "&(ULogTimestamp):   lpr_enter : &lpr_enter"
+  &lpr_exit=FORMAT.DECIMAL(0,V.VALUE(npa_scheduler.stats.lpr_exit))
+  &dump "&(ULogTimestamp):   lpr_exit : &lpr_exit"
+  &forked=FORMAT.DECIMAL(0,V.VALUE(npa_scheduler.stats.forked))
+  &dump "&(ULogTimestamp):   forked : &forked"
+  &fork_short_circuits=FORMAT.DECIMAL(0,V.VALUE(npa_scheduler.stats.fork_short_circuits))
+  &dump "&(ULogTimestamp):   fork_short_circuits : &fork_short_circuits"
+  &on_time=FORMAT.DECIMAL(0,V.VALUE(npa_scheduler.stats.on_time))
+  &dump "&(ULogTimestamp):   on_time : &on_time"
+  &late=FORMAT.DECIMAL(0,V.VALUE(npa_scheduler.stats.late))
+  &dump "&(ULogTimestamp):   late : &late"
+
+  &saved_request_work=FORMAT.DECIMAL(0,V.VALUE(npa_scheduler.stats.saved_request_work))
+  &dump "&(ULogTimestamp):   saved_request_work : &saved_request_work"
+
+  &implied_completes=FORMAT.DECIMAL(0,V.VALUE(npa_scheduler.stats.implied_completes))
+  &dump "&(ULogTimestamp):   implied_completes : &implied_completes"
+
+  &forced_notifies=FORMAT.DECIMAL(0,V.VALUE(npa_scheduler.stats.forced_notifies))
+  &dump "&(ULogTimestamp):   forced_notifies : &forced_notifies"
+
+  &soft_wakes_used=FORMAT.DECIMAL(0,V.VALUE(npa_scheduler.stats.soft_wakes_used))
+  &dump "&(ULogTimestamp):   soft_wakes_used : &soft_wakes_used"
+
+  &durptr=V.VALUE(&npa_scheduler.stats.run_requests_duration)
+  GOSUB DumpNpaDurationStruct &durptr
+  &dump "&(ULogTimestamp):   run_request_durations: &sub_return"
+
+  &durptr=V.VALUE(&npa_scheduler.stats.run_requests_late_duration)
+  GOSUB DumpNpaDurationStruct &durptr
+  &dump "&(ULogTimestamp):   run_requests_late_by: &sub_return"
+
+  &durptr=V.VALUE(&npa_scheduler.stats.run_requests_early_duration)
+  GOSUB DumpNpaDurationStruct &durptr
+  &dump "&(ULogTimestamp):   run_requests_early_by: &sub_return"
+
+  &durptr=V.VALUE(&npa_scheduler.stats.run_requests_very_early_duration)
+  GOSUB DumpNpaDurationStruct &durptr
+  &dump "&(ULogTimestamp):   run_requests_very_early_by: &sub_return"
+
+  &durptr=V.VALUE(&npa_scheduler.stats.timeout_to_scheduler_duration)
+  GOSUB DumpNpaDurationStruct &durptr
+  &dump "&(ULogTimestamp):   timeout_to_scheduler_duration: &sub_return"
+
+  &durptr=V.VALUE(&npa_scheduler.stats.lpr_entry_duration)
+  GOSUB DumpNpaDurationStruct &durptr
+  &dump "&(ULogTimestamp):   lpr_entry_duration: &sub_return"
+
+  &durptr=V.VALUE(&npa_scheduler.stats.lpr_exit_duration)
+  GOSUB DumpNpaDurationStruct &durptr
+  &dump "&(ULogTimestamp):   lpr_exit_duration: &sub_return"
+
+  &durptr=V.VALUE(&npa_scheduler.stats.timeout_callback_early)
+  GOSUB DumpNpaDurationStruct &durptr
+  &dump "&(ULogTimestamp):   timeout_callback_early: &sub_return"
+
+  &durptr=V.VALUE(&npa_scheduler.stats.timeout_callback_late)
+  GOSUB DumpNpaDurationStruct &durptr
+  &dump "&(ULogTimestamp):   timeout_callback_late: &sub_return"
+
+  &durptr=V.VALUE(&npa_scheduler.stats.nas_timer_adjustment)
+  GOSUB DumpNpaDurationStruct &durptr
+  &dump "&(ULogTimestamp):   nas_timer_adjustment: &sub_return"
+
+  &dump "&(ULogTimestamp): end npa_scheduler structure dump"
+
+  &sleep_lpr_supported=V.VALUE(npa_sleep_lpr_supported)
+  &dump "&(ULogTimestamp):   (npa_sleep_lpr_supported:&sleep_lpr_supported)"
+  RETURN
+
+DumpNpaStructureQueueStruct:
+  ENTRY &queue
+  LOCAL &head &tail &num_linked_clients &high_watermark &lock
+  LOCAL &not_sorted &sum_wake_work
+
+  &head=V.VALUE(((npa_scheduler_queue_struct *)&queue).head)
+  &dump "&(ULogTimestamp):   head : &head"
+  &tail=V.VALUE(((npa_scheduler_queue_struct *)&queue).tail)
+  &dump "&(ULogTimestamp):   tail : &tail"
+  &num_linked_clients=FORMAT.DECIMAL(0,V.VALUE(((npa_scheduler_queue_struct *)&queue).num_linked_clients))
+  &dump "&(ULogTimestamp):   num_linked_clients : &num_linked_clients"
+  &high_watermark=FORMAT.DECIMAL(0,V.VALUE(((npa_scheduler_queue_struct *)&queue).high_watermark))
+  &dump "&(ULogTimestamp):   high_watermark : &high_watermark"
+  &lock=V.VALUE(((npa_scheduler_queue_struct *)&queue).lock)
+  &dump "&(ULogTimestamp):   lock : &lock"
+  &not_sorted=V.VALUE(((npa_scheduler_queue_struct *)&queue).not_sorted)
+  &dump "&(ULogTimestamp):   not_sorted : &not_sorted"
+  &sum_wake_work=FORMAT.DECIMAL(0,V.VALUE(((npa_scheduler_queue_struct *)&queue).sum_wake_work))
+  &dump "&(ULogTimestamp):   sum_wake_work : &sum_wake_work"
+
+  RETURN
+
+DumpNpaDurationStruct:
+  ENTRY &duration
+  LOCAL &min &max &count &total &avg
+  LOCAL &min_time &max_time
+
+  &min=FORMAT.DECIMAL(0,V.VALUE(((npa_duration *)&duration).min))
+  &min_time=V.VALUE(((npa_duration *)&duration).min_time)
+  &max=FORMAT.DECIMAL(0,V.VALUE(((npa_duration *)&duration).max))
+  &max_time=V.VALUE(((npa_duration *)&duration).max_time)
+  &count=V.VALUE(((npa_duration *)&duration).count)
+  &total=V.VALUE(((npa_duration *)&duration).total)
+
+  ; Must calculate average from the raw numbers
+  if 0!=&count
+  (
+    &avg=FORMAT.DECIMAL(0,&(total)/&(count))
+  )
+  else
+  (
+    &avg=0
+  )
+  &count=FORMAT.DECIMAL(0,&count)
+  &total=FORMAT.DECIMAL(0,&total)
+
+  &sub_return="((min: &min) (min_time: &min_time) (max: &max) (max_time: &max_time) (total time: &total) (count: &count) (avg: &avg))"
+
+  RETURN
+
+DumpResourceClients:
+  ENTRY &resource
+  LOCAL &client &client_name &client_type &sequence &request
+  LOCAL &string
+  LOCAL &request_ptr &req_state &req_time &start_time 
+  LOCAL &late_prob &notification &on_time &late &my_queue
+  LOCAL &req_next &req_prev &notify_state &lpr_issuable
+  LOCAL &fork_dur &notify_dur &full_dur &late_by_sum &avg
+  LOCAL &lat_request &lat_fork &lat_notify &lat_wake &request_adjustment
+  LOCAL &default_lat_request &default_lat_fork &default_lat_notify
+  LOCAL &resource_handle &forked &saved_work &last_notification_time
+
+  &client=V.VALUE(((npa_resource *)&resource).clients)
+
+  while 0!=&client
+  (
+    &client_name=DATA.STRING(D:V.VALUE(((npa_client *)&client).name))
+    &client_type=V.STRING(((npa_client *)&client).type)
+    &sequence=FORMAT.HEX(8,V.VALUE(((npa_client *)&client).sequence))
+    &request=FORMAT.DECIMAL(0,V.VALUE((((npa_client *)&client).work[((npa_client *)&client).index]).state))
+    
+    &string="&(ULogTimestamp):         npa_client (name: &(client_name)) (handle: &(client)) (resource: &(resource)) (type: &(client_type)) (sequence: 0x&(sequence))"
+; TODO: Handle the wierd formatting
+;    if "&client_type"=="NPA_CLIENT_REQUIRED"
+;    (
+      &string="&(string) (request: &(request))"
+;    )
+
+    ; grab request_ptr info available
+    &request_ptr=0
+    if &scheduler_exists!=0x0
+    (
+      &request_ptr=V.VALUE(((npa_client *)&client).request_ptr)
+    )
+
+    if &request_ptr!=0
+    (
+      &req_state=V.STRING(((npa_scheduler_data *)&request_ptr).state)
+      &req_next=V.VALUE(((npa_scheduler_data *)&request_ptr).next)
+      &req_prev=V.VALUE(((npa_scheduler_data *)&request_ptr).prev)
+      &req_time=V.VALUE(((npa_scheduler_data *)&request_ptr).request_time)
+      &start_time=V.VALUE(((npa_scheduler_data *)&request_ptr).start_time)
+      &late_prob=V.VALUE(((npa_scheduler_data *)&request_ptr).late_probability)
+      &req_notification=V.VALUE(((npa_scheduler_data *)&request_ptr).notification)
+      &notify_state=V.VALUE(((npa_scheduler_data*)&request_ptr).notify_state)
+      &lpr_issuable=V.VALUE(((npa_scheduler_data*)&request_ptr).lpr_issuable)
+      &my_queue=V.VALUE(((npa_scheduler_data*)&request_ptr).my_queue)
+      &req_on_time=FORMAT.DECIMAL(0,V.VALUE(((npa_scheduler_data *)&request_ptr).stats.on_time))
+      &req_late=V.VALUE(((npa_scheduler_data *)&request_ptr).stats.late)
+      &late_by_sum=V.VALUE(((npa_scheduler_data *)&request_ptr).stats.late_by_sum)
+      ; Must calculate from the unformated values
+      if &req_late!=0
+      (  
+        &avg=&late_by_sum/&req_late
+      )
+      else
+      (
+        &avg=0
+      )
+      &req_late=FORMAT.DECIMAL(0,&req_late)
+      &late_by_sum=FORMAT.DECIMAL(0,&late_by_sum)
+      &avg=FORMAT.DECIMAL(0,&avg)
+      &lat_request=FORMAT.DECIMAL(0,V.VALUE(((npa_scheduler_data *)&request_ptr).active_latency.request))
+      &lat_fork=FORMAT.DECIMAL(0,V.VALUE(((npa_scheduler_data *)&request_ptr).active_latency.fork))
+      &lat_notify=FORMAT.DECIMAL(0,V.VALUE(((npa_scheduler_data *)&request_ptr).active_latency.notify))
+      &lat_wake=FORMAT.DECIMAL(0,V.VALUE(((npa_scheduler_data *)&request_ptr).active_latency.wake))
+      &default_lat_request=FORMAT.DECIMAL(0,V.VALUE(((npa_scheduler_data *)&request_ptr).default_latency.request))
+      &default_lat_fork=FORMAT.DECIMAL(0,V.VALUE(((npa_scheduler_data *)&request_ptr).default_latency.fork))
+      &default_lat_notify=FORMAT.DECIMAL(0,V.VALUE(((npa_scheduler_data *)&request_ptr).default_latency.notify))
+      &request_adjustment=FORMAT.DECIMAL(0,V.VALUE(((npa_scheduler_data *)&request_ptr).active_latency.request_adjustment))
+      &resource_handle=FORMAT.DECIMAL(0,V.VALUE(((npa_scheduler_data *)&request_ptr).stats.resource_handle_scheduling))
+      &forked=FORMAT.DECIMAL(0,V.VALUE(((npa_scheduler_data *)&request_ptr).stats.forked))
+      &saved_work=FORMAT.DECIMAL(0,V.VALUE(((npa_scheduler_data *)&request_ptr).stats.saved_request_work))
+      &last_notification_time=V.VALUE(((npa_scheduler_data *)&request_ptr).stats.last_notification_time)
+
+      &string="&(string) (request_ptr: &(request_ptr)) (state: &(req_state)) (next: &(req_next)) (prev: &(req_prev))"
+      &string="&(string) (start: &(start_time)) (req_time: &(req_time)) (late_probability: &(late_prob))"
+      &string="&(string) (notification: &(req_notification)) (notify_state:&notify_state) (lpr_issuable:&lpr_issuable)"
+      &string="&(string) (my_queue: &myqueue)"
+      &string="&(string) (active_latency.request: &lat_request) (active_latency.fork: &lat_fork) (active_latency.notify: &lat_notify)"
+      &string="&(string) (active_latency.wake: &lat_wake) (latency.reqeust_adjustment: &request_adjustment)"
+      &string="&(string) (default_latency.request: &default_lat_request) (default_latency.fork: &default_lat_fork) (default_latency.notify: &default_lat_notify)"
+      &string="&(string) (on_time: &(req_on_time)) ((late: &(req_late)) (late_by_sum: &late_by_sum) (avg late: &avg))"
+      &string="&(string) (resource_handle: &resource_handle) (forked: &forked) (saved_work: &saved_work)"
+      &string="&(string) (last_notification_time: &last_notification_time)"
+
+      &fork_dur=V.VALUE(&(((npa_scheduler_data *)&request_ptr).stats.fork_issue_request_duration))
+      GOSUB DumpNpaDurationStruct &fork_dur
+      &string="&string (fork_issue_request_duration: &sub_return)"
+      &notify_dur=V.VALUE(&(((npa_scheduler_data *)&request_ptr).stats.notify_issue_request_duration))
+      GOSUB DumpNpaDurationStruct &notify_dur
+      &string="&string (notify_issue_request_duration: &sub_return)"
+      &full_dur=V.VALUE(&(((npa_scheduler_data *)&request_ptr).stats.full_issue_request_duration))
+      GOSUB DumpNpaDurationStruct &full_dur
+      &string="&string (full_issue_request_duration: &sub_return)"
+    )
+
+    &dump "&(string)"
+
+    &client=V.VALUE(((npa_client *)&client).next)
+  )
+  RETURN
+
+
+DumpResourceEvents:
+  ENTRY &resource
+
+  LOCAL &event &name &trigger_type &definition
+
+  &definition=V.VALUE(((npa_resource *)&resource).definition)
+  if &definition==0
+  (
+    &event=V.VALUE(((npa_resource *)&resource).events.event)
+  )
+  else
+  (
+    if 0!=V.VALUE(((npa_resource *)&resource).events.event_header)
+    (
+        &event=V.VALUE(((npa_resource *)&resource).events.event_header.event)
+    )
+    else
+    (
+        &event=0
+    )
+  )
+
+  while 0!=&event
+  (
+    &trigger_type=V.STRING((npa_event_trigger_type)(((npa_event *)&event).trigger_type & 0x0000ffff))
+    ;Cut the enum value part of the string, for example, 
+    ;remove " = 0x3" from "NPA_TRIGGER_CHANGE_EVENT = 0x3"
+    &trigger_type=string.cut("&(trigger_type)", -6)
+
+    IF "&trigger_type"=="NPA_TRIGGER_RESERVED_EVENT_0"
+    ( 
+      GOSUB DumpReservedEvent &resource &event
+    )
+    ELSE IF "&trigger_type"=="NPA_TRIGGER_CHANGE_EVENT"
+    (
+      GOSUB DumpChangeEvent &resource &event
+    )
+    ELSE IF "&trigger_type"=="NPA_TRIGGER_WATERMARK_EVENT"
+    (
+      GOSUB DumpWatermarkEvent &resource &event
+    )
+    ELSE IF "&trigger_type"=="NPA_TRIGGER_THRESHOLD_EVENT"
+    (
+      GOSUB DumpThresholdEvent &resource &event
+    )
+
+    &event=V.VALUE(((npa_event *)&event).next)
+  ) 
+  RETURN
+
+DumpResourceNpaInternal:
+  ENTRY &resource
+
+  LOCAL &internal_data
+  LOCAL &driver_dur &driver_string &dependent_state
+
+  &internal_data=V.VALUE(((npa_resource *)&resource)._internal)
+  if 0!=&internal_data
+  (
+    &dependent_state=V.VALUE(((npa_resource *)&resource)._internal.dependent_state)
+
+    ; Have internal data so print out stats
+    &driver_dur=V.VALUE(&(((npa_resource *)&resource)._internal.stats.driver_duration))
+    GOSUB DumpNpaDurationStruct &driver_dur
+    &driver_string="&sub_return"
+    if 0!=&internal_data
+    (
+      &sub_return="((_internal: &internal_data) (dependent_state: &dependent_state) (driver_dur: &driver_string)))"
+    )
+    else
+    (
+      &sub_return="((_internal: &internal_data) (dependent_state: &dependent_state) (driver_dur: &driver_string)))"
+    )
+  )
+  else
+  (
+    &sub_return="(_internal: &internal_data)"
+  )
+  RETURN
+
+DumpReservedEvent:
+  ENTRY &resource &event
+
+  LOCAL &name 
+
+  &name=DATA.STRING(D:V.VALUE(((npa_event *)&event).name))
+  &dump "&(ULogTimestamp):         npa_reserved_event (name: &(name)) (handle: &(event)) (resource: &(resource))"
+  RETURN
+
+DumpChangeEvent:
+  ENTRY &resource &event
+
+  LOCAL &name 
+
+  &name=DATA.STRING(D:V.VALUE(((npa_event *)&event).name))
+  &dump "&(ULogTimestamp):         npa_change_event (name: &(name)) (handle: &(event)) (resource: &(resource))"
+  RETURN
+
+DumpWatermarkEvent:
+  ENTRY &resource &event
+
+  LOCAL &name &hi &lo
+
+  &name=DATA.STRING(D:V.VALUE(((npa_event *)&event).name))
+  &lo=FORMAT.DECIMAL(0,V.VALUE(((npa_event *)&event).lo.watermark))
+  &hi=FORMAT.DECIMAL(0,V.VALUE(((npa_event *)&event).hi.watermark))
+  &dump "&(ULogTimestamp):         npa_watermark_event (name: &(name)) (handle: &(event)) (resource: &(resource)) (lo_watermark: &(lo)) (hi_watermark: &(hi))"
+  RETURN
+
+DumpThresholdEvent:
+  ENTRY &resource &event
+
+  LOCAL &name &hi &lo
+
+  &name=DATA.STRING(D:V.VALUE(((npa_event *)&event).name))
+  &lo=FORMAT.DECIMAL(0,V.VALUE(((npa_event *)&event).lo.threshold))
+  &hi=FORMAT.DECIMAL(0,V.VALUE(((npa_event *)&event).hi.threshold))
+  &dump "&(ULogTimestamp):         npa_threshold_event (name: &(name)) (handle: &(event)) (resource: &(resource)) (lo_threshold: &(lo)) (hi_threshold: &(hi))"
+  RETURN

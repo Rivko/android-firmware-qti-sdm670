@@ -1,0 +1,109 @@
+/*
+ * RIL OEM message Interface definition
+ *
+ * Copyright (c) 2014 Qualcomm Technologies, Inc.
+ * All Rights Reserved. Qualcomm Technologies Confidential and Proprietary.
+ *
+ * This proto file describes the interface between RIL and QTITelephonyService service.
+ */
+
+package QtiTelephonyService;
+option java_package = "com.qualcomm.qti.telephonyservice";
+option java_outer_classname = "TelephonyServiceProtos";
+
+// Each RIL OEM message stream shall be prepended with a Message
+message RILOEMMessage {
+    required fixed32 token = 1; /* generated dynamically */
+    required RILOEMMessageType type = 2;
+    required RILOEMMessageId id = 3;
+    optional RILOEMError error = 4;
+    optional bytes payload = 5;
+}
+
+enum RILOEMMessageType {
+    RIL_OEM_MSG_REQUEST = 1;
+    RIL_OEM_MSG_RESPONSE = 2;
+    RIL_OEM_MSG_INDICATION = 3;
+}
+
+enum RILOEMMessageId {
+    // For MessageType: RIL_OEM_MSG_REQUEST
+    // MsgId: RIL_OEM_GBA_INIT Payload: message RIL_OEM_GBA_INIT_REQ
+    // For MessageType: RIL_OEM_MSG_RESPONSE
+    // MsgId: RIL_OEM_GBA_INIT Error:Valid error code Payload: message RIL_OEM_GBA_INIT_RESP
+    RIL_OEM_GBA_INIT = 1;
+
+    // For MessageType: RIL_OEM_MSG_REQUEST
+    // MsgId: RIL_OEM_IMPI Payload: message RilOemImpiRequest
+    // For MessageType: RIL_OEM_MSG_RESPONSE
+    // MsgId: RIL_OEM_IMPI Error:Valid error code
+    // Payload: message RilOemImpiResponse
+    RIL_OEM_IMPI = 2;
+}
+
+enum RILOEMError {
+    RIL_OEM_ERR_SUCCESS = 0;
+    RIL_OEM_ERR_GENERIC_FAILURE = 1;
+    RIL_OEM_ERR_NOT_SUPPORTED = 2;
+    RIL_OEM_ERR_INVALID_PARAMETER = 3;
+}
+
+enum RILOEMKsNAFType {
+    KS_NAF_TYPE_PLAIN = 0;
+    KS_NAF_TYPE_ENCRYPTED = 1;
+}
+
+enum RILOEMApplicationType {
+    APPTYPE_UNKNOWN = 0;
+    APPTYPE_SIM = 1;
+    APPTYPE_USIM = 2;
+    APPTYPE_RUIM = 3;
+    APPTYPE_CSIM = 4;
+    APPTYPE_ISIM = 5;
+}
+
+enum RILOEMSlotIdentifier {
+   SLOT_ID_ONE = 0;
+   SLOT_ID_TWO = 1;
+   SLOT_ID_THREE = 2;
+}
+
+message RilOemGbaInitRequestPayload {
+    // Security protocol identifier NULL terminated string of 5 octets See 3GPP TS 33.220 Annex H
+    required bytes securityProtocol = 1;
+    // Fully qualified domain name with max size of 255 bytes and NULL terminated
+    required string nafFullyQualifiedDomainName = 2;
+    // Slot Identifier of the card
+    required RILOEMSlotIdentifier slotId = 3;
+    // Application type of the card application
+    required RILOEMApplicationType applicationType = 4;
+    // FALSE=do not force bootstrapping, TRUE=force bootstrapping
+    optional bool forceBootstrapping = 5;
+}
+
+message RilOemGbaInitResponsePayload {
+    // GBA Ks_NAF type
+    required RILOEMKsNAFType ksNAFType = 1;
+    // Ks_NAF in Base64 format, see 3GPP TS 33.220 4.5.2
+    required bytes ksNAFResponse = 2;
+    // IMPI value for Ks_NAF, NULL terminated
+    required bytes impi = 3;
+    // Bootstrapping transaction ID, NULL terminated
+    required string bootstrapTransactionId = 4;
+    // Ks lifetime, expressed in UTC format from where tailing "Z" indicating GMT, See ISO 8601
+    required string ksLifetime = 5;
+}
+
+message RilOemImpiRequestPayload {
+    // Slot Identifier of the card
+    required RILOEMSlotIdentifier slotId = 1;
+    // Application type of the card application
+    required RILOEMApplicationType applicationType = 2;
+    // FALSE=do not encrypt impi, TRUE=encrypt impi
+    required bool secure = 3;
+}
+
+message RilOemImpiResponsePayload {
+    // IMPI as a byte stream
+    required bytes impi = 1;
+}

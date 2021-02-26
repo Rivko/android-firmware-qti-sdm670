@@ -1,0 +1,68 @@
+; aop_dump.cmm
+; ------------------------------------------------------------------
+;
+; When to use this script 
+; -----------------------
+; This script should be used to dump the full RPM state from T32
+; when a debug session's state must be recorded for later debugging.
+;
+; What this script does
+; -----------------------
+; This script will dump AOP code, data, and message ram
+;
+; How to use this script
+; ----------------------
+; After after breaking, retrieve all logs by running
+;
+; do aop_dump <dumpPath>
+;
+ENTRY &dumpPath
+
+; Trim trailing "\" if necessary
+IF string.char("&(dumpPath)", string.len("&(dumpPath)")-1)=='\'
+(
+  &dumpPath=string.cut("&(dumpPath)", -1)
+)
+
+ON ERROR GOSUB error_catch
+store "&(dumpPath)\aop_register_dump.cmm" register
+d.save.binary "&(dumpPath)\CODERAM.bin" 0x0++0x17FFF
+d.save.binary "&(dumpPath)\DATARAM.bin" 0xE0000++0x7FFF
+
+d.save.binary "&(dumpPath)\aop_scs.bin"      esd:0xE000E000++0xFFF
+
+d.save.binary "&(dumpPath)\MSGRAM0.bin" 0x1300000++0x3FF
+d.save.binary "&(dumpPath)\MSGRAM1.bin" 0x1310000++0x3FF
+d.save.binary "&(dumpPath)\MSGRAM2.bin" 0x1320000++0x3FF
+d.save.binary "&(dumpPath)\MSGRAM3.bin" 0x1330000++0x3FF
+d.save.binary "&(dumpPath)\MSGRAM4.bin" 0x1340000++0x3FF
+d.save.binary "&(dumpPath)\MSGRAM5.bin" 0x1350000++0x3FF
+d.save.binary "&(dumpPath)\MSGRAM6.bin" 0x1360000++0x3FF
+d.save.binary "&(dumpPath)\MSGRAM7.bin" 0x1370000++0x3FF
+d.save.binary "&(dumpPath)\MSGRAM8.bin" 0x1380000++0x3FF
+d.save.binary "&(dumpPath)\MSGRAM9.bin" 0x1390000++0x3FF
+d.save.binary "&(dumpPath)\MSGRAM10.bin" 0x13A0000++0x3FF
+d.save.binary "&(dumpPath)\MSGRAM11.bin" 0x13B0000++0x3FF
+d.save.binary "&(dumpPath)\MSGRAM12.bin" 0x13C0000++0x3FF
+d.save.binary "&(dumpPath)\MSGRAM13.bin" 0x13D0000++0x3FF
+d.save.binary "&(dumpPath)\MSGRAM14.bin" 0x13E0000++0x3FF
+d.save.binary "&(dumpPath)\MSGRAM15.bin" 0x13F0000++0x3FF
+
+LOCAL &rpmh_addr &rpmh_size
+
+&rpmh_addr=0x00200000
+&rpmh_size=0x00C00000
+
+;saving RPMh data
+D.SAVE.B "&(dumpPath)\RPMH_BINARY.bin" A:&rpmh_addr++(&rpmh_size-1)
+
+
+
+
+ON ERROR
+
+ENDDO
+
+error_catch:
+  PRINT "Error Caught... Continuing..."
+  RETURN

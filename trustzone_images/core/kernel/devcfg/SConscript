@@ -1,0 +1,109 @@
+#===============================================================================
+# GENERAL DESCRIPTION
+#     DevCfg Artifacts build script
+##
+# Copyright (c) 2011,2014-16 by Qualcomm Technologies Inc.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===================================================================================
+
+
+Import('env')
+import os, glob
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${DEVCFG_ROOT}/src/"
+env.Prepend(BUILDPATH='build/')
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+#-------------------------------------------------------------------------------
+# Enable werror
+#-------------------------------------------------------------------------------
+env.Append(CFLAGS = " -Werror ")
+
+#-------------------------------------------------------------------------------
+# Load dal config builders
+#-------------------------------------------------------------------------------
+env.Tool('dalconfig_builder', toolpath = ['${DEVCFG_SCRIPTS}'])
+env.Tool('devcfgHwInfo_builder', toolpath = ['${DEVCFG_SCRIPTS}'])
+
+#-------------------------------------------------------------------------------
+# Devcfg Image dependent parameters
+#-------------------------------------------------------------------------------
+DEVCFG_IMG      = env.get('DEVCFG').getFeature('devcfgImgBuildTag')
+devcfg_target   = env.get('DEVCFG').getFeature('targetImg')
+
+#-------------------------------------------------------------------------------
+# Build Devcfg Artifacts
+#-------------------------------------------------------------------------------
+return_list     = []
+
+#Build DevCfg_ImgParams.h 
+devcfg_params   = env.GenerateDevcfgImgHdr(['${BUILDPATH}/DevCfg_ImgParams.h'],None)
+return_list    += devcfg_params
+env.get('CPPPATH').append(os.path.realpath(env.subst('${BUILDPATH}')))
+
+#Set CPPDEFINES for sources
+if env.get('DEVCFG').getFeature('propsMemoryOptimise') == 'true':  
+   env.Append(CPPDEFINES = ['DEVCFG__PROPS_MEMORY_OPTIMISE'])
+if env.get('DEVCFG').getFeature('structSize') == 'true':  
+   env.Append(CPPDEFINES = ['DEVCFG__STRUCT_SIZE'])
+
+env.Append(CPPDEFINES = ['DEVCFG_TCSR_SOC_HW_ADDR='+env.get('DEVCFG').getFeature('tcsrSsocHwVersionAddr')])
+
+# Get devcfg xml_tag-list
+devcfg_xml_tag_list = env.get('DEVCFG').getFeature('devcfgXMLTagList')
+
+# Create the master xml files
+Master_XML = {}
+
+# Create one master xml file per xml_tag
+for xml_tag in devcfg_xml_tag_list:
+    configstr = xml_tag.replace('xml', '') + devcfg_target
+    devcfg_gen_xml  = '${BUILDPATH}/DevCfg_master_' + configstr + '.xml'
+    devcfg_gen_env  = '${BUILDPATH}/DevCfg_env_' + configstr + '.txt'
+    Master_XML = env.DevcfgBuilder([devcfg_gen_xml, devcfg_gen_env],
+                                        None, 
+                                        XML_TAG=xml_tag, 
+                                        IMAGE_TAG=DEVCFG_IMG, 
+                                        UPDATE_ENV=True)
+    # DALConfig & data file generation
+    config_file     = '${BUILDPATH}/DevCfg_' + configstr + '.c'
+    data_file       = '${BUILDPATH}/DevCfg_' + xml_tag.replace('xml', 'data_') + devcfg_target + '.c'
+    Devcfg_data_src = env.DALConfigSrcBuilder([config_file, data_file], 
+                                              [Master_XML[0]],
+                                              CONFIG=configstr)
+    if (os.path.exists(env.RealPath(devcfg_gen_env))) :
+        lines = [line.strip() for line in open(env.RealPath(devcfg_gen_env), 'r')]
+        env.get('CPPPATH').extend(lines)           
+    return_list += Devcfg_data_src        
+    return_list += env.AddObject(DEVCFG_IMG, Devcfg_data_src)
+    
+# Source Code
+Devcfg_src =  [
+    '${BUILDPATH}/DALProps.c',
+    '${BUILDPATH}/DALSysInt.c',
+]
+
+env.AddBinaryObject(['QHEEBSP_IMAGE'], ['${BUILD_ROOT}/core/kernel/devcfg/src/DALProps.c', '${BUILD_ROOT}/core/kernel/devcfg/src/DALSysInt.c'])
+
+# Do not include source for oem devcfg image
+if 'oem' not in devcfg_target:
+    devcfg_lib   = env.AddLibrary(DEVCFG_IMG, '${BUILDPATH}/DevCfg_'+devcfg_target, Devcfg_src)
+    return_list += devcfg_lib
+    env.Depends(devcfg_lib,devcfg_params)
+    
+# Create DevCfgSegInfo.c file
+platform_defs_fn    = ['${DEVCFG_SYSAPI}/PlatformInfoDefs.h']
+DevCfgSegInfo_fn    = ['${BUILDPATH}/DevCfgSegInfo_'+devcfg_target+'.c']
+DevCfgSegInfo_src   = env.DevcfgPropInfoBuilder(DevCfgSegInfo_fn, platform_defs_fn, CONFIG=devcfg_target)
+DevCfgSegInfo_obj   = env.AddObject(DEVCFG_IMG, DevCfgSegInfo_src[0])
+env.Depends(DevCfgSegInfo_obj,devcfg_params)
+return_list        += DevCfgSegInfo_obj
+
+
+Return('return_list')
+

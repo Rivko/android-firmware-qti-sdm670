@@ -1,0 +1,171 @@
+;============================================================================
+;  Name:
+;    InitOffsets.cmm
+;
+;  Description:
+;    Initialize global variables to be used in cmm scripts
+;
+; Copyright (c) 2015-2016 Qualcomm Technologies, Inc.  All 
+; Rights Reserved. Qualcomm Technologies Proprietary and 
+; Confidential. 
+;
+;----------------------------------------------------------------------------
+;============================================================================
+;
+;                        EDIT HISTORY FOR MODULE
+;
+;
+;
+;   when        who     what, where, why
+;  ----------   ---     -----------------------------------------------------
+;  2015-10-27   bh      Change info block attribute name
+;  2015-10-15   bh      Simplify debug scripts to use info block
+;  2015-06-26   vk      Add CoreLoadPeImageOffset to support RVCT
+;  2015-06-22   vk      Update Offsets
+;  2015-01-22   bh      Initial version
+;============================================================================;
+
+global &ARCHState
+
+;UEFI Info Block - Offsets can be found in UefiInfoBlk.h
+global &IBlkUartLogBufferPtr
+global &IBlkUartLogBufferLen
+global &IBlkConfigTablePtr
+global &IBlkConfigTableCount
+global &IBlkSystemTablePtr
+global &IBlkRuntimeDbgTablePtr
+global &IBlkRtDbgTableEntryCnt
+global &IBlkDxeSymbolAddr
+global &IBlkHobBaseOffset
+global &BinFolder
+global &EfiHeaderOffset
+global &SecLoadAddrOffset
+global &PtrSize
+global &RvaOffsetAdd
+global &RvaOffsetSub
+global &ImgBaseDbgEntryOffset
+global &STCfgTbl
+global &STCfgItemCnt
+global &ArchString
+
+global &MemMapGcdOffset
+global &GcdBaseOffset
+global &GcdEndOffset
+global &GcdAttribOffset
+global &RvaOffset
+
+
+;Offset in code
+global &CoreLoadPeImageOffset
+global &IBlkCmdStartOffset
+global &IBlkTotalCmdSize
+global &IBlkSymbolCmdString
+global &IBlkLoaderBkpt
+global &IBlkDbgStopDrvrStr
+global &IBlkModuleName
+global &IBlkDirStr
+global &IBlkBdsHotkey
+
+;-------
+; MAIN
+;-------
+ENTRY:
+  ; Get the arch state
+  gosub GetArchState
+  ;ARCHState 0=64-bit, 1=32-bit
+  if (&ARCHState==1) 
+  (
+    gosub Set32BitVariables
+  )
+  else
+  (
+    gosub Set64BitVariables
+  )
+  print "You are operating in &ArchString mode"
+
+enddo
+
+GetArchState:
+  local &PState
+  
+  &PState=r(CPSR)
+
+  ;Bit[4] of CPSR is AARCH state  
+  &ARCHState=(&PState&0x10)>>4
+return &ARCHState
+
+Set32BitVariables:
+  &ArchString="32-bit"
+  &PtrSize=0x4
+  &BinFolder="Bin32"
+  &IBlkUartLogBufferPtr=0x2C
+  &IBlkUartLogBufferLen=0x30
+  &EfiHeaderOffset=0x240
+  &SecLoadAddrOffset=0x160
+  &IBlkRuntimeDbgTablePtr=0x54
+  &IBlkRtDbgTableEntryCnt=0x58
+  &IBlkSystemTablePtr=0x48
+  &IBlkDxeSymbolAddr=0x60
+  &RvaOffsetAdd=0x204
+  &ImgBaseDbgEntryOffset=0x128
+  &IBlkConfigTablePtr=0x3C
+  &IBlkConfigTableCount=0x40
+  &RvaOffsetSub=0xB4
+  &STCfgTbl=0x44
+  &STCfgItemCnt=0x40
+  &IBlkHobBaseOffset=0x28
+  &MemMapGcdOffset=0xC
+  &GcdBaseOffset=0x8
+  &GcdEndOffset=0x10
+  &GcdAttribOffset=0x20
+  &RvaOffset=0x11C
+  &CoreLoadPeImageOffset="277"
+  &IBlkCmdStartOffset=0x68
+  &IBlkTotalCmdSize=0x6C
+  &IBlkSymbolCmdString=0x70
+  &IBlkLoaderBkpt=0x74
+  &IBlkDbgStopDrvrStr=0x78
+  &IBlkModuleName=0x98
+  &IBlkSymbolCmdSize=0xB8
+  &IBlkLastCmdSize=0xBC
+  &IBlkDirStr=0xC0
+  &IBlkBdsHotkey=0xE0
+return
+
+Set64BitVariables:
+  &ArchString="64-bit"
+  &PtrSize=0x8
+  &BinFolder="Bin64"
+  &IBlkUartLogBufferPtr=0x38
+  &IBlkUartLogBufferLen=0x40
+  &EfiHeaderOffset=0x260
+  &SecLoadAddrOffset=0x2000
+  &IBlkRuntimeDbgTablePtr=0x88
+  &IBlkRtDbgTableEntryCnt=0x90
+  &IBlkSystemTablePtr=0x70
+  &IBlkDxeSymbolAddr=0x98
+  &RvaOffsetAdd=0x102C
+  &ImgBaseDbgEntryOffset=0x138
+  &IBlkConfigTablePtr=0x58
+  &IBlkConfigTableCount=0x60
+  &RvaOffsetSub=0xC4
+  &STCfgTbl=0x70
+  &STCfgItemCnt=0x68
+  &IBlkHobBaseOffset=0x30
+  &MemMapGcdOffset=0x14
+  &GcdBaseOffset=0x4
+  &GcdEndOffset=0xC
+  &GcdAttribOffset=0x1C
+  &RvaOffset=0x1F58
+  &CoreLoadPeImageOffset="249"
+  &IBlkCmdStartOffset=0xA0
+  &IBlkTotalCmdSize=0xA4
+  &IBlkSymbolCmdString=0xA8
+  &IBlkLoaderBkpt=0xB0
+  &IBlkDbgStopDrvrStr=0xB8
+  &IBlkModuleName=0xD8
+  &IBlkSymbolCmdSize=0xF8
+  &IBlkLastCmdSize=0xFC
+  &IBlkDirStr=0x100
+  &IBlkBdsHotkey=0x120
+return

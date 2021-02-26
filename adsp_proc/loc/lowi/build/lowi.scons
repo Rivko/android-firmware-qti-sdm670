@@ -1,0 +1,144 @@
+#===============================================================================
+#
+# LOWI Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2014-2015 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/loc.adsp/1.1/lowi/build/lowi.scons#10 $
+#  $DateTime: 2017/06/05 16:26:19 $
+#  $Author: pwbldsvc $
+#  $Change: 13496261 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+import os
+Import('env')
+env = env.Clone()
+env.Append(CPPDEFINES=['MSG_BT_SSID_DFLT=MSG_SSID_ONCRPC'])
+
+#-------------------------------------------------------------------------------
+# Convert warnings to errors 
+#-------------------------------------------------------------------------------
+if not os.environ.get('COMPILER','gcc').startswith('llvm'):
+   env.Append(CFLAGS = "-Werror ")
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/loc/lowi/src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+env.PublishPrivateApi('LOWI', [
+    '${BUILD_ROOT}/loc/lowi/src',
+    '${BUILD_ROOT}/loc/lowi/inc',
+    '${BUILD_ROOT}/loc/lowi/src/wifidriver/util',
+    '${BUILD_ROOT}/loc/lowi/src/wifidriver/ranging',
+    '${BUILD_ROOT}/loc/lowi/src/wifidriver/heliumwifidriver',
+])
+
+#--------------------------------------------------------------------------------
+# Necessary Public API's
+#--------------------------------------------------------------------------------
+CORE_PUBLIC_APIS = [
+   'DEBUGTOOLS',
+   'DAL',
+   'MPROC',
+   'DIAG',
+   'STORAGE',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'MPROC',
+   'POWER',
+   'KERNEL',
+]
+
+env.RequirePublicApi(CORE_PUBLIC_APIS, area='core')
+env.RequirePublicApi(['TEST','COMMON', 'LOWI', 'WLS'], area='QMIMSGS')
+env.RequirePublicApi([
+  'MPROC',
+  ], area='CORE')
+#env.RequireRestrictedApi(CORE_PUBLIC_APIS)
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+LOWI_SOURCES  =  [
+  '${BUILDPATH}/lowi_init.c',
+  '${BUILDPATH}/lowi_thread.cpp',
+  '${BUILDPATH}/lowi_controller.cpp',
+  '${BUILDPATH}/lowi_controller_response.cpp',
+  '${BUILDPATH}/lowi_measurement_result.cpp',
+  '${BUILDPATH}/lowi_qmi_svc.cpp',
+  '${BUILDPATH}/lowi_client_handle.cpp',
+  '${BUILDPATH}/lowi_client_factory.cpp',
+  '${BUILDPATH}/lowi_utils.cpp',
+  '${BUILDPATH}/lowi_request.cpp',
+  '${BUILDPATH}/lowi_log.cpp',
+  '${BUILDPATH}/lowi_response.cpp',
+  '${BUILDPATH}/lowi_mac_address.cpp',
+  '${BUILDPATH}/lowi_ssid.cpp',
+  '${BUILDPATH}/lowi_wifidriver_interface.cpp',
+  '${BUILDPATH}/lowi_rome_wifidriver.cpp',
+  '${BUILDPATH}/lowi_wlan_qmi_client.cpp',
+  '${BUILDPATH}/sync.cpp',
+  '${BUILDPATH}/lowi_fake_wifidriver.cpp',
+  '${BUILDPATH}/lowi_ap_list.cpp',
+  '${BUILDPATH}/config_file.cpp',
+  '${BUILDPATH}/lowi_config.cpp',
+  '${BUILDPATH}/lowi_scan_measurement.cpp',
+  '${BUILDPATH}/lowi_cache_manager.cpp',
+  '${BUILDPATH}/lowi_bgscan_list.cpp',
+  '${BUILDPATH}/lowi_diag_log.cpp',
+  '${BUILDPATH}/lowi_util_strings.cpp',
+  '${BUILDPATH}/wifidriver/ranging/lowi_dynamic_buffer.cpp',
+  '${BUILDPATH}/wifidriver/ranging/lowi_wifi_tlv_handler.cpp',
+  '${BUILDPATH}/wifidriver/ranging/lowi_tlv.cpp',
+  '${BUILDPATH}/wifidriver/ranging/lowi_ranging.cpp',
+  '${BUILDPATH}/wifidriver/util/lowi_time.cpp',
+  '${BUILDPATH}/wifidriver/ranging/lowi_ranging_fsm.cpp',
+  '${BUILDPATH}/lowi_strings.cpp',
+  '${BUILDPATH}/wifidriver/ranging/lowi_helium_ranging.cpp',
+  '${BUILDPATH}/wifidriver/ranging/lowi_ranging_helium_fsm.cpp',
+  '${BUILDPATH}/wifidriver/heliumwifidriver/lowi_helium_wifidriver.cpp'
+]
+
+env.Append(CPPDEFINES="USE_LARGER_STACK_SIZE")
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+LIBNAME = 'lowi'
+
+env.AddBinaryLibrary(['QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE','CORE_QDSP6_SW'], '${BUILDPATH}/'+LIBNAME, LOWI_SOURCES)
+# header files are not deleted by AddBinaryLibrary so cleaning up using env.cleanpack
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*.h'], "${BUILD_ROOT}/loc/lowi/src")) 
+env.CleanPack(['QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE','CORE_QDSP6_SW'], CLEAN_LIST) 
+
+#-------------------------------------------------------------------------------
+
+if 'USES_RCINIT' in env:
+   RCINIT_IMG = ['CORE_MODEM', 'CORE_QDSP6_SW', 'CORE_GSS']
+   env.AddRCInitFunc(
+    RCINIT_IMG,
+    {
+     'sequence_group'             : 'RCINIT_GROUP_5',                   # required
+     'init_name'                  : 'lowi',                             # required
+     'init_function'              : 'lowi_init',                        # required
+    })
+

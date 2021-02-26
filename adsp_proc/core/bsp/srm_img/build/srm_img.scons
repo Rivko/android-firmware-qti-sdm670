@@ -1,0 +1,166 @@
+#===============================================================================
+#
+# Secure Resource Manager Build Rules
+#
+# GENERAL DESCRIPTION
+#    Image SConscript to compile and link the Secure Resource Manager (SRM) 
+#    binary.
+#
+# Copyright (c) 2017 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1/bsp/srm_img/build/srm_img.scons#3 $
+#  $DateTime: 2018/01/05 01:48:54 $
+#  $Change: 15176487 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 2017/12/05 sm      Define the generated .map file as a SideEffect for use in
+#                    memory analysis.
+# 2017/08/16 sm      Skip SRM entirely, if USES_SRM is not defined in the env.
+# 2017/07/25 sm      Initial revision.
+#
+#===============================================================================
+Import('env')
+
+#------------------------------------------------------------------------------
+# Init aliases array.
+# first alias (0th element in array) is always unique name, there should 
+# never be two images with the same unique name
+#------------------------------------------------------------------------------
+aliases = ['srm_img','sdm845_CDSP','sdm855_CDSP','sdm1000_CDSP','sdm670_CDSP']
+ 
+build_tools = [
+   '${BUILD_ROOT}/core/bsp/build/scripts/dnt_builder.py',
+   '${BUILD_ROOT}/core/kernel/qurt/qurt_builders.py',
+   ]
+# Define the SCons image build tags.
+build_tags = ['CORE_CDSP_SRM','PERFORMANCE_CDSP_SRM']
+
+#------------------------------------------------------------------------------
+# Init environment variables
+#------------------------------------------------------------------------------
+env.InitImageVars(
+   alias_list=aliases,
+   proc='qdsp6',
+   config='cdsp',
+   plat='qurt',
+   build_tags = build_tags,
+   tools = build_tools
+   )
+
+# Append a 'Q' to the Build ID accordingly.
+env.Replace(BUILD_ID=env.subst('${BUILD_ID}Q'))
+env.Replace(CUST_H=env.subst('CUST${BUILD_ID}.H').lower())
+
+# Define an 'IMAGE' environment variable, for developers to use
+# ${IMAGE} for.
+env.Append(IMAGE = 'cdsp')
+
+# In addition, provide additional environment variables, so the qurt-srm-build.py
+# can be located.
+env.Append(QURT_BUILD_CONFIG = 'computev65')
+env.Append(ROOT_IMAGE = 'cdsp_root')
+
+#------------------------------------------------------------------------------
+# Check if we need to load this script or just bail-out.
+#------------------------------------------------------------------------------
+if not env.CheckAlias():
+   Return()
+
+#---------------------------------------------------------------------------
+# Now that we know we need to build something, the first thing we need
+# to do is add our image to BuildProducts.txt, so that tools can verify
+# when our build is successful.  Make sure we append, so that we don't
+# overwrite other images that have written to this file.
+#---------------------------------------------------------------------------
+prod_files = []
+
+#---------------------------------------------------------------------------
+# Define USES_FLAGS and include paths.
+#---------------------------------------------------------------------------
+env.LoadToolScript('build_utils', toolpath = ['${BUILD_ROOT}/build/scripts'])
+env.InitTargetVariation()
+env.InitBuildConfig()
+
+if 'USES_SRM' not in env:
+   env.PrintWarning('USES_SRM not detected.  Not an SRM-enabled build.  Returning.')
+   Return()
+
+if 'USES_MULTI_PD' in env:
+   env.AddUsesFlags('USES_MPD')
+   env.AddUsesFlags('USES_QURTOS_IMG')
+   env.Append(CPPDEFINES=["MULTI_PD_BUILD"])
+
+# This flag is used to load the 'performance' SConscript.
+env.AddUsesFlags('USES_QDSP_SYSMON')
+
+# Remove DAL from the environment.
+env.AddUsesFlags('USES_DAL',add=False)
+
+#---------------------------------------------------------------------------
+# Configure toolchain.
+#---------------------------------------------------------------------------
+env.LoadToolScript('hexagon', toolpath = ['${BUILD_ROOT}/tools/build/scons/scripts'])
+
+#---------------------------------------------------------------------------
+# Traverse through source tree.
+#---------------------------------------------------------------------------
+# Declare empty list objects.
+image_libs = []
+image_objs = []
+
+# Load the build rules in cdsp_proc/core area.
+core_items = env.LoadAreaSoftwareUnits('core')
+image_libs.extend(core_items['LIBS'])
+image_objs.extend(core_items['OBJS'])
+
+# Load the build rules in cdsp_proc/performance area.
+performance_items = env.LoadAreaSoftwareUnits('performance')
+image_libs.extend(performance_items['LIBS'])
+image_objs.extend(performance_items['OBJS'])
+
+# Define as required nodes.
+image_units = [
+   image_objs, 
+   image_libs
+   ]
+
+if 'IMAGE_BUILD_LINK' in env:
+   prod_files.append(env.BuildProductsFile ("${SHORT_BUILDPATH}/BuildProducts.txt", "${SHORT_BUILDPATH}/${TARGET_NAME}.elf"))
+   
+   # The qurt-srm-build.py expects certain parameters to be set.
+   # - Q6_TOOLS_ROOT should be the current Hexagon Tools directory.
+   # - Q6_RTOS_ROOT should be the install/{Q6_BUILD_CONFIG} directory for QuRT.
+   # - SRM_ADDRESS is the start address of the .ELF.
+   # These arguments can be passed in as parameters, so it can be picked up by the builder action.
+   Q6_TOOLS_ROOT = env.get('QDSP6_RELEASE_DIR','None')
+   Q6_RTOS_ROOT = '${BUILD_ROOT}/core/kernel/qurt/build/${ROOT_IMAGE}/${PROC}/${SHORT_BUILDPATH}/install/${QURT_BUILD_CONFIG}'
+   
+   # Generate the .ELF.
+   image_elf = env.QurtBuildSRM("${SHORT_BUILDPATH}/${TARGET_NAME}.elf", image_objs,Q6_RTOS_ROOT=Q6_RTOS_ROOT,Q6_TOOLS_ROOT=Q6_TOOLS_ROOT)
+   
+   # Define the .map file as a side effect.
+   image_map = '${SHORT_BUILDPATH}/${TARGET_NAME}.elf.map'
+   env.SideEffect(image_map, image_elf)
+   
+   image_units += [
+      image_elf
+      ]
+
+#-------------------------------------------------------------------------
+# Finish up...
+#-------------------------------------------------------------------------
+image_units += [
+   prod_files
+   ]
+
+env.BindAliasesToTargets(image_units)
+

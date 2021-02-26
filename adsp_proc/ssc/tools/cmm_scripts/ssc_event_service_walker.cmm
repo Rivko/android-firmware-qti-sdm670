@@ -1,0 +1,119 @@
+;============================================================================
+;
+; SMGR sensor DB walker
+;
+;   To be called by ssc_parser.cmm to walk the Sensor DB
+;
+; Version: 1.0
+;
+; Copyright (c) 2016-2017 Qualcomm Technologies, Inc.
+; All Rights Reserved.
+; Qualcomm Technologies, Inc. Confidential and Proprietary.
+;============================================================================
+
+ENTRY
+
+print "##### Event Service #####"
+print
+
+&start=V.VALUE(*((uintptr_t*)&event_service.active_buffer_start))
+&end=V.VALUE(*((uintptr_t*)&event_service.active_buffer_end))
+&event_buffer_size=&end-&start
+
+&num_alloc_bytes=V.VALUE(*((int32_t*)&event_service.bytes_allocated))
+&max_alloc_bytes=V.VALUE(*((int32_t*)&event_service.max_bytes_allocated))
+&num_alloc=V.VALUE(*((int32_t*)&event_service.num_alloc))
+&max_alloc=V.VALUE(*((int32_t*)&event_service.max_alloc))
+&head=V.VALUE(*((uintptr_t*)&event_service.buffer_head))
+&tail=V.VALUE(*((uintptr_t*)&event_service.buffer_tail))
+&rollover=V.VALUE(*((uintptr_t*)&event_service.rollover_here))
+&fw_event_header_size=V.VALUE(sizeof(sns_fw_sensor_event))
+
+print "Event Buffer Size             = "+format.decimal(5,&event_buffer_size)
+print "Max bytes allocated           = "+format.decimal(5,&max_alloc_bytes)
+print "Max Number of allocations     = "+format.decimal(5,&max_alloc)
+print "Current bytes allocated       = "+format.decimal(5,&num_alloc_bytes)
+print "Current Number of allocations = "+format.decimal(5,&num_alloc)
+print " "
+print "buffer_start                  = 0x"+format.HEX(8,&start)
+print "buffer_end                    = 0x"+format.HEX(8,&end)
+print "buffer_head                   = 0x"+format.HEX(8,&head)
+print "buffer_tail                   = 0x"+format.HEX(8,&tail)
+print "rollover                      = 0x"+format.HEX(8,&rollover)
+print " "
+
+if &head==&tail
+(
+  if &num_alloc>0
+  (
+    print "*****  head == tails, but #alloc != 0 *****"
+    print " "
+  )
+)
+else
+(
+  if &num_alloc==0
+  (
+    print "*****  head != tails, but #alloc == 0 *****"
+    print " "
+  )
+)
+
+if &head!=&tail
+(
+  &i=0
+  &event=&tail
+  &ev_len=1
+  print "Events in allocated buffer:"
+
+  while (&event!=&head)&&(&ev_len!=0)
+  (
+    &ev_len=V.VALUE(((sns_fw_sensor_event*)&event)->header.fw_event_len)
+    &num_clients=V.VALUE(((sns_fw_sensor_event*)&event)->header.client_cnt)
+    print "  Event #"+format.decimal(3,&i+1)
+    print %CONTinue "  (sns_fw_sensor_event*)0x"+format.HEX(8,&event)
+    print %CONTinue "  Len="+format.decimal(3,&ev_len)
+
+    print %CONTinue "  #clients="+format.decimal(1,&num_clients)
+    print %CONTinue "  msgID="+format.decimal(4,V.VALUE(((sns_fw_sensor_event*)&event)->event.message_id))
+    print %CONTinue "  len="+format.decimal(3,V.VALUE(((sns_fw_sensor_event*)&event)->event.event_len))
+    print %CONTinue "  ts="+format.decimal(10.,V.VALUE(((sns_fw_sensor_event*)&event)->event.timestamp))
+    if &num_clients>0
+    (
+      if &fw_event_header_size!=0x20
+      (
+        &malloc_func=V.VALUE(((sns_fw_sensor_event*)&event)->header.caller)
+        &malloc_symbol=Y.FUNCTION(D:&malloc_func)
+        print %CONTinue "  &malloc_symbol"
+      )
+    )
+
+    &event=&event+&ev_len
+    if &event!=&head
+    (
+      if &event>=&rollover
+      (
+        &event=&start
+      )
+      else
+      (
+        &ev_len=V.VALUE(((sns_fw_sensor_event*)&event)->header.fw_event_len)
+        if (&event>=&end)||((&event+&ev_len)>&end)
+        (
+          &event=&start
+        )
+      )
+    )
+    &i=&i+1
+  )
+
+  if &ev_len==0
+  (
+    print "  !!! memory corrupted !!! stopping now"
+  )
+)
+
+print "==================================================================================="
+print ""
+enddo
+

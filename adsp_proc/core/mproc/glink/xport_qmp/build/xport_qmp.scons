@@ -1,0 +1,118 @@
+#===============================================================================
+#
+# Xport QMP Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2016 Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Qualcomm Technologies, Inc. Confidential and Proprietary.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1/mproc/glink/xport_qmp/build/xport_qmp.scons#3 $
+#  $DateTime: 2017/09/13 11:56:31 $
+#  $Author: pwbldsvc $
+#  $Change: 14360532 $
+
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+import os
+
+#SDM855HACK,SDM1000HACK
+if env['CHIPSET'] in ['sdm855','sdm1000']:
+    env.Replace(CHIPSET = 'sdm845')
+    env.Replace(MSM_ID = '845')
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+UNITPATH = "${BUILD_ROOT}/core/mproc/glink/xport_qmp/"
+SRCPATH = UNITPATH + "/src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+#  Publish Private APIs
+#-------------------------------------------------------------------------------
+
+env.PublishPrivateApi('MPROC_GLINK', [
+   "${BUILD_ROOT}/core/mproc/glink/os/inc",
+   "${BUILD_ROOT}/core/mproc/glink/xport_qmp/inc",
+   "${BUILD_ROOT}/core/mproc/glink/glink_tracer/inc"
+] )
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'BUSES',
+   'DEBUGTOOLS',
+   'HAL',
+   'DAL',
+   'HWENGINES',
+   'MPROC',
+   'MEMORY',
+   'POWER',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'WIREDCONNECTIVITY',
+   'PRODUCTS',
+
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(['MPROC', 'MPROC_GLINK_XPORT_QMP_SETTINGS'])
+env.RequireProtectedApi(['MPROC_GLINK'])
+
+#-------------------------------------------------------------------------------
+# Defines
+#-------------------------------------------------------------------------------
+if 'USES_SENSOR_IMG' in env:
+  env.Append(CPPDEFINES=['XPORT_QMP_SENSOR_PD'])
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+XPORT_QMP_SRC = [
+   '${BUILDPATH}/xport_qmp.c',
+   '${BUILDPATH}/xport_qmp_devcfg.c',
+]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+APPS_IMAGES = ['CBSP_APPS_IMAGE', 'APPS_IMAGE']
+
+ROOT_IMAGES = ['CORE_QDSP6_SW', 'CORE_MPSS_ROOT', 'CORE_ADSP_ROOT', 'WCN_IMAGE',
+               'CORE_SLPI_ROOT', 'CORE_ADSP_SLPI_ROOT', 'CORE_CDSP_ROOT']
+# Add Image-specific Libraries, whose sources should be packed out.
+env.AddBinaryLibrary(ROOT_IMAGES + APPS_IMAGES + ['CORE_QDSP6_SENSOR_SW'],
+                     '${BUILDPATH}/xport_qmp',
+                     [XPORT_QMP_SRC])
+
+                     
+#-------------------------------------------------------------------------------
+# CleanPack (Remove) all remaining files for peripheral processors
+#-------------------------------------------------------------------------------
+PACK_OUT = env.FindFiles(['*.h', '*.c', '*.s'], SRCPATH)
+# Don't include RPM in this list, because it already does we want automatically.
+env.CleanPack(['CORE_QDSP6_SW'], PACK_OUT)
+
+#-------------------------------------------------------------------------------
+# RCINIT Task and Init Fields and Initialization
+#-------------------------------------------------------------------------------
+RCINIT_INIT_XPORT_QMP_INIT = {
+  'sequence_group'             : 'RCINIT_GROUP_0',           # required
+  'init_name'                  : 'xport_qmp',          # required
+  'init_function'              : 'xport_qmp_init',          # required
+  'dependencies'               : ['glink', 'smem']
+}
+
+if 'USES_RCINIT' in env:
+  RCINIT_IMG = APPS_IMAGES + ROOT_IMAGES + ['CORE_QDSP6_SENSOR_SW']
+  env.AddRCInitFunc( RCINIT_IMG, RCINIT_INIT_XPORT_QMP_INIT )

@@ -1,0 +1,134 @@
+#===============================================================================
+#
+# ADSP System Monitor
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2015 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===============================================================================
+
+Import('env')
+env = env.Clone()
+
+core_public_apis = [
+    'KERNEL',
+    'SERVICES',
+    'DEBUGTOOLS',
+    'ADSPPM',
+    'POWER',
+    'MPROC',
+    'SYSTEMDRIVERS',
+    'DEBUGTRACE',
+    'DAL',
+    'DIAG',
+    'BUSES',
+    'POWER_SLEEP',
+    ]
+
+platform_public_apis = [
+    'PLATFORM_LIBS',
+    'MOD_TABLE',
+    'HAPSDK',    #For VP Tests
+	'HAP',
+    'STDDEF',
+    'REMOTE',
+    ]
+    
+env.RequirePublicApi(platform_public_apis, area='platform')
+env.RequirePublicApi(core_public_apis, area='core')    
+
+env.PublishPrivateApi('UBWCDMA',[
+    '../inc',
+    '../inc_global',
+	'${BUILD_ROOT}/platform/inc/qlist',
+	'${BUILD_ROOT}/platform/inc/a1std',
+	'${BUILD_ROOT}/platform/inc/HAP',
+    '${BUILD_ROOT}/vap/ubwcdma/inc',
+    '${BUILD_ROOT}/vap/ubwcdma/core/dd',
+    '${BUILD_ROOT}/vap/ubwcdma/core/hal',
+    '${BUILD_ROOT}/vap/ubwcdma/core/svc',
+    '${BUILD_ROOT}/vap/ubwcdma/core/osal',
+    '${BUILD_ROOT}/vap/ubwcdma/platform/vp/inc',
+
+# For msmhwiobase.h
+    '${BUILD_ROOT}/core/api/systemdrivers/hwio/sdm845',
+# For sysmon_cachelock.h
+    '${BUILD_ROOT}/performance/sysmon/inc_global',
+])   
+
+env.RequirePrivateApi('UBWCDMA')
+env.RequirePublicApi('UBWCDMA', area='ubwcdma') 
+if 'USE_DMA_DEBUG' in env:
+
+	env.Append(CFLAGS='-DUBWCDMA_DEBUG=1')
+env.Append(CFLAGS='-DUSE_HAP_CACHE_API')
+env.Append(CFLAGS='-DNAPALI_V2_SW_WA')
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/vap/ubwcdma"
+LIBNAME = 'ubwcdma'
+
+env.PublishPrivateApi('UBWCDMA', "${BUILD_ROOT}/vap/ubwcdma/build")
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Add
+# env.AddUsesFlags('USES_???')
+
+#-------------------------------------------------------------------------------
+
+  
+#-------------------------------------------------------------------------------
+#UBWCDMA
+#-------------------------------------------------------------------------------        
+
+SRC = [ 
+		'${BUILDPATH}/core/dd/dmaDd_caller.c', 
+		'${BUILDPATH}/core/dd/dmaDd_secure.c', 
+		'${BUILDPATH}/core/hal/dmaHal.c', 
+		'${BUILDPATH}/core/osal/dmaOsal.c', 
+		'${BUILDPATH}/core/osal/dmaOsal_primWrapper.c', 
+		'${BUILDPATH}/core/svc/dmaSvc_app.c', 
+		'${BUILDPATH}/core/svc/dmaSvc_fmt.c', 
+		'${BUILDPATH}/core/svc/dmaSvc_primitivesCaller.c', 
+		'${BUILDPATH}/core/svc/dmaSvc_primitivesSecure.c', 
+		'${BUILDPATH}/core/svc/dmaSvc_utils.c', 
+#		'${BUILDPATH}/wrapper/dmaWrapper.c', 
+		'${BUILDPATH}/platform/vp/src/dma_qdi.c', 
+
+#will turn on once RUMI is ready
+		'${BUILDPATH}/core/dd/dmaDd_pmCaller.c', 
+		'${BUILDPATH}/core/dd/dmaDd_pmSecure.c', 
+		'${BUILDPATH}/core/hal/nocDD.c', 
+		'${BUILDPATH}/core/hal/nocHal.c', 
+		'${BUILDPATH}/core/hal/nocOsal.c', 
+
+]
+
+env.AddBinaryLibrary(['UBWCDMA_SW_IMAGE'], '${BUILDPATH}/'+LIBNAME, [SRC])
+
+
+if 'USES_RCINIT' in env:
+    env.AddRCInitFunc(
+    ['UBWCDMA_SW_IMAGE'],
+    {
+         'sequence_group'             : 'RCINIT_GROUP_7',                # required
+         'init_name'                  : 'nDmaInit',                    # required
+         'init_function'              : 'nDmaInit',          # required
+         'dependencies'               : ['clk_regime','dalsys','npa','icbarb','sleep','smem_log','rpm','adsppm']
+    })
+	
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.h'], '${BUILD_ROOT}/vap/ubwcdma/src'))     
+env.CleanPack(['UBWCDMA_SW_IMAGE'], CLEAN_LIST)
+
+#-------------------------------------------------------------------------------
+# Load Subunits (sys)
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()

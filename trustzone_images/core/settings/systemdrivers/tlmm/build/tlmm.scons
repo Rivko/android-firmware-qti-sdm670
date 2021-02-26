@@ -1,0 +1,67 @@
+#=============================================================================
+# TLMM LIBRARY
+#
+# Target:    All
+# Processor: All
+#
+#=============================================================================
+# $Header: //components/rel/core.tz/2.0.2/settings/systemdrivers/tlmm/build/tlmm.scons#1 $
+#=============================================================================
+#  Copyright 2014-2015 QUALCOMM Technologies Incorporated.
+#  All Rights Reserved.
+#  QUALCOMM Proprietary/GTDR
+#=============================================================================
+
+import os
+
+Import('env')
+env = env.Clone()
+
+#------------------------------------------------------------------------------
+# Add API folders
+#------------------------------------------------------------------------------
+
+if os.path.isfile(env.subst('../config/${CHIPSET}/TLMMChipset.xml')):
+   env.Replace(TLMM_CHIPSET = '${CHIPSET}')
+else:
+   env.Replace(TLMM_CHIPSET = 'stubs')
+
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'SYSTEMDRIVERS',
+   'SERVICES',
+   'TLMM_DEVCFG_INTERFACE',
+   'DAL',
+   'AC',
+
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API, area = 'core')
+env.RequireRestrictedApi(CBSP_API)
+
+SSG_API = [
+    'AC',
+    'SECUREMSM',
+]
+env.RequirePublicApi(SSG_API, area = 'ssg')
+
+#---------------------------------------------------------------------------
+# Add DAL XML file
+#---------------------------------------------------------------------------
+if 'USES_DEVCFG' in env:
+   DEVCFG_IMG = ['DAL_DEVCFG_OEM_QSEE_IMG']
+   env.AddDevCfgInfo(DEVCFG_IMG, 
+   {
+       'devcfg_xml' : '${BUILD_ROOT}/core/settings/systemdrivers/tlmm/config/${TLMM_CHIPSET}/TLMMChipset.xml'
+   })
+
+if "USES_DEPLOY_BUILDER" in env:
+   env.Deploy(['tlmm.scons',
+               '../interface/TlmmPropDef.h'
+              ])
+

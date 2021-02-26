@@ -1,0 +1,743 @@
+#===============================================================================
+#
+# APR Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009-2014,2018-2019 by QUALCOMM Technologies, Inc.
+# All Rights Reserved.
+# Confidential and Proprietary - QUALCOMM Technologies, Inc. 
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/apr.common/2.0/build/apr.scons#4 $
+#  $DateTime: 2018/06/25 10:18:27 $
+#  $Author: pwbldsvc $
+#  $Change: 16494991 $
+#
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 04/02/14    mh     Enabling the USE_INIT_IPC_HACK flag.
+#===============================================================================
+Import('env')
+
+#Check if we are in modem or adsp
+build_root = env.subst('${BUILD_ROOT}')
+get_apr_mode = build_root.split('/')[-1]
+if get_apr_mode == 'adsp_proc':
+   print "APR is in adsp mode"
+   env.Append(CFLAGS = '-Dadsp_proc ')
+elif get_apr_mode == 'modem_proc':
+   print "APR is in modem mode"
+   env.Append(CFLAGS = '-Dmodem_proc ')
+elif get_apr_mode == 'cdsp_proc':
+   print "APR is in cdsp mode"
+   env.Append(CFLAGS = '-Dcdsp_proc ')
+elif get_apr_mode == 'slpi_proc':
+   print "APR is in sdsp mode"
+   env.Append(CFLAGS = '-Dslpi_proc ')
+else:
+   print "APR is in unknown mode"
+   sys.exit(-1)
+env.Replace(APR_MODE = get_apr_mode)
+print env.get('APR_MODE')
+
+if 'USES_AVS_TEST' in env:
+    env.Append(CFLAGS = '-DSIM_DEFINED ')
+
+
+
+
+if env.get('APR_MODE') == 'modem_proc':
+    print "Scons in modem mode"
+    if env['PRODUCT_LINE'].startswith("MPSS.AT"):
+       env.Append(HEXAGON_WARN = ' -Wno-error-high -Wno-error-medium -Wno-error-low ')
+    else:
+       env = env.Clone(HEXAGONCC_WARN = "${HEXAGONCC_WARN} -Werror") 
+       env = env.Clone(HEXAGONCXX_WARN = "${HEXAGONCCXX_WARN} -Werror")
+
+    #TODO: Following flag needs to be enabled when RCINIT changes are ready
+    # env.Append(CFLAGS = '-DUSE_INIT_IPC_HACK')
+
+    if env.PathExists('${BUILD_ROOT}/apr'):
+       env.Replace(APR_ROOT = '${INC_ROOT}/apr')
+    else:    
+       env.Replace(APR_ROOT = '${INC_ROOT}/multimedia/apr')
+
+
+
+    env.PublishProtectedApi('APR',[
+            '${APR_ROOT}/osal/inc',
+            '${APR_ROOT}/core/inc',
+            '${APR_ROOT}/utils/inc',
+            '${APR_ROOT}/domain/inc',
+            '${APR_ROOT}/domain/variant/modem/inc',
+            '${APR_ROOT}/datalink/apr_glink/inc',
+            '${APR_ROOT}/example/toyserver/inc',
+            '${APR_ROOT}/custom/inc',
+            '${APR_ROOT}/services/router/inc',
+            '${APR_ROOT}/datalink/diag/inc',
+            '${APR_ROOT}/mpd/inc',
+            '${APR_ROOT}/mpd/variant/qurt/inc',
+            '${APR_ROOT}/a_node/inc',
+            ])
+
+    env.RequireProtectedApi([
+       'APR',
+    ])
+
+
+    #remove next block when modem folder is removed----------------------
+    multimedia_config = env.get('MULTIMEDIA_CONFIG', 'none')
+
+    #-------------------------------------------------------------------------------
+    # CoreBSP dependencies
+    #-------------------------------------------------------------------------------
+    CBSP_API = [
+       'DAL',
+       'HAL',
+       'BOOT',
+       'BUSES',
+       'DEBUGTOOLS',
+       'HWENGINES',
+       'IODEVICES',
+       'MPROC',
+       'POWER',
+       'SECUREMSM',
+       'SENSORS',
+       'SERVICES',
+       'STORAGE',
+       'SYSTEMDRIVERS',
+       'WIREDCONNECTIVITY',
+
+       # needs to be last also contains wrong comdef.h
+       'KERNEL',
+    ]
+
+    env.RequirePublicApi(CBSP_API, area='core')
+
+    env.RequirePublicApi([
+       'MMUTILS',
+       'APR',
+    ])
+
+    #requre dsm from modem API
+    if multimedia_config == 'csfb':
+      env.RequireExternalApi([  
+         'MODEM_API',
+      ])
+
+    env.RequireProtectedApi([
+       'APR',
+    ])
+
+    env.RequireRestrictedApi([
+       'APR',
+    ])
+
+    env.RequirePublicApi([
+            'MMUTILS'
+            ],
+            area='AUDIO_AVS')
+
+
+    #no modem folder list below -----------------------------------
+    env.RequirePublicApi([
+            'KERNEL',
+            ],
+            area='CORE')
+
+    env.RequirePublicApi([
+            'APR',
+            ],
+            area='APR')
+
+    env.RequirePublicApi([
+            'DAL',
+            ],
+            area='CORE')
+
+    env.RequirePublicApi([
+            'MMUTILS',
+            'QURT_ELITE',
+            ],
+            area='AVS')
+
+    env.RequirePublicApi([
+            'SERVICES',
+            'SYSTEMDRIVERS',
+            'DEBUGTOOLS',
+            'MPROC',
+            ],
+            area='CORE')
+    env.RequireRestrictedApi('AVS')
+    env.RequireProtectedApi('AVS')
+
+    #-------------------------------------------------------------------------------
+    # Setup source PATH
+    #-------------------------------------------------------------------------------
+    SRCPATH = ".."
+    KDRV_LIBNAME = 'apr_kdrv'
+    UDRV_LIBNAME = 'apr_udrv'
+
+    env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+    APR_KDRV_SOURCES =  [
+       'core/src/*.c',
+       'core/src/*.cpp',
+       'datalink/diag/src/*.c',
+       'datalink/apr_glink/src/*.c',
+       'datalink/apr_glink/src/*.cpp',
+       'domain/variant/modem/src/*.c',
+       'domain/variant/modem/src/*.cpp',
+       'osal/variant/qurt/src/*.c',
+       'osal/variant/qurt/src/*.cpp',
+       'utils/src/*.c',
+       'utils/src/*.cpp',
+       'example/toyserver/src/*.c',
+       'services/router/src/*.c',
+       'mpd/variant/qurt/src/aprv2_mpd_kernel.c',
+       'custom/kernel_or_spd/src/*.c',
+       'custom/kernel_or_spd/src/*.cpp',
+       'a_node/src/*.c',
+    ]
+
+    APR_UDRV_SOURCES =  [
+       'core/src/*.c',
+       'core/src/*.cpp',
+       'domain/variant/modem/src/*.c',
+       'domain/variant/modem/src/*.cpp',
+       'osal/variant/qurt/src/*.c',
+       'osal/variant/qurt/src/*.cpp',
+       'utils/src/*.c',
+       'utils/src/*.cpp',
+       'services/router/src/*.c',
+       'services/router/src/*.cpp',
+       'mpd/variant/qurt/src/aprv2_mpd_user.c',
+       'custom/user/src/*.c',
+       'custom/user/src/*.cpp',
+       'a_node/src/*.c',
+    ]
+
+    APR_SPD_SOURCES =  [
+       'core/src/*.c',
+       'core/src/*.cpp',
+       'datalink/diag/src/*.c',
+       'datalink/apr_glink/src/*.c',
+       'datalink/apr_glink/src/*.cpp',
+       'domain/variant/modem/src/*.c',
+       'domain/variant/modem/src/*.cpp',
+       'osal/variant/qurt/src/*.c',
+       'osal/variant/qurt/src/*.cpp',
+       'utils/src/*.c',
+       'utils/src/*.cpp',
+       'example/toyserver/src/*.c',
+       'services/router/src/*.c',
+       'mpd/src/aprv2_mpd_stub.c',
+       'custom/kernel_or_spd/src/*.c',
+       'custom/kernel_or_spd/src/*.cpp',
+       'a_node/src/*.c',
+    ]
+
+
+
+    #-------------------------------------------------------------------------------
+    # Add Libraries / Objects to respective image
+    #-------------------------------------------------------------------------------
+    if ('USES_MPSS_MULTI_PD' in env and 'USES_NO_AUDIO_ON_Q6' not in env) and ('USES_AUDIO_IN_ROOTPD' not in env):
+
+       apr_sources = env.GlobSourceFiles(APR_UDRV_SOURCES, SRCPATH,posix=True)
+
+       if 'CORE_USER_PD' in env:
+          env.Append(CFLAGS = '-DAPR_UPD')
+
+       env.AddLibrary(['AVS_ADSP','CORE_USER_PD','MULTIMEDIA_USER_PD'], '${BUILDPATH}/'+UDRV_LIBNAME, apr_sources)
+       env.AddRCInitFunc(
+           ['CORE_USER_PD'],
+           {
+            'sequence_group'             : 'RCINIT_GROUP_2',                # required
+            'init_name'                  : 'apr_udrv',                      # required
+            'init_function'              : 'apr_init',                      # required
+           })
+
+       if 'USES_CENTRALIZED_THREAD_PRIORITY' in env:
+          env.AddRCInitTask(
+              ['CORE_USER_PD'],
+              {
+               'sequence_group'      : 'RCINIT_GROUP_7',
+               'thread_name'         : 'APR_QDI_USR',
+               'thread_type'         : 'RCINIT_TASK_QURTTASK',
+               'thread_entry'        : 'RCINIT_NULL',
+               'stack_size_bytes'    : '8192',
+               'priority_amss_order' : 'APR_QDI_USER_PRI_ORDER',
+              })
+
+       apr_sources = env.GlobSourceFiles(APR_KDRV_SOURCES, SRCPATH,posix=True)
+       env.AddLibrary(['CORE_QDSP6_SW','MULTIMEDIA_ROOT_PD'], '${BUILDPATH}/'+KDRV_LIBNAME, apr_sources)
+       
+       if 'audio_root_libs' in env.get('IMAGE_ALIASES'):
+          env.Append(CFLAGS = '-DAPR_RPD ')
+       env.AddRCInitFunc(           
+           ['CORE_MODEM'],           
+           {
+            'sequence_group'             : 'RCINIT_GROUP_2',                # required
+            'init_name'                  : 'apr_kdrv',                      # required
+            'init_function'              : 'apr_init',                      # required
+            'dependencies'               : ['smd']
+           })
+
+       if 'USES_CENTRALIZED_THREAD_PRIORITY' in env:
+          env.AddRCInitTask(
+              ['CORE_MODEM'],
+              {
+               'sequence_group'             : 'RCINIT_GROUP_7',
+               'thread_name'                : 'TOYSERVER',
+               'thread_type'                : 'RCINIT_TASK_QURTTASK',
+               'thread_entry'               : 'RCINIT_NULL',
+               'stack_size_bytes'           : '8192', # not used in lookup
+               'priority_amss_order'        : 'APR_TOYSERVER_PRI_ORDER',
+              })
+
+
+    else:
+       apr_sources = env.GlobSourceFiles(APR_SPD_SOURCES, SRCPATH,posix=True)
+       if 'USES_AUDIO_IN_ROOTPD' in env:
+          env.Append(CFLAGS = ' -DAPR_AUDIO_IN_ROOTPD')
+       else:
+          env.Append(CFLAGS = ' -DAPR_SPD')
+       env.AddLibrary(['CORE_QDSP6_SW'], '${BUILDPATH}/'+KDRV_LIBNAME, apr_sources)
+       env.AddRCInitFunc(
+           ['CORE_MODEM'],
+           {
+           'sequence_group'             : 'RCINIT_GROUP_2',                # required
+           'init_name'                  : 'apr_kdrv',                      # required
+           'init_function'              : 'apr_init',                      # required
+           'dependencies'               : [' ']
+           })
+
+       if 'USES_CENTRALIZED_THREAD_PRIORITY' in env:
+           env.AddRCInitTask(
+               ['CORE_MODEM'],
+               {
+                'sequence_group'             : 'RCINIT_GROUP_7',
+                'thread_name'                : 'TOYSERVER',
+                'thread_type'                : 'RCINIT_TASK_QURTTASK',
+                'thread_entry'               : 'RCINIT_NULL',
+                'stack_size_bytes'           : '8192', # not used in lookup
+                'priority_amss_order'        : 'APR_TOYSERVER_PRI_ORDER',
+               })
+elif env.get('APR_MODE') == 'adsp_proc':
+    print "Scons in adsp mode"
+    env = env.Clone(HEXAGONCC_WARN = "${HEXAGONCC_WARN} -Werror")
+    env = env.Clone(HEXAGONCXX_WARN = "${HEXAGONCCXX_WARN} -Werror")
+    #-------------------------------------------------------------------------------
+    # CoreBSP dependencies
+    #-------------------------------------------------------------------------------
+    core_public_apis = [
+       'DEBUGTOOLS',
+       'KERNEL',
+       'SERVICES',
+       'MPROC',
+       'DAL',
+       'SYSTEMDRIVERS',
+
+       # needs to be last also contains wrong comdef.h
+       'KERNEL',   
+       ]
+
+    env.RequirePublicApi(core_public_apis, area='core')
+    env.RequirePublicApi(['AVS',], area='avs')
+    env.RequirePublicApi(['MDF_AVS',], area='avs_mdf')
+
+    APR_ROOT = '${BUILD_ROOT}/apr'
+    print APR_ROOT
+    env.PublishProtectedApi('APR',[
+            '${APR_ROOT}/osal/inc',
+            '${APR_ROOT}/core/inc',
+            '${APR_ROOT}/utils/inc',
+            '${APR_ROOT}/domain/inc',
+            '${APR_ROOT}/domain/variant/modem/inc',
+            '${APR_ROOT}/datalink/apr_glink/inc',
+            '${APR_ROOT}/example/toyserver/inc',
+            '${APR_ROOT}/custom/inc',
+            '${APR_ROOT}/services/router/inc',
+            '${APR_ROOT}/datalink/diag/inc',
+            '${APR_ROOT}/mpd/inc',
+            '${APR_ROOT}/mpd/variant/qurt/inc',
+            '${APR_ROOT}/a_node/inc',
+            ])
+
+    env.RequireProtectedApi(['APR'])
+    env.RequirePublicApi(['APR'], area='apr')
+
+    #-------------------------------------------------------------------------------
+    # CoreBSP dependencies
+    #-------------------------------------------------------------------------------
+    core_public_apis = [
+       'DEBUGTOOLS',
+       'KERNEL',
+       'SERVICES',
+       'MPROC',
+       'DAL',
+       'SYSTEMDRIVERS',
+
+       # needs to be last also contains wrong comdef.h
+       'KERNEL',
+       ]
+
+    env.RequirePublicApi(core_public_apis, area='core')
+    env.RequirePublicApi(['AVS',], area='avs')
+
+
+
+    #-------------------------------------------------------------------------------
+    # Setup source PATH
+    #-------------------------------------------------------------------------------
+    KDRV_LIBNAME = 'apr_kdrv'
+    UDRV_LIBNAME = 'apr_udrv'
+    #import pdb;pdb.set_trace();
+    env.VariantDir('${BUILDPATH}', APR_ROOT, duplicate=0)
+
+    if 'USES_AVS_TEST' in env:
+       #import pdb;pdb.set_trace();
+       APR_KDRV_SOURCES =  [
+           'core/src/*.c',
+           'core/src/*.cpp',
+           'datalink/diag/src/*.c',
+           #'datalink/apr_glink/src/*.c',
+           #'datalink/apr_glink/src/*.cpp',
+           'domain/variant/modem/src/*.c',
+           'domain/variant/modem/src/*.cpp',
+           'osal/variant/qurt/src/*.c',
+           'osal/variant/qurt/src/*.cpp',
+           'utils/src/*.c',
+           'utils/src/*.cpp',
+           #'example/toyserver/src/*.c',
+           'services/router/src/*.c',
+           'mpd/variant/qurt/src/aprv2_mpd_kernel.c',
+           'custom/kernel_or_spd/src/*.c',
+           'custom/kernel_or_spd/src/*.cpp',
+           'a_node/src/*.c',
+        ]
+    else:
+        APR_KDRV_SOURCES =  [
+           'core/src/*.c',
+           'core/src/*.cpp',
+           'datalink/diag/src/*.c',
+           'datalink/apr_glink/src/*.c',
+           'datalink/apr_glink/src/*.cpp',
+           'domain/variant/modem/src/*.c',
+           'domain/variant/modem/src/*.cpp',
+           'osal/variant/qurt/src/*.c',
+           'osal/variant/qurt/src/*.cpp',
+           'utils/src/*.c',
+           'utils/src/*.cpp',
+           #'example/toyserver/src/*.c',
+           'services/router/src/*.c',
+           'mpd/variant/qurt/src/aprv2_mpd_kernel.c',
+           'custom/kernel_or_spd/src/*.c',
+           'custom/kernel_or_spd/src/*.cpp',
+           'a_node/src/*.c',
+        ]
+
+    APR_UDRV_SOURCES =  [
+       'core/src/*.c',
+       'core/src/*.cpp',
+       'domain/variant/modem/src/*.c',
+       'domain/variant/modem/src/*.cpp',
+       'osal/variant/qurt/src/*.c',
+       'osal/variant/qurt/src/*.cpp',
+       'utils/src/*.c',
+       'utils/src/*.cpp',
+       'services/router/src/*.c',
+       'services/router/src/*.cpp',
+       'mpd/variant/qurt/src/aprv2_mpd_user.c',
+       'custom/user/src/*.c',
+       'custom/user/src/*.cpp',
+       'a_node/src/*.c',
+    ]
+
+    APR_SPD_SOURCES =  [
+       'core/src/*.c',
+       'core/src/*.cpp',
+       'datalink/diag/src/*.c',
+       'datalink/apr_glink/src/*.c',
+       'datalink/apr_glink/src/*.cpp',
+       'domain/variant/modem/src/*.c',
+       'domain/variant/modem/src/*.cpp',
+       'osal/variant/qurt/src/*.c',
+       'osal/variant/qurt/src/*.cpp',
+       'utils/src/*.c',
+       'utils/src/*.cpp',
+       #'example/toyserver/src/*.c',
+       #'services/router/src/*.c',
+       'mpd/src/aprv2_mpd_stub.c',
+       'custom/kernel_or_spd/src/*.c',
+       'custom/spd/src/*.cpp',
+       'a_node/src/*.c',
+    ]
+
+
+    
+    #-------------------------------------------------------------------------------
+    # Add Libraries / Objects to respective image
+    #-------------------------------------------------------------------------------
+    if 'AUDIO_IN_USERPD' in env:
+      apr_sources = env.GlobSourceFiles(APR_UDRV_SOURCES, APR_ROOT,posix=True)
+      #import pdb;pdb.set_trace();
+      if 'APR_ADSP_USER' in env:
+        env.Append(CFLAGS = '-DAPR_USER_PD_FEATURE -DAPR_UPD')
+
+      env.AddLibrary(['APR_ADSP_USER'], '${BUILDPATH}/'+UDRV_LIBNAME, apr_sources)
+      if 'USES_RCINIT' in env:
+        env.AddRCInitFunc(
+        ['APR_ADSP_USER'],
+        {
+          'sequence_group'             : 'RCINIT_GROUP_2',                # required
+          'init_name'                  : 'apr_udrv',                      # required
+          'init_function'              : 'apr_init',                      # required
+        })
+
+      if 'APR_ADSP_ROOT' in env:
+        env.Append(CFLAGS = '-DAPR_RPD ')
+      apr_sources = env.GlobSourceFiles(APR_KDRV_SOURCES, APR_ROOT,posix=True)
+      env.AddLibrary(['APR_ADSP_ROOT'], '${BUILDPATH}/'+KDRV_LIBNAME, apr_sources)
+      if 'USES_RCINIT' in env:
+        env.AddRCInitFunc(
+        ['APR_ADSP_ROOT'],
+        {
+          'sequence_group'             : 'RCINIT_GROUP_2',                # required
+          'init_name'                  : 'apr_kdrv',                      # required
+          'init_function'              : 'apr_init',                      # required
+          'dependencies'               : ['smd']
+        })
+   
+
+    else:
+      env.Append(CFLAGS = ' -DAPR_SPD ')
+      apr_sources = env.GlobSourceFiles(APR_SPD_SOURCES, APR_ROOT, posix=True)
+      env.AddLibrary(['AVS_ADSP'], '${BUILDPATH}/'+KDRV_LIBNAME, apr_sources)
+      if 'USES_RCINIT' in env:
+        env.AddRCInitFunc(
+          ['APR_ADSP_ROOT'],
+          {
+          'sequence_group'             : 'RCINIT_GROUP_2',                # required
+          'init_name'                  : 'apr_kdrv',                      # required
+          'init_function'              : 'apr_init',                      # required
+          'dependencies'               : ['smd']
+          })
+
+    #-------------------------------------------------------------------------------
+    # Device CFG data
+    #-------------------------------------------------------------------------------
+    """
+    LIBNAME_DEVCFG = 'apr_devcfg'
+
+    if 'USES_DEVCFG' in env:
+        DEVCFG_IMG = ['DAL_DEVCFG_IMG']
+        env.AddDevCfgInfo(DEVCFG_IMG,
+        {
+          'soc_xml'    : ['${APR_ROOT}/devcfg/config/apr_8974.xml',
+                          '${APR_ROOT}/devcfg/src/apr_devcfg.c']
+        })
+    """
+elif env.get('APR_MODE') == 'cdsp_proc':
+    print "In cdsp domain"
+    APR_ROOT = '${BUILD_ROOT}/apr'
+    KDRV_LIBNAME = 'apr_kdrv'
+    env.VariantDir('${BUILDPATH}', APR_ROOT, duplicate=0)
+    env = env.Clone(HEXAGONCC_WARN = "${HEXAGONCC_WARN} -Werror")
+    env = env.Clone(HEXAGONCXX_WARN = "${HEXAGONCCXX_WARN} -Werror")
+    #-------------------------------------------------------------------------------
+    # CoreBSP dependencies
+    #-------------------------------------------------------------------------------
+    core_public_apis = [
+       'DEBUGTOOLS',
+       'KERNEL',
+       'SERVICES',
+       'MPROC',
+       'DAL',
+       'SYSTEMDRIVERS',
+
+       # needs to be last also contains wrong comdef.h
+       'KERNEL',   
+       ]
+
+    env.RequirePublicApi(core_public_apis, area='core')
+    env.RequirePublicApi(['AVS',], area='avs')
+    env.RequirePublicApi(['MDF_AVS',], area='avs_mdf')
+
+    APR_ROOT = '${BUILD_ROOT}/apr'
+    print APR_ROOT
+    env.PublishProtectedApi('APR',[
+            '${APR_ROOT}/osal/inc',
+            '${APR_ROOT}/core/inc',
+            '${APR_ROOT}/utils/inc',
+            '${APR_ROOT}/domain/inc',
+            '${APR_ROOT}/domain/variant/modem/inc',
+            '${APR_ROOT}/datalink/apr_glink/inc',
+            '${APR_ROOT}/example/toyserver/inc',
+            '${APR_ROOT}/custom/inc',
+            '${APR_ROOT}/services/router/inc',
+            '${APR_ROOT}/datalink/diag/inc',
+            '${APR_ROOT}/mpd/inc',
+            '${APR_ROOT}/mpd/variant/qurt/inc',
+            '${APR_ROOT}/a_node/inc',
+            ])
+
+    env.RequireProtectedApi(['APR'])
+    env.RequirePublicApi(['APR'], area='apr')
+
+    #-------------------------------------------------------------------------------
+    # CoreBSP dependencies
+    #-------------------------------------------------------------------------------
+    core_public_apis = [
+       'DEBUGTOOLS',
+       'KERNEL',
+       'SERVICES',
+       'MPROC',
+       'DAL',
+       'SYSTEMDRIVERS',
+
+       # needs to be last also contains wrong comdef.h
+       'KERNEL',
+       ]
+
+    env.RequirePublicApi(core_public_apis, area='core')
+    env.RequirePublicApi(['AVS',], area='avs')
+
+
+    APR_SPD_SOURCES =  [
+       'core/src/*.c',
+       'core/src/*.cpp',
+       'datalink/diag/src/*.c',
+       'datalink/apr_glink/src/*.c',
+       'datalink/apr_glink/src/*.cpp',
+       'domain/variant/modem/src/*.c',
+       'domain/variant/modem/src/*.cpp',
+       'osal/variant/qurt/src/*.c',
+       'osal/variant/qurt/src/*.cpp',
+       'utils/src/*.c',
+       'utils/src/*.cpp',
+       #'example/toyserver/src/*.c',
+       #'services/router/src/*.c',
+       'mpd/src/aprv2_mpd_stub.c',
+       'custom/kernel_or_spd/src/*.c',
+       'custom/spd/src/*.cpp',
+       'a_node/src/*.c',
+    ]
+    env.Append(CFLAGS = ' -DAPR_SPD ')
+    apr_sources = env.GlobSourceFiles(APR_SPD_SOURCES, APR_ROOT, posix=True)
+    env.AddLibrary(['APR_ADSP'], '${BUILDPATH}/'+KDRV_LIBNAME, apr_sources)
+    if 'USES_RCINIT' in env:
+        env.AddRCInitFunc(
+          ['APR_ADSP_ROOT'],
+          {
+          'sequence_group'             : 'RCINIT_GROUP_2',                # required
+          'init_name'                  : 'apr_kdrv',                      # required
+          'init_function'              : 'apr_init',                      # required
+          'dependencies'               : []
+          })
+elif env.get('APR_MODE') == 'slpi_proc':
+    print "In sdsp domain"
+    APR_ROOT = '${BUILD_ROOT}/apr'
+    KDRV_LIBNAME = 'apr_kdrv'
+    env.VariantDir('${BUILDPATH}', APR_ROOT, duplicate=0)
+    env = env.Clone(HEXAGONCC_WARN = "${HEXAGONCC_WARN} -Werror")
+    env = env.Clone(HEXAGONCXX_WARN = "${HEXAGONCCXX_WARN} -Werror")
+    #-------------------------------------------------------------------------------
+    # CoreBSP dependencies
+    #-------------------------------------------------------------------------------
+    core_public_apis = [
+       'DEBUGTOOLS',
+       'KERNEL',
+       'SERVICES',
+       'MPROC',
+       'DAL',
+       'SYSTEMDRIVERS',
+
+       # needs to be last also contains wrong comdef.h
+       'KERNEL',   
+       ]
+
+    env.RequirePublicApi(core_public_apis, area='core')
+    env.RequirePublicApi(['AVS',], area='avs')
+    env.RequirePublicApi(['MDF_AVS',], area='avs_mdf')
+
+    APR_ROOT = '${BUILD_ROOT}/apr'
+    print APR_ROOT
+    env.PublishProtectedApi('APR',[
+            '${APR_ROOT}/osal/inc',
+            '${APR_ROOT}/core/inc',
+            '${APR_ROOT}/utils/inc',
+            '${APR_ROOT}/domain/inc',
+            '${APR_ROOT}/domain/variant/modem/inc',
+            '${APR_ROOT}/datalink/apr_glink/inc',
+            '${APR_ROOT}/example/toyserver/inc',
+            '${APR_ROOT}/custom/inc',
+            '${APR_ROOT}/services/router/inc',
+            '${APR_ROOT}/datalink/diag/inc',
+            '${APR_ROOT}/mpd/inc',
+            '${APR_ROOT}/mpd/variant/qurt/inc',
+            '${APR_ROOT}/a_node/inc',
+            ])
+
+    env.RequireProtectedApi(['APR'])
+    env.RequirePublicApi(['APR'], area='apr')
+
+    #-------------------------------------------------------------------------------
+    # CoreBSP dependencies
+    #-------------------------------------------------------------------------------
+    core_public_apis = [
+       'DEBUGTOOLS',
+       'KERNEL',
+       'SERVICES',
+       'MPROC',
+       'DAL',
+       'SYSTEMDRIVERS',
+
+       # needs to be last also contains wrong comdef.h
+       'KERNEL',
+       ]
+
+    env.RequirePublicApi(core_public_apis, area='core')
+    env.RequirePublicApi(['AVS',], area='avs')
+
+
+    APR_SPD_SOURCES =  [
+       'core/src/*.c',
+       'core/src/*.cpp',
+       'datalink/diag/src/*.c',
+       'datalink/apr_glink/src/*.c',
+       'datalink/apr_glink/src/*.cpp',
+       'domain/variant/modem/src/*.c',
+       'domain/variant/modem/src/*.cpp',
+       'osal/variant/qurt/src/*.c',
+       'osal/variant/qurt/src/*.cpp',
+       'utils/src/*.c',
+       'utils/src/*.cpp',
+       #'example/toyserver/src/*.c',
+       #'services/router/src/*.c',
+       'mpd/src/aprv2_mpd_stub.c',
+       'custom/kernel_or_spd/src/*.c',
+       'custom/spd/src/*.cpp',
+       'a_node/src/*.c',
+    ]
+    env.Append(CFLAGS = ' -DAPR_SPD ')
+    apr_sources = env.GlobSourceFiles(APR_SPD_SOURCES, APR_ROOT, posix=True)
+    env.AddLibrary(['APR_ADSP'], '${BUILDPATH}/'+KDRV_LIBNAME, apr_sources)
+    if 'USES_RCINIT' in env:
+        env.AddRCInitFunc(
+          ['APR_ADSP_ROOT'],
+          {
+          'sequence_group'             : 'RCINIT_GROUP_2',                # required
+          'init_name'                  : 'apr_kdrv',                      # required
+          'init_function'              : 'apr_init',                      # required
+          'dependencies'               : []
+          })

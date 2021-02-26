@@ -1,0 +1,105 @@
+import os
+import fnmatch
+import itertools
+
+Import('env')
+env = env.Clone()
+
+#SDM640_CHANGES
+if env['MSM_ID'] in ['640']:
+   env['MSM_ID'] = '670'
+#-------------------------------------------------------------------------------
+# General setup
+#-------------------------------------------------------------------------------
+#Turn off optimizations for easier debug
+#env.Append(CCFLAGS = " -O0")
+
+#-------------------------------------------------------------------------------
+# Target specific setup
+#-------------------------------------------------------------------------------
+MAIN_IMG_TAG = ['CORE_AOP']
+
+#Add support for dynamic RSC sequence registration
+RSC_DEFINES = ['RSC_DYNAMIC_SEQ']
+
+#Maximum RSC instance name length used for comparison
+RSC_DEFINES += ['RSC_INSTANCE_MAX_NAME_LEN=6']
+
+#Initial RSC dynamic lpm mode id
+RSC_DEFINES += ['RSC_DYN_INIT_MODE_ID=0xF']
+
+#Maximum value of RSC dynamic lpm mode id
+RSC_DEFINES += ['RSC_MAX_DYN_MODE_ID=0xFF']
+
+#Number of dynamically allocated timestamps for each lpm mode
+#These timestamps purely for debug purpose
+RSC_DEFINES += ['RSC_NUM_TIMESTAMPS=4']
+
+#-------------------------------------------------------------------------------
+# Add target specific defines to build options
+#-------------------------------------------------------------------------------
+env.Append(CPPDEFINES = RSC_DEFINES)
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = ".."
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'HAL', 
+   'DEBUGTOOLS',
+   'POWER', 
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+env.RequireRestrictedApi('CBSP_POWER_RSC')
+
+env.PublishPrivateApi('CBSP_POWER_RSC', [
+    '${BUILD_ROOT}/core/power/rsc/seq/inc',
+    '${BUILD_ROOT}/core/power/rsc/seq/hal/inc',
+    '${BUILD_ROOT}/core/power/rsc/seq/hal/hwio/${MSM_ID}',
+    '${BUILD_ROOT}/core/power/rsc/seq/common',
+  ])
+  
+COMMONPATH = os.path.join('..', 'common')
+CFGPATH = os.path.join('..', 'cfg', env['MSM_ID'])
+OSPATH  = os.path.join('..', 'env',)
+HALPATH  = os.path.join('..', 'hal', 'src')
+
+source_patterns = ['*.c']
+sources = []
+
+#common sources
+for root, dirnames, filenames in os.walk(COMMONPATH):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in source_patterns])
+    matches = ['${BUILDPATH}' + os.path.join(root, filename)[2:] for filename in matches]
+    sources.extend(matches)
+
+#hal sources
+for root, dirnames, filenames in os.walk(HALPATH):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in source_patterns])
+    matches = ['${BUILDPATH}' + os.path.join(root, filename)[2:] for filename in matches]
+    sources.extend(matches)
+
+#target specific sources
+for root, dirnames, filenames in os.walk(CFGPATH):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in source_patterns])
+    matches = ['${BUILDPATH}' + os.path.join(root, filename)[2:] for filename in matches]
+    sources.extend(matches)
+
+#os specific sources
+for root, dirnames, filenames in os.walk(OSPATH):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in source_patterns])
+    matches = ['${BUILDPATH}' + os.path.join(root, filename)[2:] for filename in matches]
+    sources.extend(matches)
+    
+env.AddLibrary(MAIN_IMG_TAG,'${BUILDPATH}/rsc.lib', sources)

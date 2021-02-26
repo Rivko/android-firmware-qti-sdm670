@@ -1,0 +1,253 @@
+;==================================================================================================
+;
+;   Heap Walker V1.00
+;
+;       Parses a given memheap and gets the statistics
+;       Doesn't pinpoint who is causing the problem.
+;       Provides the following in the summary (further parsed by 
+;       the heapparser script:
+;
+;       Allocation Table:
+;       Blk Address FileHash  Lineno  Allocated   Extra  Free  Last   Pad
+;        No                               Bytes   Bytes  Flag  Flag  Byte
+;
+;                
+;   Procedure:
+;       1) Load the ELF file into T32 Simulator
+;       2) Load the Jtag log or ram dumps (if working with Jtag log)
+;       3) In the T32 Cmd Line : "cd.do qurtos_heapwalker.cmm <Heap Variable> <Output Dir>"
+;       4) Follow the output shown in "AREA ST" to fetch the results.
+;
+;   Note: 
+;       Please use heapwalkparser.pl if this script prompts for a .pl file.
+;       The <Heap Variable> is generlly one of these qurtos heap pointers:
+;       1) qurtos_heap_ptr
+;       2) qurtos_gen_heap_ptr
+;       3) qurtos_island_heap_ptr
+;
+;   Copyright (c) 2016 Qualcomm Technologies, Inc.
+;   All Rights Reserved.
+;   Confidential and Proprietary - Qualcomm Technologies, Inc.
+;==================================================================================================
+
+
+LOCAL &OpT32File
+LOCAL &OpPlFile
+LOCAL &HeapParserScript
+LOCAL &BlockHeaderSize
+
+ENTRY &HeapVar &OpDir
+
+Area.Reset
+Area.Create ST 200. 1000.       ;create an AREA window              
+Area.Select ST                  ;select the AREA window as PRACTICE 
+                                ;input/output window                
+Area ST                         ;display the AREA window            
+&HeapParserScript=OS.PWD();
+&HeapParserScript="&HeapParserScript"+"\heapwalkparser_debug.pl"
+;Set the version of the script:
+; 00.00.01 -- First Walker Script for Mem Heap With CRC enabled
+&CMMVERSION="00.00.01"
+
+print "Heap Walker v 1.0"
+print "-----------------"
+
+if ("&HeapVar"=="")
+(
+        print "Enter the heap variable to be parsed:"
+        enter &HeapVar
+
+)
+;Check if the variable exists else enddo
+;if (!Y.EXIST("&HeapVar"))
+;(
+;   print "&HeapVar is not found in the build !!. Bailing out..."
+;   enddo
+;)
+&MemHeapTypeSize=0
+;&HeapVarSize=Y.SIZEOF("&HeapVar")
+;&MemHeapTypeSize=Y.SIZEOF("tmc_heap")
+
+;if (&MemHeapTypeSize!=&HeapVarSize)
+;(
+;        print "&HeapVar is not a qurtos_mem_heap_type variable!!"
+;        enddo
+;)
+;Check if the variable exists else enddo
+;if (!Y.EXIST("(&HeapVar->first_block)"))
+;(
+;   print "&HeapVar is not found in the build !!. Bailing out..."
+;   enddo
+;)
+
+
+if ("&OpDir"=="")
+(
+        print "Please enter the directory where the results should be stored"
+        dialog.dir *.*
+        ENTRY &OpDir
+)
+if ("&OpDir"=="")
+(
+        print "Output Dir not chosen.. Bailing Out...."
+        enddo
+)
+
+if (!os.file(&HeapParserScript))
+(
+      dialog.file *.pl
+      ENTRY &HeapParserScript
+;      &HeapParserScript="&filename"
+)
+if ("&HeapParserScript"!="")
+(
+  if (!os.file(&HeapParserScript))
+  (
+       print "Parser Script not chosen.. Bailing Out...."
+       enddo
+  )
+)
+else
+(
+  print "Parser Script not chosen.. Bailing Out...."
+  enddo
+)
+&BlockHeaderSize=v.value(sizeof(qurtos_mem_block_header_type))
+&OpT32File="&OpDir\"+"&HeapVar"+"_MemBlkList.txt" ;
+&OpPlFile="&OpDir\"+"&HeapVar"+"_MemCost.txt"
+print "1. Walking through the heap"
+gosub walkHeap &HeapVar &OpDir
+print "2. Running the Parser"
+gosub ProcHeap &OpT32File &OpPlFile &BlockHeaderSize
+print "3. Exit"
+enddo
+;    &stack_end=v.value(((rex_tcb_type *) &tcb_address)->sp)
+
+walkHeap:
+ENTRY &HeapVar &OpDir
+
+; Initialize the block header guard
+ &header_guard= V.VALUE((qurtos_mem_block_header_type*) &HeapVar->block_header_guard)
+ 
+; Initialize the heap buffer pointer
+ &curr_heap_mem=V.VALUE((qurtos_mem_heap_type *) &HeapVar->first_block)
+
+ if (&header_guard==0)
+ (
+   if (&curr_heap_mem==0)
+   (
+     print "Probably the heap pointer '&HeapVar' has not been initialized."
+	 print "Please check the heap variable"
+	 enddo
+   )
+ )
+ &HeapMemBuffer=Y.NAME(D:&curr_heap_mem)
+
+ 
+ OPEN #1 &OpT32File /Create 
+
+
+; Important : Don't change this header! Used by Parser as is.
+
+ WRITE #1 "Blocks List Report" 
+ WRITE #1 "------------------"
+ WRITE #1 "Version             : &CMMVERSION"  
+ WRITE #1 "Heap State Variable : &HeapVar"
+ WRITE #1 "Heap Buffer         : &HeapMemBuffer"
+ WRITE #1 "  "
+; OPEN #1 "c:\temp\heap.txt" /Create
+; WRITE #1 "Block No     Address    CallerPtr  Allocated Bytes  Extra Bytes"
+ WRITE #1 "Block No       Address    CallerPtr        CallerPtr_Symbol                              Allocated   Extra  Free      Last"
+ WRITE #1 "                                                                                         Bytes       Bytes    Flag    Flag"
+ WRITE #1 "=========================================================================================================================="
+
+; print "Block No       Address    CallerPtr    Allocated   Extra  Free  Last"
+; print "                                                Bytes     Bytes  Flag  Flag"
+; print "==============================================================================="
+
+
+ &lastflag=0;
+ &count=1;
+ &writestring=""
+ &debug_info=0x0
+ &debug_info_symbol=""
+ ;&lineno=0
+ &size=0
+ 
+ while (&lastflag!=0x01)
+ (
+ 
+ ; First check for PAD 
+ &pad= V.VALUE(((qurtos_mem_block_header_type*) &curr_heap_mem)->header_guard)
+ ;&pad= 0xaa
+ if (&pad!=&header_guard)
+ (
+   &count=&count-1
+   &curr_heap_mem=&curr_heap_mem-&size
+   print "Heap Corruption Detected!!";
+   print "Possible Overflown Block              : "+format.DECIMAL(8.,&count);
+   print "Overflown Block's Header address      : &curr_heap_mem"; 
+   print "Size allocated to the Overflown Block : "+format.DECIMAL(8., &size);
+   print "Aborting the script"
+   CLOSE #1
+   enddo
+ )
+
+ &size=V.VALUE(((qurtos_mem_block_header_type*) &curr_heap_mem)->forw_offset)
+ &extrabytes=V.VALUE(((qurtos_mem_block_header_type*) &curr_heap_mem)->extra)
+ &freeflag=V.VALUE(((qurtos_mem_block_header_type*) &curr_heap_mem)->free_flag)
+ &lastflag=V.VALUE(((qurtos_mem_block_header_type*) &curr_heap_mem)->last_flag)
+ if (&freeflag!=0x01)
+ (
+	&debug_info=V.VALUE(((qurtos_mem_block_header_type*) &curr_heap_mem)->caller_ptr) 	
+	&debug_info_symbol= Y.NAME(D:&debug_info)
+ )
+ else
+ (
+	&debug_info_symbol=""
+	&debug_info=0
+ )
+ ;&lineno=V.VALUE(((qurtos_mem_block_header_type*) &curr_heap_mem)->linenum)
+ ;WRITE #1 "&count &curr_heap_mem  &hash &lineno &size &extrabytes"
+ &writestring=format.DECIMAL(8.,&count)
+ &writestring="&writestring"+"    0x"+format.HEX(8., &curr_heap_mem)     
+ &writestring="&writestring"+"      0x"+format.HEX(8., &debug_info)
+ if ("&debug_info_symbol"!="")
+ ( 
+	&writestring="&writestring"+"   "+"&debug_info_symbol"
+ )
+ else
+ (
+	&writestring="&writestring"+"    NoSymbol                                     "
+ )
+ &writestring="&writestring"+"   "+format.DECIMAL(8., &size)
+ &writestring="&writestring"+format.DECIMAL(8., &extrabytes)
+ &writestring="&writestring"+"  0x"+format.HEX(2., &freeflag)
+ &writestring="&writestring"+"  0x"+format.HEX(2., &lastflag)
+ WRITE #1 "&writestring"
+ ;print "&writestring"
+ ;WRITE #1 format.DECIMAL(8.,&count)  "      0x" format.HEX(8., &curr_heap_mem) "      0x" format.HEX(4., &hash)  format.DECIMAL(8., &lineno) "   " format.DECIMAL(8., &size) format.DECIMAL(8., &extrabytes) 
+ ;WRITE #1 "Curr Heap : &curr_heap_mem"
+ ;WRITE #1 "Size : &size Extra : &extrabytes hash : &hash &lineno With LastFlag = &lastflag"
+ &curr_heap_mem=&curr_heap_mem+&size
+ ;if (&count==2000)
+ ;if (&lastflag==1)
+ ;(
+ ;       &lastflag=0x01
+ ;)
+ &count=&count+1;
+ )
+
+ ;write #1  "0x" format.HEX(8., &stack_address) "      0x" format.HEX(8.,&stack_value) "      0x" format.HEX(8.,&asmcmd) "            0x" format.HEX(8.,&asmopcode) "           &FuncName"
+
+close #1
+return ;End of walkHeap
+
+ProcHeap:
+ENTRY &OpT32File &OpPlFile &BlockHeaderSize
+print "     Executing perl &HeapParserScript -i &OpT32File -o &OpPlFile -s &BlockHeaderSize"
+os.area "perl &HeapParserScript -i &OpT32File -o &OpPlFile -s &BlockHeaderSize"
+print "     Parser finished executing."
+print "     Please check &OpPlFile and &OpT32File for results"
+return ;End of ProcHeap
+

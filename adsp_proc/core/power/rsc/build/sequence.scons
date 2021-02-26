@@ -1,0 +1,224 @@
+#===============================================================================
+# RSC sequence driver
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+#   Copyright (c) 2016-2017 Qualcomm Technologies, Inc. (QTI).
+#   All Rights Reserved.
+#   Qualcomm Confidential and Proprietary.
+#   Export of this technology or software is regulated by the U.S. Government.
+#   Diversion contrary to U.S. law prohibited.
+#-------------------------------------------------------------------------------
+#  $Header: //components/rel/core.qdsp6/2.1/power/rsc/build/sequence.scons#2 $
+#  $DateTime: 2017/11/16 08:24:49 $
+#===============================================================================
+import os
+import fnmatch
+import itertools
+
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# General setup
+#-------------------------------------------------------------------------------
+#Turn off optimizations for easier debug
+#env.Append(CCFLAGS = " -O0")
+
+#-------------------------------------------------------------------------------
+# Target specific setup
+#-------------------------------------------------------------------------------
+RSC_DEFINES = []
+MAIN_IMG_TAG = ['CORE_Q6_ROOT']
+ISLAND_IMG_TAG = ['CORE_QDSP6_SW']
+
+if env['POWER_SUBSYSTEM'].lower() == 'slpi':
+  RSC_DEFINES += ['RSC_IMAGE_SLPI',                     # Base Image
+                  'RSC_HWIO_BASE=SENSORS',              # Base name
+                  'RSC_SS_BASE=SSC_BASE',               # Subsystem base address
+                  'RSCC_HWIO_PREFIX=SSC_QDSP6SS_RSCC',  # Prefix for RSC child HWIO
+                  'RSCP_HWIO_PREFIX=SSC_RSCC',          # Prefix for RSC parent HWIO
+                 ]
+
+elif env['POWER_SUBSYSTEM'].lower() == 'adsp':
+  RSC_DEFINES += ['RSC_HWIO_BASE=AUDIO',
+                  'RSC_SS_BASE=LPASS_BASE',
+                 ]
+
+  if env['PDC_MSM'] in ['670']:                   # Define correct prefix for bad register/target naming
+    RSC_DEFINES += ['RSCC_HWIO_PREFIX=SSC_QDSP6SS_RSCC',
+                    'RSCP_HWIO_PREFIX=SSC_RSCC',
+                    'RSC_IMAGE_670_ADSP']
+  else:
+    RSC_DEFINES += ['RSCC_HWIO_PREFIX=LPASS_QDSP6SS_RSCC',
+                    'RSCP_HWIO_PREFIX=LPASS_RSCC',
+                    'RSC_IMAGE_ADSP',
+                    'RSC_BR_EVENT_PREFIX=LPASS_AUDIO',   # requires branch event setup
+                   ]
+
+elif env['POWER_SUBSYSTEM'].lower() == 'cdsp':
+  RSC_DEFINES += ['RSC_IMAGE_CDSP',
+                  'RSC_HWIO_BASE=COMPUTE',
+                  'RSC_SS_BASE=TURING_BASE',
+                  'RSCC_HWIO_PREFIX=TURING_QDSP6SS_RSCC',
+                  'RSCP_HWIO_PREFIX=TURING_RSCC',
+                  'RSC_BR_EVENT_PREFIX=TURING_TURING',   # requires branch event setup
+                 ]
+
+elif env['POWER_SUBSYSTEM'].lower() == 'mss':
+  RSC_DEFINES += ['RSC_HWIO_BASE=MODEM',
+                  'RSCC_HWIO_PREFIX=MSS_QDSP6SS_RSCC',
+                  'RSC_SS_BASE=MODEM_TOP_BASE',
+                  'RSCP_HWIO_PREFIX=MSS_RSCC',
+                 ]
+
+else:
+  env.PrintError("RSC unsupported subsystem")
+  exit (1)
+
+#Maximum RSC instance name length used for comparison
+RSC_DEFINES += ['RSC_INSTANCE_MAX_NAME_LEN=6']
+
+#Initial RSC dynamic lpm mode id
+RSC_DEFINES += ['RSC_DYN_INIT_MODE_ID=0xF']
+
+#Maximum value of RSC dynamic lpm mode id
+RSC_DEFINES += ['RSC_MAX_DYN_MODE_ID=0xFF']
+
+#Number of dynamically allocated timestamps for each lpm mode
+#These timestamps purely for debug purpose
+RSC_DEFINES += ['RSC_NUM_TIMESTAMPS=4']
+
+#-------------------------------------------------------------------------------
+# Add target specific defines to build options
+#-------------------------------------------------------------------------------
+env.Append(CPPDEFINES = RSC_DEFINES)
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+COMMON_SRCPATH = ".."
+env.VariantDir('${BUILDPATH}', COMMON_SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'HAL', 
+   'DEBUGTOOLS',
+   'POWER', 
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'POWER_RSC',
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+env.PublishPrivateApi('POWER_RSC', [
+    '${BUILD_ROOT}/core/power/rsc/inc',
+    '${BUILD_ROOT}/core/power/rsc/hal/inc',
+    '${BUILD_ROOT}/core/power/rsc/hal/hwio',
+    '${BUILD_ROOT}/core/power/rsc/hal/hwio/'+env['RSC_SEQ_TARGET'],
+    '${BUILD_ROOT}/core/power/rsc/common',
+  ])
+
+#-------------------------------------------------------------------------------
+# Source directory
+#-------------------------------------------------------------------------------
+# Source directories relative to COMMON_SRCPATH (../)
+
+# Common root directories
+ROOT_SRC_DIRS = [
+  'common',
+  'hal'
+]
+
+#Target specific root directories
+TARGET_SRC_DIRS = [
+  'cfg'
+]
+
+SRC_PATTERNS = ['*.c']
+ISLAND_SRC_PATTERNS = ['*_cmn.c']
+
+sources = []
+island_sources = []
+
+# Add common root files
+for src_path_root in ROOT_SRC_DIRS:
+  for root, dirnames, filenames in os.walk(os.path.join(COMMON_SRCPATH, src_path_root)):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in SRC_PATTERNS])
+
+    island_matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in ISLAND_SRC_PATTERNS])
+    island_matches = [matched_path.replace(COMMON_SRCPATH,'${BUILDPATH}',1) for matched_path in island_matches]
+
+    files = [os.path.join(root, filename) for filename in matches ]
+    files = [matched_path.replace(COMMON_SRCPATH, '${BUILDPATH}',1) for matched_path in files]
+
+    island_files = [os.path.join(root, filename) for filename in island_matches]
+    island_files = [matched_path.replace(COMMON_SRCPATH,'${BUILDPATH}',1) for matched_path in island_files]
+
+    #Remove any island files from main file list
+    for f in island_files:
+      files.remove(f)
+
+    sources.extend(files)
+    island_sources.extend(island_files)
+
+# Add target specific config files
+# Directory layout will always be '[root]/chip/target' from each base directory
+# For example '/config/845/mss'
+for src_path_root in TARGET_SRC_DIRS:
+  for root, dirnames, filenames in os.walk(os.path.join(COMMON_SRCPATH, src_path_root, env['RSC_SEQ_TARGET'], env['POWER_SUBSYSTEM'].lower())):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in SRC_PATTERNS])
+
+    island_matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in ISLAND_SRC_PATTERNS])
+    island_matches = [matched_path.replace(COMMON_SRCPATH,'${BUILDPATH}',1) for matched_path in island_matches]
+
+    files = [os.path.join(root, filename) for filename in matches ]
+    files = [matched_path.replace(COMMON_SRCPATH, '${BUILDPATH}',1) for matched_path in files]
+
+    island_files = [os.path.join(root, filename) for filename in island_matches]
+    island_files = [matched_path.replace(COMMON_SRCPATH,'${BUILDPATH}',1) for matched_path in island_files]
+
+    #Remove any island files from main file list
+    for f in island_files:
+      files.remove(f)
+
+    sources.extend(files)
+    island_sources.extend(island_files)
+
+#-------------------------------------------------------------------------------
+# Create and add Libraries to image
+#-------------------------------------------------------------------------------    
+rsc_lib = env.AddLibrary(MAIN_IMG_TAG,
+                         os.path.join('${BUILDPATH}', 'rsc'),
+                         sources)
+
+common_rsc_lib = env.AddLibrary(MAIN_IMG_TAG,
+                                os.path.join('${BUILDPATH}', 'cmn_rsc'), 
+                                island_sources)
+
+#-------------------------------------------------------------------------------
+# Mark island sections in the librarary
+#-------------------------------------------------------------------------------
+if 'USES_ISLAND' in env and env['POWER_SUBSYSTEM'].lower() not in ['mss']:
+  env.AddIslandLibrary(ISLAND_IMG_TAG, common_rsc_lib)
+
+#-------------------------------------------------------------------------------
+# Adding entry in to RCInit
+#-------------------------------------------------------------------------------
+if 'USES_RCINIT' in env:
+  env.AddRCInitFunc(
+    MAIN_IMG_TAG,
+    {
+      'sequence_group'      : 'RCINIT_GROUP_0',     # required
+      'init_name'           : 'RSCInit',            # required
+      'init_function'       : 'rsc_driver_init',    # required
+      'dependencies'        : ['rpmh_rsc_clocks'],  # required to clock RSCp
+    })

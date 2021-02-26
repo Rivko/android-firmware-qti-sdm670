@@ -1,0 +1,108 @@
+Area.Create IO 80. 200.
+Area.Select IO
+Area IO
+
+local &tcb
+local &ugp
+local &max_threads_tcm
+local &spec_handle
+local &outer_table_ptr
+local &inner_table_ptr
+local &qdi_obj
+local &temp
+local &spec_address
+
+&spec_handle=v.value(((qurt_island_t *)&g_island_spec_id)->qdi_handle)
+print "&temp"
+&max_threads_tcm=v.value(QURTK_MAX_THREADS_IN_TCM)
+&tcb=v.value((QURTK_thread_context *)&QURTK_thread_contexts_tcm[&max_threads_tcm-1])
+&ugp=v.value(((QURTK_thread_context *)&tcb)->ugp)
+&outer_table_ptr=v.value(((QURT_utcb_t *)&ugp)->qdi_info.qurt_qdi_outertable_ptr)
+&temp=&spec_handle>>0x0C
+&inner_table_ptr=&outer_table_ptr+(&temp*0x08)
+&temp=&spec_handle&0xFF
+&qdi_obj=data.long(d:(&inner_table_ptr))
+&spec=&qdi_obj+(&temp*0x04)
+&spec_address=data.long(d:(&spec))
+
+print "Island spec address 0x" &spec_address
+&spec_tlb_base=v.value(((struct island_spec*)&spec_address)->tlbs)
+&spec_tlb_addr=&spec_tlb_base
+print "Dumping TLB entries from Error dump 0x" &spec_tlb_addr
+
+
+print
+print "IDX VALID  GLOBAL ASID  Virt        Phys        Size    XWRU CCCC"
+print "=== =====  ====== ====  =========== =========== ======= ==== ============="
+&idx=0
+
+
+&spec_tlb_num=v.value(((struct island_spec*)&spec_address)->tlb_count)
+
+
+repeat &spec_tlb_num
+(
+
+   &tlb_lo=data.long(d:(&spec_tlb_addr))
+   &tlb_hi=data.long(d:(&spec_tlb_addr+4))
+
+   &valid=&tlb_hi>>0x1f
+   &global=(&tlb_hi>>0x1e)&0x1
+   &asid=(&tlb_hi>>14)&0x7f
+   &virt_addr=&tlb_hi&0xfffff
+
+   &XWRU_bits=(&tlb_lo>>0x1c)&0xf
+   &CCCC_bits=(&tlb_lo>>0x18)&0xf
+   &phys_addr=(&tlb_lo&0xffffff)>>1
+   &size_bits=&tlb_lo&0x7f
+
+   if (&valid==1)
+   (
+      ; 4K is the smallest page size
+      &size=0x1000
+      while ((&size_bits&0x1)==0)
+      (
+         &size=4*&size
+         &size_bits=&size_bits>>1
+      )
+
+      if (&size>0x1000)
+         &phys_addr=&phys_addr&0xfffffff0
+      if (&size>0x1000)
+         &phys_addr=&phys_addr&0xffffff00
+
+      if (&CCCC_bits==0x6)
+         &cache_string="uncached"
+      else if (&CCCC_bits==0x4)
+         &cache_string="device"
+      else if (&CCCC_bits==0x7)
+         &cache_string="Write-back"
+      else
+         &cache_string="----"
+
+      print FORMAT.DECIMAL(3., &idx) "  " &valid  "     "   &global "   " FORMAT.DECIMAL(6., &asid) "   0x" FORMAT.HEX(5., &virt_addr) "0000 " "0x" FORMAT.HEX(5., &phys_addr) "0000 " FORMAT.HEX(7., &size) " " FORMAT.BINARY(4., &XWRU_bits) " " FORMAT.BINARY(4., &CCCC_bits) " - &cache_string"
+   )
+   else
+   (
+      print FORMAT.DECIMAL(3., &idx) "  " &valid
+   )
+;   &tlb_entry=&tlb_entry+8.
+   &idx=&idx+1
+   &spec_tlb_addr=&spec_tlb_addr+8.
+)
+
+print 
+&spec_interrupt_base=v.value(((struct island_spec*)&spec_address)->interrupt_list)
+print "Dumping TLB entries from Error dump 0x" &spec_interrupt_base
+print "Interrupts supported in Island"
+&spec_interrupt_num=v.value(((struct island_spec*)&spec_address)->interrupt_count)
+repeat &spec_interrupt_num
+(
+    &interrupt_no=data.long(d:(&spec_interrupt_base))
+    print FORMAT.HEX(3.,&interrupt_no) " --> " "(" FORMAT.DECIMAL(1.,&interrupt_no) ")"
+    &spec_interrupt_base=&spec_interrupt_base+4	
+)
+print "Done"
+
+enddo
+

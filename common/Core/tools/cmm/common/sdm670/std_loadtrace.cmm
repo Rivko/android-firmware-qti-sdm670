@@ -1,0 +1,78 @@
+//============================================================================
+//  Name:                                                                     
+//    std_loadtrace.cmm 
+//
+//  Description:                                                              
+//    Common script to load trace ( ETB ) data
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who     		what, where, why
+// --------   ---     		---------------------------------------------------------
+// 08/08/2014 AJCheriyan    Updated for Elessar
+// 10/15/2012 AJCheriyan    Created for B-family 
+
+// Support the following arguments.
+// ARG0 - Chipset
+// ARG1 - Type of the trace ( ETB currently supported)
+// ARG2 - Processor for which trace has been collected (one of the many sub-systems)
+
+ENTRY &ARGO &ARG1 &ARG2
+
+LOCAL &CHIPSET &TRACE &SUBSYS
+
+&CHIPSET=STRING.UPPER("&ARG0")
+&TRACE=STRING.UPPER("&ARG1")
+&SUBSYS=STRING.UPPER("&ARG2")
+
+SETUPSIM:
+IF ("&TRACE"=="ETB")
+(
+	IF ("&SUBSYS"=="APPS")
+	(
+	 	SYSTEM.CPU CORTEXA53
+		SYSTEM.CONFIG CORENUMBER 8.
+		CORE.NUM 8.
+        
+        SYSTEM.CONFIG COREBASE  0x80810000 0x80910000 0x80A10000 0x80B10000 0x80C10000 0x80D10000 0x80E10000 0x80F10000
+        SYSTEM.CONFIG ETMBASE   0X80840000 0x80940000 0x80A40000 0x80B40000 0X80C40000 0x80D40000 0x80E40000 0x80F40000
+        SYSTEM.CONFIG TPIUBASE  0x80320000
+        SYSTEM.CONFIG CTIBASE   0x80820000 0x80920000 0x80A20000 0x80B20000 0x80C20000 0x80D20000 0x80E20000 0x80F20000
+
+
+
+
+		SYSTEM.UP
+
+		ETM.ON
+		ETM.CONTEXTID OFF
+		ETM.CYCLEACCURATE OFF
+        ETM.STALL OFF
+	
+		ETM.TIMESTAMPS OFF
+		ETM.PORTMODE WRAPPED
+		ETM.SMARTTRACE OFF
+		
+		// Load the ELF file
+		D.LOAD.ELF *.*
+		// Enable Flowtrace
+		LA.MODE FLOWTRACE ON
+		// Import ETB dump
+		LA.IMPORT.ETB *.bin
+
+		LA.LIST ALL TP TPC
+
+
+	)
+)
+
+
+
+

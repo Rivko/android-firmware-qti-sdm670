@@ -1,0 +1,1045 @@
+/************************************************
+ * File: QCA_VS_Commands.dh
+ * QCA Bluetooth Firmware Vendor Commands.
+ *
+ * Copyright (c) 2015-2017 Qualcomm Atheros, Inc.
+ * All Rights Reserved.
+ * Qualcomm Atheros Confidential and Proprietary.
+************************************************/
+
+TABLE tMyCmdTable APPENDS_AND_OVERWRITES ogf_groups
+    { 0x3f  "Vendor Specific"   "Vendor Specific"   0   gQC_VS_Command }
+ENDTABLE
+
+TABLE tMyEventTable APPENDS_AND_OVERWRITES events
+    { 0x0e  "Command Complete"      "Command Complete"      0   gEvt_Cmd_Cmpl }
+    { 0xff  "Vendor Specific Event" "Vendor Specific Event" 0   gQC_VS_HCIEvents }
+ENDTABLE
+
+TABLE tMyTable APPENDS_AND_OVERWRITES cmd_cmplete_event_ogf_groups
+    { 0x3f  "Vendor Specific"   "Vendor Specific"   0    gNoOp }
+ENDTABLE
+
+TABLE tCommandOCFs
+{ 0xfc0a "VS_A2DP_Cmd" "A2DP_Cmd" 0 gA2dpCmd}
+{ 0xfc0c "VS_Debug_Cmd" "VS_Debug_Cmd" 0 gDebugCmd}
+{ 0xfc17 "VS_HostLogCtrl" "HostLogCtrl_Cmd" 0 gHostLogCtrlCmd}
+{ 0xfc1b "VS_Enable_Link_Status_Tracking_Cmd" "VS_Enable_Link_Status_Tracking_Cmd" 0 gA2dpLinkQualCmd}
+{ 0xfc1c "VS_Loopback_Cmd" "Loopback_Cmd" 0 gLoopbackCmd}
+{ 0xfc1f "VS_WiPower_Cmd" "WiPower_Cmd" 0 gWiPowerCmd}
+{ 0xfc21 "VS_Tracer_Cmd"  "Tracer_Cmd" 0 gTracerCmd}
+{ 0xfcda "VS_Link_Power_Control_Req" "Link_Power_Control_Req_Cmd" 0 gLinkPowerCtrlCmd}
+{ 0xfde9 "VS_trunc_page_Cmd" "VS_trunc_page_Cmd" 0 gTruncPageOffloadCmd }
+{ default "Undecoded" "Undecoded" 0 gDoUndecodedOpCode }
+ENDTABLE
+
+TABLE tEventOCFs
+{ 0xfc0a "VS_A2DP_Evt" "A2DP_Evt" 0 gA2dpEvt}
+{ 0xfc0c "VS_Debug_Evt" "VS_Debug_Evt" 0 gDebugEvt}
+{ 0xfc17 "VS_HostLogCtrl" "HostLogCtrl" 0 gHostLogCtrlEvt}
+{ 0xfc1b "VS_Enable_Link_Status_Tracking_Cmd" "VS_Enable_Link_Status_Tracking_Cmd" 0 gA2dplinkQualStatusEvt}
+{ 0xfc1c "VS_Loopback_Cmd" "Loopback_Cmd" 0 gLoopbackEvt}
+{ 0xfc1f "VS_WiPower_Evt" "WiPower_Evt" 0 gWiPowerEvt}
+{ 0xfc21 "VS_Tracer_Cmd"  "Tracer_Cmd" 0 gTracerEvt}
+{ 0xfcda "VS_Link_Power_Control_Req_Evt" "Link_Power_Control_Req_Evt" 0 gLinkPowerCtrlEvt}
+{ 0xfde9 "VS_trunc_page_Evt" "VS_trunc_page_Evt" 0 gTruncPageOffloadEvt }
+{ default "Undecoded" "Undecoded" 0 gDoUndecodedOpCode }
+ENDTABLE
+
+TABLE tHciEvents
+{0x16 "VS_WiPower_HCI_Event" "VS_WiPower_HCI_Event" 0 gWipowerDataEvt }
+{0x17 "VS_WiPower_HCI_Event" "VS_WiPower_HCI_Event" 0 gWipowerPowerApplyEvt }
+{0x18 "VS_WiPower_HCI_Event" "VS_WiPower_HCI_Event" 0 gWipowerChargingStatusEvt }
+{0x19 "VS_WiPower_HCI_Event" "VS_WiPower_HCI_Event" 0 gWipowerhandoffEvt }
+{0x47 "VS_Link_Status_Tracking_Sub_Event" "VS_Link_Status_Tracking_Sub_Event" 0 gA2dplinkQualEvt}
+{0x8d "VS_Host_Report_Event" "VS_Host_Report_Event" 0 gHostReportEvt }
+{0x95 "VS_Loopback_Event"    "VS_Loopback_Event"    0 gLoopbackDataEvt }
+{0x0b3 "VS_trunc_page_Complete_Evt" "VS_trunc_page_Complete_Evt" 0 gTruncPageOffloadCmpEvt }
+ENDTABLE
+
+GROUP gEvt_Cmd_Cmpl
+{
+     GROUP event_0e;
+
+     GROUP gVS_Evt_CC IF(FieldIs EqualTo 0x3f ogf) "Return Parameters"
+     {
+         GROUP  gQC_VS_Event ;
+     }
+}
+
+GROUP gQC_VS_HCIEvents
+{
+     FIELD hcievent_type (Fixed 1) (TABLE tHciEvents) IN_SUMMARY Event Event TAG (Tag "HCI:Event")
+     BRANCH (FromTable tHciEvents hcievent_type)
+     FIELD DataHCIEvents (toendoflayer) IF(MoreBytes) (stringofhex) "This is unparsed data "
+}
+
+
+GROUP gQC_VS_Event
+{
+     FIELD QC_VS_evt_ocf START_BIT (Move -14 Bits) (Fixed 2) RETRIEVE (AndMask 0x3ff) (Constant "OCF:") ALSO (Hex) IN_SUMMARY "Opcode Command" Command VERIFY (FieldIsBetween 0x0000 0x03FF AsHex) TAG (Tag "HCI:Command")
+     FIELD cmd_tot_len ;
+     FIELD Event_OCFs (fixed 0) RETRIEVE(Storefield opcode) (table tEventOCFs) IN_SUMMARY "Opcode Command" "Op Code"
+     BRANCH (FromTable tEventOCFs Event_OCFs)
+     FIELD DataVSEvents (toendoflayer) IF(MoreBytes) (stringofhex) "This is unparsed data "
+}
+
+
+GROUP gQC_VS_Command
+{
+     FIELD QC_VS_cmd_ocf START_BIT (Move -14 Bits) (Fixed 2) RETRIEVE (AndMask 0x3ff) (Constant "Vendor Cmd.") ALSO (Hex) IN_SUMMARY "Opcode Command" Command VERIFY (FieldIsBetween 0x0000 0x03FF AsHex) TAG (Tag "HCI:Command")
+     FIELD cmd_tot_len ;
+     FIELD Command_OCFs (fixed 0) RETRIEVE(Storefield opcode) (table tCommandOCFs) IN_SUMMARY "Opcode Command" "Op Code"
+     BRANCH (FromTable tCommandOCFs Command_OCFs)
+     FIELD DataVSCmd (toendoflayer) IF(MoreBytes) (stringofhex) "This is unparsed data "
+}
+
+GROUP gDoUndecodedOpCode "Unknown Data"
+{
+     FIELD DataUnk (toendoflayer) (stringofhex) "Unknown Data"
+}
+
+GROUP gNoOp
+{
+}
+
+/******************************************************************************
+ *                          Decoder for OCF 0x0A                             *
+ ******************************************************************************/
+GROUP gA2dpCmd
+{
+     FIELD gA2dpCmd_opcode (Fixed 1 byte) (Table tA2dpSubOpcodes) "SubOpcode"
+     BRANCH (FromTable tA2dpSubOpcodes gA2dpCmd_opcode)
+     FIELD gA2dp_unparsed (toendoflayer) IF(MoreBytes) (stringofhex) "This is unparsed data"
+
+}
+
+TABLE tA2dpSubOpcodes
+{0x01 "HCI_VS_READ_A2DP_CFG" "HCI_VS_READ_A2DP_CFG" 0 gA2dpCmd_ReadA2dpCfg}
+{0x02 "HCI_VS_WRITE_SBC_CFG" "HCI_VS_WRITE_SBC_CFG" 0 gA2dpCmd_WriteSbcCfg}
+{0x03 "HCI_VS_WRITE_A2DP_MEDIA_CHANNEL_CFG" "HCI_VS_WRITE_A2DP_MEDIA_CHANNEL_CFG" 0 gA2dpCmd_WriteMediaChannelCfg}
+{0x04 "HCI_VS_START_A2DP_MEDIA" "HCI_VS_START_A2DP_MEDIA" 0 gA2dpCmd_StartA2dpMedia}
+{0x05 "HCI_VS_STOP_A2DP_MEDIA" "HCI_VS_STOP_A2DP_MEDIA" 0 gA2dpCmd_StopA2dpMedia}
+{0x06 "HCI_VS_WRITE_SUGGESTED_BITRATE" "HCI_VS_WRITE_SUGGESTED_BITRATE" 0 gA2dpCmd_WriteSuggestedBitrate}
+{0x07 "HCI_VS_A2DP_TRANSPORT_CFG" "HCI_VS_A2DP_TRANSPORT_CFG" 0 gA2dpCmd_A2dpTransportCfg}
+{0x08 "HCI_VS_WRITE_SCMS_T_CP" "HCI_VS_WRITE_SCMS_T_CP" 0 gA2dpCmd_WriteScmsT_CP}
+{0x09 "HCI_VS_SELECTED_CODEC" "HCI_VS_SELECTED_CODEC" 0 gA2dpCmd_SelectedCodec}
+{0x0A "HCI_VS_WRITE_A2DP_CFG" "HCI_VS_WRITE_A2DP_CFG" 0 gA2dpCmd_WriteA2dpCfg}
+{0x10 "HCI_VS_A2DP_CODEC_INFO" "HCI_VS_A2DP_CODEC_INFO" 0 gA2dpCmd_CodecInfo}
+{0x11 "HCI_GET_SCRAMBLING_FREQS" "HCI_GET_SCRAMBLING_FREQS" 0 gScramblingSuppSampleFreq}
+{0x12 "HCI_SCRAMBLE_A2DP_MEDIA" "HCI_SCRAMBLE_A2DP_MEDIA" 0 gEnableScrambling}
+ENDTABLE
+
+TABLE tA2dpCodecType
+    {0, "SBC"}
+    {2, "AAC"}
+    {4, "LDAC"}
+    {8, "APT-X"}
+    {9, "APT-X HD"}
+ENDTABLE
+
+TABLE tA2dpStreamType
+    {10, "PCM"}
+    {0,  "SBC"}
+    {2,  "AAC"}
+    {8,  "APT-X"}
+    {9,  "APT-X HD"}
+ENDTABLE
+
+TABLE tA2dpTransportType
+    {0, "Slimbus"}
+ENDTABLE
+
+GROUP gA2dpCmd_ReadA2dpCfg "Read A2DP Config"
+{
+     FIELD gA2dpCmd_ReadA2dpCfg_1 (toendoflayer) IF(MoreBytes) (stringofhex) "This is unparsed data "
+
+}
+
+GROUP gA2dpCmd_WriteSbcCfg "Write SBC Config"
+{
+     FIELD gA2dpCmd_WriteSbcCfg_SbcCfg (Fixed 4 byte) (Hex) "SBC Config"
+     FIELD gA2dpCmd_WriteSbcCfg_MaxLatency (Fixed 1 byte) (Decimal) "Max Latency"
+     FIELD gA2dpCmd_WriteSbcCfg_DelayReportEnable (Fixed 1 byte) (Decimal) "Delay Report Enable"
+     FIELD gA2dpCmd_WriteSbcCfg_ScmsT_Enable (Fixed 1 byte) (Decimal) "SCMS_T Enable"
+     FIELD gA2dpCmd_WriteSbcCfg_ScmsT_Header (Fixed 1 byte) (Decimal) "SCMS_T Header"
+}
+
+GROUP gA2dpCmd_WriteMediaChannelCfg "Write Media Channel Config"
+{
+     FIELD gA2dpCmd_WriteMediaChannelCfg_A2dpHandle (Fixed 1 byte) (Decimal) "A2DP Handle"
+     FIELD gA2dpCmd_WriteMediaChannelCfg_HciConnHandle (Fixed 2 byte) (Decimal) "Hci Conn Handle"
+     FIELD gA2dpCmd_WriteMediaChannelCfg_L2capCID (Fixed 2 byte) (Decimal) "L2CAP CID"
+     FIELD gA2dpCmd_WriteMediaChannelCfg_L2capMTU (Fixed 2 byte) (Decimal) "L2CAP MTU"
+}
+
+GROUP gA2dpCmd_StartA2dpMedia "A2DP Start Media"
+{
+     FIELD gA2dpCmd_StartA2dpMedia_A2dpHandle (Fixed 1 byte) (Decimal) "A2DP Handle"
+}
+
+GROUP gA2dpCmd_StopA2dpMedia "A2DP Stop Media"
+{
+     FIELD gA2dpCmd_StopA2dpMedia_A2dpHandle (Fixed 1 byte) (Decimal) "A2DP Handle"
+}
+
+GROUP gA2dpCmd_WriteSuggestedBitrate "A2DP Write Suggested Bitrate"
+{
+     FIELD gA2dpCmd_WriteSuggestedBitrate_bitrate (Fixed 2 byte) (Decimal) "Bitrate"
+}
+
+GROUP gA2dpCmd_A2dpTransportCfg "A2DP Transport Config"
+{
+     FIELD gA2dpCmd_A2dpTransportCfg_Transport (Fixed 1 byte) (TABLE tA2dpTransportType) "Transport"
+     FIELD gA2dpCmd_A2dpTransportCfg_StreamFormat (Fixed 1 byte) (TABLE tA2dpStreamType) "Stream Format"
+}
+
+GROUP gA2dpCmd_WriteScmsT_CP "Write SCMS_T CP"
+{
+     FIELD gA2dpCmd_WriteScmsT_CP_ScmsT_Header (Fixed 1 byte) (Decimal) "SCMS_T Header"
+}
+
+
+GROUP gA2dpCmd_SelectedCodec "A2DP Selected Codec"
+{
+     FIELD gA2dpCmd_SelectedCodec_Codec (Fixed 1 byte) (TABLE tA2dpCodecType) "Codec"
+     FIELD gA2dpCmd_SelectedCodec_MaxLatency (Fixed 1 byte) (Decimal) "Max Latency"
+     FIELD gA2dpCmd_SelectedCodec_DelayReportEnable (Fixed 1 byte) (Decimal) "Delay Report Enable"
+     FIELD gA2dpCmd_SelectedCodec_ScmsT_Enable (Fixed 1 byte) (Decimal) "SCMS_T Enable"
+     FIELD gA2dpCmd_SelectedCodec_ScmsT_Header (Fixed 1 byte) (Decimal) "SCMS_T Header"
+     FIELD gA2dpCmd_SelectedCodec_SamplingFreq (Fixed 2 byte) (Decimal) "Sampling Freq"
+     FIELD gA2dpCmd_SelectedCodec_SBC_Subbands (Fixed 1 Byte) IF (Fieldis Equalto 0 gA2dpCmd_SelectedCodec_Codec) (Decimal) "SBC Subbands"
+     FIELD gA2dpCmd_SelectedCodec_SBC_BlockLen (Fixed 1 Byte) IF (Fieldis Equalto 0 gA2dpCmd_SelectedCodec_Codec) (Decimal) "SBC Block Len"
+}
+
+
+TABLE tSBCSampleRate
+    {0x01, "48KHz"}
+    {0x02, "44.1KHz"}
+    {0x04, "32KHz"}
+    {0x08, "16KHz"}
+ENDTABLE
+
+TABLE tSBCChannelMode
+    {0x01, "Joint Stereo"}
+    {0x02, "Stereo"}
+    {0x04, "Dual"}
+    {0x08, "Mono"}
+ENDTABLE
+
+TABLE tSBCSubband
+    {0x04, "8"}
+    {0x08, "4"}
+ENDTABLE
+
+TABLE tSBCBlockLength
+    {0x01, "16 Blocks"}
+    {0x02, "12 Blocks"}
+    {0x04, "8 Blocks"}
+    {0x08, "4 Blocks"}
+ENDTABLE
+
+TABLE tAACObjectType
+    {0x01, "MPEG-4 AAC SCALABLE"}
+    {0x02, "MPEG-4 AAC LTP"}
+    {0x04, "MPEG-4 AAC LC"}
+    {0x08, "MPEG-2 AAC LC"}
+ENDTABLE
+
+TABLE tAACSampleRate
+    {0x0100, "16KHz"}
+    {0x0200, "12KHz"}
+    {0x0400, "11.025KHz"}
+    {0x0800, "8KHz"}
+    {0x0010, "44.1KHz"}
+    {0x0020, "32KHz"}
+    {0x0040, "24KHz"}
+    {0x0080, "22.05KHz"}
+    {0x0001, "96KHz"}
+    {0x0002, "88.2KHz"}
+    {0x0004, "64KHz"}
+    {0x0008, "48KHz"}
+ENDTABLE
+
+TABLE tAACChannelMode
+    {0x04, "Channel 2"}
+    {0x08, "Channel 1"}
+ENDTABLE
+
+TABLE tAptxSampleRate
+    {0x01, "48KHz"}
+    {0x02, "44.1KHz"}
+ENDTABLE
+
+TABLE tAptxChannelMode
+    {0x01, "Mono"}
+    {0x02, "Stereo"}
+ENDTABLE
+
+GROUP gA2dpCmd_WriteA2dpCfg "Write A2DP Configurations"
+{
+     FIELD gA2dpCmd_WriteA2dpCfg_Codec                          (Fixed 1 byte) (TABLE tA2dpCodecType) "Codec"
+     FIELD gA2dpCmd_WriteA2dpCfg_Transport                      (Fixed 1 byte) (TABLE tA2dpTransportType) "Transport"
+     FIELD gA2dpCmd_WriteA2dpCfg_StreamFormat                   (Fixed 1 byte) (TABLE tA2dpStreamType) "Stream Format"
+     FIELD gA2dpCmd_WriteA2dpCfg_A2dpHandle                     (Fixed 1 byte) (Decimal) "A2DP Handle"
+     FIELD gA2dpCmd_WriteA2dpCfg_MaxLatency                     (Fixed 1 byte) (Decimal) "Max Latency"
+     FIELD gA2dpCmd_WriteA2dpCfg_DelayReportEnable              (Fixed 1 byte) (Decimal) "Delay Report Enable"
+     FIELD gA2dpCmd_WriteA2dpCfg_ScmsT_Enable                   (Fixed 1 byte) (Decimal) "SCMS_T Enable"
+     FIELD gA2dpCmd_WriteA2dpCfg_ScmsT_Header                   (Fixed 1 byte) (Decimal) "SCMS_T Header"
+     FIELD gA2dpCmd_WriteA2dpCfg_SamplingFreq                   (Fixed 2 byte) (Decimal) "Sampling Freq"
+     FIELD gA2dpCmd_WriteA2dpCfg_HciConnHandle                  (Fixed 2 byte) (Decimal) "Hci Conn Handle"
+     FIELD gA2dpCmd_WriteA2dpCfg_L2capCID                       (Fixed 2 byte) (Decimal) "L2CAP CID"
+     FIELD gA2dpCmd_WriteA2dpCfg_L2capMTU                       (Fixed 2 byte) (Decimal) "L2CAP MTU"
+
+     FIELD gA2dpCmd_WriteA2dpCfg_CodecInfo_LOSC                 (Fixed 1 byte) (Hex) "LOSC"
+     FIELD gA2dpCmd_WriteA2dpCfg_CodecInfo_MediaType            (Fixed 1 byte) (Hex) "Media type"
+     FIELD gA2dpCmd_WriteA2dpCfg_CodecInfo_Codec                (Fixed 1 byte) (Hex) "Codec"
+     FIELD gA2dpCmd_WriteA2dpCfg_CodecInfo_SampleRate           (Fixed 4 Bits) IF (Fieldis Equalto 0 gA2dpCmd_WriteA2dpCfg_CodecInfo_Codec) RETRIEVE (AndMask 0x0F) (TABLE tSBCSampleRate) "SampleRate"
+     FIELD gA2dpCmd_WriteA2dpCfg_CodecInfo_ChanMode             (Fixed 4 Bits) IF (Fieldis Equalto 0 gA2dpCmd_WriteA2dpCfg_CodecInfo_Codec) RETRIEVE (AndMask 0x0F) (TABLE tSBCChannelMode) "ChannelMode"
+     FIELD gA2dpCmd_WriteA2dpCfg_CodecInfo_BlkLen               (Fixed 4 Bits) IF (Fieldis Equalto 0 gA2dpCmd_WriteA2dpCfg_CodecInfo_Codec) RETRIEVE (AndMask 0x0F) (TABLE tSBCBlockLength) "BlockLength"
+     FIELD gA2dpCmd_WriteA2dpCfg_CodecInfo_Subband              (Fixed 4 Bits) IF (Fieldis Equalto 0 gA2dpCmd_WriteA2dpCfg_CodecInfo_Codec) RETRIEVE (AndMask 0x0C) (TABLE tSBCSubband) "Subband"
+     FIELD gA2dpCmd_WriteA2dpCfg_CodecInfo_MinBitpool           (Fixed 1 Byte) IF (Fieldis Equalto 0 gA2dpCmd_WriteA2dpCfg_CodecInfo_Codec) (Decimal) "Minimum Bitpool"
+     FIELD gA2dpCmd_WriteA2dpCfg_CodecInfo_MaxBitpool           (Fixed 1 Byte) IF (Fieldis Equalto 0 gA2dpCmd_WriteA2dpCfg_CodecInfo_Codec) (Decimal) "Maximum Bitpool"
+
+     FIELD gA2dpCmd_WriteA2dpCfg_CodecInfo_AACObjectType        (Fixed 4 Bits)  IF (Fieldis Equalto 2 gA2dpCmd_WriteA2dpCfg_CodecInfo_Codec) RETRIEVE (AndMask 0x0F) (TABLE tAACObjectType) "ObjectType"
+     FIELD gA2dpCmd_WriteA2dpCfg_CodecInfo_AACreserved          (Fixed 4 Bits)  IF (Fieldis Equalto 2 gA2dpCmd_WriteA2dpCfg_CodecInfo_Codec) (Hex) SUPPRESS_DETAIL
+     FIELD gA2dpCmd_WriteA2dpCfg_CodecInfo_AACSampleRate        (Fixed 12 Bits) IF (Fieldis Equalto 2 gA2dpCmd_WriteA2dpCfg_CodecInfo_Codec) RETRIEVE (AndMask 0x0FFF) (TABLE tAACSamplerate) "SampleRate"
+     FIELD gA2dpCmd_WriteA2dpCfg_CodecInfo_AACChanMode          (Fixed 4 Bits)  IF (Fieldis Equalto 2 gA2dpCmd_WriteA2dpCfg_CodecInfo_Codec) RETRIEVE (AndMask 0x0F) (TABLE tAACChannelMode) "ChannelMode"
+
+     FIELD gA2dpCmd_WriteA2dpCfg_CodecInfo_VendorId             (Fixed 4 Byte) IF (Fieldis Equalto 0xFF gA2dpCmd_WriteA2dpCfg_CodecInfo_Codec) (Hex) "NonA2DP_CodecType Vendor Id"
+     FIELD gA2dpCmd_WriteA2dpCfg_CodecInfo_CodecId              (Fixed 2 Byte) IF (Fieldis Equalto 0xFF gA2dpCmd_WriteA2dpCfg_CodecInfo_Codec) (Hex) "NonA2DP_CodecType Codec Id"
+     FIELD gA2dpCmd_WriteA2dpCfg_CodecInfo_AptxSampleRate       (Fixed 4 Bits) IF (Fieldis Equalto 0xFF gA2dpCmd_WriteA2dpCfg_CodecInfo_Codec) RETRIEVE (AndMask 0x0F) (TABLE tAptxSampleRate) "SampleRate"
+     FIELD gA2dpCmd_WriteA2dpCfg_CodecInfo_AptxChanMode         (Fixed 4 Bits) IF (Fieldis Equalto 0xFF gA2dpCmd_WriteA2dpCfg_CodecInfo_Codec) RETRIEVE (AndMask 0x0F) (TABLE tAptxChannelMode) "ChannelMode"
+
+     FIELD gA2dpCmd_WriteA2dpCfg_unparsed (toendoflayer) IF(MoreBytes) (stringofhex)   "This is unparsed data"
+}
+
+GROUP gA2dpCmd_CodecInfo "A2DP Codec Info"
+{
+     FIELD gA2dpCmd_CodecInfo_Codec             (Fixed 1 byte) (TABLE tA2dpCodecType) "Codec_Type"
+     FIELD gA2dpCmd_CodecInfo_ReqTpt            (Fixed 2 byte) (Decimal)              "Required Throughput_Kbps"
+     FIELD gA2dpCmd_CodecInfo_MaxLatency        (Fixed 1 byte) (Decimal)              "Maximum Latency"
+     FIELD gA2dpCmd_CodecInfo_ConnHandle        (Fixed 2 byte) (Decimal)              "Connection Handle"
+}
+
+GROUP gA2dpEvt
+{
+     FIELD gA2dpEvt_status (Fixed 1 byte) (Decimal) "Status"
+     FIELD gA2dpEvt_opcode (Fixed 1 Bytes) (Table tA2dpEvtSubOpcodes) "SubOpcode"
+     BRANCH (FromTable tA2dpEvtSubOpcodes gA2dpEvt_opcode)
+     FIELD gA2dpEvt_unparsed (toendoflayer) IF(MoreBytes) (stringofhex) "This is unparsed data"
+}
+
+
+TABLE tA2dpEvtSubOpcodes
+{0x01 "HCI_VS_READ_A2DP_CFG" "HCI_VS_READ_A2DP_CFG" 0 gA2dpEvt_ReadA2dpCfg}
+{0x02 "HCI_VS_WRITE_SBC_CFG"}
+{0x03 "HCI_VS_WRITE_A2DP_MEDIA_CHANNEL_CFG"}
+{0x04 "HCI_VS_START_A2DP_MEDIA"}
+{0x05 "HCI_VS_STOP_A2DP_MEDIA"}
+{0x06 "HCI_VS_WRITE_SUGGESTED_BITRATE"}
+{0x07 "HCI_VS_A2DP_TRANSPORT_CFG"}
+{0x08 "HCI_VS_WRITE_SCMS_T_CP"}
+{0x09 "HCI_VS_SELECTED_CODEC"}
+{0x0A "HCI_VS_WRITE_A2DP_CONFIG"}
+{0x10 "HCI_VS_A2DP_CODEC_INFO"}
+{0x11 "HCI_GET_SCRAMBLING_FREQS" "HCI_GET_SCRAMBLING_FREQS" 0 gScramblingSuppSampleFreqEvt}
+{0x12 "HCI_SCRAMBLE_A2DP_MEDIA"}
+ENDTABLE
+
+GROUP gA2dpEvt_ReadA2dpCfg "Read A2DP Config"
+{
+     FIELD gA2dpEvt_ReadA2dpCfg_NumHandles (Fixed 1 byte) (Decimal) "Supported Num Handles"
+     FIELD gA2dpEvt_ReadA2dpCfg_SupportedSbcConfig (Fixed 4 byte) (Hex) "Supported SBC Config"
+     FIELD gA2dpEvt_ReadA2dpCfg_ScmsT_Supported (Fixed 1 byte) (Decimal) "SCMS_T Supported"
+     FIELD gA2dpEvt_ReadA2dpCfg_HostLatencySupported (Fixed 1 byte) (Decimal) "Supported SBC Config"
+}
+
+GROUP gA2dpEvt_WriteSbcCfg "Write SBC Config"
+{
+}
+
+GROUP gA2dpEvt_WriteMediaChannelCfg "Write Media Channel Config"
+{
+}
+
+GROUP gA2dpEvt_StartA2dpMedia "A2DP Start Media"
+{
+}
+
+GROUP gA2dpEvt_StopA2dpMedia "A2DP Stop Media"
+{
+}
+
+GROUP gA2dpEvt_WriteSuggestedBitrate "A2DP Write Suggested Bitrate"
+{
+}
+
+GROUP gA2dpEvt_A2dpTransportCfg "A2DP Transport Config"
+{
+}
+
+GROUP gA2dpEvt_WriteScmsT_CP "Write SCMS_T CP"
+{
+}
+
+GROUP gA2dpEvt_SelectedCodec "A2DP Selected Codec"
+{
+}
+/******************************************************************************
+ *                          Decoder for OCF 0x0C                              *
+ ******************************************************************************/
+TABLE tDebugSubopcodeTable
+    {0x00    "HCI_VS_DEBUG_RMC_REG_READ_CMD"}
+    {0x01    "HCI_VS_DEBUG_RMC_REG_WRITE_CMD"}
+    {0x02    "HCI_VS_DEBUG_MEM_READ_CMD"}
+    {0x03    "HCI_VS_DEBUG_MEM_WRITE_CMD"}
+    {0x04    "HCI_VS_DEBUG_RM_REG_READ_CMD"}
+    {0x05    "HCI_VS_DEBUG_RM_REG_WRITE_CMD"}
+    {0x06    "HCI_VS_DEBUG_READ_RESET_REASON_CMD"}
+    {0x07    "HCI_VS_DEBUG_SSBI_REG_PEEK_CMD"}
+    {0x08    "HCI_VS_DEBUG_SSBI_REG_POKE_CMD"}
+    {0x09    "HCI_VS_DEBUG_RM_READ_CAL_RES_CMD"}
+    {0x0A    "HCI_VS_DEBUG_RM_READ_RSSI_CMD"}
+    {0x0B    "HCI_VS_DEBUG_RM_DIG_PIN_CONN_TEST_CMD"}
+    {0x26    "HCI_VS_DEBUG_ERROR_FATAL_CMD"}
+    {0x27    "HCI_VS_DEBUG_EXCEPTION_DIV_ZERO_CMD"}
+    {0x28    "HCI_VS_DEBUG_EXCEPTION_NULL_PTR_CMD"}
+    {0x29    "HCI_VS_DEBUG_WDOG_BITE_CMD"}
+    {0x32    "HCI_VS_DEBUG_FORCE_BUCK_REGULATOR_OFF_CMD"}
+    {0x33    "HCI_VS_DEBUG_SET_PMU5_REG_CMD"}
+    {0x34    "HCI_VS_DEBUG_CALCULATE_ROM_CRC_CMD"}
+    {0x35    "HCI_VS_DEBUG_CXM_LOG_CMD"}
+    {0x36    "HCI_VS_DEBUG_CXM_MCI_RX_CMD"}
+    {0x37    "HCI_VS_DEBUG_CXM_MWS_RX_CMD"}
+    {0x38    "HCI_VS_DEBUG_PIN_TEST_CMD"}
+    {0x3F    "HCI_VS_DEBUG_GET_CAL_REPORT"}
+    {Default "Invalid"}
+ENDTABLE
+
+TABLE tQca_PFAL_CalStatus
+    {0 "CAL_SUCCESS"}
+    {1 "CAL_FAILURE"}
+ENDTABLE
+
+TABLE tQca_PFAL_CalStateFlag
+    {0 "FAILURE"}
+    {1 "SUCCESS"}
+ENDTABLE
+
+TABLE tDebugState
+    {0x00    "SUCCESS"}
+    {Default "ERROR"}
+ENDTABLE
+
+GROUP gDebugCmd "VS Debug Command"
+{
+    FIELD fQca_Debug_Cmd_Subopcode              (Fixed 1 byte)      (TABLE tDebugSubopcodeTable)    "SubOpcode"
+}
+
+GROUP gDebugEvt "VS Debug Event"
+{
+    FIELD fQca_Debug_Evt_State                  (Fixed 1 byte)      (TABLE tDebugState)             "State"
+
+    FIELD fQca_Debug_Evt_Subopcode              (Fixed 1 byte)      (TABLE tDebugSubopcodeTable)    "SubOpcode"
+
+    FIELD fQca_Debug_Evt_CalStatus              (Fixed 1 Byte)      (TABLE tQca_PFAL_CalStatus)     "Calibration Status"
+
+    /* Cal State Flags from MSB to LSB */
+    RESERVED                                    (Fixed 1 Bit)
+    FIELD fQca_Debug_Evt_Cal_RxRSBCal           (Fixed 1 Bit)       (TABLE tQca_PFAL_CalStateFlag)  "Rx RSB Cal"
+    FIELD fQca_Debug_Evt_Cal_TxRSBCal           (Fixed 1 Bit)       (TABLE tQca_PFAL_CalStateFlag)  "Tx RSB Cal"
+    FIELD fQca_Debug_Evt_Cal_ModemTxDcCal       (Fixed 1 Bit)       (TABLE tQca_PFAL_CalStateFlag)  "Modem Tx DC Cal"
+    FIELD fQca_Debug_Evt_Cal_RxRadioCal         (Fixed 1 Bit)       (TABLE tQca_PFAL_CalStateFlag)  "Rx Radio Cal"
+    FIELD fQca_Debug_Evt_Cal_TxRadioCal         (Fixed 1 Bit)       (TABLE tQca_PFAL_CalStateFlag)  "Tx Radio Cal"
+    RESERVED                                    (Fixed 1 Bit)
+    FIELD fQca_Debug_Evt_Cal_ProcessCorner      (Fixed 1 Bit)       (TABLE tQca_PFAL_CalStateFlag)  "Process Corner Cal"
+}
+
+/******************************************************************************
+ *                          Decoder for OCF 0x17                             *
+ ******************************************************************************/
+GROUP gHostLogCtrlCmd
+{
+    FIELD   fQca_HostLogCtrl_Cmd_Subopcode      (Fixed 1 Bytes)   (TABLE tHostLogCtrlSubopcodeTable)    "SubOpcode" 
+    BRANCH (FromTable tHostLogCtrlSubopcodeTable fQca_HostLogCtrl_Cmd_Subopcode)
+}
+
+TABLE tHostLogCtrlSubopcodeTable
+{0x14 "HCI_VS_ENHANCELOG_CFG"  "HCI_VS_ENHANCELOG_CFG"  0 gHostDbgCtrlCmd_EnhLogCfg}
+{0x15 "HCI_VS_HOST_REPORT_CFG" "HCI_VS_HOST_REPORT_CFG" 0 gHostDbgCtrlCmd_ReportCfg}
+ENDTABLE
+
+GROUP gHostDbgCtrlCmd_EnhLogCfg
+{
+    RESERVED                                    (Fixed 7 Bit)
+    FIELD fQca_HostDbgCtrl_EnhLogEnable         (Fixed 1 Bit)       (Binary)  "EnhLogEnable"
+}
+
+GROUP gHostDbgCtrlCmd_ReportCfg "ReportMask"
+{
+	/* from MSB to LSB */
+    RESERVED                                    (Fixed 1 Bit)
+    FIELD fQca_HostDbgCtrl_ConnFail             (Fixed 1 Bit)       (Binary)  "Conn Fail"
+    FIELD fQca_HostDbgCtrl_LSTO                 (Fixed 1 Bit)       (Binary)  "LSTO"
+    FIELD fQca_HostDbgCtrl_SCOMiss              (Fixed 1 Bit)       (Binary)  "SCO Misses"
+    FIELD fQca_HostDbgCtrl_AudioGlitch          (Fixed 1 Bit)       (Binary)  "Audio Glitch"
+    FIELD fQca_HostDbgCtrl_HalfLSTO             (Fixed 1 Bit)       (Binary)  "1/2 LSTO"
+    FIELD fQca_HostDbgCtrl_PageTout             (Fixed 1 Bit)       (Binary)  "Page Tout"
+    RESERVED                                    (Fixed 1 Bit)
+	
+    RESERVED                                    (Fixed 1 byte)
+}
+
+GROUP gHostLogCtrlEvt
+{
+    FIELD fQca_HostLogCtrl_Evt_State            (Fixed 1 byte)      (Decimal)           							   "State"
+    FIELD fQca_HostLogCtrl_Evt_Subopcode        (Fixed 1 byte)      (TABLE tQca_HostLogCtrl_Evt_Subopcode)             "Subopcode"
+}
+
+TABLE tQca_HostLogCtrl_Evt_Subopcode
+	{0x14 "HCI_VS_ENHANCELOG_CFG"}
+	{0x15 "HCI_VS_HOST_REPORT_CFG"}
+ENDTABLE
+/******************************************************************************
+ *                          Decoder for OCF 0x1B                              *
+ ******************************************************************************/
+TABLE tCmdOCF1BSubOCFs
+    {0x00 "A2DP_link_quality_status_SubCmd"}
+    {Default "Invalid"}
+ENDTABLE
+
+
+GROUP gA2dplinkQualStatusEvt  "A2DP_link_quality_status"
+{
+     FIELD gA2dplinkQualCmd_status (Fixed 1 byte) (Decimal)                "Status"
+     FIELD gA2dplinkQualCmd_subcmd (Fixed 1 byte) (TABLE tCmdOCF1BSubOCFs) "SubOpcode"
+     FIELD gA2dplinkQualCmd_1 (toendoflayer) IF(MoreBytes) (stringofhex)   "This is unparsed data "
+}
+
+GROUP gA2dpLinkQualCmd "A2DP Link Quality Command"
+{
+    FIELD gA2dpLinkQualCmdSubopcode  (Fixed 1 byte) (Hex)     "SubOpcode"
+    FIELD gA2dpLinkQualCmdHandle     (Fixed 2 byte) (Hex)     "Connection handle"
+    FIELD gA2dpLinkQualCmdMode       (Fixed 1 byte) (Hex)     "Mode"
+    FIELD gA2dpLinkQualEvalPeriod    (Fixed 2 byte) (Decimal) "EvaluationPeriod_ms"
+    FIELD gA2dpLinkQualThroughput    (Fixed 2 byte) (Decimal) "Throughput_kbps"
+    FIELD gA2dpLinkQualReqQLevels    (Fixed 1 byte) (Decimal) "RequiredQualityLevels"
+    FIELD gA2dpLinkQualCmdReserved   (Fixed 1 byte) (Hex)      SUPPRESS_DETAIL
+}
+
+/******************************************************************************
+ *                          Decoder for OCF 0x1C                             *
+ ******************************************************************************/
+GROUP gLoopbackCmd
+{
+    FIELD   fLoopbackCmd                  (Fixed 1 Bytes)   (TABLE tLoopbackCmdMode)    "Sub Opcode"
+    FIELD   fLoopbackDataUnParsedCmd      (toendoflayer)    IF(MoreBytes) (stringofhex) "This is unparsed data"
+}
+
+GROUP gLoopbackEvt
+{
+    FIELD   fLoopbackEvtStatus            (Fixed 1 Bytes)   (Hex)                        "Return Status"
+    FIELD   fLoopbackEvtMode              (Fixed 1 Bytes)   (TABLE tLoopbackCmdMode)     "Mode"
+    FIELD   fgLoopbackEvtDataUnParsed     (toendoflayer)    IF(MoreBytes) (stringofhex)  "This is unparsed data"
+}
+
+TABLE tLoopbackCmdMode
+{0x00 "VSC_LOOPBACK_MODE_DISABLED"}
+{0x01 "VSC_LOOPBACK_MODE_BT"}
+{0x02 "VSC_LOOPBACK_MODE_FM"}
+{0x03 "VSC_LOOPBACK_MODE_BT_FM"}
+{0x04 "VSC_LOOPBACK_MODE_ANT"}
+{0x05 "VSC_LOOPBACK_MODE_BT_ANT"}
+{0x06 "VSC_LOOPBACK_MODE_ANT_FM"}
+{0x07 "VSC_LOOPBACK_MODE_BT_ANT_FM"}
+{0x08 "VSC_LOOPBACK_MODE_TRIGGER_SSR"}
+{0x09 "VSC_LOOPBACK_MODE_MAX"}
+{0x0A "VSC_LOOPBACK_CONFIG_PERIODIC_EVENT"}
+{Default "Invalid"}
+ENDTABLE
+
+/******************************************************************************
+ *                          Decoder for OCF 0x1F                             *
+ ******************************************************************************/
+GROUP gWiPowerCmd
+{
+     FIELD gWiPowerCmd_opcode (Fixed 1 byte) (Decimal) "SubOpcode"
+     BRANCH (FromTable tWiPowerSubOpcodes gWiPowerCmd_opcode)
+     FIELD gWiPowercMD_unparsed (toendoflayer) IF(MoreBytes) (stringofhex) "This is unparsed data"
+}
+
+TABLE tWiPowerSubOpcodes
+{0x16 "HCI_VS_DEBUG_PRUI_SET_CURRENT_LIMIT_CMD" "HCI_VS_DEBUG_PRUI_SET_CURRENT_LIMIT_CMD" 0 gWiPwrCmd_SetCurrentLimit}
+{0x17 "HCI_VS_DEBUG_PRUI_SET_CHARGE_OUTPUT_CMD" "HCI_VS_DEBUG_PRUI_SET_CHARGE_OUTPUT_CMD" 0 gWiPwrCmd_SetChargeOutput}
+{0x18 "HCI_VS_DEBUG_PRUI_ENABLE_ALERT_NOTIFY_CMD" "HCI_VS_DEBUG_PRUI_ENABLE_ALERT_NOTIFY_CMD" 0 gWiPwrCmd_EnabelAlertNotif}
+{0x19 "HCI_VS_DEBUG_PRUI_ENABLE_DATA_NOTIFY_CMD" "HCI_VS_DEBUG_PRUI_ENABLE_DATA_NOTIFY_CMD" 0 gWiPwrCmd_EnabelDataNotif}
+{0x1c "HCI_VS_DEBUG_PRUI_ENABLE_POWER-APPLY_CMD" "HCI_VS_DEBUG_PRUI_ENABLE_POWER-APPLY_CMD" 0 gWiPwrCmd_EnablePwrAppy }
+{0x1D "HCI_VS_DEBUG_WIP_QUERY_CHARGING_STATUS_CMD" "HCI_VS_DEBUG_WIP_QUERY_CHARGING_STATUS_CMD" 0 gWiPwrCmd_QueryChargingStatus}
+{0x1E "HCI_VS_DEBUG_WIP_START_HANDOFF_TO_HOST_CMD" "HCI_VS_DEBUG_WIP_START_HANDOFF_TO_HOST_CMD" 0 gWiPwrCmd_StartHandoff}
+ENDTABLE
+
+GROUP gWiPwrCmd_SetCurrentLimit "Set_Current_Limit"
+{
+     FIELD gWiPwrCmd_SetCurrentLimit_currentLimit (Fixed 1 byte) (Decimal) "currentLimit"
+}
+GROUP gWiPwrCmd_SetChargeOutput "Set_Charge_Output"
+{
+     FIELD gWiPwrCmd_SetChargeOutput_Enable (Fixed 1 byte) (Decimal) "EnableChargePort"
+}
+GROUP gWiPwrCmd_EnabelAlertNotif "Enable_Alert_Notif"
+{
+     FIELD gWiPwrCmd_EnabelAlertNotif_Enable (Fixed 1 byte) (Decimal) "AlertNotif"
+}
+GROUP gWiPwrCmd_EnabelDataNotif "Enable_Data_Notif"
+{
+     FIELD gWiPwrCmd_EnabelDataNotif_Enable (Fixed 1 byte) (Decimal) "DataNotif"
+}
+GROUP gWiPwrCmd_EnablePwrAppy "Enable_Power_Apply"
+{
+     FIELD gWiPwrCmd_EnablePwrAppy_Enable (Fixed 1 byte) (Decimal) "Enable Power Apply"
+     FIELD gWiPwrCmd_EnablePwrAppy_Notify (Fixed 1 byte) (Decimal) "Notify on power up or power down"
+     FIELD gWiPwrCmd_EnablePwrAppy_Delay (Fixed 2 byte) (Decimal) "Delay"
+
+}
+GROUP gWiPwrCmd_QueryChargingStatus "Query_Charging_Status" { }
+GROUP gWiPwrCmd_StartHandoff "Start_Handoff" { }
+
+GROUP gWiPowerEvt
+{
+     FIELD gWiPowerEvt_status (Fixed 1 byte) (Decimal) "Status"
+     FIELD gWiPowerEvt_opcode (Fixed 1 byte) (Decimal) "SubOpcode"
+     BRANCH (FromTable tWiPowerEvtSubOpcodes gWiPowerEvt_opcode)
+     FIELD gWiPowerEvt_unparsed (toendoflayer) IF(MoreBytes) (stringofhex) "This is unparsed data"
+}
+
+GROUP gWiPowerEvt_SetCurrentLimit "Set_Current_Limit" { }
+GROUP gWiPowerEvt_EnableChargePort "Set_Charge_Output" { }
+GROUP gWiPowerEvt_AlertNotif "Enable_Alert_Notif" { }
+GROUP gWiPowerEvt_DataNotif "Enable_Data_Notif" { }
+GROUP gWiPowerEvt_PowerApply "Enable_Power_Apply" { }
+GROUP gWiPowerEvt_QueryChargingStatus "Query_Charging_Status" { }
+GROUP gWiPowerEvt_StartHandoff "Start_Handoff" { }
+
+TABLE tWiPowerEvtSubOpcodes
+{0x16 "currentLimit" "currentLimit" 0 gWiPowerEvt_SetCurrentLimit}
+{0x17 "EnableChargePort" "EnableChargePort" 0 gWiPowerEvt_EnableChargePort}
+{0x18 "AlertNotif" "AlertNotif" 0 gWiPowerEvt_AlertNotif}
+{0x19 "DataNotif" "DataNotif" 0 gWiPowerEvt_DataNotif}
+{0x1C "PowerApply" "PowerApply" 0 gWiPowerEvt_PowerApply}
+{0x1D "QueryChargingStatus" "QueryChargingStatus" 0 gWiPowerEvt_QueryChargingStatus}
+{0x1E "StartHandoff" "StartHandoff" 0 gWiPowerEvt_StartHandoff}
+ENDTABLE
+
+/******************************************************************************
+ *                          Decoder for OCF 0x21                             *
+ ******************************************************************************/
+GROUP gTracerCmd  "Tracer"
+{
+     FIELD fTracerSubCode (Fixed 1 Bytes) (Table tTracerSubCode) "Tracer Sub Cmd"
+     BRANCH (FromTable tTracerSubCode fTracerSubCode)
+     FIELD DataCmdTracer (toendoflayer) IF(MoreBytes) (stringofhex) "This is unparsed data"
+}
+
+GROUP gTracerEvt  "Tracer"
+{
+    FIELD  fTrcEventStatus  (Fixed 1 Bytes) (Hex)  "Return Status"
+    FIELD  fTrcEventSubCode (Fixed 1 Bytes) (TABLE tTracerSubCode)  "Sub Command"
+}
+
+TABLE tTracerSubCode
+    {0x00  "Enable"}
+    {0x01  "Disable"}
+    {0x02  "Bus_Set"      "Bus_Set"     0    gTracerBusSet}
+    {0x03  "Trigger_Set"  "Trigger_Set" 0    gTracerTrigSet}
+    {0x04  "Event_Set"    "Event_Set"   0    gTracerEvtSet}
+    {0x05  "Config"       "Config"      0    gTracerConf}
+ENDTABLE
+
+TABLE tTracerBusSource
+    {0x00  "FM Bus"}
+    {0x01  "BT Bus"}
+    {0x02  "AMBA Bus"}
+    {0x03  "COEX Bus"}
+    {0x04  "RTC Bus"}
+    {0x05  "RFA Bus"}
+    {0x07  "TOP Bus"}
+ENDTABLE
+
+GROUP gTracerBusSet  "Tracer Bus Setting"
+{
+    FIELD  fTrcBusMask   (Fixed 1 Bytes)     (Hex)    "Tracer Bus Byte Swap Mask"
+    FIELD fTrcBusBitCntr  (Fixed 0)   RETRIEVE (StoreInteger 0)   (Hex)   SUPPRESS_DETAIL STORE BitCntr
+    GROUP gTrcBusBitSel    REPEAT SIZE(Fixed 16 Bytes)   "Tracer Bus Source Select Per Bits"
+    {
+        GROUP gTrcBusBitIndex LABEL(LabelCount "Bit #" BitCntr)
+        {
+            FIELD  fTrcBitBusSel   (Fixed 1 Bytes)   (TABLE tTracerBusSource)  "Bus Select"
+        }
+        /* Increment the Counter */
+        FIELD fTrcBitCntrIncr (Fixed 0) RETRIEVE (StoreField BitCntr) ALSO (AddInteger 1) (Decimal) SUPPRESS_DETAIL STORE BitCntr
+    }
+}
+
+TABLE tTracerTrigCapMode
+    {0x00  "Capture Disabled"}
+    {0x01  "Capture Every Clock"}
+    {0x02  "Capture When Bit Changed"}
+ENDTABLE
+
+GROUP gTracerTrigSet    "Tracer Trigger Setting"
+{
+    FIELD  fTrcTrigIndex   (Fixed 1 Bytes)  (Decimal)    "Tracer Trigger Index"
+    GROUP  gTrcTrigWFTSet  IF (FieldIs EqualTo 0x00 fTrcTrigIndex)
+    {
+        FIELD  fTrcTrigWFTCapMask   (Fixed 2 Bytes)   (Hex)   "WFT capture mask"
+        FIELD  fTrcTrigWFTCapMode   (Fixed 1 Bytes)   (TABLE tTracerTrigCapMode)  "WFT Capture Mode"
+        FIELD  fTrcTrigWFTCapCnt       (Fixed 2 Bytes)   (Decimal)   "WFT Max Capture Count(val*128)"
+        FIELD  fTrcTrigWFTCapNxt       (Fixed 1 Bytes)   (Binary)  "WFT Next Trigger State Enabled TS1 ~ TS5"
+        RESERVED                    (Fixed 4 Bytes)
+    }
+    GROUP  gTrcTrigTSSet   IF (FieldIs  NotEqualTo 0x00  fTrcTrigIndex)
+    {
+        FIELD  fTrcTrigTSCapMask   (Fixed 2 Bytes)   (Hex)   "TS capture mask"
+        FIELD  fTrcTrigTSCapMode   (Fixed 1 Bytes)   (TABLE tTracerTrigCapMode)  "TS Capture Mode"
+        FIELD  fTrcTrigTSCapCnt       (Fixed 2 Bytes)   (Decimal)   "TS Max Capture Count(val*128)"
+        FIELD  fTrcTrigTSCapNxt       (Fixed 1 Bytes)   (Binary)  "TS Next Trigger State Enabled TS1 ~ TS5"
+        FIELD  fTrcTrigTSTrigMask   (Fixed 2 Bytes)   (Hex)  "TS Trigger Event Signal Mask"
+        FIELD  fTrcTrigTSTrigVal    (Fixed 2 Bytes)   (Hex)  "TS Trigger Event Signal Value"
+    }
+}
+
+GROUP  gTracerEvtSet   "Tracer Event Setting"
+{
+    FIELD   fTrcEvtMask     (Fixed 1 Bytes)   (Binary)   "Event enable - bit0=aci bit1=hci bit2=sw bit3=AON bit4=BT_core bit5=Coex bit6=rtc"
+    FIELD   fTrcEvtCrossTrig   (Fixed 1 Bytes)  (Binary)  "Cross trigger enable for the 5 trigger modules"
+}
+
+TABLE  tTrcConfClkSel
+    {0, "ref Clk"}
+    {1, "Soc Clk"}
+    {2, "Soc Clk"}
+    {3, "64MHz"}
+ENDTABLE
+
+TABLE  tTrcConfMode
+    {0, "Tracer Mode"}
+    {1, "Event Mode"}
+ENDTABLE
+
+TABLE  tTrcConfOvwMode
+    {0, "Fixed Buffer"}
+    {1, "Overwrite Enabled"}
+ENDTABLE
+
+GROUP  gTracerConf  "Tracer Configuration"
+{
+    FIELD   fTrcConfClkSel   (Fixed 1 Bytes)   (TABLE tTrcConfClkSel)    "Tracer Clock Select"
+    FIELD   fTrcConfMode     (Fixed 1 Bytes)   (TABLE tTrcConfMode)    "Tracer Mode Select"
+    FIELD   fTrcConfInputMask (Fixed 2 Bytes)   (Hex)       "Input Mask"
+    FIELD   fTrcConfOvwMode   (Fixed 1 Bytes)   (TABLE tTrcConfOvwMode)   "Tracer Overwrite Mode"
+    FIELD   fTrcConfSampRate   (Fixed 2 Bytes)   (Decimal)    "Tracer Sampling Rate"
+    FIELD   fTrcConfSampScale  (Fixed 1 Bytes)    (Decimal)   "Tracer Timestamp Scale"
+    FIELD   fTrcConfWatermark   (Fixed 2 Bytes)   (Decimal)   "Tracer Interrupt Watermark"
+    FIELD   fTrcConfPeriod     (Fixed 4 Bytes)    (Decimal)   "Tracer Monitor Timer Interval In ms"
+}
+
+
+/******************************************************************************
+ *                          Decoder for OCF 0x1e9                             *
+ ******************************************************************************/
+GROUP gTruncPageOffloadCmd
+{
+     FIELD gTruncPageOffload_opcode (Fixed 1 byte) (Table tTruncPageOffloadOpcodes) "SubOpcode"
+     BRANCH (FromTable tTruncPageOffloadOpcodes gTruncPageOffload_opcode)
+     FIELD gTruncPageOffload_unparsed (toendoflayer) IF(MoreBytes) (stringofhex) "This is unparsed data"
+}
+
+TABLE tTruncPageOffloadOpcodes
+{0x01 "HCI_VS_Page_Offload_Start" "HCI_VS_Page_Offload_Start" 0 gTruncPageOffloadStart}
+{0x02 "HCI_VS_Page_Offload_Cancel" "HCI_VS_Page_Offload_Cancel"}
+ENDTABLE
+
+GROUP gTruncPageOffloadStart " Truncated Paging start"
+{
+    FIELD fTruncpageOffload_Window          (Fixed 2 Bytes)   (Hex)                "Paging Window"
+    FIELD fTruncpageOffload_Offset          (Fixed 2 Bytes)   (Hex)                "Paging Offset"
+    FIELD fTruncpageOffload_Interval        (Fixed 4 Bytes)   (Hex)                "Paging Interval"
+    FIELD fTruncpageOffload_RepeatCnt       (Fixed 2 Bytes)   (Hex)                "Repeat count for timeout"
+    FIELD fTruncpageOffload_numDevice       (Fixed 1 Bytes)   (Decimal)            "Number of devices"
+    GROUP gQca_TruncpageOffload_BDADDR REPEAT COUNT (FromField Times fTruncpageOffload_numDevice) "BDADDR"
+    {
+    FIELD fTruncpageOffload_BDADDR          (Fixed 6 Bytes)   (Hex)                "BDADDR"
+    }
+    GROUP gQca_TruncpageOffload_offset REPEAT COUNT (FromField Times fTruncpageOffload_numDevice) "Offset"
+    {
+    FIELD fTruncpageOffload_ClkOffset       (Fixed 2 Bytes)   (Hex)                "ClockOffset"
+    }
+    
+}
+
+/******************************************************************************
+ *                          Decoder for Vendor Events                         *
+ ******************************************************************************/
+
+/******************************************************************************
+ *                        Decoder for Vendor Event 0x16                       *
+ ******************************************************************************/
+GROUP gWipowerDataEvt "Data_Notif_Evt"
+{
+     FIELD gWipowerDataEvt_PRUDynvalues (Fixed 20 byte) (hex) "PRU_Dynamic_Values"
+}
+
+/******************************************************************************
+ *                        Decoder for Vendor Event 0x17                       *
+ ******************************************************************************/
+GROUP gWipowerPowerApplyEvt "Evt_Power_Apply_Cmd"
+{
+     FIELD gWipowerDataEvt_Poweronoff (Fixed 1 byte) (hex) "Power on/off"
+}
+
+/******************************************************************************
+ *                        Decoder for Vendor Event 0x18                       *
+ ******************************************************************************/
+GROUP gWipowerChargingStatusEvt "Chargin_Status_Evt"
+{
+     FIELD gWipowerChargingStatusEvt_QueryChargingStatus (Fixed 1 byte) (hex) "Charging Status"
+}
+
+/******************************************************************************
+ *                        Decoder for Vendor Event 0x19                       *
+ ******************************************************************************/
+GROUP gWipowerhandoffEvt "handoff_evt"
+{
+     FIELD gWipowerhandoffEvt_StartHandoff (Fixed 1 byte) (hex) "Ready to Hand Off"
+}
+
+/******************************************************************************
+ *                        Decoder for Vendor Event 0x47                       *
+ ******************************************************************************/
+TABLE tConnectionType
+    {0x00 "SCO"  }
+    {0x01 "ACL"  }
+    {0x02 "eSCO" }
+    {0x03 "LE"   }
+    {0x04 "ANT"  }
+    {Default "Invalid"}
+ENDTABLE
+
+TABLE tQca_LinkQualityValues
+    {0x00 "UltraHigh"}
+    {0x01 "High"}
+    {0x02 "Standard"}
+    {0x03 "Medium"}
+    {0x04 "Low"}
+    {Default "Invalid"}
+ENDTABLE
+
+GROUP gA2dplinkQualEvt "A2DP link quality status"
+{
+    FIELD gA2dplinkQualEvt_GoodChan             (Fixed 1 byte) (Decimal)                                "Number of good channels"
+    FIELD gA2dplinkQualEvt_nACLConn             (Fixed 1 byte) (Decimal)                                "Number of ACL connections"
+    FIELD gA2dplinkQualEvt_nSCOConn             (Fixed 1 byte) (Decimal)                                "Number of SCO onnections"
+    FIELD gA2dplinkQualEvt_nLEConn              (Fixed 1 byte) (Decimal)                                "Number of LE connections"
+    FIELD gA2dplinkQualEvt_LinkQual             (Fixed 1 byte) (TABLE tQca_LinkQualityValues)           "Link quality"
+    FIELD gA2dplinkQualEvt_ConnType             (Fixed 1 byte) (TABLE tConnectionType)                  "Connection Type"
+    FIELD gA2dplinkQualEvt_AvgRssi              (Fixed 1 byte) RETRIEVE (SignExtension 8) (Decimal)     "AverageRSSI_dBm"
+    FIELD gA2dplinkQualEvt_EvalPeriod           (Fixed 2 byte) (Decimal)                                "EvaluationPeriod_ms"
+    FIELD gA2dplinkQualEvt_ConnHandle           (Fixed 2 byte) (hex)                                    "Connection Handle"
+    FIELD gA2dplinkQualEvt_Throughput           (Fixed 4 byte) (Decimal)                                "Throughput_kbps"
+    RESERVED                                    (Fixed 4 Bytes)                                         //NAK_rate for internal debug purpose
+    FIELD gA2dplinkQualEvt_MAReTxCount          (Fixed 4 byte) (Decimal)                                "MovingAverageRetransCount"
+    FIELD gA2dplinkQualEvt_TxCount              (Fixed 2 byte) (Decimal)                                "Packets transmitted"
+    FIELD gA2dplinkQualEvt_CoexBlocked          (Fixed 2 byte) (Decimal)                                "Coex blocked packets"
+    FIELD gA2dplinkQualEvt_PhyRate              (Fixed 1 byte) (Decimal)                                "LastPHY_rate_Mbps"
+    FIELD gA2dplinkQualEvt_TxPower              (Fixed 1 byte) RETRIEVE (SignExtension 8) (Decimal)     "LastTxPower_dBm"
+    FIELD gA2dplinkQualEvt_SniffInterval        (Fixed 2 byte) (Decimal)                                "SniffInterval_ms"
+    FIELD gA2dplinkQualEvt_BleConnEventDuration (Fixed 2 byte) (Decimal)                                "BLE_ConnectionEventDuration_ms"
+}
+/******************************************************************************
+ *                        Decoder for Vendor Event 0x8d                       *
+ ******************************************************************************/
+GROUP gHostReportEvt "Host Report Event"
+{
+    FIELD fQca_reason              (Fixed 2 Bytes)         (Table tQca_reason)                          "Reason"
+    FIELD fQca_length              (Fixed 1 Byte)          (Decimal)                                    "Length"
+    FIELD fQca_bdAddress           (Fixed 6 Bytes)         (Hex)                                        "BD Address"
+    FIELD fQca_connHandle          (Fixed 2 Bytes)         (Hex)                                        "Connection Handle"
+    FIELD fQca_eventMask           (Fixed 4 Bytes)         (Hex)                                        "Event Mask"
+    FIELD fQca_powerLevel          (Fixed 1 Byte)          (Hex)                                        "Power Level"
+    FIELD fQca_rssi                (Fixed 1 Byte)          RETRIEVE (SignExtension 8) (Decimal)         "Rssi Value"
+    BRANCH (FromTable tQca_reason fQca_reason)
+    FIELD DataHostReportEvents (toendoflayer) IF(MoreBytes) (stringofhex) "This is unparsed data "
+}
+
+GROUP gQCA_LSTO
+{
+    FIELD fQca_ConnState              (Fixed 1 Bytes)         (Table tQca_ConnState)       "connState"     
+    FIELD fQca_LSTORole               (Fixed 1 Byte)          (Table tQca_DeviceRole)       "role"
+    FIELD fQca_Tout                   (Fixed 2 Byte)          IF(MoreBytes) (Decimal)       "Tout_slots"
+    BRANCH (FromTable tQca_DeviceRole fQca_LSTORole)
+    BRANCH (FromTable tQca_ConnState fQca_ConnState)    
+	
+}
+
+TABLE tQca_DeviceRole
+    { 0x00 "Master" "Master"}
+    { 0x01 "Slave"  "Slave" }
+    { DEFAULT "UnKnown"}
+ENDTABLE
+
+TABLE tQca_ConnState
+    { 0x00 "CONNECTION_IDLE" }
+    { 0x81 "CONNECTION_ACTIVE" }
+    { 0x02 "CONNECTION_HOLD" }
+
+    { 0x03 "CONNECTION_SNIFF_IDLE" }
+    { 0x84 "CONNECTION_SNIFF_ACTIVE" }
+    { 0x85 "CONNECTION_SNIFF_MASTER_TRANSITION" }
+
+    { 0x06 "CONNECTION_PARK" }
+    { 0x47 "CONNECTION_PARK_PEND" }
+    { 0x08 "CONNECTION_UNPARK_PEND" }
+    { 0x89 "CONNECTION_UNPARK_ACTIVE" }
+
+    { 0x4A "CONNECTION_DISCONNECT_PENDING" }
+
+    { 0x0B "CONNECTION_PAGING" }
+    { 0x0C "CONNECTION_PAGE_SCAN" }
+    { 0x0D "CONNECTION_LOCAL_LOOPBACK" }
+
+    { 0x0E "CONNECTION_LE_ACTIVE" }
+    { 0x0F "CONNECTION_ANT_ACTIVE" }
+
+    { 0x10 "CONNECTION_TRIGGER_SCAN" }
+    { 0x11 "CONNECTION_RECONNECTING" }
+    { 0x12 "CONNECTION_SEMI_CONN" }
+ENDTABLE
+
+TABLE tQca_reason
+	{0x0000 "NO ERROR"}
+	{0x0001 "PAGE TIMEOUT"}
+	{0x0002 "HALF_LSTO"}
+	{0x0003 "AUDIO GLITCH" "AUDIO GLITCH" 0 gQca_Audio_Glitch}
+	{0x0004 "SCO MISSES" "SCO MISSES" 0 gQca_SCO_Misses}
+	{0x0005 "LSTO" "LSTO" 0 gQCA_LSTO}
+	{0x0006 "CONN FAIL" "CONN FAIL" 0 gQca_conn_fail}
+ENDTABLE
+
+GROUP gQca_conn_fail
+{
+    FIELD fQca_connfail_reason       (Fixed 1 Byte)          IF(MoreBytes) (Decimal)                      "reason"
+}
+
+GROUP gQca_Audio_Glitch
+{
+    FIELD fQca_linkQuality         (Fixed 1 Byte)          IF(MoreBytes) (Table tQca_LinkQualityValues)       "Link Quality"
+    FIELD fQca_overflowCount       (Fixed 2 Byte)          IF(MoreBytes) (Decimal)                            "Overflow Count"
+    FIELD fQca_glitchCount         (Fixed 2 Byte)          IF(MoreBytes) (Decimal)                            "Glitch Count"
+}
+
+GROUP gQca_SCO_Misses
+{
+    FIELD fQca_ScoGlitchCount      (Fixed 2 Byte)          IF(MoreBytes) (Decimal)       "Glitch Count"
+    FIELD fQca_role                (Fixed 1 Byte)          IF(MoreBytes) (Decimal)       "role"
+    FIELD fQca_TeSco               (Fixed 1 Byte)          IF(MoreBytes) (Decimal)       "TeSco"
+    FIELD fQca_WeSco               (Fixed 1 Byte)          IF(MoreBytes) (Decimal)       "WeSco"
+    FIELD fQca_ltType              (Fixed 1 Byte)          IF(MoreBytes) (Decimal)       "ltType"
+    FIELD fQca_pktType             (Fixed 1 Byte)          IF(MoreBytes) (Decimal)       "pktType"
+    FIELD fQca_airFormat           (Fixed 1 Byte)          IF(MoreBytes) (Decimal)       "airformat"
+}
+/******************************************************************************
+ *                        Decoder for Vendor Event 0x95                       *
+ ******************************************************************************/
+GROUP gLoopbackDataEvt "Loopback Event"
+{
+     FIELD   fLoopbackEventtData         (toendoflayer)    IF(MoreBytes) (stringofhex)  "Loopback Data"
+}
+
+/******************************************************************************
+ *                          Decoder for OCF 0xDA                             *
+ ******************************************************************************/
+GROUP gLinkPowerCtrlCmd
+{
+    FIELD   fLinkPowerCtrlCmd         (Fixed 1 Bytes)   (TABLE tLinkPowerCtrlOp)    "Sub Opcode"
+    FIELD   fLinkDataUnParsedCmd      (toendoflayer)    IF(MoreBytes) (stringofhex) "This is unparsed data"
+}
+
+GROUP gLinkPowerCtrlEvt
+{
+    FIELD   fLinkPowerCtrlEvtStatus  (Fixed 1 Bytes)   (Hex)                        "Return Status"
+    FIELD   fLinkPowerCtrlEvt        (Fixed 1 Bytes)   (TABLE tLinkPowerCtrlOp)    "Sub Opcode"
+    FIELD   fLinkDataUnParsedEvt     (toendoflayer)    IF(MoreBytes) (stringofhex)  "This is unparsed data"
+}
+
+TABLE tLinkPowerCtrlOp
+{0x00 "Disable Max A2DP Link Power"}
+{0x01 "Enable Max A2DP Link Power"}
+{Default "Invalid"}
+ENDTABLE
+
+GROUP gScramblingSuppSampleFreq
+{
+
+}
+
+TABLE tSamplingRate
+{0x01 "44.1KHz"}
+{0x02 "48KHz"}
+{0x04 "88.2KHz"}
+{0x08 "96KHz"}
+{0x10 "176.4KHz"}
+{0x20 "192KHz"}
+ENDTABLE
+
+GROUP gScramblingSuppSampleFreqEvt
+{
+    FIELD scramblingSuppSampleFreqEvt1 (Fixed 1 Bytes)   (Hex)                  "Number of Supported sampling rates"
+    GROUP gloopSuppSamplingFreq REPEAT COUNT (FromField Byte scramblingSuppSampleFreqEvt1) {
+        FIELD scramblingSuppSampleFreqEvt2 (Fixed 1 Bytes)   (TABLE tSamplingRate) "SamplingRate"
+    }
+    FIELD gScramblingSuppSampleFreqEvt_unparsed (toendoflayer) IF(MoreBytes) (stringofhex) "This is unparsed data"
+}
+
+GROUP gEnableScrambling
+{
+    FIELD fEnableScramblingFreq   (Fixed 1 Byte) (TABLE tSamplingRate) "SamplingRate"
+    FIELD fEnableScramblinghandle       (Fixed 2 Byte)        (Hex)           "Connection Handle"
+}
+
+/******************************************************************************
+ *                          Decoder for OCF 0x1E9                            *
+ ******************************************************************************/
+
+GROUP gTruncPageOffloadEvt
+{
+     FIELD gTruncPageOffloadEvt_status (Fixed 1 byte) (Table tTruncPageOffloadStatus) "Status"
+     FIELD gTruncPageOffloadEvt_opcode (Fixed 1 byte) (Table tTruncPageOffloadOpcodes) "SubOpcode"
+     FIELD gTruncPageOffloadEvt_unparsed (toendoflayer) IF(MoreBytes) (stringofhex) "This is unparsed data"
+}
+
+GROUP gTruncPageOffloadCmpEvt
+{
+    FIELD gTruncPageOffloadCmpEvt_SubEvent (Fixed 1 byte) (Table tTruncPageOffloadSubevent) ""
+    FIELD gTruncPageOffloadCmpEvt_Status   (Fixed 1 Byte) (Table tTruncPageOffloadStatus) "status"
+    FIELD gTruncPageOffloadCmpEvt_BDADDR   (toendoflayer) IF(MoreBytes) (hex) "Found device address"
+}
+
+TABLE tTruncPageOffloadSubevent
+{ 0x01 "Page Offload complete event"}
+{ default "unknown"}
+ENDTABLE
+
+TABLE tTruncPageOffloadStatus
+{ 0x00 "Success"}
+{ 0x01 "Error: Unknown HCI Command"}
+{ 0x04 "Error: Page time out"}
+{ 0x07 "Error: Memory Full"}
+{ 0x09 "Error: Maximum number of connections reached"}
+{ 0x0B "Error: Connection already exists"}
+{ 0x0C "Error: Command Disallowed"}
+{ 0x12 "Error: Invalid HCI Parameters" }
+{ default "unknown"}
+ENDTABLE
+
+

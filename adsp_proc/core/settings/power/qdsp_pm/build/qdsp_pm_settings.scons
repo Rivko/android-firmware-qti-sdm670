@@ -1,0 +1,93 @@
+#===============================================================================
+#
+# QDSP_PM Settings
+#
+# GENERAL DESCRIPTION
+#    Builds the QSP_PM settings.
+#
+# Copyright (c) 2017 Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Qualcomm Technologies, Inc. Confidential and Proprietary.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1/settings/power/qdsp_pm/build/qdsp_pm_settings.scons#3 $
+#  $DateTime:
+#  $Author: 
+#  $Change:
+#
+#===============================================================================
+import os
+Import('env')
+
+env = env.Clone()
+env.Append(CFLAGS = " -Wno-error=unused-function")
+
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+
+# Set target based dir path
+DSPPM_TARGET = env['MSM_ID']
+#DSPPM_DIR_ROOT = '${CORE_SETTINGS_DIR}/power/qdsp_pm/config'
+DSPPM_DIR_ROOT = os.path.join(env['BUILD_ROOT'], 'core/settings/power/qdsp_pm/config')
+env.VariantDir('${BUILDPATH}', DSPPM_DIR_ROOT, duplicate=0)
+
+# Check if target directory exists, if not use default target
+if not os.path.exists(os.path.join(DSPPM_DIR_ROOT, DSPPM_TARGET)):
+  env.PrintWarning('DSPPM target ' + DSPPM_TARGET + ' not found, using default')
+  DSPPM_TARGET = env['PWR_TARGET_DFLT']
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+    'DAL',
+    'BUSES',
+    'DEBUGTOOLS',
+    'DEBUGTRACE',
+    'MPROC',
+    'POWER',
+    'SERVICES',
+    'SYSTEMDRIVERS',
+    'KERNEL', # needs to be last also contains wrong comdef.h
+]
+
+env.RequirePublicApi(CBSP_API)
+
+env.PublishPrivateApi('QDSP_PM_SETTINGS', [
+   "${INC_ROOT}/core/settings/power/qdsp_pm/interface",
+])
+
+#-------------------------------------------------------------------------------
+# Identify Target for Test Code (if test mode is enabled)
+#-------------------------------------------------------------------------------
+if ('USES_ADSPPM_TEST_SPD' in env) or ('USES_ADSPPM_TEST_MPD' in env):
+    env.Append(CPPDEFINES = 'ADSPPM_TEST');
+    if DSPPM_TARGET in ['8994']:
+        env.Append(CPPDEFINES = 'ADSPPM_TEST_8994');
+    elif DSPPM_TARGET in ['8992']:
+        env.Append(CPPDEFINES = 'ADSPPM_TEST_8992');
+    elif DSPPM_TARGET in ['8996']:
+        env.Append(CPPDEFINES = 'ADSPPM_TEST_8996');
+    elif DSPPM_TARGET in ['845']:
+        env.Append(CPPDEFINES = 'ADSPPM_TEST_845');
+    else:
+        env.Append(CPPDEFINES = 'ADSPPM_TEST_NONE');
+
+    if env['IMAGE'] in ['cdsp']:
+        env.Append(CPPDEFINES = 'ADSPPM_TEST_COMPUTE');
+    elif env['IMAGE'] in ['slpi']:
+        env.Append(CPPDEFINES = 'ADSPPM_TEST_SLPI');
+
+#-------------------------------------------------------------------------------
+# Device Configuration Sources
+#-------------------------------------------------------------------------------
+if 'USES_DEVCFG' in env:
+    DEVCFG_IMG = ['DAL_DEVCFG_IMG']
+    env.AddDevCfgInfo(DEVCFG_IMG,
+    {
+        'soc_xml' : ['../config/'+DSPPM_TARGET+'/${IMAGE}/qdsp_pm_'+DSPPM_TARGET+'_${IMAGE}.xml',
+                         '${BUILDPATH}/'+DSPPM_TARGET+'/${IMAGE}/qdsp_pm_configdata_'+DSPPM_TARGET+'_${IMAGE}.c']
+    })

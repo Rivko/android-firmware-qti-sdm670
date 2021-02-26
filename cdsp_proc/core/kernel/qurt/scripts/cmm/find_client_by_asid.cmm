@@ -1,0 +1,57 @@
+;=============================================================================
+;
+;                                    find_client_by_asid.cmm
+;
+; GENERAL DESCRIPTION
+;
+; EXTERNAL FUNCTIONS
+;        None.
+;
+; INITIALIZATION AND SEQUENCING REQUIREMENTS
+;        None.
+;
+;             Copyright (c) 2013  by Qualcomm Technologies, Inc.  All Rights Reserved.
+;=============================================================================
+;===========================================================================================
+; This script finds and displays user client structure based on asid
+; Basic idea is to index into g_spaces, pull out client_handle and 
+; use it as index into (qurtos_root_prealloc.outer_handle_table[0].objs)))[0..1023]
+; the result is object of type struct qurtos_user_client* 
+; olgak - 02/18/2016
+; usage: do find_client_by_asid.cmm <asid>
+;===========================================================================================
+
+Area.Create IO 1000. 5000.
+Area.Select IO
+Area IO
+
+entry &req_asid
+local &space_table
+local &client_handle
+local &root_table_addr
+local &user_client
+local &temp
+local &outer_table_idx
+
+if ("&req_asid")=="";
+(
+    print %ERROR "asid is required.... "
+)
+else
+(
+    &space_table=v.value(g_spaces[&req_asid])
+    print "space table &space_table"
+    ;&client_handle=v.value((g_spaces[&req_asid]).client_handle)
+    &client_handle=v.value(((struct space)&space_table).client_handle)
+    print "client handle &client_handle"
+    &outer_table_idx=(&client_handle>>0xC)
+    print "outer table idx &outer_table_idx"
+    &root_table_addr=v.value(qurtos_root_prealloc.outer_handle_table[&outer_table_idx].objs)  ;9
+    &temp=data.long(d:&root_table_addr)
+    print "root table address &root_table_addr"
+    &client_handle=(&client_handle&0xFF)
+    &temp=&root_table_addr+(&client_handle*4)
+    &user_client=data.long(d:&temp)
+    print "user client &user_client"
+    v.v %hex %tree.open (struct qurtos_user_client*)&user_client
+)

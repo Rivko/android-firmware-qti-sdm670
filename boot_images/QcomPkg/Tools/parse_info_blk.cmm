@@ -1,0 +1,109 @@
+;============================================================================
+;  Name:
+;    parse_info_blk.cmm
+;
+;  Description:
+;     Common file for parsing the info block region
+;
+; Copyright (c) 2015 Qualcomm Technologies Incorporated.
+; All Rights Reserved.
+; Qualcomm Technologies Confidential and Proprietary
+;
+;----------------------------------------------------------------------------
+;============================================================================
+;
+;                        EDIT HISTORY FOR MODULE
+;
+;
+;when         who     what, where, why
+;----------   ---     ----------------------------------------------------------
+;2015-12-09   na      Fixing 32-bit/64-bit differences in reading values
+;2015-07-17   dg      Fix pathing issues
+;2015-06-05   dg      Initial Version
+;============================================================================;
+
+ENTRY &FunctionName &InfoBlkAddr
+
+  &ScanLocation=string.scan("&FunctionName", "CheckInfoBlkSignature",0)
+  if (&ScanLocation!=-1)
+  (
+    gosub CheckInfoBlkSignature &InfoBlkAddr
+    enddo
+  )
+
+  &ScanLocation=string.scan("&FunctionName", "ParseAndPrintInfoBlk",0)
+  if (&ScanLocation!=-1)
+  (
+    gosub ParseAndPrintInfoBlk &InfoBlkAddr
+    entry &RunTimeDbgTblPtr &NumEntriesRtDbgTbl
+    enddo
+  )
+
+
+enddo
+
+;---------------------------------------------------
+; Verify Info Block Signature
+;---------------------------------------------------
+CheckInfoBlkSignature:
+  ENTRY &InfoBlkAddr
+
+  ;Read signature and verify
+  &Sig=data.long(A:&InfoBlkAddr)
+
+  ;Check signature before dereference
+  if (&Sig!=0x6B6C4249)
+  (
+    PRINT "Unable to locate UEFI Info Block with ref to the Base Addr : &InfoBlkAddr"
+    END
+  )
+  else
+  (
+    PRINT "InfoBlock Signature OK"
+  )
+RETURN
+
+;---------------------------------------------------
+; Parse and PRINT InfoBlock to AREA window
+;---------------------------------------------------
+ParseAndPrintInfoBlk:
+  ENTRY &InfoBlkAddr
+  
+  local &RelInfoPtr
+
+  ;Verify InfoBlock signature
+  GOSUB CheckInfoBlkSignature &InfoBlkAddr
+
+  &InfoBlkVersion=data.long(A:&InfoBlkAddr+4)
+
+  if (&ARCHState==1)
+  (
+    &RelInfoPtr=data.long(A:&InfoBlkAddr+8)
+    &SerialLogBuffAddr=data.long(A:&InfoBlkAddr+&IBlkUartLogBufferPtr)
+    &SerialLogBuffSz=data.long(A:&InfoBlkAddr+&IBlkUartLogBufferLen)
+    &RunTimeDbgTblPtr=data.long(A:&InfoBlkAddr+&IBlkRuntimeDbgTablePtr)
+    &NumEntriesRtDbgTbl=data.long(A:&InfoBlkAddr+&IBlkRtDbgTableEntryCnt)
+  )
+  else
+  (
+    &RelInfoPtr=data.quad(A:&InfoBlkAddr+8)
+    &SerialLogBuffAddr=data.quad(A:&InfoBlkAddr+&IBlkUartLogBufferPtr)
+    &SerialLogBuffSz=data.quad(A:&InfoBlkAddr+&IBlkUartLogBufferLen)
+    &RunTimeDbgTblPtr=data.quad(A:&InfoBlkAddr+&IBlkRuntimeDbgTablePtr)
+    &NumEntriesRtDbgTbl=data.quad(A:&InfoBlkAddr+&IBlkRtDbgTableEntryCnt)
+  )
+
+  &RelStrings=data.string(A:&RelInfoPtr)
+
+  ;PRINT all fields
+  PRINT "Parsing InfoBlock at &InfoBlkAddr"
+  PRINT "InfoBlock StructVersion: &InfoBlkVersion"
+  PRINT ""
+  PRINT "&RelStrings"
+  PRINT ""
+
+  RETURN &RunTimeDbgTblPtr &NumEntriesRtDbgTbl
+RETURN
+
+
+

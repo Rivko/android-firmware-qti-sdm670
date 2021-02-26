@@ -1,0 +1,71 @@
+#===============================================================================
+#
+# SystemFeatures Test Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009-2009,2015 Qualcomm Technologies Inc.
+#                           All Rights Reserved.
+#                         QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header$
+#  $DateTime$
+#  $Author$
+#  $Change$
+#                      EDIT HISTORY FOR FILE
+#                      
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#  
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#1/4/15   Asmit     Add Audio PD build tag to IMAGES
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/dal/drivers/TestDrivers"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'SERVICES',
+   'DEBUGTOOLS',
+   'DAL',
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+env.RequireRestrictedApi('DAL')
+
+#-------------------------------------------------------------------------------
+# Source Code
+#-------------------------------------------------------------------------------
+Test_Device_One_Src =  [ 
+   '${BUILDPATH}/src/DevCfgTest.c' 
+]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+IMAGES = ['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 
+          'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+          'APPS_IMAGE', 'CBSP_APPS_IMAGE', 
+          'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE','CORE_QDSP6_AUDIO_SW']
+
+if 'DEVCFG_BOOT_TEST' in env:
+   env.AddLibrary(IMAGES, '${BUILDPATH}/DALString', Test_Device_One_Src)
+   env.LoadSoftwareUnits(level=1)
+
+CLEAN_SOURCES = env.FindFiles('*', '${BUILD_ROOT}/core/dal/drivers/TestDrivers/StringDevice/src')
+env.CleanPack(IMAGES, CLEAN_SOURCES)

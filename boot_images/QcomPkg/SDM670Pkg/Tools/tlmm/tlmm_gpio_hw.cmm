@@ -1,0 +1,970 @@
+;============================================================================
+;  Name:
+;    TLMM_GPIO_HW.CMM
+;
+;  Description:
+;    TLMM script for manipulating GPIO configurations and values, and 
+;    checking for floating node configurations for SDM845 targets.
+;
+;
+;  Copyright (c) 2017 Qualcomm Technologies Incorporated.
+;  All Rights Reserved.
+;  Qualcomm Confidential and Proprietary
+;----------------------------------------------------------------------------
+;============================================================================
+;
+;                        EDIT HISTORY FOR MODULE
+;
+; $Header: //components/rel/boot.xf/2.1/QcomPkg/SDM670Pkg/Tools/tlmm/tlmm_gpio_hw.cmm#1 $ $DateTime: 2017/09/18 09:26:13 $ $Author: pwbldsvc $
+;
+; when       who     what, where, why
+; -------    ---     --------------------------------------------------------
+; 01/31/15   dcf     Created.
+;============================================================================;
+
+
+;============================================================================
+; Declare static variables used
+;============================================================================
+&num_gpio=""
+
+;============================================================================
+; Declare changing variables used (Changes with each selection of a GPIO.
+;============================================================================
+&in_out_addr=""
+&config_addr=""
+&intr_config_addr=""
+&intr_status_addr=""
+&config=""
+&intr_config=""
+&connect_type=""
+&func=""
+&drive=""
+&dir=""
+&pull=""
+&out_val=""
+&out_reg_val=""
+&temp_gpio=""
+&idx=""
+&value=""
+&polarity=""
+&trigger=""
+&tile_offset=""
+&tile_base1=""
+&tile_base2=""
+&tile_base3=""
+&tile_base4=""
+&TLMM_BASE=""
+&IsSSCTLMM=""
+Var.NEWGLOBAL int[0x16] \SSCTLMMAddr
+
+;============================================================================
+; Start with a new window
+;============================================================================
+
+AREA.Create A000 80. 1000.
+AREA.Select A000
+WINPOS 0. 0. 50% 100%
+AREA.View
+
+
+;============================================================================
+; Set initial arguments (target and starting GPIO number).
+;============================================================================
+
+&gpio_number=0
+
+
+
+retry_target:
+print " TLMM GPIO Hardware Debug Script.  This script can be used"
+print " to read and modify the TLMM GPIO HW.  It relies on no additional"
+print " scripts and can be run from any T32 window."
+print
+print " Supported Target:"
+print "      0:  [Exit]"
+print "      1:  SDM845 Chip TLMM V1"
+print "      2:  SDM845 Chip TLMM V2"
+print "      3:  SDM845 SSC_TLMM"
+print " Please select a number: "
+&t32_cmm_stopped=1
+enter &Selection
+&t32_cmm_stopped=0
+
+if "&Selection"=="0"
+(
+  enddo
+)
+if "&Selection"=="1"
+(
+  &num_gpio=0x96
+  &TLMM_BASE=0x03400000
+  &tile_base1=0x00500000
+  &tile_base2=0x00900000
+  &tile_offset=0x0
+  &IsSSCTLMM=0
+  print "Selected target SDM845 Chip-level TLMM.  Loading main menu..."
+)
+if "&Selection"=="2"
+(
+  &num_gpio=0x96
+  &TLMM_BASE=0x03400000
+  &tile_base1=0x00500000
+  &tile_base2=0x00900000
+  &tile_base3=0x00100000
+  &tile_offset=0x0
+  &IsSSCTLMM=0
+  print "Selected target SDM845 Chip-level TLMM.  Loading main menu..."
+)
+if "&Selection"=="3"
+(
+  &num_gpio=0x12
+  &TLMM_BASE=0x5F40000
+  &tile_base1=0x0
+  &tile_base2=0x0
+  &tile_base3=0x0
+  &tile_offset=0x0
+  &IsSSCTLMM=1
+  Var.Set \SSCTLMMAddr[0..19]=(0x0000, 0x1000, 0x2000, 0x3000, 0x4000, 0x5000, 0x6000, 0x7000, 0x8000, 0x9000, 0xA000, 0xB000, 0xC000, 0xD000, 0xE000, 0xF000, 0x10000, 0x11000)
+  print "Selected target SDM845 Sensors TLMM.  Loading main menu..."
+)
+
+if "&Selection">"3"
+(
+  print "Invalid input, please try again"
+  goto retry_target
+)
+
+
+;============================================================================
+; Main Menu window
+;============================================================================
+
+MainMenu:
+  print
+  print
+  print "------------------------------------------------"
+  print "|                                              |"
+  print "|         GPIO Test and Debug Program          |"
+  print "|                                              |"
+  print "|            Copyright (c) 2017 by             |"
+  print "|          QUALCOMM Technologies, Inc.         |"
+  print "|                                              |"
+  print "------------------------------------------------"
+  print
+  print
+  print "      0: Exit"
+  print "      1: Select GPIO number"
+  print "      2: Read current configuration"
+  print "      3: Set interrupt trigger type (chip-level TLMM only)"
+  print "      4: Get interrupt trigger type (chip-level TLMM only)"
+  print "      5: Route interrupt to target processor (chip-level TLMM only)"
+  print "      6: Set function select"
+  print "      7: Set direction"
+  print "      8: Set pull"
+  print "      9: Set drive strength"
+  print "     10: Drive bit-banged GPIO HIGH"
+  print "     11: Drive bit-banged GPIO LOW"
+  print "     12: Read current OUTPUT value"
+  print "     13: Read current INPUT value"
+  print "     14: Read all GPIO"
+  print "     15: Find floating nodes"
+  print
+  print " Please make a Selection: "
+
+  &t32_cmm_stopped=1
+  enter &Selection
+  &t32_cmm_stopped=0
+
+  print
+  print
+  
+  ; Validate input.
+  if &Selection>15
+  (
+    print "Invalid input.  Please try again."
+    goto MainMenu
+  )
+
+  ; Exit program.
+  if "&Selection"=="0"
+  (
+    print "Ending GPIO configuration program..."
+    enddo
+  )
+
+  if "&Selection"=="1"
+  (
+    gosub ResetParams
+main_retry:
+    print " Please enter GPIO number: "
+    &t32_cmm_stopped=1
+    enter &gpio_number
+    &gpio_number=&gpio_number.
+    if (&num_gpio-1)<&gpio_number
+    (
+      print "Invalid GPIO. Must be less than or equal to &num_gpio"
+      goto main_retry
+    )
+    &t32_cmm_stopped=0
+    print "Manipulation on GPIO:  &gpio_number"
+    gosub RefreshData
+    goto MainMenu
+  )
+
+
+  if "&Selection"=="2"
+  (
+    gosub RefreshData
+    print " Manipulation on GPIO:  &gpio_number"
+    print "Reading configuration for GPIO &gpio_number.."
+    gosub ReadConfig 0
+    goto MainMenu
+  )
+
+  if "&Selection"=="3"
+  (
+    if &IsSSCTLMM==0x1
+    (
+      print "Interrupts are not supported in SSC TLMM.  Returning to main menu..."
+      goto MainMenu
+    )
+    gosub ResetParams
+    gosub RefreshData
+    print " Setting trigger type on GPIO:  &gpio_number"
+    print " Note:  GPIO pin configuration must be set up to coincide with"
+    print "        the GPIO interrupt configuration."
+dir_retry:
+    print "      0:  Set Edge Detect - Positive Edge"
+    print "      1:  Set Edge Detect - Negative Edge"
+    print "      2:  Set Edge Detect - Dual Edge"
+    print "      3:  Set Level Detect"
+    print "      4:  Set HIGH Polarity"
+    print "      5:  Set LOW Polarity"
+    print "      6:  Enable Interrupt"
+    print "      7:  Disable Interrupt"
+    print "      8:  [Main menu]"
+    print " Please select a number "
+    &t32_cmm_stopped=1
+    enter &Selection
+    &t32_cmm_stopped=0
+    if "&Selection"=="6"
+    (
+      goto MainMenu
+    )
+    else if "&Selection"=="0"
+    (
+      &intr_config=(&intr_config&~(0xC))
+      data.set a:&intr_config_addr %LONG ((&intr_config)|(0x4))
+       &value=" Positive Edge Detect"
+    )
+    else if "&Selection"=="1"
+    (
+      &intr_config=(&intr_config&~(0xC))
+      data.set a:&intr_config_addr %LONG ((&intr_config)|(0x8))
+       &value="Negative Edge Detect"
+    )
+    else if "&Selection"=="2"
+    (
+      &intr_config=(&intr_config&~(0xC))
+      data.set a:&intr_config_addr %LONG ((&intr_config)|(0xC))
+       &value="Dual Edge Detect"
+    )
+    else if "&Selection"=="3"
+    (
+      &intr_config=(&intr_config&~(0xC))
+      data.set a:&intr_config_addr %LONG (&intr_config)
+       &value="Level Detect"
+    )
+    else if "&Selection"=="4"
+    (
+       data.set a:&intr_config_addr %LONG ((&intr_config)|(0x2))
+       &value="Polarity HIGH"
+    )
+    else if "&Selection"=="5"
+    (
+       data.set a:&intr_config_addr %LONG ((&intr_config)&~(0x2))
+       &value="Polarity LOW"
+    )
+    else if "&Selection"=="6"
+    (
+       data.set a:&intr_config_addr %LONG ((&intr_config)|(0x1))
+       &value="Interrupt Enabled"
+    )
+    else if "&Selection"=="7"
+    (
+       data.set a:&intr_config_addr %LONG ((&intr_config)&~(0x1))
+       &value="Interrupt Disabled"
+    )
+    else
+    (
+      print "Invalid selection"
+      goto dir_retry
+    )
+    print " Set GPIO as &value"
+    gosub RefreshData
+    print
+    print
+    goto MainMenu
+  )
+
+  if "&Selection"=="4"
+  (
+    if &IsSSCTLMM==0x1
+    (
+      print "Interrupts are not supported in SSC TLMM.  Returning to main menu..."
+      goto MainMenu
+    )
+
+    gosub ResetParams
+    gosub RefreshData
+    print " Get interrupt configuration on GPIO:  &gpio_number"
+dir_retry2:
+    print "      0:  Get Current Interrupt Configuration"
+    print "      1:  Get Current Interrupt Status"
+    print "      2:  Clear Interrupt Status"
+    print "      3:  [Main menu]"
+    print " Please select a number "
+    &t32_cmm_stopped=1
+    enter &Selection
+    &t32_cmm_stopped=0
+    if "&Selection"=="3"
+    (
+      goto MainMenu
+    )
+    else if "&Selection"=="0"
+    (
+      if (&intr_config&0x100)!=0
+      (
+        &connect_type="Direct Conn. "
+      )
+      else
+      (
+        &connect_type="Summary Intr."
+
+        if (&intr_config&(0xc))==0x4
+        (
+          &trigger="Positive Edge"
+        )
+        else if (&intr_config&(0xc))==0x8
+        (
+          &trigger="Negative Edge"
+        )
+        else if (&intr_config&(0xc))==0xc
+        (
+          &trigger="Dual Edge"
+        )
+        else
+        (
+          &trigger="Level Detect"
+        )
+      )
+      if (&intr_config&(0x100))!=0
+      (
+        ; Don't populate the others for dir conns.
+      )
+      else
+      (
+        if (&intr_config&(1<<1))!=0
+        (
+          &polarity="Polarity HIGH"
+        )
+        else
+        (
+          &polarity="Polarity LOW"
+        )
+      )
+      print "Note:  Direct connect interrupts will not show proper polarity."
+      print "Current Interrupt Configuration: &connect_type,  &trigger, &polarity"
+      goto dir_retry2
+    )
+    else if "&Selection"=="1"
+    (
+      &value=data.long(a:&intr_status_addr)
+      if (&value&(1<<0))!=0
+      (
+        print "Current Interrupt Status is HIGH"
+      )
+      else
+      (
+        print "Current Interrupt Status is LOW"
+      )
+      goto dir_retry2
+    )
+    else if "&Selection"=="2"
+    (
+      print "Clearing the Interrupt..."
+      data.set a:&intr_status_addr %LONG 0x1
+      goto dir_retry2
+    )
+    else
+    (
+      print "Invalid selection"
+      goto dir_retry2
+    )
+    gosub RefreshData
+    print
+    print
+    goto MainMenu
+  )
+  if "&Selection"=="5"
+  (
+    if &IsSSCTLMM==0x1
+    (
+      print "Interrupts are not supported in SSC TLMM.  Returning to main menu..."
+      goto MainMenu
+    )
+    gosub RefreshData
+    print "NOTE:  Not all processors are defined on a particular target"
+    print "Please select the target processor to route the interrupt to:"
+proc_retry:
+    print "      0:  SENSORS"
+    print "      1:  LPASS"
+    print "      2:  RPM"
+    print "      3:  HMSS"
+    print "      4:  MSS"
+    print "      5:  TZ"
+	print "      6:  TURING"
+    print "      7:  None"
+    print "      8:  [Main menu]"
+    print " Please select a number "
+    &t32_cmm_stopped=1
+    enter &Selection
+    &t32_cmm_stopped=0
+    ; Validate input.
+    if &Selection>7
+    (
+      print "Invalid input.  Please try again."
+      goto proc_retry
+    )
+    if "&Selection"=="0"
+    (
+      ; SENSORS
+      &intr_config=(&intr_config&~(0xE0))
+      data.set a:&intr_config_addr %LONG (&intr_config)
+      print "Interrupt routed to SENSORS processor"
+      goto MainMenu
+    )
+    if "&Selection"=="1"
+    (
+      ; LPASS
+      &intr_config=(&intr_config&~(0xE0))
+      data.set a:&intr_config_addr %LONG ((&intr_config)|(0x20))
+      print "Interrupt routed to LPASS processor"
+      goto MainMenu
+    )
+    if "&Selection"=="2"
+    (
+      ; RPM
+      &intr_config=(&intr_config&~(0xE0))
+      data.set a:&intr_config_addr %LONG ((&intr_config)|(0x40))
+      print "Interrupt routed to RPM processor"
+      goto MainMenu
+    )
+    if "&Selection"=="3"
+    (
+      ; HMSS
+      &intr_config=(&intr_config&~(0xE0))
+      data.set a:&intr_config_addr %LONG ((&intr_config)|(0x60))
+      print "Interrupt routed to HMSS processor"
+      goto MainMenu
+    )
+    if "&Selection"=="4"
+    (
+      ; MSS
+      &intr_config=(&intr_config&~(0xE0))
+      data.set a:&intr_config_addr %LONG ((&intr_config)|(0x80))
+      print "Interrupt routed to MSS processor"
+      goto MainMenu
+    )
+    if "&Selection"=="5"
+    (
+      ; TZ
+      &intr_config=(&intr_config&~(0xE0))
+      data.set a:&intr_config_addr %LONG ((&intr_config)|(0xA0))
+      print "Interrupt routed to TZ processor"
+      goto MainMenu
+    )
+    if "&Selection"=="6"
+    (
+      ; TURING
+      &intr_config=(&intr_config&~(0xE0))
+      data.set a:&intr_config_addr %LONG ((&intr_config)|(0xC0))
+      print "Interrupt routed to TZ processor"
+      goto MainMenu
+    )
+    if "&Selection"=="7"
+    (
+      ; None
+      data.set a:&intr_config_addr %LONG ((&intr_config)|(0xE0))
+      print "Interrupt routed to no processor"
+      goto MainMenu
+    )
+  )
+  if "&Selection"=="6"
+  (
+    gosub RefreshData
+    print "Refer to SWI Document for available function selects"
+    print "Please enter function select for GPIO &gpio_number (or FF to go back) "
+    &t32_cmm_stopped=1
+    enter &func
+    &t32_cmm_stopped=0
+    if "&func"=="FF"
+    (
+      goto MainMenu
+    )
+    else if "&func"=="ff"
+    (
+      goto MainMenu
+    )
+    print "Setting function select to &func..."
+    &func=&func.
+    &config=((&config)&~(0xF<<2))
+    &config=((&config)|((&func)<<2))
+    data.set a:&config_addr %LONG &config
+    print
+    print
+    gosub RefreshData
+    goto MainMenu
+  )
+
+  if "&Selection"=="7"
+  (
+    gosub RefreshData
+dir_retry:
+    print "      0:  INPUT"
+    print "      1:  OUTPUT"
+    print "      2:  [Main menu]"
+    print " Please select a number "
+    &t32_cmm_stopped=1
+    enter &Selection
+    &t32_cmm_stopped=0
+    if "&Selection"=="2"
+    (
+      goto MainMenu
+    )
+    else if "&Selection"=="0"
+    (
+      data.set a:&config_addr %LONG ((&config)&~(0x200))
+      &dir="INPUT"
+    )
+    else if "&Selection"=="1"
+    (
+      data.set a:&config_addr %LONG ((&config)|(0x200))
+      &dir="OUTPUT"
+    )
+    else
+    (
+      print "Invalid selection"
+      goto dir_retry
+    )
+    print " Set GPIO as &dir"
+    gosub RefreshData
+    print
+    print
+    goto MainMenu
+  )
+
+  if "&Selection"=="8"
+  (
+    gosub RefreshData
+pull_retry:
+    print "      0:  NO-PULL"
+    print "      1:  PULL-DOWN"
+    print "      2:  KEEPER"
+    print "      3:  PULL-UP"
+    print "      4:  [Main menu]"
+    print " Please select a number "
+    &t32_cmm_stopped=1
+    enter &Selection
+    &t32_cmm_stopped=0
+
+    if "&Selection"=="4"
+    (
+      goto MainMenu
+    )
+    else if &Selection>0x4
+    (
+      print "Invalid input, please try again"
+      goto pull_retry
+    )
+
+    &pull=data.long(a:&config_addr)
+    &pull=(((&pull)&~0x3)|(&Selection))
+    data.set a:&config_addr %LONG &pull
+    if "Selection"=="0"
+    (
+      print " Set pull to NO-PULL"
+    )
+    else if "Selection"=="1"
+    (
+      print " Set pull to PULL-DOWN"
+    )
+    else if "Selection"=="2"
+    (
+      print " Set pull to KEEPER"
+    )
+    else if "Selection"=="3"
+    (
+      print " Set pull to PULL-UP"
+    )
+    print
+    print
+    gosub RefreshData
+    goto MainMenu
+  )
+
+
+  if "&Selection"=="9"
+  (
+    gosub RefreshData
+drive_retry:
+    print " Available Drive Strengths:"
+    print "      0:  2mA"
+    print "      1:  4mA"
+    print "      2:  6mA"
+    print "      3:  8mA"
+    print "      4: 10mA"
+    print "      5: 12mA"
+    print "      6: 14mA"
+    print "      7: 16mA"
+    print "      8: [Main menu]"
+    print " Please select a number "
+    &t32_cmm_stopped=1
+    enter &Selection
+    &t32_cmm_stopped=0
+
+    if &Selection>8
+    (
+      print "Invalid input, please try again"
+      goto drive_retry
+    )
+    &config=(((&config)&~(0x7<<6))|(&Selection<<6))
+    data.set a:&config_addr %LONG &config
+    print
+    print
+    gosub RefreshData
+    goto MainMenu
+  )
+
+  if "&Selection"=="10"
+  (
+    gosub RefreshData
+    print "Attempting to drive bit-banged GPIO HIGH..."
+    if ((&config)|(0x200))==0
+    (
+      print "Please set GPIO to OUTPUT and try again"
+      goto MainMenu
+    )
+    if ((&func)|0x0)==0
+    (
+      data.set a:&in_out_addr %LONG ((&out_reg_val)|(0x2))
+    )
+    else
+    (
+      print "Please set function select to 0 for bit-bang mode"
+      goto MainMenu
+    )
+    gosub RefreshData
+    print "Output driven HIGH for GPIO &gpio_number"
+    goto MainMenu
+  )
+
+  if "&Selection"=="11"
+  (
+    gosub RefreshData
+
+    print "Attempting to drive bit-banged GPIO LOW..."
+    if ((&config)|(0x200))==0
+    (
+      print "Please set GPIO to OUTPUT and try again"
+      goto MainMenu
+    )
+    if ((&func)|0x0)==0
+    (
+      data.set a:&in_out_addr %LONG ((&out_reg_val)&~(1<<0x1))
+    )
+    else
+    (
+      print "Please set function select to 0 for bit-bang mode"
+      goto MainMenu
+    )
+    gosub RefreshData
+    print "Output driven LOW for GPIO &gpio_number"
+    goto MainMenu
+  )
+
+  if "&Selection"=="12"
+  (
+    gosub RefreshData
+
+    if "&dir"=="INPUT"
+    (
+      print "OUTPUT does not affect GPIO configured as INPUT."
+    )
+    else
+    (
+      if ((&out_reg_val)&(0x2))==0
+      (
+        print "GPIO OUTPUT is LOW."
+      )
+      else
+      (
+        print "GPIO OUTPUT is HIGH."
+      )
+    )
+    goto MainMenu
+  )
+
+  if "&Selection"=="13"
+  (
+    gosub RefreshData
+
+    if "&dir"=="OUTPUT"
+    (
+      print "INPUT does not affect GPIO configured as OUTPUT."
+    )
+    else
+    (
+      if ((&out_reg_val)&(0x1))==0
+      (
+        print "GPIO INPUT to MSM is LOW."
+      )
+      else
+      (
+        print "GPIO INPUT to MSM is HIGH."
+      )
+    )
+    goto MainMenu
+  )
+
+  if "&Selection"=="14"
+  (
+    &idx=0
+    &temp_gpio=&gpio_number
+next_itr:
+    gosub ResetParams
+    &gpio_number=&idx
+    &idx=&idx+1.
+    if &gpio_number<&num_gpio
+    (
+      gosub RefreshData
+      gosub ReadConfig 0
+      goto next_itr
+    )
+    &gpio_number=&temp_gpio
+    print "Current GPIO number is: &gpio_number"
+
+    gosub RefreshData
+    goto MainMenu
+  )
+
+  if "&Selection"=="15"
+  (
+    &idx=0
+    &temp_gpio=&gpio_number
+next_loop:
+    gosub ResetParams
+    &gpio_number=&idx
+    &idx=&idx+1.
+    if &gpio_number<&num_gpio
+    (
+      gosub RefreshData
+      gosub ReadConfig 0x1
+      goto next_loop
+    )
+    &gpio_number=&temp_gpio
+    gosub RefreshData
+    goto MainMenu
+  )
+
+return
+
+
+;============================================================================
+; Reset parameters
+;============================================================================
+
+ResetParams:
+  &in_out_addr=""
+  &config_addr=""
+  &intr_config_addr=""
+  &intr_status_addr=""
+  &config=""
+  &intr_config=""
+  &func=""
+  &drive=""
+  &dir=""
+  &pull=""
+  &out_val=""
+  &out_reg_val=""
+
+return  ; ResetParams
+
+
+RefreshData:
+
+  if (&IsSSCTLMM)==0x1
+  (
+    goto load_addrs
+  )
+
+  &config=data.long(a:&TLMM_BASE+&tile_base1+(0x1000*&gpio_number)+0x10)
+
+  if (&config)==0x1
+  (
+    &tile_offset=&tile_base1
+    goto load_addrs
+  )
+
+  &config=data.long(a:&TLMM_BASE+&tile_base2+(0x1000*&gpio_number)+0x10)
+
+  if (&config)==0x1
+  (
+    &tile_offset=&tile_base2
+    goto load_addrs
+  )
+
+  &config=data.long(a:&TLMM_BASE+&tile_base3+(0x1000*&gpio_number)+0x10)
+
+  if (&config)==0x1
+  (
+    &tile_offset=&tile_base3
+    goto load_addrs
+  )
+
+  &config=data.long(a:&TLMM_BASE+&tile_base4+(0x1000*&gpio_number)+0x10)
+
+  if (&config)==0x1
+  (
+    &tile_offset=&tile_base4
+    goto load_addrs
+  )
+
+load_addrs:
+
+  if &IsSSCTLMM==0x0
+  (
+    &config_addr=(&TLMM_BASE+&tile_offset+(0x1000*&gpio_number))
+    &in_out_addr=(&TLMM_BASE+0x4+&tile_offset+(0x1000*&gpio_number))
+    &intr_config_addr=(&TLMM_BASE+0x8+&tile_offset+(0x1000*&gpio_number))
+    ; No variable for status.  Read register each time.
+    &intr_status_addr=(&TLMM_BASE+0xc+340000c+&tile_offset+(0x1000*&gpio_number))
+    &intr_config=data.long(a:&intr_config_addr)
+  )
+  else
+  (
+    &config_addr=(&TLMM_BASE+0x0+(Var.VALUE(\SSCTLMMAddr[&gpio_number])))
+    ;  print "GPIO Number: &gpio_number, Config Addr: &config_addr"
+    &in_out_addr=(&TLMM_BASE+0x4+(Var.VALUE(\SSCTLMMAddr[&gpio_number])))
+
+  )
+
+  &config=data.long(a:&config_addr)
+  &out_reg_val=data.long(a:&in_out_addr)
+
+
+  &func=((&config&0x3C)>>2)
+  &drive=((&config&0x1C0)>>0x6)
+  &dir=((&config&0x200)>>9)
+  &pull=(&config&0x3)
+  &out_val=((&out_reg_val)>>0x1)&(0x1)
+
+return ; RefreshData
+
+ReadConfig:
+
+    ENTRY &entry_value
+
+    if &pull==0x0
+    (
+      &pull="NO_PULL"
+    )
+    else if &pull==1
+    (
+      &pull="PULL_DOWN"
+    )
+    else if &pull==0x2
+    (
+      &pull="KEEPER"
+    )
+    else if &pull==0x3
+    (
+      &pull="PULL_UP"
+    )
+
+    if &dir==0x0
+    (
+      &dir="IN"
+      if &entry_value==0x1
+      (
+        if "&pull"=="NO_PULL"
+        (
+          print "[&gpio_number] Is currently set as INPUT with NO PULL (floating)."
+        )
+        goto finish
+      )
+    )
+    else
+    (
+      &dir="OUT"
+    )
+    if &entry_value==0x1
+    (
+      goto finish
+    )
+
+    if &drive==0x0
+    (
+      &drive="2mA"
+    )
+    else if &drive==0x1
+    (
+      &drive="4mA"
+    )
+    else if &drive==0x2
+    (
+      &drive="6mA"
+    )
+    else if &drive==0x3
+    (
+      &drive="8mA"
+    )
+    else if &drive==0x4
+    (
+      &drive="10mA"
+    )
+    else if &drive==0x5
+    (
+      &drive="12mA"
+    )
+    else if &drive==0x6
+    (
+      &drive="14mA"
+    )
+    else if &drive==0x7
+    (
+      &drive="16mA"
+    )
+
+    if &out_val==0x0
+    (
+      &out_val="LOW"
+    )
+    else
+    (
+      &out_val="HIGH"
+    )
+
+    if "&dir"=="IN"
+    (
+      print " GPIO[&gpio_number]: [FS]&func, [DIR]&dir, [PULL]&pull, [DRV]&drive"
+    )
+    else
+    (
+      print " GPIO[&gpio_number]: [FS]&func, [DIR]&dir, [PULL]&pull, [DRV]&drive, [VAL]&out_val"
+    )
+
+finish:
+return
+

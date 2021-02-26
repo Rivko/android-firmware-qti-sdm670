@@ -1,0 +1,106 @@
+#===============================================================================
+#
+# NanoPB encode/decode library
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2016 - 2017 by Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Id: //components/rel/ssc.slpi/3.2/utils/nanopb/build/nanopb.scons#1 $
+#  $DateTime: 2018/02/01 03:15:18 $
+#  $Change: 15367748 $
+#
+#===============================================================================
+Import('env')
+import os, inspect
+
+ME = inspect.getfile(inspect.currentframe())
+MY_ROOT = os.path.dirname(os.path.dirname(ME))
+MY_NAME = os.path.basename(MY_ROOT)
+
+#-------------------------------------------------------------------------------
+# Internal dependencies
+#-------------------------------------------------------------------------------
+SENSORS_API = [
+  'SNS_INTERNAL_INCLUDES',
+  'SNS_FRAMEWORK',
+  ]
+env.RequireProtectedApi(SENSORS_API)
+env.RequirePublicApi('SNS_INCLUDES', area='ssc')
+
+#-------------------------------------------------------------------------------
+# External dependencies
+#-------------------------------------------------------------------------------
+if 'SSC_TARGET_HEXAGON' in env['CPPDEFINES']:
+  CBSP_API = [
+    'DEBUGTOOLS', # Required for debug log messages
+    'KERNEL',     # Required for debug log messages
+    ]
+  env.RequirePublicApi(CBSP_API, area='core')
+
+#-------------------------------------------------------------------------------
+# Source Path
+#-------------------------------------------------------------------------------
+SRCPATH = os.path.join(MY_ROOT, 'src')
+if not os.path.isdir(SRCPATH):
+  if 'SSC_TARGET_X86' in env['CPPDEFINES']:
+    SRCPATH = os.path.join(MY_ROOT, 'x86')
+  elif 'SSC_TARGET_HEXAGON' in env['CPPDEFINES']:
+    SRCPATH = os.path.join(MY_ROOT, 'hexagon')
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Source files
+#-------------------------------------------------------------------------------
+SRCFILES  =  env.FindFiles(['*.c'], SRCPATH)
+#print '\n'.join(["%s" % i for i in SRCFILES])
+
+VARIANT_SRCFILES = [fname.replace(SRCPATH,'${BUILDPATH}') for fname in SRCFILES]
+#print '\n'.join(["%s" % i for i in VARIANT_SRCFILES])
+
+#-------------------------------------------------------------------------------
+# Protocol Buffer API files
+#-------------------------------------------------------------------------------
+PBPATH = os.path.join(MY_ROOT, 'pb')
+PBFILES = env.FindFiles(['*.proto'], PBPATH)
+if 'USES_NANOPB_COMPILER' in env:
+  env.AddSensorPB(env, PBFILES)
+
+  PB_OUT_PATH = os.path.join(str(env.get('BUILD_ROOT', None)), "ssc", "inc", "pb")
+  for file in PBFILES:
+    file_path, file_name = os.path.split(file)
+    src_name = file_name.replace(".proto", ".pb.c")
+    VARIANT_SRCFILES.append(os.path.join(PB_OUT_PATH, src_name));
+
+#-------------------------------------------------------------------------------
+# Add Libraries to Image
+#-------------------------------------------------------------------------------
+MY_LIB = os.path.join('${BUILDPATH}', MY_NAME)
+if 'SSC_TARGET_X86' in env['CPPDEFINES']:
+  lib = env.AddLibrary(['SSC_SIM'], MY_LIB, VARIANT_SRCFILES)
+  REMOVE_FILES =  env.FindFiles(['*.c','*.h','*.proto'], MY_ROOT)
+elif 'SENSORS_DD_DEV_FLAG' not in env:
+  lib = env.AddLibrary(env['SSC_BUILD_TAGS'], MY_LIB, VARIANT_SRCFILES)
+  REMOVE_FILES =  env.FindFiles(['pb_*.c','*.proto'], MY_ROOT)
+else:
+  lib = env.AddBinaryLibrary(env['SSC_BUILD_TAGS'], MY_LIB, VARIANT_SRCFILES)
+  REMOVE_FILES =  env.FindFiles(['*.c','*.h','*.proto'], MY_ROOT)
+
+#-------------------------------------------------------------------------------
+#island mode
+#-------------------------------------------------------------------------------
+if 'USES_ISLAND' in env:
+   env.AddIslandLibrary(env['SSC_BUILD_TAGS'], lib)
+
+#-------------------------------------------------------------------------------
+# Remove source files
+#-------------------------------------------------------------------------------
+env.CleanPack(env['SSC_BUILD_TAGS'], REMOVE_FILES)
+#print '\n'.join(["%s" % i for i in REMOVE_FILES])
+#print "-*-*-*-*-*-*-*-*-*-*-*-*"

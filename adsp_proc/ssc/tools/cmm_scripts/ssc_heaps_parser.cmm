@@ -1,0 +1,153 @@
+;============================================================================
+;
+; Sensors heaps parser
+;
+;   To be called by ssc_parser.cmm to walk the Sensor heaps
+;
+; Version: 1.0
+;
+; Copyright (c) 2017 Qualcomm Technologies, Inc.
+; All Rights Reserved.
+; Qualcomm Technologies, Inc. Confidential and Proprietary.
+;============================================================================
+
+ENTRY
+
+print "##### Heaps #####"
+
+if &heap_info_avail==0
+(
+  print ""
+  print "Heap info not available.  Heap analysis not performed."
+  print ""
+)
+else
+(
+  gosub parse_heap_head &sns_island_heap_head
+  gosub parse_heap_head &sns_batch_heap_head
+  gosub parse_heap_head &sns_main_heap_head
+  gosub parse_heap_head &sns_event_heap_head
+  gosub parse_heap_head &sns_pram_heap_head
+)
+print "==================================================================================="
+print ""
+
+enddo
+
+; **********************************parse_heap_head***************************************
+parse_heap_head:
+  entry &heap_head
+  &heap=V.VALUE(&heap_head)
+  &mem_block_list_out=OS.PTD()+"\&heap_head"+".csv"
+  &i=1
+  while OS.FILE(&mem_block_list_out)
+  (
+    &mem_block_list_out=OS.PTD()+"\&heap_head"+format.decimal(1,&i)+".csv"
+    &i=&i+1
+  )
+  &heap_start=V.VALUE(((sns_mem_heap_type*)&heap)->first_block)
+  &heap_name=Y.NAME(D:&heap_start)
+  &total_blocks=V.VALUE(((sns_mem_heap_type*)&heap)->total_blocks)
+  &used_blocks=0
+  &total_bytes=V.VALUE(((sns_mem_heap_type*)&heap)->total_bytes)
+  &used_bytes=V.VALUE(((sns_mem_heap_type*)&heap)->used_bytes)
+  &heap_end=&heap_start+&total_bytes
+  &max_free_block_size=0
+
+  if &used_bytes!=0
+  (
+    OPEN  #1 &mem_block_list_out /Create
+    WRITE #1 ""
+    WRITE #1 "&heap_name"
+    WRITE #1 "======================================================================================"
+    WRITE #1 "  #Blocks,"+format.decimal(1.,&total_blocks)
+    WRITE #1 "  #Bytes,"+format.decimal(1.,&total_bytes)
+    WRITE #1 "  Used,""=sumif(f:f,""""0"""",d:d)"""
+    WRITE #1 "  Used %,""=B6*100/B5"""
+    WRITE #1 "======================================================================================"
+    ;        "A,     B,   C,       D,   E,    F,   G,          H,          I"
+    WRITE #1 "Block#,Addr,HdrGuard,Size,Extra,Free,Caller Addr,Caller Symbol"
+
+    &lastflag=0;
+    &header_guard=1
+    &block_count=1
+    &used_bytes=0
+    &curr_heap_mem=&heap_start
+    while (&lastflag!=0x01)&&(&header_guard!=0)&&(&curr_heap_mem<&heap_end)
+    (
+      &header_guard=V.VALUE(((sns_mem_block_header_type*)&curr_heap_mem)->header_guard)
+      &lastflag=V.VALUE(((sns_mem_block_header_type*)&curr_heap_mem)->last_flag)
+      &freeflag=V.VALUE(((sns_mem_block_header_type*)&curr_heap_mem)->free_flag)
+      &size=V.VALUE(((sns_mem_block_header_type*)&curr_heap_mem)->forw_offset)
+      &extrabytes=V.VALUE(((sns_mem_block_header_type*)&curr_heap_mem)->extra)
+      &debug_info=V.VALUE(((sns_mem_block_header_type*)&curr_heap_mem)->caller_ptr)
+      &debug_info_symbol=Y.NAME(D:&debug_info)
+
+      if V.VALUE(&heap_head)==V.VALUE(&sns_event_heap_head)
+      (
+        &event=&curr_heap_mem+16.
+        &debug_info=V.VALUE(((sns_fw_sensor_event*)&event)->header.caller)
+        &debug_info_symbol=Y.FUNCTION(D:&debug_info)
+      )
+
+      &writestring=format.DECIMAL(1., &block_count)
+      &writestring="&writestring"+","+format.HEX(8.,&curr_heap_mem)
+      &writestring="&writestring"+","+format.HEX(1., &header_guard)
+      &writestring="&writestring"+","+format.DECIMAL(1., &size)
+      &writestring="&writestring"+","+format.DECIMAL(1., &extrabytes)
+      &writestring="&writestring"+","+format.HEX(1., &freeflag)
+      ;&writestring="&writestring"+","+format.HEX(1., &lastflag)
+      &writestring="&writestring"+","+format.HEX(8., &debug_info)
+      if ("&debug_info_symbol"!="")
+      (
+        &writestring="&writestring"+", "+"&debug_info_symbol"
+      )
+      else
+      (
+        &writestring="&writestring"+", NoSymbol"
+      )
+      WRITE #1 "&writestring"
+
+      if &freeflag==0
+      (
+        &used_blocks=&used_blocks+1
+        &used_bytes=&used_bytes+&size
+      )
+      else if &size>&max_free_block_size
+      (
+        &max_free_block_size=&size
+      )
+
+      &curr_heap_mem=&curr_heap_mem+&size
+      &block_count=&block_count+1
+    )
+    if &header_guard==0
+    (
+      &writestring=format.HEX(8.,&curr_heap_mem)
+      &writestring="&writestring"+","+format.HEX(1., &header_guard)
+      WRITE #1 "&writestring"
+    )
+    CLOSE #1
+  )
+
+  &used_pct=(&used_bytes*100.)/&total_bytes
+
+  print ""
+  print "&heap_head"
+  if &used_bytes!=0
+  (
+    print "  List = &mem_block_list_out"
+  )
+  print "  Address            = &heap_start" " - " "&heap_end"
+  print "  #Blocks            = "+format.decimal(8.,&total_blocks)
+  print "  #Used Blocks       = "+format.decimal(8.,&used_blocks)
+  print "  Size               = "+format.decimal(8.,&total_bytes)
+  print "  Used               = "+format.decimal(8.,&used_bytes)+" ("+format.decimal(2.,&used_pct)+"%)"
+  if &used_bytes!=0
+  (
+    print "  Largest free block = "+format.decimal(8.,&max_free_block_size)
+  )
+
+  return
+; ************************************************************************************
+

@@ -1,0 +1,92 @@
+#===============================================================================
+#
+# Ultrasound algorithms processor proximity library
+#
+# GENERAL DESCRIPTION
+#    Ultrasound algorithms processor proximity library build script
+#
+# Copyright (c) 2013-2015 Qualcomm Technologies, Inc.
+# All rights reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/ultrasound.adsp/2.7/algorithms/proc/proximity/UsProximityLib/build/UsProximityLib.scons#3 $
+#  $DateTime: 2015/06/05 04:59:54 $
+#  $Author: pwbldsvc $
+#  $Change: 8295126 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 01-17-2013 NR     Initial version
+# 02-12-2013 NR     Strip out proximity library
+# 04-03-2013 NR     Stub out all ultrasound modules when USM is stubbed out
+# 04-11-2013 NR     Refinement of ultrasound scons usage.
+# 05-28-2013 NR     Implement a stub version for each CAPI
+# 12-13-2014 LD     Support building dynamic/static module
+# 05-03-2015 HS     Move ultrasound outside of avs
+#===============================================================================
+Import('env')
+
+core_public_apis = [
+   'DEBUGTOOLS',
+   'SERVICES',
+   'KERNEL',
+   ]
+
+platform_public_apis = [
+   'DLW'
+   ]
+
+env.PublishPrivateApi('ULTRASOUND_PROXIMITY_LIB',[
+   '../inc',
+   '../../CUsProximityLib/inc'
+   ])
+
+env.RequirePublicApi(core_public_apis, area='core')
+env.RequirePublicApi(platform_public_apis, area='platform')
+env.RequirePublicApi('AVS', area='avs')
+env.RequirePublicApi('QDSP6', area='qdsp6')
+env.RequireProtectedApi('ULTRASOUND_ALGORITHMS_COMMON')
+env.RequireRestrictedApi('ULTRASOUND_ALGORITHMS')
+env.RequirePrivateApi('ULTRASOUND_PROXIMITY_LIB')
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = '..'
+LIBNAME = 'UsProximityLib'
+
+#import pdb; pdb.set_trace()
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+# Generate regular source file list
+usnd_reg_sources = []
+
+# Generate stub source file list
+# usnd_stub_sources = env.GlobSourceFiles(['stub_src/*.cpp', 'stub_src/*.c'], SRCPATH,posix=True)
+usnd_stub_sources = []
+
+if 'USES_USND_ALG_DYN_MODULES' in env:
+    # generate propreitary source file with dynamic module list
+    usnd_prop_sources = env.GlobSourceFiles(['dyn_src/*.cpp', 'dyn_src/*.c'], SRCPATH,posix=True)
+else:
+    # Generate proprietary source file list
+    usnd_prop_sources = env.GlobSourceFiles(['src/*.cpp', 'src/*.c'], SRCPATH,posix=True)
+
+# if USM is stubbed out, all ultrasound modules should be stubbed out
+if not env.has_key('USES_ULTRASOUND_STREAM_MGR_STUB'):
+    env.AddBinaryLibrary(['ULTRASOUND_ADSP'], '${BUILDPATH}/'+LIBNAME,
+        [usnd_reg_sources, usnd_stub_sources, usnd_prop_sources])
+
+# Pack Rules: CLEAN_LIST carries list of files to be removed from the packages. Should not contain 'build' folder
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*'], '${ULTRASOUND_ROOT}/algorithms/proc/proximity/UsProximityLib/dyn_src'))
+CLEAN_LIST.extend(env.FindFiles(['*'], '${ULTRASOUND_ROOT}/algorithms/proc/proximity/UsProximityLib/src'))
+CLEAN_LIST.extend(env.FindFiles(['*'], '${ULTRASOUND_ROOT}/algorithms/proc/proximity/UsProximityLib/stub_src'))
+CLEAN_LIST.extend(env.FindFiles(['*'], '${ULTRASOUND_ROOT}/algorithms/proc/proximity/UsProximityLib/test'))
+env.CleanPack(['CORE_QDSP6_SW', 'AVS_ADSP', 'CLEANPACK_TARGET', 'ULTRASOUND_ADSP'], CLEAN_LIST)

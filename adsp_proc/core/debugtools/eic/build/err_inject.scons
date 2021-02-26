@@ -1,0 +1,179 @@
+#===============================================================================
+#
+# ERR INJECT Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2014 - 2017 by Qualcomm Technologies, Inc.  All Rights Reserved.
+# Qualcomm Technologies, Inc. Confidential and Proprietary.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1/debugtools/eic/build/err_inject.scons#1 $
+#  $DateTime: 2017/07/21 22:10:47 $
+#  $Author: pwbldsvc $
+#  $Change: 13907704 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 08/04/15   dav     Add support for Island and PD
+# 10/01/14   dav     Created separate folder for ERR Inject.
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# SUPPORTED IMAGES
+#-------------------------------------------------------------------------------
+
+CRASH_INJECT_ROOT_IMG = [
+    'QDSP6_SW_IMAGE',
+    'CBSP_QDSP6_SW_IMAGE',
+    'CORE_ROOT_PD',
+    'CORE_WLAN_ROM'
+]
+
+CRASH_INJECT_USER_IMG = [
+    'CORE_QDSP6_SENSOR_SW',
+    'CORE_QDSP6_AUDIO_SW',
+    'CORE_USER_PD'
+]
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/debugtools/eic/src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#check for missing dependencies
+if 'USES_ERR_INJECT_CRASH' in env:
+    env.Append(CPPDEFINES=['ERR_INJECT_CRASH'])
+
+if 'USES_DEVCFG' in env:
+    env.Append(CPPDEFINES=['ERR_USES_DEVCFG'])
+
+#-------------------------------------------------------------------------------
+# External depends outside CoreBSP
+#-------------------------------------------------------------------------------
+
+env.RequireExternalApi([
+])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+CBSP_API = [
+   'DAL',
+   'DEBUGTOOLS',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+CBSP_API_RESTRICTED = [
+   'DAL',
+   'DEBUGTOOLS',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'ERR_INJECT_SETTINGS',
+
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API_RESTRICTED)
+
+#-------------------------------------------------------------------------------
+# Sources
+#-------------------------------------------------------------------------------
+#Some sections meant for Uerr, Should be explicitly added for island mode
+ERR_INJECT_CRASH_ROOT_SOURCES = [
+   '${BUILDPATH}/err_inject_crash.c',
+   '${BUILDPATH}/err_inject_crash_root.c',
+   
+]
+
+UERR_INJECT_CRASH_ROOT_SOURCES = [
+   '${BUILDPATH}/uerr_inject_crash.c',
+
+]
+
+ERR_INJECT_CRASH_USER_SOURCES = [
+   '${BUILDPATH}/err_inject_crash.c',
+   '${BUILDPATH}/err_inject_crash_user.c',
+      
+]
+
+UERR_INJECT_CRASH_USER_SOURCES = [
+   '${BUILDPATH}/uerr_inject_crash.c',
+
+]
+
+#-------------------------------------------------------------------------------
+# Libraries
+#-------------------------------------------------------------------------------
+
+USER_PD_NO_ISLAND = ['USES_AUDIO_PD','USES_WLAN_PD']
+eic_user_pd_req_island_mode = 'yes'
+#Check if Island mode is available only for Root PD
+for user_pd in USER_PD_NO_ISLAND:
+  if user_pd in env: 
+    eic_user_pd_req_island_mode = 'no'
+
+if 'MODEM_PROC' in env:
+   #MPSS specific - other subsystems define flag in top-level scons
+   if 'USES_ISLAND' in env:
+      if eic_user_pd_req_island_mode == 'yes':
+        #Required for island builds
+        env.Append(CCFLAGS = "-G0")
+        #We don't support island functions with '-fstack-protector'
+        if "-fstack-protector" in env['HEXAGON_STKPRO']:
+           env.Replace(HEXAGON_STKPRO = "")
+
+if 'USES_ERR_INJECT_CRASH' in env:
+    if 'USES_ISLAND_FEATURE' in env:
+      if eic_user_pd_req_island_mode == 'yes':
+        env.Append(CFLAGS = "-DUERR_ISLAND_MODE ")
+        uerr_inject_crash_libs_user = env.AddLibrary(CRASH_INJECT_USER_IMG, '${BUILDPATH}/uerr_inject_crash_user', UERR_INJECT_CRASH_USER_SOURCES )
+
+      uerr_inject_crash_libs_root = env.AddLibrary(CRASH_INJECT_ROOT_IMG, '${BUILDPATH}/uerr_inject_crash_root', UERR_INJECT_CRASH_ROOT_SOURCES )
+      
+    if 'USES_ISLAND' in env:
+       env.AddIslandLibrary(CRASH_INJECT_ROOT_IMG, uerr_inject_crash_libs_root)
+       if eic_user_pd_req_island_mode == 'yes':
+         env.AddIslandLibrary(CRASH_INJECT_USER_IMG, uerr_inject_crash_libs_user)
+
+    err_inject_crash_libs_root = env.AddLibrary(CRASH_INJECT_ROOT_IMG, '${BUILDPATH}/err_inject_crash_root', ERR_INJECT_CRASH_ROOT_SOURCES )
+    err_inject_crash_libs_user  = env.AddLibrary(CRASH_INJECT_USER_IMG, '${BUILDPATH}/err_inject_crash_user', ERR_INJECT_CRASH_USER_SOURCES )
+
+if 'USES_ERR_INJECT_CRASH' in env:
+  if 'USES_RCINIT' in env:
+    env.AddRCInitFunc( 
+     CRASH_INJECT_ROOT_IMG, 
+     {
+      'sequence_group'             : 'RCINIT_GROUP_2',                   # required
+      'init_name'                  : 'err_inject_crash_init',            # required
+      'init_function'              : 'err_inject_crash_init',            # required
+     # 'dependencies'               : ['',]
+     })
+
+if 'USES_ERR_INJECT_CRASH' in env:
+  if 'USES_RCINIT' in env:
+      env.AddRCInitFunc( 
+       CRASH_INJECT_USER_IMG, 
+       {
+        'sequence_group'             : 'RCINIT_GROUP_2',                   # required
+        'init_name'                  : 'err_inject_crash_init',            # required
+        'init_function'              : 'err_inject_crash_init',            # required
+       # 'dependencies'               : ['',]
+       })
+

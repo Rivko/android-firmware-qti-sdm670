@@ -1,0 +1,49 @@
+#===============================================================================
+#
+# TSL258X sensor implementation
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2016-2018 by Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#
+#
+#===============================================================================
+Import('env')
+import os,inspect
+
+# To add island support for drivers:
+# 1. Refactor driver files to separate all island mode functions in a separate
+#    file(s) with filenames ending in "_island". See 80-P9361-1 for details.
+#    Example: sns_lsm6ds3_hal_island.c
+# 2. Use a dedicated environment flag to check if island mode is enabled for the
+#    driver. Use format SNS_ISLAND_INCLUDE_<sensor_name>
+#    Example: SNS_ISLAND_INCLUDE_LSM6DS3.
+# 3. Use this flag to decide whether add_island_files is set to True ot False
+#    when env.AddSSCSU() is called.
+# 4. Include the flag in build flag options (-f) to enable island mode for
+#    the driver.
+
+tmd2725_island_enable = False
+
+if 'SNS_ISLAND_INCLUDE_TMD2725' in env:
+  tmd2725_island_enable = False
+
+if ('USES_SSC_STATIC_LIB_BUILDER' in env)  and ('SENSORS_DD_DEV_FLAG' not in env):
+  if 'SSC_TARGET_HEXAGON' in env['CPPDEFINES']:
+    env.AddSSCSU(inspect.getfile(inspect.currentframe()),
+               flavor = ["hexagon"],
+               register_func_name = "sns_register_tmd2725",
+               binary_lib = False,
+               add_island_files = tmd2725_island_enable,
+               diag_ssid = "MSG_SSID_SNS_SENSOR_EXT")
+
+if 'SENSORS_DD_DEV_FLAG' in env:
+  ME = inspect.getfile(inspect.currentframe())
+  MY_ROOT = os.path.dirname(os.path.dirname(ME))
+  REMOVE_FILES = env.FindFiles(['*.*'], MY_ROOT)
+  env.CleanPack(env['SSC_BUILD_TAGS'], REMOVE_FILES)

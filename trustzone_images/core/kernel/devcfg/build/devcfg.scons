@@ -1,0 +1,77 @@
+Import('env')
+import os, glob
+env = env.Clone()
+
+#bail out if this image doesn't use Devcfg
+if not env.GetUsesFlag('USES_DEVCFG'):
+    Return()
+    
+env.Replace(DEVCFG_SYSAPI = "${COREBSP_ROOT}/api/systemdrivers/")
+env.Append(CPPPATH = '${DEVCFG_ROOT}/inc')
+
+#-------------------------------------------------------------------------------
+# External paths, NOTE: DALConfig is a special case as it may require any
+# ".h" file which may not be a public API
+#-------------------------------------------------------------------------------
+
+EXTERNAL_API = [
+   'MODEM_PMIC',                  #pm.h
+   'MODEM_API',
+]
+env.RequireExternalApi(EXTERNAL_API)
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'HAL',
+   'BUSES',
+   'HWENGINES',
+   'SYSTEMDRIVERS',
+   'PMIC',
+   'POWER',
+   'SYSTEMDRIVERS_DALCONFIG',
+   'DEBUGTOOLS',
+   'SERVICES',
+   'APTTESTS',
+   'KERNEL_MEMORYMANAGER',
+   'KERNEL'
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#Uncomment the line below to disable compiler optimisation
+#env.Replace(DISABLE_COMPILER_OPTIMISATION = 'yes')
+if 'DISABLE_COMPILER_OPTIMISATION' in env:
+    env['HEXAGON_OPT_S'] = '-O0'        
+
+#Uncomment the line below to enable testcase
+#env.Replace(DEVCFG_BOOT_TEST = 'yes')
+if 'DEVCFG_BOOT_TEST' in env:
+    env.Append(CPPDEFINES = ["DEVCFG_BOOT_TEST"]) 
+    test_script_fname = "../TestDrivers/build/SConscript"
+    env.SConscript(test_script_fname, exports='env')
+
+script_fname = "../SConscript"
+
+obj_nodes    = env.SConscript(script_fname, exports='env')
+
+if "USES_DEPLOY_BUILDER" in env:
+   env.Deploy(['../scripts/devcfgHwInfo_builder.py',
+               '../scripts/gendevcfghdr.py',
+               '../scripts/devcfg_lcs_builder.py',
+               '../scripts/devcfg_builder.py',
+               '../scripts/dalconfig_builder.py',
+               '../scripts/devcfg_lcs_builder_llvm.py',
+               '../scripts/cleanup_xml.py',
+               '../scripts/elfparserutil.py',
+               '../scripts/ppasm.py',
+               '../scripts/propgen.py',
+               '../scripts/reverse_propgen.py',
+               obj_nodes,
+               'devcfg.scons',
+               '../SConscript',
+               '../inc/DALSysInt.h'
+              ])

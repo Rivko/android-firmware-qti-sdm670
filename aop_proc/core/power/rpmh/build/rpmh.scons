@@ -1,0 +1,161 @@
+import os
+import fnmatch
+import itertools
+
+Import('env')
+env = env.Clone()
+
+#SDM640_CHANGES
+if env['MSM_ID'] in ['640']:
+   env['MSM_ID'] = '670'
+
+SRCPATH = ".."
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+env.Append(CFLAGS = '${ARMCC_STDC99_CMD}')
+
+env.Append(CPPDEFINES=['RPMH_IMAGE_OS'])
+env.Append(CPPDEFINES=['ULOG_RPMH_LOCK_TYPE=ULOG_LOCK_OS'])
+env.Append(CPPDEFINES=['DALSYS_RPMH_SYNC_TYPE=DALSYS_SYNC_ATTR_RESOURCE'])
+env.Append(CPPDEFINES=['ULOG_RPMH_LOCK_TYPE=ULOG_LOCK_OS'])
+
+# FEATURE CONFIG:
+env.Append(CPPDEFINES=['DISABLE_AOP_WATCHDOG'])
+#env.Append(CPPDEFINES=['RPMH_OFFTARGET_TEST'])
+#env.Append(CPPDEFINES=['OFFTARGET_MSM_ID'])
+env.Append(CPPDEFINES = 'RPMH_AOP_DIRECT_SEND')
+   
+if env['MSM_ID'] == '855':
+   env.Append(CPPDEFINES = 'SDM855_STUBS')
+elif env['MSM_ID'] == '1000':
+   env.Append(CPPDEFINES = 'SDM1000_STUBS')   
+
+CBSP_API = [
+  'DAL',
+  'DEBUGTOOLS',
+  'DEBUGTRACE',
+  'MPROC',
+  'POWER',
+  'UNPA',
+  'POWER_PDC',
+  'SERVICES',
+  'SYSTEMDRIVERS',
+   # needs to be last also contains wrong comdef.h
+  'KERNEL',
+]
+
+if env.has_key('ADSP_PROC') or env.has_key('MODEM_PROC'):
+    env['RPMH_IMAGE_OS'] = 'dal'
+elif env.has_key('AOP_IMAGE'):
+    env['RPMH_IMAGE_OS'] = 'rex'
+else:
+    env['RPMH_IMAGE_OS'] = 'stubs'
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+env.RequireProtectedApi(CBSP_API)
+
+env.PublishPrivateApi('RPMh', [ 
+   '${BUILD_ROOT}/core/power/rpmh/inc/hal',
+   '${BUILD_ROOT}/core/power/rpmh/inc/hal/${MSM_ID}',
+   '${BUILD_ROOT}/core/power/rpmh/hal/${MSM_ID}/${POWER_SUBSYSTEM}',
+   '${BUILD_ROOT}/core/power/rpmh/hal/inc',
+   '${BUILD_ROOT}/core/power/rpmh/inc',
+   '${BUILD_ROOT}/core/power/rpmh/hal/${MSM_ID}/${POWER_SUBSYSTEM}',
+   '${BUILD_ROOT}/core/power/rpmh/os/${RPMH_IMAGE_OS}',
+])
+
+COMMONPATH = os.path.join('..', 'common')
+CFGPATH = os.path.join('..', 'cfg', env['MSM_ID'], env['POWER_SUBSYSTEM'])
+OSPATH  = os.path.join('..', 'os', env['RPMH_IMAGE_OS'])
+HALPATH  = os.path.join('..', 'hal', 'src')
+RPMHPATH  = os.path.join('..', 'dog')
+
+source_patterns = ['*.c', '*.cpp']
+sources = []
+
+#common sources
+for root, dirnames, filenames in os.walk(COMMONPATH):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in source_patterns])
+    matches = ['${BUILDPATH}' + os.path.join(root, filename)[2:] for filename in matches]
+    sources.extend(matches)
+
+#hal sources
+for root, dirnames, filenames in os.walk(HALPATH):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in source_patterns])
+    matches = ['${BUILDPATH}' + os.path.join(root, filename)[2:] for filename in matches]
+    sources.extend(matches)
+
+#target specific sources
+for root, dirnames, filenames in os.walk(CFGPATH):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in source_patterns])
+    matches = ['${BUILDPATH}' + os.path.join(root, filename)[2:] for filename in matches]
+    sources.extend(matches)
+
+#os specific sources
+for root, dirnames, filenames in os.walk(OSPATH):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in source_patterns])
+    matches = ['${BUILDPATH}' + os.path.join(root, filename)[2:] for filename in matches]
+    sources.extend(matches)
+
+#rpmh specific sources
+for root, dirnames, filenames in os.walk(RPMHPATH):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in source_patterns])
+    matches = ['${BUILDPATH}' + os.path.join(root, filename)[2:] for filename in matches]
+    sources.extend(matches)
+
+env.AddLibrary(['CORE_AOP'],'${BUILDPATH}/rpmh.lib', sources)
+
+if 'USES_QDSS_SWE' in env:
+    QDSS_IMG = ['QDSS_EN_IMG']
+    events = [['rpmh_log_create_handle=101',         'rpmh_create_handle (client: %s) (drv_id: 0x%08x)'],
+      ['rpmh_log_delete_handle',                     'rpmh_delete_handle: (client: %s) (drv_id: 0x%08x)'],
+      ['rpmh_log_churn_all',                         'rpmh_churn_all: (handle: %s) (drv_id: 0x%08x) (req_id: %d)'],         
+      ['rpmh_log_churn_all_complete',                'rpmh_churn_all_complete'],         
+      ['rpmh_log_churn_single',                      'rpmh_churn_single: (handle: %s) (drv_id: 0x%08x) (req_id: %d)'],         
+      ['rpmh_log_churn_single_complete',             'rpmh_churn_single_complete'],         
+      ['rpmh_log_barrier_all',                       'rpmh_barrier_all: (handle: %s) (drv_id: 0x%08x) (req_id: %d)'],         
+      ['rpmh_log_barrier_all_complete',              'rpmh_barrier_all_complete: (handle: %s) (drv_id: 0x%08x) (req_id: %d)'],         
+      ['rpmh_log_barrier_single',                    'rpmh_barrier_single: (handle: %s) (drv_id: 0x%08x) (req_id: %d)'],         
+      ['rpmh_log_barrier_single_complete',           'rpmh_barrier_single_complete: (handle: %s) (drv_id: 0x%08x) (req_id: %d)'],         
+      ['rpmh_log_notify_completion_all',             'rpmh_notify_completion_all: (handle: %s) (drv_id: 0x%08x) (req_id: %d)'],         
+      ['rpmh_log_notify_completion_all_complete',    'rpmh_notify_completion_all_complete: (handle: %s) (drv_id: 0x%08x) (req_id: %d)'],         
+      ['rpmh_log_notify_completion_single',          'rpmh_notify_completion_single: (handle: %s) (drv_id: 0x%08x) (req_id: %d)'],         
+      ['rpmh_log_notify_completion_single_complete', 'rpmh_notify_completion_single_complete: (handle: %s) (drv_id: 0x%08x) (req_id: %d)'],         
+      ['rpmh_log_finish_amc',                        'rpmh_finish_amc (hw_drv: 0x%08x) (sw_drv: 0x%08x)'],         
+      ['rpmh_log_finished_req',                      '\tfinished req: (client: %s)(req_id: %d)'],         
+      ['rpmh_log_no_amc_completed',                  '\tno_amc_completed'],         
+      ['rpmh_log_finish_amc_complete',               'rpmh_finish_amc_complete'],         
+      ['rpmh_log_issue_command_set',                 'rpmh_issue_command_set (client: %s)(drv_id: 0x%08x)(set: %d)(num_cmds: %d)'],         
+      ['rpmh_log_resource_command',                  '\tresource_command (address: 0x%08x)(data: 0x%08x)(completion: %d'],         
+      ['rpmh_log_redundant_commands',                '\tredundant commands, short circuiting'],         
+      ['rpmh_log_standalone_mode',                   '\tstandalone mode, short circuiting'],         
+      ['rpmh_log_issue_command_set_complete',        'issue_command_set_complete: (req_id %x)'],         
+      ['rpmh_log_invalidate_command',                'rpmh_invlidate_command (client: %s)(address: 0x%08x)(set: %d)'],         
+      ['rpmh_log_issue_read_command',                'rpmh_issue_read_command (client: %s)(address: 0x%08x)(polling?: %d)'],         
+      ['rpmh_log_issue_read_command_complete',       'rpmh_issue_read_command_complete (client: %s)(address: 0x%08x)(data: 0x%08x)'],         
+      ['rpmh_log_adding_to_sleep_wake_tcs',          '\tadding command set to sleep/wake tcs (set: %d)'],         
+      ['rpmh_log_adding_to_sleep_wake_amc',          '\tadding command set to sleep/wake amc (set: %d)'],         
+      ['rpmh_log_enter_sleep',                       'rpmh_enter_sleep (drv_id: 0x%08x)'],         
+      ['rpmh_log_enter_sleep_short_circuit',         'rpmh_enter_sleep short circuit (standalone mode)'],         
+      ['rpmh_log_flushing_amcs',                     '\tflushing sleep amcs'],         
+      ['rpmh_log_enter_sleep_complete',              'rpmh_enter_sleep_complete'],         
+      ['rpmh_log_exit_sleep',                        'rpmh_exit_sleep, flushing wake amcs (drv_id: 0x%08x)'],         
+      ['rpmh_log_exit_sleep_short_circuit',          'rpmh_exit_sleep short circuit (standalone mode)'],         
+      ['rpmh_log_exit_sleep_complete',               'rpmh_exit_sleep_complete"'],         
+      ['rpmh_log_rsc_clocks_init',                   'rpmh_rsc_clocks_init'],         
+      ['rpmh_log_rsc_clocks_init_complete',          'rpmh_rsc_clocks_init_complete'],         
+      ['rpmh_log_client_init',                       'rpmh_client_init'],         
+      ['rpmh_log_client_init_complete',              'rpmh_client_init_complete'],         
+      ['rpmh_log_holding_request',                   '\trpmh_holding_request (rcs_idle?: %d)'],         
+      ['rpmh_log_holding_read_request',              '\trpmh_holding_read_request (no free amcs?: %d)'],         
+      ['rpmh_log_tcs_idle',                          '\ttcs idle (tcs_id: %d)'],         
+      ['rpmh_log_configuring_tcs',                   '\tconfiguring tcs (drv_id: %d)(tcs_id: %d)(amc?: %d)'],         
+      ['rpmh_log_configuring_tcs2',                  '\t\t(client: %s)(req_id: %d)'],         
+      ['rpmh_log_tcs_sent',                          '\ttcs sent (tcs index: %d) (tcs_id: %d)'],         
+      ['rpmh_log_epcb_timeout',                      'epcb timeout'],         
+      ['rpmh_log_tcs_stuck',                         '!!!!tcs stuck!!!!'],         
+      ['rpmh_direct_send_log',                       'rpmh_direct_send'],         
+      ['rpmh_log_event_last=228',                    'placeholder last rpmh driver swevent']
+    ]
+env.AddSWEInfo(QDSS_IMG, events)
+

@@ -1,0 +1,201 @@
+#===============================================================================
+#
+# RPMh Driver
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+#   Copyright (c) 2016-2017 Qualcomm Technologies, Inc. (QTI).
+#   All Rights Reserved.
+#   Qualcomm Confidential and Proprietary.
+#   Export of this technology or software is regulated by the U.S. Government.
+#   Diversion contrary to U.S. law prohibited.
+#-------------------------------------------------------------------------------
+#  $Header: //components/rel/core.qdsp6/2.1/power/rpmh/build/rpmh.scons#6 $
+#  $DateTime: 2018/01/21 21:43:24 $
+#===============================================================================
+import os
+import fnmatch
+import itertools
+
+Import('env')
+env = env.Clone()
+
+SRCPATH = ".."
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+env.Append(CPPDEFINES=['RPMH_IMAGE_OS'])
+env.Append(CPPDEFINES=['ULOG_RPMH_LOCK_TYPE=ULOG_LOCK_OS'])
+env.Append(CPPDEFINES=['DALSYS_RPMH_SYNC_TYPE=DALSYS_SYNC_ATTR_RESOURCE'])
+env.Append(CPPDEFINES=['ULOG_RPMH_LOCK_TYPE=ULOG_LOCK_OS'])
+
+#target support
+RPMH_TARGET = env['MSM_ID']
+
+# Check if hal target directory exists, and assume full target is supported if so
+if not os.path.exists(os.path.join(env['BUILD_ROOT'], 'core/power/rpmh/hal', RPMH_TARGET)):
+  env.PrintWarning('RPMh target ' + RPMH_TARGET + ' not found, using default')
+  RPMH_TARGET = env['PWR_TARGET_DFLT']
+  
+# FEATURE CONFIG:
+#env.Append(CPPDEFINES=['RPMH_OFFTARGET_TEST'])
+#env.Append(CPPDEFINES=['OFFTARGET_MSM_ID'])
+
+if env['MSM_ID'] in ['845','670']:
+   env.Append(CPPDEFINES = 'RPMH_AMC_MODE_EN_ORDERING_WA')
+
+CBSP_API = [
+  'DAL',
+  'DEBUGTOOLS',
+  'DEBUGTRACE',
+  'MPROC',
+  'POWER',
+  'POWER_PDC',
+  'SERVICES',
+  'SYSTEMDRIVERS',
+   # needs to be last also contains wrong comdef.h
+  'KERNEL',
+]
+
+if env.has_key('ADSP_PROC') and env['CHIPSET'] in ['sdm670']:
+    env['RPMH_IMAGE_OS'] = 'dal'
+    env.Append(CPPDEFINES='RPMH_SENSORS_ISLAND')
+    env.Append(CPPDEFINES='RPMH_SENSORS_ISLAND_MODE_SWITCH')
+    env.Append(CPPDEFINES='PDC_READ_WORKAROUND_V1')
+elif env.has_key('ADSP_PROC') or env.has_key('CDSP_PROC'):
+    env['RPMH_IMAGE_OS'] = 'dal'
+elif env.has_key('SLPI_PROC'):
+    env['RPMH_IMAGE_OS'] = 'dal'
+    env.Append(CPPDEFINES='RPMH_SENSORS_ISLAND')
+    if RPMH_TARGET in ['845']:
+         env.Append(CPPDEFINES='RPMH_SENSORS_ISLAND_MODE_SWITCH')
+         env.Append(CPPDEFINES='PDC_READ_WORKAROUND_V1')
+         env.Append(CPPDEFINES=['RPMH_SLPI_CX_WAKEUP_WORKAROUND'])
+elif env.has_key('AOP_IMAGE'):
+    env['RPMH_IMAGE_OS'] = 'rex'
+else:
+    env['RPMH_IMAGE_OS'] = 'stubs'
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+env.RequireProtectedApi(CBSP_API)
+
+rpmh_private_apis = [ 
+   '${BUILD_ROOT}/core/power/rpmh/inc/hal',
+   '${BUILD_ROOT}/core/power/rpmh/hal/' + RPMH_TARGET + '/${POWER_SUBSYSTEM}',
+   '${BUILD_ROOT}/core/power/rpmh/hal/inc',
+   '${BUILD_ROOT}/core/power/rpmh/inc',
+   '${BUILD_ROOT}/core/power/rpmh/hal/' + RPMH_TARGET + '/${POWER_SUBSYSTEM}',
+   '${BUILD_ROOT}/core/power/rpmh/os/${RPMH_IMAGE_OS}',
+]
+
+env.PublishPrivateApi('RPMh', rpmh_private_apis)
+
+#-------------------------------------------------------------------------------
+# QDSS Events
+#-------------------------------------------------------------------------------
+if 'USES_QDSS_SWE' in env:
+  
+  #comment below define to disable QDSS events
+  env.Append(CPPDEFINES=['RPMH_ENABLE_QDSS'])
+
+  events = [ [ 'RPMH_RESOURCE_REQUESTS', "(SET: %d)(AMC: %d)(ADDRESS: 0x%x)(DATA: 0x%x)(COMPLETION?: %d)(req_id: %u)"  ],
+			 [ 'RPMH_ACTIVE_REQUEST_COMPLETED', "\tfinished req: (CLIENT: %s)(REQ_ID: %d)"      ],
+           ]
+		   
+  env.SWEBuilder(['${BUILDPATH}/rpmh_resources_tracer_event_ids.h'], None)
+  env.Append(CPPPATH = env.RealPath('$BUILDPATH'))
+  env.AddSWEInfo('QDSS_EN_IMG', events)		
+else:
+  env.PrintInfo(" Rpmh Resource Request qdss logging disabled ")
+				
+#-------------------------------------------------------------------------------	
+
+COMMONPATH = os.path.join('..', 'common')
+CFGPATH = os.path.join('..', 'cfg', RPMH_TARGET, env['POWER_SUBSYSTEM'])
+OSPATH  = os.path.join('..', 'os', env['RPMH_IMAGE_OS'])
+HALPATH  = os.path.join('..', 'hal', 'src')
+SCRIPTSPATH  = os.path.join('..', 'scripts')
+
+source_patterns = ['*.c', '*.cpp']
+script_source_patterns = ['*.cmm']
+sources = []
+
+#common sources
+for root, dirnames, filenames in os.walk(COMMONPATH):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in source_patterns])
+    matches = ['${BUILDPATH}' + os.path.join(root, filename)[2:] for filename in matches]
+    sources.extend(matches)
+
+#hal sources
+for root, dirnames, filenames in os.walk(HALPATH):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in source_patterns])
+    matches = ['${BUILDPATH}' + os.path.join(root, filename)[2:] for filename in matches]
+    sources.extend(matches)
+
+#target specific sources
+for root, dirnames, filenames in os.walk(CFGPATH):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in source_patterns])
+    matches = ['${BUILDPATH}' + os.path.join(root, filename)[2:] for filename in matches]
+    sources.extend(matches)
+
+#os specific sources
+for root, dirnames, filenames in os.walk(OSPATH):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in source_patterns])
+    matches = ['${BUILDPATH}' + os.path.join(root, filename)[2:] for filename in matches]
+    sources.extend(matches)
+
+pack_out_source = []
+for root, dirnames, filenames in os.walk(SCRIPTSPATH):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in script_source_patterns])
+    matches = ['${BUILDPATH}' + os.path.join(root, filename)[2:] for filename in matches]
+    pack_out_source.extend(matches)
+
+RCINIT_IMG = ['CORE_ADSP_ROOT', 'CORE_SLPI_ROOT', 'CORE_CDSP_ROOT', 'CORE_QDSP6_SW', 'CBSP_QDSP6_SW_IMAGE']
+env.CleanPack(RCINIT_IMG, pack_out_source)
+env.AddLibrary(RCINIT_IMG,'${BUILDPATH}/rpmh.lib', sources)
+
+env.AddRCInitFunc(
+     RCINIT_IMG,
+     {
+         'sequence_group'             : 'RCINIT_GROUP_0',
+         'init_name'                  : 'rpmh_rsc_clocks',
+         'init_function'              : 'rpmh_rsc_clocks_init',
+         'dependencies'               : ['clk_regime']
+    }
+)
+
+env.AddRCInitFunc(
+     RCINIT_IMG,
+     {
+         'sequence_group'             : 'RCINIT_GROUP_0',
+         'init_name'                  : 'rpmh',
+         'init_function'              : 'rpmh_client_init',
+         'dependencies'               : ['rpmh_rsc_clocks', 'npa', 'sleep', 'pdc_seq', 'sleepsolver','hwsolver']
+    }
+)
+
+if (env.has_key('ADSP_PROC') and env['CHIPSET'] in ['sdm670']) or env.has_key('SLPI_PROC'):
+  env.AddRCInitFunc(
+       RCINIT_IMG,
+       {
+           'sequence_group'             : 'RCINIT_GROUP_2',
+           'init_name'                  : 'rpmh_island',
+           'init_function'              : 'rpmh_island_init',
+           'dependencies'               : ['sleep']
+      }
+  )
+
+# Task for testing things.
+#env.AddRCInitTask(
+#    RCINIT_IMG,
+#    {
+#        'sequence_group'             : 'RCINIT_GROUP_0',    # required
+#        'thread_name'                : 'rpmtest',           # required
+#        'thread_entry'               : 'rpm_test_task',
+#        'stack_size_bytes'           : '8192',
+#        'priority_amss_order'        : 'SLEEP_PRI_ORDER',
+#        'dependencies'               : ['rpm']
+#        }
+#    )
+

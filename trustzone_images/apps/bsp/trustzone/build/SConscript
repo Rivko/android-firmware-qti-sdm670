@@ -1,0 +1,169 @@
+#===============================================================================
+#
+# CBSP Build system
+#
+# GENERAL DESCRIPTION
+#    Calls the actual Image scripts
+#
+# Copyright 2009, 2011, 2016-2017, 2019 by QUALCOMM, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //source/qcom/qct/core/pkg/bootloaders/rel/1.0/boot_images/core/bsp/bootloaders/build/SConscript#12 $
+#  $DateTime: 2011/08/15 17:32:19 $
+#  $Author: coresvc $
+#  $Change: 1883679 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 03/22/11   aus     Branched to shared folder
+#===============================================================================
+import os
+import sys
+from apps_config import app_params_dict, callInit
+from SCons.Script import BUILD_TARGETS
+Import('env')
+
+v8_env = env.Clone()
+v8_env.InitImageVars(
+  alias_list = ['all'],
+  proc = 'A53_64',
+  config = 'apps',
+  build_tags = ['APPS_PROC']
+)
+v8_env.LoadToolScript('${BUILD_ROOT}/ssg/bsp/build/scripts/secure_app_builder.py')
+v8_env.InitBuildConfig()
+
+v7_env = env.Clone()
+v7_env.InitImageVars(
+  alias_list = ['all'],
+  proc = 'scorpion',
+  config = 'apps',
+  build_tags = ['APPS_PROC']
+)
+v7_env.LoadToolScript('${BUILD_ROOT}/ssg/bsp/build/scripts/secure_app_builder.py')
+v7_env.InitBuildConfig()
+
+def invokeSCons(alias):
+  if app_params_dict[alias]['arch'] == 'scorpion':
+    env = v7_env.Clone()
+  else:
+    env = v8_env.Clone()
+
+  callInit(env, app_params_dict[alias])
+  env.Replace(OUT_DIR = '${BUILD_ROOT}/apps/bsp/trustzone/qsapps/' + alias  + '/build')
+  env.Replace(LIB_OUT_DIR = '${BUILD_ROOT}/apps/bsp/trustzone/qsapps/${LIBNAME}/' + alias + '/build/'+ app_params_dict[alias]['arch'] + '/${SHORT_BUILDPATH}')
+  env.Replace(ARM_OPT_STACK_GUARD = ' -fstack-protector-strong')
+  d = env.SConscript(app_params_dict[alias]['sconspath'], exports='env')
+  if d is None:
+    print "WARNING! TA {}  did not return artifacts. cannot alias it correctly".format(alias)
+  return d
+
+supported_targets = app_params_dict.keys()
+
+# TODO - commented apps represent apps included in the 'apps_to_deploy' list
+#        on TZ.BF.4.0 that may not be applicable here. These should be
+#        enabled as needed on a case-by-case basis.
+apps_to_deploy = [
+  #'chamomile',
+  #'fidocfg',
+  #'fidocrypto',
+  #'fidosui',
+  #'isdbtmm',
+  #'keymaster',
+  #'lksecapp',
+  #'qmpsecap',
+  #'sampleauth',
+  #'sampleextauth',
+  #'secotacl',
+  'aptcryptotestapp',
+  'aptcryptotestapp64',
+  'apttestapp',
+  'apttestapp64',
+  'assurancetest',
+  'assurancetest64',
+  'celerity',
+  'celerity64',
+  'cppf',
+  'rtic',
+  'dxhdcp2',
+  'dxhdcp2dbg',
+  'eseservice',
+  'fingerprint64',
+  'gpqese',
+  'gpsample',
+  'haventkn',
+  'hdcp1',
+  'hdcp2p2',
+  'hdcpsrm',
+  'iris',
+  'macchiato_sample',
+  'petool',
+  'playready',
+  'seccamfa',
+  'seccamdemo',
+  'seccamdemo64',
+  'secdspdemo',
+  'secure_ui_sample',
+  'secure_ui_sample64',
+  'secureindicator',
+  'securemm',
+  'storsec',
+  'tzsptestapp1',
+  'tzsptestapp2',
+  'uefi_sec',
+  'voiceprint',
+  'widevine',
+  'winsecap',
+  'flexsku',
+  'pr_3_0',
+]
+
+if env['CHIPSET'] in ['qcs605' , 'sdm670']:
+      apps_to_deploy.append('licmngr')
+
+if env['CHIPSET'] not in ['sdm670' , 'qcs6200', 'sdm640']:
+  # build is broken for the above chipsets
+  apps_to_deploy.append('pr_3_0')
+
+if env['CHIPSET'] in ['sdx24']:
+  # chiron doesn't support most  defaults apps
+  apps_to_deploy = ['gpsample']
+
+if env['CHIPSET'] in ['sdm670']:
+  # below apps are applicable for windows. as of now, warlock doesn't have windows.
+  apps_to_deploy.remove('uefi_sec')
+  apps_to_deploy.remove('winsecap')
+
+if 'allapps' in COMMAND_LINE_TARGETS:
+  COMMAND_LINE_TARGETS.remove('allapps')
+  BUILD_TARGETS.remove('allapps')
+  COMMAND_LINE_TARGETS.extend(supported_targets)
+  BUILD_TARGETS.extend(supported_targets)
+
+if 'deploy' in COMMAND_LINE_TARGETS:
+  COMMAND_LINE_TARGETS.extend(apps_to_deploy)
+  BUILD_TARGETS.extend(apps_to_deploy)
+
+target_to_artifacts = dict()
+for target in sorted(set(COMMAND_LINE_TARGETS)):
+  if target in supported_targets:
+    for alias in app_params_dict[target]['aliases']:
+      if alias in target_to_artifacts:
+        artifacts = target_to_artifacts[alias]
+      else:
+        artifacts = invokeSCons(alias)
+        target_to_artifacts[alias] = artifacts
+      if alias in apps_to_deploy:
+        env.Alias('deploy',artifacts)
+      env.Alias(target,artifacts)
+
+
+
+env.Deploy(['SConscript', 'apps_config.py', 'gptauuid.xml'])

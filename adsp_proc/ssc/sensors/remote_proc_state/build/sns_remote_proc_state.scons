@@ -1,0 +1,78 @@
+#===============================================================================
+#
+# Remote Processor State sensor
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2017 by Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Id: //components/rel/ssc.slpi/3.2/sensors/remote_proc_state/build/sns_remote_proc_state.scons#1 $
+#  $DateTime: 2018/02/01 03:15:18 $
+#  $Change: 15367748 $
+#
+#===============================================================================
+Import('env')
+import inspect
+import os, inspect
+
+#-------------------------------------------------------------------------------
+# External dependencies
+#-------------------------------------------------------------------------------
+CBSP_API = [
+  'MPROC',
+  'KERNEL',
+]
+
+if ('SSC_TARGET_HEXAGON_MDSP' in env['CPPDEFINES']):
+  remote_proc_state_flavor = ["hexagon_mdsp", "src"]
+elif ('SSC_TARGET_HEXAGON' in env['CPPDEFINES']):
+  remote_proc_state_flavor = ["hexagon", "src"]
+else:
+  Return()
+
+SENSORS_API = [
+  'SNS_FRAMEWORK',
+  'SNS_INTERNAL_INCLUDES',
+  ]
+env.RequireProtectedApi(SENSORS_API)
+
+me = inspect.getfile(inspect.currentframe())
+my_root = os.path.dirname(os.path.dirname(me))
+sns_rproc_state_mdsp_dir = os.path.join(my_root,'hexagon_mdsp')
+sns_rproc_state_sns_c_file= env.FindFiles(['sns_remote_proc_state_sensor.c'], sns_rproc_state_mdsp_dir)
+if 'SENSORS_DD_DEV_FLAG' in env:
+  rem_proc_clean_pack_list = ['*.c','*.h']
+  binlib=True
+else:
+  rem_proc_clean_pack_list = ['*.pb.c']
+  if 'SSC_TARGET_HEXAGON_MDSP' not in env['CPPDEFINES']:
+    rem_proc_clean_pack_list += sns_rproc_state_sns_c_file
+  binlib=False
+
+
+if 'USES_SSC_STATIC_LIB_BUILDER' in env:
+  if ('SSC_TARGET_HEXAGON' in env['CPPDEFINES']):
+    env.AddSSCSU(inspect.getfile(inspect.currentframe()),
+                 flavor = remote_proc_state_flavor,
+                 core_public_api = CBSP_API,
+                 clean_pack_list = rem_proc_clean_pack_list,
+                 binary_lib = binlib,
+                 register_func_name = "sns_remote_proc_state_register",
+                 island_sections = ['.text.sns', '.data.sns', '.rodata.sns'])
+
+if 'USES_QDSS_SWE' in env:
+  QDSS_IMG = ['QDSS_EN_IMG']
+  events = [
+            ['SNS_REMOTE_PROC_STATE_SMP2P_DATA_RECEIVED', 'SMP2P Notification received with data: %d','F'],
+            ['SNS_REMOTE_PROC_STATE_GENERATE_EVENT', 'Remote state proc sensor generated event: %d', 'F'],
+            ['SNS_REMOTE_PROC_STATE_PROCESS_SIGNAL_EVENT', 'Signal event for processor: %d', 'F'],
+           ]
+  env.AddSWEInfo(QDSS_IMG, events)
+
+REMOVE_FILES =  rem_proc_clean_pack_list
+env.CleanPack(env['SSC_BUILD_TAGS'], REMOVE_FILES)

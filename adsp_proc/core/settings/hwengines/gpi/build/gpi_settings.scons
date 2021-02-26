@@ -1,0 +1,65 @@
+#===============================================================================
+#
+# GPI Settings
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2017 by Qualcomm Technologies, Inc.  All Rights Reserved.
+# Qualcomm Technologies, Inc. Confidential and Proprietary.
+#
+#-------------------------------------------------------------------------------
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 04/04/17   ah      Added check for 845 & 830
+# 02/16/17   ah      Created separate file for settings
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+
+if env['MSM_ID'] not in  ['845', '830', '670']:
+    Return()
+
+#-------------------------------------------------------------------------------
+# Dependencies
+#-------------------------------------------------------------------------------
+GPI_SETTINGS_PUBLIC_API = [
+   'SYSTEMDRIVERS',
+   'SERVICES',
+]
+
+env.RequirePublicApi(GPI_SETTINGS_PUBLIC_API)
+env.RequireRestrictedApi('GPI_SETTINGS')
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${CORE_SETTINGS_DIR}/hwengines/gpi/config"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Device Configuration File Registrations
+#-------------------------------------------------------------------------------
+if ('SLPI_PROC' in env) or ('ADSP_PROC' in env):
+   if ('USES_DEVCFG' in env) and not (env.has_key('BUILD_TOOL_CHAIN') or env.has_key('BUILD_BOOT_CHAIN')):
+      if env['MSM_ID'] in ['845', '830']:
+         DEVCFG_IMG = ['DAL_DEVCFG_IMG']
+         env.AddDevCfgInfo(DEVCFG_IMG,
+         {
+               'devcfg_xml'  : ['${CORE_SETTINGS_DIR}/hwengines/gpi/config/sdm845/${IMAGE}/gpi_cfg_845.xml',
+                                '${BUILDPATH}/sdm845/${IMAGE}/gpi_cfg_845.c']
+         })
+      if env['MSM_ID'] in ['670']:
+         DEVCFG_IMG = ['DAL_DEVCFG_IMG']
+         env.AddDevCfgInfo(DEVCFG_IMG,
+         {
+               'devcfg_xml'  : ['${CORE_SETTINGS_DIR}/hwengines/gpi/config/${CHIPSET}/${IMAGE}/gpi_cfg_670.xml',
+                                '${BUILDPATH}/${CHIPSET}/${IMAGE}/gpi_cfg_670.c']
+         }) 

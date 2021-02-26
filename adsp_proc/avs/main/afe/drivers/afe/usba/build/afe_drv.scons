@@ -1,0 +1,82 @@
+#===============================================================================
+#
+# AVS AU
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2009-2009 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/avs.adsp/2.8.5/afe/drivers/afe/usba/build/afe_drv.scons#1 $
+#  $DateTime: 2017/11/07 23:00:25 $
+#  $Author: pwbldsvc $
+#  $Change: 14795016 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+
+if 'USES_ENABLE_FUNCTION_SECTIONS' in env:
+   env.Append(CFLAGS = '-ffunction-sections')
+
+
+CBSP_API = [
+   'BOOT',
+   'DAL',
+   'DEBUGTOOLS',
+   'HAL',
+   'MPROC',
+   'POWER',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',   
+]
+
+if "USES_AVS_TEST" not in env:
+	CBSP_API = ['WIREDCONNECTIVITY'] + CBSP_API
+	
+if "USES_AVS_TEST" in env:
+	env.RequireRestrictedApi('AVSTESTFWK_CMN')
+
+env.RequirePublicApi(CBSP_API,area='core')
+env.RequireRestrictedApi(['AVS','SHARED_LIBRARY_INC_PATHS'])
+env.RequireProtectedApi('AVS')
+
+env.PublishPrivateApi('AVS',[
+   '${AVS_ROOT}/afe/drivers/afe/usba/inc',
+    
+   ])
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = ".."
+
+LIBNAME = 'AFEUSBAudioDriver'
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+# Generate regular source file list
+avs_reg_sources = env.GlobSourceFiles(['/src/*.cpp', '/src/*.c', '/src/*.S'], SRCPATH,posix=True)
+
+# Generate stub source file list
+avs_stub_sources = env.GlobSourceFiles(['/stub_src/*.cpp', '/stub_src/*.c', '/stub_src/*.S'], SRCPATH,posix=True)
+
+# Genate proprietary source file list
+avs_prop_sources = []
+
+#import pdb; pdb.set_trace()
+if 'USES_AVS_LIBRARY_BUILDER' in env:
+   env.AddAvsLibrary(['AVS_ADSP','AVS_ADSP_USER'], '${BUILDPATH}/'+LIBNAME,
+      [avs_reg_sources, avs_stub_sources, avs_prop_sources], PACK_SRC=True)

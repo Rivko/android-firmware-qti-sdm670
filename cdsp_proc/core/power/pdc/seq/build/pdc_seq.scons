@@ -1,0 +1,160 @@
+#===============================================================================
+# PDC Sequence driver
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+#    Copyright (c) 2016-2017 Qualcomm Technologies, Inc. (QTI).
+#    All Rights Reserved.
+#    Qualcomm Confidential and Proprietary.
+#    Export of this technology or software is regulated by the U.S. Government.
+#    Diversion contrary to U.S. law prohibited.
+#-------------------------------------------------------------------------------
+#  $Header: //components/rel/core.qdsp6/2.1.c4/power/pdc/seq/build/pdc_seq.scons#1 $
+#  $DateTime: 2018/07/30 01:21:36 $
+#===============================================================================
+import os
+import fnmatch
+import itertools
+
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# General setup
+#-------------------------------------------------------------------------------
+#Turn off optimizations for easier debug
+#env.Append(CCFLAGS = ' -O0')
+
+#-------------------------------------------------------------------------------
+# Target specific setup
+#-------------------------------------------------------------------------------
+MAIN_IMG_TAG = ['CORE_Q6_ROOT']
+ISLAND_IMG_TAG = ['CORE_QDSP6_SW']
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+COMMON_SRCPATH = ".."
+env.VariantDir('${BUILDPATH}', COMMON_SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+    'DAL',
+   'HAL', 
+    'DEBUGTOOLS',
+    'POWER_PDC',
+   'POWER', 
+    'SERVICES',
+   'SYSTEMDRIVERS',
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+env.RequireProtectedApi(CBSP_API)
+
+env.PublishPrivateApi('PDC_SEQ', [
+    '${BUILD_ROOT}/core/power/pdc/seq/inc',
+    '${BUILD_ROOT}/core/power/pdc/seq/hal/inc',
+    '${BUILD_ROOT}/core/power/pdc/seq/common',
+])
+
+#-------------------------------------------------------------------------------
+# Source directory
+#-------------------------------------------------------------------------------
+# Source directories relative to COMMON_SRCPATH (../)
+
+# Common root directories
+ROOT_SRC_DIRS = [
+  'common',
+  'hal'
+]
+
+#Target specific root directories
+TARGET_SRC_DIRS = [
+  'cfg'
+]
+
+SRC_PATTERNS = ['*.c']
+ISLAND_SRC_PATTERNS = ['*_cmn.c']
+
+sources = []
+island_sources = []
+
+# Add common root files
+for src_path_root in ROOT_SRC_DIRS:
+  for root, dirnames, filenames in os.walk(os.path.join(COMMON_SRCPATH, src_path_root)):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in SRC_PATTERNS])
+
+    island_matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in ISLAND_SRC_PATTERNS])
+    island_matches = [matched_path.replace(COMMON_SRCPATH,'${BUILDPATH}',1) for matched_path in island_matches]
+
+    files = [os.path.join(root, filename) for filename in matches ]
+    files = [matched_path.replace(COMMON_SRCPATH, '${BUILDPATH}',1) for matched_path in files]
+
+    island_files = [os.path.join(root, filename) for filename in island_matches]
+    island_files = [matched_path.replace(COMMON_SRCPATH,'${BUILDPATH}',1) for matched_path in island_files]
+
+    #Remove any island files from main file list
+    for f in island_files:
+      files.remove(f)
+
+    sources.extend(files)
+    island_sources.extend(island_files)
+
+# Add target specific config files
+# Directory layout will always be '[root]/chip/target' from each base directory
+# For example '/config/845/mss'
+for src_path_root in TARGET_SRC_DIRS:
+  for root, dirnames, filenames in os.walk(os.path.join(COMMON_SRCPATH, src_path_root, env['PDC_SEQ_TARGET'], env['POWER_SUBSYSTEM'].lower())):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in SRC_PATTERNS])
+
+    island_matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in ISLAND_SRC_PATTERNS])
+    island_matches = [matched_path.replace(COMMON_SRCPATH,'${BUILDPATH}',1) for matched_path in island_matches]
+
+    files = [os.path.join(root, filename) for filename in matches ]
+    files = [matched_path.replace(COMMON_SRCPATH, '${BUILDPATH}',1) for matched_path in files]
+
+    island_files = [os.path.join(root, filename) for filename in island_matches]
+    island_files = [matched_path.replace(COMMON_SRCPATH,'${BUILDPATH}',1) for matched_path in island_files]
+
+    #Remove any island files from main file list
+    for f in island_files:
+      files.remove(f)
+
+    sources.extend(files)
+    island_sources.extend(island_files)
+
+#-------------------------------------------------------------------------------
+# Create and add Libraries to image
+#-------------------------------------------------------------------------------    
+seq_lib = env.AddLibrary(MAIN_IMG_TAG,
+                         os.path.join('${BUILDPATH}', 'pdc_seq'),
+                         sources)
+
+common_seq_lib = env.AddLibrary(MAIN_IMG_TAG,
+                                os.path.join('${BUILDPATH}', 'cmn_pdc_seq'), 
+                                island_sources)
+
+#-------------------------------------------------------------------------------
+# Mark island sections in the librarary
+#-------------------------------------------------------------------------------
+if 'USES_ISLAND' in env and env['POWER_SUBSYSTEM'].lower() not in ['mss']:
+  env.AddIslandLibrary(ISLAND_IMG_TAG, common_seq_lib)
+
+#-------------------------------------------------------------------------------
+# Adding entry in to RCInit
+#-------------------------------------------------------------------------------
+if 'USES_RCINIT' in env:
+    env.AddRCInitFunc(
+    MAIN_IMG_TAG,
+    {
+      'sequence_group' : 'RCINIT_GROUP_0',
+          'init_name' : 'pdc_seq', 
+          'init_function' : 'pdc_seq_sys_init',
+      'dependencies'   : ['PDCHWIO', 'PDCInt', 'PDCTcs']
+    })

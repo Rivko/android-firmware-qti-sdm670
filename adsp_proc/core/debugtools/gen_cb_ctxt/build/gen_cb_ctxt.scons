@@ -1,0 +1,105 @@
+# vi: tw=128 ts=3 sw=3 et
+# @file pd_mon.scons
+# @brief This file contains the API details for the Protection Domain Monitor, API 1.0
+#===============================================================================
+# NOTE: The @brief description above does not appear in the PDF.
+# The tms_mainpage.dox file contains the group/module descriptions that
+# are displayed in the output PDF generated using Doxygen and LaTeX. To
+# edit or update any of the group/module text in the PDF, edit the
+# tms_mainpage.dox file or contact Tech Pubs.
+#===============================================================================
+#===============================================================================
+# Copyright (c) 2017 by Qualcomm Technologies, Inc.  All Rights Reserved.
+# Qualcomm Confidential and Proprietary
+#===============================================================================
+#===============================================================================
+# Edit History
+# $Header: //components/rel/core.qdsp6/2.1/debugtools/gen_cb_ctxt/build/gen_cb_ctxt.scons#2 $
+# $DateTime: 2018/02/28 21:43:44 $
+# $Change: 15572026 $
+# $Author: pwbldsvc $
+#===============================================================================
+
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+
+env.VariantDir('${BUILDPATH}', '../src', duplicate=0)
+
+#-------------------------------------------------------------------------------
+# External Dependency
+#-------------------------------------------------------------------------------
+
+#env.RequireExternalApi([
+#   'XYZ',
+#])
+
+#-------------------------------------------------------------------------------
+# CFLAGS
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+# Internal Dependency
+#-------------------------------------------------------------------------------
+
+env.RequirePublicApi([
+   'DAL',
+   'TMS',
+   'DEBUGTOOLS', # alias to TMS
+   'SERVICES',
+   'STORAGE',
+   'SYSTEMDRIVERS',
+   'KERNEL', # needs to be last (also contains wrong comdef.h)
+])
+
+env.RequireRestrictedApi([
+   'TMS_RESTRICTED',
+   'DEBUGTOOLS', # alias to TMS
+])
+
+#-------------------------------------------------------------------------------
+# Sources
+#-------------------------------------------------------------------------------
+
+GEN_CB_CTXT_SRC = [
+   '${BUILDPATH}/gen_cb_ctxt.c',
+]
+
+#-------------------------------------------------------------------------------
+# Libraries
+#-------------------------------------------------------------------------------
+
+GEN_CB_CTXT_ROOT_IMGS = [
+   'CORE_ROOT_PD',               # Domain(Root)
+   'CORE_QDSP6_SW'
+]
+
+GEN_CB_CTXT_USER_IMGS = [  
+   'CORE_USER_PD',               # Domain(Qurt User, Generic)
+   'CORE_ARMV8_USER_PD',         # Domain(Qurt User, Generic, ARMV8)
+   'CORE_QDSP6_USER_PD',         # Domain(Qurt User, Generic, QDSP6)
+   'CORE_QDSP6_AUDIO_SW',        # Domain(Qurt User, Audio)
+   'CORE_QDSP6_MODEM_SW',        # Domain(Qurt User, Modem)
+   'CORE_QDSP6_SENSOR_SW',       # Domain(Qurt User, Sensors)
+   'CORE_QDSP6_WCN_SW',          # Domain(Qurt User, Wireless)
+]
+
+env.AddLibrary(GEN_CB_CTXT_ROOT_IMGS, '${BUILDPATH}/gen_cb_ctxt_root', GEN_CB_CTXT_SRC)
+env.AddLibrary(GEN_CB_CTXT_USER_IMGS, '${BUILDPATH}/gen_cb_ctxt_user', GEN_CB_CTXT_SRC)
+#-------------------------------------------------------------------------------
+# Task Provisioning Information
+#-------------------------------------------------------------------------------
+
+if 'USES_RCINIT' in env:
+
+ env.AddRCInitFunc(
+  GEN_CB_CTXT_ROOT_IMGS + GEN_CB_CTXT_USER_IMGS,
+  {
+   'sequence_group'             : 'RCINIT_GROUP_0',
+   'init_name'                  : 'gencbctxtinit',
+   'init_function'              : 'gen_cb_ctxt_init',
+   'dependencies'               : ['tms_utils']
+  })
+  

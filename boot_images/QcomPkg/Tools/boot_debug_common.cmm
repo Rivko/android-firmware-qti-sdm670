@@ -1,0 +1,1101 @@
+;****************************************************************************
+;**         boot_debug_common.cmm
+;**
+;** This script performs setup for debugging SBL on secboot 3.0 Architecture.
+;**
+;** Copyright 2013-2018 by Qualcomm Technologies, Inc.  All Rights Reserved.
+;**
+;****************************************************************************
+;**
+;**                        EDIT HISTORY FOR MODULE
+;**
+;**
+;** when         who     what, where, why
+;** --------   ---     ------------------------------------------------------
+;** 03/13/18   aus     Added support for different variants
+;** 08/15/17   yps     Fix boot log collection issue
+;** 05/01/17   ds      qsee_with_test.elf path update
+;** 04/12/17   kpa     update BootLogStart subroutine
+;** 04/12/17   kpa     update xblloader dll location
+;** 04/06/16   kpa     Update for sdm845
+;** 05/31/16   digant  cmm timeout updates
+;** 04/06/16   kpa     Update for 8998
+;** 08/18/15   elt     Added option to run through XBL with async. UART
+;** 06/24/15   as      Separate out boot timing numbers..
+;** 05/26/15   as      Add support for mode switch.
+;** 05/15/15   kpa     Increase wait time to consider ddr training time increase
+;** 05/14/15   kpa     Update SBL1Start and GoTillXblEnd api’s
+;** 04/21/15   as      Add support for build suffix.
+;** 04/21/15   ck      Modified for TZ with test
+;** 04/20/15   tw      Added option 5 to trigger into ddr test framework
+;** 04/10/15   ck      Updated default to look for dll and elf files
+;** 04/09/15   ck      Removed qfprom test intercom calls
+;** 03/04/15   kpa     Increase wait time before dumping logs to text files.
+;** 02/17/15   kpa     Updated for HoneyBadger family
+;** 03/25/14   ck      Updated for Bear family
+;** 10/31/13   jz      Updated to support command line usage, cleaned up
+;** 10/16/13   jz      Added option to enter download mode to facilitate RAM dump debug/test
+;** 08/07/13   jz      Ported from target's boot_debug to make it common
+
+;****************************************************************************
+
+;This .cmm script acts as a main routine for setting up boot debug.
+
+;****************************************************************************
+;  CMM script variables
+;****************************************************************************
+
+local &ELFfilename          ; Return value of GetELFfile function
+local &platform             ; current device's platform: RUMI or Virtio or SURF
+local &pbldir               ; Location of PBL ELF file
+local &sbl1dir              ; Location of SBL1 ELF file
+local &qseedir              ; Location of QSEE ELF file
+local &xblramdumpdir        ; Location of XBL RamDump ELF file
+local &qseesuffix           ; Location of QSEE ELF file after QSEEBuildPath
+                            
+local &sbl1elf              ; SBL1 ELF file name
+local &qseeelf              ; QSEE ELF file name
+local &xblramdumpelf        ; XBL Ram Dump ELF file name
+local &bootdloadcheck       ; api that checks dload cookie
+local &initial_mem_map_init
+local &xblramdumpentry      ; Entry point to ram dump image
+local &xblend               ; Last api called in XBL loader
+local &boot_error_handler   ;Error handler in boot
+local &xbl_sync_error       ; Sync error handler
+local &xbl_system_error     ; System error handler
+
+local &BootBuildPath   ; location of non-HLOS build path
+local &BuildOutDir     ; location of Build objects
+local &logging_path    ; location to save the boot log
+local &script_path     ; location of this debug script
+local &build_id        ; Build Id of binaries/ elf's being used
+local &build_suffix    ; Build Suffix of the target
+local &mode_switch     ; Aarch32 -> Aarch64 mode switch
+local &option          ; Option provided by the user without wanting to go through the script interactively 
+local &boot_path
+local &GetObjRetryFlag  
+
+local &YorN            ; Get answer from User
+local &remote          ; calling intercomm
+local &is_boot_test    ; option whether to dump log messages to jtag terminal.
+                       ; term view NOT shown while logging boot times. used only
+                       ; during boot_test.
+local &qfrom_script_exists  ; Flag to track presence of qfprom test framework script.
+local &is_cmd_line  ; run script in command line mode, for automated tests.
+local &Choice  ; get user preferences.
+
+;External Script Files
+local &set_target_specific_data 
+local &set_target_specific_api 
+local &qfprom_test_framework    ; Script that contains Qfprom test framework invocation logic
+
+local &SystemUp
+local &SystemDown
+
+;Main Control function of each section of code and other important stop points
+local &sbl1_main_ctl ; Main Control for SBL1
+;Time Variables
+local &time_pbl
+;Timeout variable
+local &brkpt_timeout
+
+
+;============================================================================
+; Get the arguments passed to boot debug script.
+;============================================================================
+ENTRY &build_id &build_suffix &mode_switch &option &QSEEBuildPath
+
+;============================================================================
+; Set up some defaults for some variables
+;============================================================================
+;set Directories
+&sbl1dir="QcomPkg/XBLLoader/XBLLoader/DEBUG"
+&qseesuffix="trustzone_images/ssg/bsp/qsee_with_test/build"
+&xblramdumpdir="Library/XBLRamDumpLib/XBLRamDumpLib/DEBUG"
+
+;Scripts
+&target_script_path
+&set_target_specific_data="boot_debug_target_data.cmm"
+&set_target_specific_api="boot_debug_target_api.cmm"
+&qfprom_test_framework="boot_qfprom_test.cmm"
+&ddr_test_framework="boot_ddr_test.cmm"
+&boot_log_script="boot_log.cmm"
+
+;Important stop points
+&sbl1_main_ctl="sbl1_main_ctl"
+&boot_log_dump="boot_log_dump"
+&boot_debug_cookie_sbl1_ptr="boot_debug_cookie_ptr"
+;Default Value
+&platform="SURF"
+&YorN="N"
+&is_boot_test=0
+&qfrom_script_exists=0
+&is_cmd_line=0  ; 0: user interactive 1: commandline/auto mode
+&brkpt_timeout=60.
+&bootdloadcheck="boot_dload_check"
+&initial_mem_map_init="sbl1_populate_initial_mem_map"
+&xblramdumpentry="XBLRamDumpMain"
+&xblend="boot_log_forever_loop_check"
+&boot_error_handler="boot_error_handler"
+&xbl_sync_error="sbl1_cspx_sync" 
+&xbl_system_error="sbl1_cspx_serror" 
+
+
+;============================================================================
+; Set up the display window
+;============================================================================
+gosub CleanUpExit
+winclear
+area.RESET 
+gosub SetupMainWindow
+
+;============================================================================
+; Set up paths
+;============================================================================
+  if "&option"!=""
+  (
+    &is_cmd_line=1
+  )
+
+  &script_path=os.pwd()    
+  ;Derive build path relative to script path
+  cd ../..
+  &BootBuildPath=os.pwd()
+
+  cd &script_path
+
+  ; Determine the object files path. Populate &BuildOutDir
+  &GetObjRetryFlag="N"
+  gosub GetObjFilesPath
+  
+  ;Update absolute directory paths
+  &sbl1dir="&BuildOutDir"+"/"+"&sbl1dir"+"/"
+  &xblramdumpdir="&BuildOutDir"+"/QcomPkg/"+"&build_id"+"Pkg/"+"&xblramdumpdir"+"/"
+  
+  &target_script_path="&script_path"+"/../"+"&build_id"+"Pkg/Tools"
+  &set_target_specific_data="&target_script_path/"+"&set_target_specific_data"
+  &set_target_specific_api="&target_script_path/"+"&set_target_specific_api"
+  &boot_log_script="&script_path/"+"&boot_log_script"
+
+  if &is_cmd_line==0  
+  (  
+    print " Boot_debug.cmm dependencies: "
+    ; Check if target scripts exist
+    IF File.exist("&set_target_specific_data")
+    (
+      print " &set_target_specific_data found"
+    )
+    else
+    (
+      print " Enter path for boot_debug_target_data.cmm"
+      enter &set_target_specific_data
+    )
+    IF File.exist("&set_target_specific_api")
+    (
+      print " &set_target_specific_api found"
+    )
+    else
+    (
+      print " Enter path for boot_debug_target_api.cmm"
+      enter &set_target_specific_api
+    )
+    IF File.exist("&boot_log_script")
+    (
+      print " &boot_log_script found"
+    )
+    else
+    (
+      print " Enter path for boot_log.cmm"
+      enter &boot_log_script
+    )  
+  )
+  
+  ;================================================================================
+  ; Set Target Specific Subroutines. Cmm does not allow to "include" another cmm 
+  ; with api defines instead invoke the subroutine name along with the script defining it.
+  ;================================================================================
+  &SystemUp="do &set_target_specific_api SystemUp &target_script_path"
+  &SystemDown="do &set_target_specific_api SystemDown &target_script_path"
+  
+  
+  ;get absolute path for qfprom test script
+  &qfprom_test_framework="&script_path"+"/"+"&qfprom_test_framework"
+
+  ;get absolute path for ddr test script
+  &ddr_test_framework="&script_path"+"/"+"&ddr_test_framework"
+    
+  if &is_cmd_line==1
+  (
+    ; Update sbl names for command line usage
+    &sbl1elf="&sbl1dir"+"XBLLoader.dll"
+    &xblramdumpelf="&xblramdumpdir"+"XBLRamDump.dll"
+  )
+
+  if &is_cmd_line==0  
+  (
+    print
+    print  
+    print "Please enter platform type: 1 for RUMI, 2 for LIQUID/FLUID/CDP/MTP : "
+    enter &Choice
+    if "&Choice"=="1"
+    (
+      &platform="RUMI"
+      &brkpt_timeout=120.
+    )
+    print
+    print
+  )
+  
+  print
+  print
+  
+;============================================================================
+; Present user with main menu for debugging boot.  Manual selection is done.
+;============================================================================  
+
+do &set_target_specific_data
+
+MainMenu: 
+  print
+  print   
+  print "---------------------------------------------------------"
+  print "|                                                       |"
+  print "|               Boot Debugger                           |"
+  print "|     On targets with secboot3.0 architecture           |"
+  print "|    Copyright 2013-2017 by QUALCOMM Technologies, Inc. |"
+  print "|                                                       |"
+  print "---------------------------------------------------------"
+  print
+  print
+  
+  if "&platform"=="RUMI"
+  (
+    ;Enable users to load presilicon specific bootup scripts 
+    ;and provide basic debug option
+    goto SetUpPBL  
+  )
+  
+  if &is_cmd_line==0
+  (
+    print "  0: Exit"
+    print "  1: Debug SBL1"
+    print "  2: Boot Test - Force device to enter download mode"
+    print "  3: Boot Test - Go till end of bootloader"
+    print "  4: Boot Logger - Log the bootup time, please powercycle the device first"
+    if OS.FILE("&ddr_test_framework")
+    (     
+      print "  5: DDR Test Framework"
+    )
+    if OS.FILE("&qfprom_test_framework")
+    (  
+      ; Show qfrom menu only if the script exists.
+      print "  6: Qfprom Menu - Launch Qfprom test framework"
+      &qfrom_script_exists=1
+    )
+    print "  7: Async Logger - Disable uart logging until boot is complete"  
+    print "  8: Load XBL Loader image symbols"  
+    print "  9: Load XBL Ramdump image symbols"  
+    print 
+    print " Please make a choice: "
+  
+    enter &Choice
+  )
+  else
+  (
+    &Choice="&option"
+  )
+  
+  gosub CleanUpExit
+  if (("&Choice"!="8")&&("&Choice"!="9"))
+  ( 
+    &SystemDown
+  )  
+
+  if "&Choice"=="0"  
+  (  
+    print "...exiting Boot Debugger"
+    goto EndOfScript
+  )
+   
+  if "&Choice"=="1" 
+  (  
+    gosub SBL1Start
+  )
+  
+  if "&Choice"=="2"
+  (
+    gosub EnterDLoad
+  )
+  
+  if "&Choice"=="3"
+  (
+    map.bo
+    &is_boot_test=1
+    gosub GoTillXblEnd
+  )
+  if "&Choice"=="4"
+  (
+    map.bo
+    &is_boot_test=0
+    gosub BootLogStart
+  )
+  if "&Choice"=="5"
+  (
+    gosub SBL1Start
+    do &ddr_test_framework
+  )  
+  if "&Choice"=="6"
+  (
+    if &qfrom_script_exists==1
+    (
+      ; If command line was enabled then QSEE build path needs to also be
+      ; given when using qfprom test feature
+      if &is_cmd_line==1
+      (
+        if &QSEEBuildPath==""
+        (
+          print "When executing qfprom test non interactively the QSEE build path must be given."
+          print "Exiting..."
+          return
+        )
+      )
+      else
+      (
+        print "Please enter full QSEE build path: "
+        enter &QSEEBuildPath
+      )
+
+      ; Make sure supplied path exists
+      if !os.dir("&QSEEBuildPath")
+      (
+        print "Supplied QSEE build does not exist.  Exiting..."
+        return
+      )
+
+      ; Update qsee dir and qsee elf variables
+      &qseedir="&QSEEBuildPath"+"/"+"&qseesuffix"
+
+      ;use qsee routine to setup env for debugging
+      gosub QSEEStart
+      
+      ; invoke qfprom test framwork to run on A53 t32
+      ; At this point intercom is assumed to be initialized
+      ; by QSEEStart routine and the intercom cmd can be 
+      ; used.
+      do "&qfprom_test_framework"
+      winclear      
+      area.reset
+      gosub SetupMainWindow
+      print "      Refer to T32 Qfprom script on Apps Proc"
+      print "      (Press 'enter' to go back to main menu) " 
+      print
+      print
+      print
+      enter &Choice
+      
+    )
+    else
+    (
+      print "Wrong choice: 6"
+      print "Qfprom test Not supported"
+      print "Press enter to go back to Main menu "
+      enter &Choice
+      goto MainMenu
+    )
+  )
+  if "&Choice"=="7"
+  (
+    &is_boot_test=1
+    gosub GoAsyncUart
+  )
+  
+  if "&Choice"=="8" 
+  (  
+    gosub LoadXblLoaderSymbols
+  )
+
+  if "&Choice"=="9" 
+  (  
+    gosub LoadXblRamdumpSymbols
+  )
+  
+  if &is_cmd_line==0
+  (
+    goto MainMenu
+  )
+  else
+  (
+    goto EndOfScript  
+  )
+
+  
+;=====================================================
+; These are the various sub-routines as used by the script above
+;=====================================================
+ 
+;=====================================================
+;This Subroutine loads boot rom for RUMI
+;===================================================== 
+SetUpPBL:
+  local &script
+  if "&platform"=="RUMI"
+  (
+    print " This option shall setup the debug windows "
+    print " and allow to run custom debug script "
+    print
+    print " Enter Presilicon Boot Init script: "
+    enter &script
+  )
+  cd.do &script
+  
+  winclear
+  area.reset
+  gosub SetupMainWindow  
+  gosub SetupDebugWindows yes
+  
+  goto EndOfScript  
+  
+;=====================================================
+;This Subroutine initializes intercom ports
+;===================================================== 
+IntercomInit:
+  if !intercom.ping(&APPS_CORE0_T32)
+  (
+    PRINT "APPS T32 Session: Inactive"
+    PRINT "Please start the T32 session on Apps Proc"
+    &APPS_CORE0_T32="FAIL"
+  )
+  return
+
+;Clear the download mode cookie
+ClearDloadCookie:
+  sys.m.a
+  b
+  data.set &boot_dload_boot_misc_detect_addr %LONG 0x0
+  return
+
+;Set the download mode cookie
+SetDloadCookie:
+  D.S A:&boot_dload_boot_misc_detect_addr %LE %LONG &boot_dload_enable_value
+  return
+  
+;=====================================================
+; This Subroutine sets up apps for debug it will also 
+; init intercom if it hasn't been inited yet
+;=====================================================   
+AppsDebugInit:
+  
+  &SystemDown
+  
+  cd &script_path
+  WAIT 1s
+  &SystemUp
+  b
+  map.bo
+  b.reset
+  y.reset
+  symbol.reset
+  
+  cd &script_path
+  
+  gosub LoadSymbols SBL1 load yes
+  
+  return
+  
+
+;=======================================================
+; This Subroutine will start the boot logger / Boot Test
+;=======================================================
+BootLogStart:
+  gosub ClearDloadCookie
+  print "--------------------Start Boot Log------------------"
+  print
+  print  
+  
+  cd &script_path
+
+  symbol.reset
+  b.delete /all
+  map.bo
+
+  runtime.reset
+  runtime.refA
+  
+  &SystemDown
+  &SystemUp
+
+  ;load elfs
+  gosub LoadSymbols SBL1 load yes
+  gosub SetUpSysPath yes
+  gosub SetupDebugWindows yes  
+
+ 
+  ; Set flag so SBL1 loops at the end of boot logging and does not continue
+  ; into QSEE where SBL1 (L2/TCM) region will be reclaimed
+  
+  ; reset and setup boot shared imem
+  sys.u
+  data.set &shared_imem_base++&boot_shared_imem_size %LE %Long &shared_imem_reset_val
+  data.set &shared_imem_boot_magic_num_addr %LONG &shared_imem_magic_num
+  data.set &shared_imem_version_addr %LONG &shared_imem_version_value
+  data.set &shared_imem_boot_etb_addr %LONG &boot_logger_loop_magic_num
+  sys.MODE PREPARE 
+  sys.m.a
+  
+  WAIT &sbl1_log_timeout
+  if (("&mode_switch"=="True")||("&mode_switch"=="true"))
+  (
+   g
+   WAIT &sbl1_log_timeout_post_reset
+  )
+
+  b
+
+  ;CD to correct loc
+  cd &script_path
+
+  ; Collect boot log
+  if "&logging_path"==""
+  (
+    print
+    print "Please enter the path to save boot logs , enter pwd for current dir: "
+    enter &logging_path
+    print
+    print
+  )
+  
+  if ("&logging_path"=="pwd")||("&logging_path"=="PWD")||("&logging_path"=="Pwd")
+  (
+    &logging_path=os.pwd()    
+  )
+
+  ;dump the log
+  do &boot_log_script &logging_path
+ 
+  print    
+  print "--------------------End Boot Log------------------"
+  print "Please verify boot log in the directory you provided"
+  print
+  print "Press enter to continue "
+  enter &YorN
+  
+  return 
+
+;=====================================================
+;This Subroutine checks if the given breakpoint is hit
+;within the timeout
+;=====================================================
+Brkpt_check:
+  ENTRY &breakpoint
+  &timeout=&brkpt_timeout
+  WHILE &timeout>0
+  (
+	if !STATE.RUN()
+	(
+	  if Register(pc)==Address.offset(&breakpoint)
+	     RETURN 1
+	  else
+	  (
+		print " FAIL: Please clear breakpoints and try again."
+		RETURN 0
+      )
+	)
+	WAIT 1.s
+	&timeout=&timeout-1	
+  )
+  RETURN 0
+
+;=====================================================
+;This Subroutine loads the required SBL1 symbols and 
+;then executes till the beginning of SBL1
+;=====================================================
+SBL1Start:
+
+  gosub AppsDebugInit 
+
+  ;clear the cookie
+  gosub ClearDloadCookie
+  b.s &sbl1_main_ctl
+  g  
+  GOSUB Brkpt_check &sbl1_main_ctl
+  ENTRY &result
+  if &result!=1
+  (
+  print " FAIL: Start of XBL Loader not reached"
+     goto EndOfScript
+  )    
+  gosub SetUpSysPath yes
+  gosub SetupDebugWindows yes
+  print "Stopped at start of XBL Loader"
+  print
+  
+  return 
+
+
+;=====================================================
+;This Subroutine loads the required QSEE symbols and 
+;then executes till the beginning of QSEE
+;=====================================================
+QSEEStart:
+
+  gosub AppsDebugInit 
+
+  ;clear the cookie
+  gosub ClearDloadCookie
+  
+  ; Clear all SBL info that was loaded during AppsDebugInit
+  b.reset
+  y.reset
+  symbol.reset
+
+  gosub LoadSymbols QSEE load yes
+
+  &SystemDown
+  &SystemUp
+
+  print
+  return 
+
+;=====================================================
+;This Subroutine loads the required XBL and XBL ramdump 
+;symbols and then enters download mode
+;=====================================================  
+EnterDLoad:
+
+  gosub AppsDebugInit 
+  gosub LoadSymbols XBLRAMDUMP load no
+
+  ;clear the debug cookie
+  gosub ClearDloadCookie
+  
+
+  ; Write Dload cookie for duration of sbl1_populate_initial_mem_map
+  b.s &initial_mem_map_init
+  go
+  GOSUB Brkpt_check &initial_mem_map_init
+  ENTRY &result
+  if &result!=1
+  (
+    print " FAIL: &initial_mem_map_init not reached"
+    goto EndOfScript
+  ) 
+  gosub SetDloadCookie
+  go.up
+  while (run())
+  (
+  )
+  ;clear the debug cookie
+  gosub ClearDloadCookie
+  
+  b.s &bootdloadcheck
+  go
+  GOSUB Brkpt_check &bootdloadcheck
+  ENTRY &result
+  if &result!=1
+  (
+  print " FAIL: boot_dload_check not reached"
+     goto EndOfScript
+  ) 
+  gosub SetDloadCookie
+  
+  b.s &xblramdumpentry
+  g
+  GOSUB Brkpt_check &xblramdumpentry
+  ENTRY &result
+  if &result!=1
+  (
+  print " FAIL: &xblramdumpentry not reached"
+     goto EndOfScript
+  ) 
+
+  gosub SetUpSysPath yes
+  gosub SetupDebugWindows yes
+  
+  print "Stopped at entry to RamDump segment. press 'go' to continue"
+  print
+
+  return
+
+;=====================================================
+;This Subroutine loads the required XBL symbols and 
+;then executes till end of XBL
+;=====================================================  
+GoTillXblEnd:
+  gosub AppsDebugInit 
+  ;clear the debug cookie
+  gosub ClearDloadCookie
+  map.bo
+  b.s &xblend
+  b.s &boot_error_handler
+  b.s &xbl_sync_error
+  b.s &xbl_system_error
+  
+   g  
+  GOSUB Brkpt_check &xblend
+  ENTRY &result
+  if &result!=1
+  (
+  print " FAIL: xbl end not reached"
+     goto EndOfScript
+  ) 
+  gosub SetUpSysPath yes
+  gosub SetupDebugWindows yes
+  
+  print "Stopped at End of XBL Loader"
+  print
+
+  return  
+  
+;=====================================================
+;This Subroutine loads the required XBL symbols and 
+;then executes till end of XBL. Logging messages are
+;store in RAM and then dumped to UART at end of XBL
+;=====================================================  
+GoAsyncUart:
+  gosub AppsDebugInit 
+  
+  ;clear the debug cookie
+  gosub ClearDloadCookie
+  map.bo
+  b.s &xblend
+  b.s &boot_error_handler
+  b.s &xbl_sync_error
+  b.s &xbl_system_error
+  
+  ; set flag for asynchronous uart output
+  data.set &shared_imem_boot_etb_addr %LONG &boot_logger_async_uart_magic_num
+
+  g  
+  GOSUB Brkpt_check &xblend
+  ENTRY &result
+  if &result!=1
+  (
+  print " FAIL: xbl end not reached"
+     goto EndOfScript
+  )
+
+  ; unset asnyc uart flag
+  data.set &shared_imem_boot_etb_addr %LONG 0
+   
+  gosub SetUpSysPath yes
+  gosub SetupDebugWindows yes
+  
+  print "Stopped at End of XBL Loader"
+  print
+
+  return
+
+  
+;===========================================================
+;This Subroutine loads only the required XBL Loader symbols 
+;===========================================================  
+LoadXblLoaderSymbols:
+  gosub LoadSymbols SBL1 load no  
+  print "XBL Loader Symbols loaded. Please manually setup needed debug windows"
+  print "Press enter to continue "
+  enter &Choice  
+  return
+  
+;============================================================
+;This Subroutine loads the required XBL Ramdump symbols. It 
+;also loads loader symbols since ramdump image uses some
+; api's from loader. 
+;============================================================
+LoadXblRamdumpSymbols:
+  gosub LoadSymbols SBL1 load no  
+  gosub LoadSymbols XBLRAMDUMP load no  
+  print "XBL Ramdump Symbols loaded. Please manually setup needed debug windows"
+  print "Press enter to continue "
+  enter &Choice
+  
+  return
+  
+  
+;****************************************************************************
+; Load or remove the boot loader symbols
+;****************************************************************************
+LoadSymbols:
+  local &cwd
+  local &boot_directory
+  ENTRY &bltype &loadordelete &remote
+
+  if ("&loadordelete"=="load")
+  (
+    if "&bltype"=="SBL1"
+    (
+      &cwd=os.pwd()
+      if os.dir("&sbl1dir")
+      (
+        ChDir "&sbl1dir"
+      )
+    
+      if "&sbl1elf"==""
+      (
+        gosub GetELFfile XBLLOADER dll
+      )
+      else
+      (
+        &ELFfilename="&sbl1elf"
+      )
+    )
+    if "&bltype"=="QSEE"
+    (
+      &cwd=os.pwd()
+      if os.dir("&qseedir")
+      (
+        ChDir "&qseedir"
+      )
+
+      if "&qseeelf"==""
+      (
+        gosub GetELFfile QSEE elf
+      )
+      else
+      (
+        &ELFfilename="&qseeelf"
+      )
+    )
+    if "&bltype"=="XBLRAMDUMP"
+    (
+      &cwd=os.pwd()
+      if os.dir("&xblramdumpdir")
+      (
+        ChDir "&xblramdumpdir"
+      )
+
+      if "&xblramdumpelf"==""
+      (
+        gosub GetELFfile XBLRAMDUMP dll
+      )
+      else
+      (
+        &ELFfilename="&xblramdumpelf"
+      )
+    )
+    print "Elf File: &ELFfilename"
+    print
+    if ("&bltype"=="SBL1")||("&bltype"=="XBLRAMDUMP")
+    (
+      ; explicitly need to update sourcepath
+      data.load.elf &ELFfilename /nocode /noclear /strippart "QcomPkg" /sourcepath "&BootBuildPath/QcomPkg/"
+    )
+    else
+    (
+      data.load.elf &ELFfilename /nocode /noclear
+    )
+  )
+  else
+  (
+    symbol.delete
+  )
+return ; LoadSymbols
+
+;****************************************************************************
+; Select an ELF file from the dialog window
+;****************************************************************************
+GetELFfile:
+  ENTRY &imagetype &file_suffix
+  print "Select &imagetype image file in browser"
+  local &filename
+  dialog.file *."&file_suffix"
+  entry &filename
+  if "&filename"==""
+  (
+    print "Failed to select file. Exiting..."
+    return
+  )
+  &ELFfilename="&filename"
+  print "Elf File: &ELFfilename"
+return ; GetELFfile
+
+
+;***************************************************************************
+; Setup access to boot source directories
+;***************************************************************************
+SetUpSysPath:
+  y.spath --
+  print "Adding paths...."
+  y.spath.srd "&BootBuildPath/QcomPkg/"+"&build_id"+"Pkg/Library/XBLLoaderLib"
+  y.spath.srd "&BootBuildPath/QcomPkg/"+"&build_id"+"Pkg/Library/XBLRamDumpLib"
+  y.spath.srd "&BootBuildPath/QcomPkg/XBLLoader"
+  y.spath.srd "&BootBuildPath/QcomPkg/XBLRamDump"
+  y.spath.srd "&BootBuildPath/QcomPkg/"+"&build_id"+"Pkg/Library/DDRTargetLib"
+  y.spath.srd "&BuildOutDir/"+"QcomPkg/"+"&build_id"+"Pkg/Library/XBLLoaderLib" 
+  y.spath.srd "&BuildOutDir/"+"QcomPkg/"+"&build_id"+"Pkg/Library/XBLRamDumpLib"   
+  
+return ; SetUpSysPath
+
+
+;****************************************************************************
+; Setup and display the windows to debug the processor
+;****************************************************************************
+SetupDebugWindows:
+  
+  TOOLBAR ON
+  STATUSBAR ON
+
+  WINPOS 0.0 0.0 68% 65% 12. 1. W000
+  DATA.list
+ 
+  WINPOS 68% 0. 32% 50% 0. 0. W002
+  register /spotlight
+ 
+  setup.var %open.on %hex %symbol
+
+  WINPOS  68% 50% 32% 48% 0. 0. W003
+  Var.Frame
+  
+  return ; SetupDebugWindows
+
+;****************************************************************************
+; Setup main window
+;****************************************************************************
+SetupMainWindow:
+  WINPOS 0% 50% 68% 50% 0. 0. W001
+  Area.create MAIN
+  Area.view MAIN
+  Area.select MAIN
+  return ;SetupMainWindow
+  
+;=====================================================
+; Function to clean up just before exit
+;=====================================================
+CleanUpExit:
+  ;--------------------------------------------------------
+  ; ok we're finished completely, clean up for exit
+  ;--------------------------------------------------------
+  b.delete /all
+  gosub LoadSymbols "" delete
+  return ; CleanupExit
+
+;==============================================================================
+;
+;  Determine the debug objects/elf path from where we need to load symbols from.
+;  First match will be taken which folder is present.
+;
+;==============================================================================
+GetObjFilesPath:
+  local &Build_Id_Specific
+
+  &Build_Id_Specific="&build_id"
+
+  if "&build_suffix"!="None"
+  (
+   &Build_Id_Specific="&build_id"+"&build_suffix"
+  )
+
+  ; Add the folders list in the order of preference
+  &BuildOutDir="&BootBuildPath/Build/"+"&Build_Id_Specific"+"/DEBUG_CLANG39LINUX/AARCH64"
+  if (os.dir("&BuildOutDir"))
+  (
+    return
+  )
+  
+  &BuildOutDir="&BootBuildPath/Build/"+"&Build_Id_Specific"+"/RELEASE_CLANG39LINUX/AARCH64"
+  if (os.dir("&BuildOutDir"))
+  (
+    return
+  )  
+
+  &BuildOutDir="&BootBuildPath/Build/"+"&Build_Id_Specific"+"/DEBUG_CLANG39WIN/AARCH64"
+  if (os.dir("&BuildOutDir"))
+  (
+    return
+  )  
+
+  &BuildOutDir="&BootBuildPath/Build/"+"&Build_Id_Specific"+"/RELEASE_CLANG39WIN/AARCH64"
+  if (os.dir("&BuildOutDir"))
+  (
+    return
+  )  
+  
+  &BuildOutDir="&BootBuildPath/Build/"+"&Build_Id_Specific"+"/DEBUG_RVCT6/AARCH64"
+  if (os.dir("&BuildOutDir"))
+  (
+    return
+  )
+
+  &BuildOutDir="&BootBuildPath/Build/"+"&Build_Id_Specific"+"/DEBUG_RVCT6LINUX/AARCH64"
+  if (os.dir("&BuildOutDir"))
+  (
+    return
+  )
+
+  &BuildOutDir="&BootBuildPath/Build/"+"&Build_Id_Specific"+"/DEBUG_LINAROGCCWIN/AARCH64"
+  if (os.dir("&BuildOutDir"))
+  (
+    return
+  )
+
+  &BuildOutDir="&BootBuildPath/Build/"+"&Build_Id_Specific"+"/DEBUG_LINAROGCCLINUX/AARCH64"
+  if (os.dir("&BuildOutDir"))
+  (
+    return
+  )
+
+  &BuildOutDir="&BootBuildPath/Build/"+"&Build_Id_Specific"+"/DEBUG_LLVMLINUX/AARCH64"
+  if (os.dir("&BuildOutDir"))
+  (
+    return
+  )
+
+  &BuildOutDir="&BootBuildPath/Build/"+"&Build_Id_Specific"+"/DEBUG_LLVMWIN/AARCH64"
+  if (os.dir("&BuildOutDir"))
+  (
+    return
+  )
+
+
+  &BuildOutDir="&BootBuildPath/Build/"+"&Build_Id_Specific"+"/DEBUG_LINAROGCCCYGWIN/AARCH64"
+  if (os.dir("&BuildOutDir"))
+  (
+    return
+  )
+
+  &BuildOutDir="&BootBuildPath/Build/"+"&Build_Id_Specific"+"/DEBUG_GCC47/AARCH64"
+  if (os.dir("&BuildOutDir"))
+  (
+    return
+  )
+
+  &BuildOutDir="&BootBuildPath/Build/"+"&Build_Id_Specific"+"/DEBUG_RVCT501/ARM"
+  if (os.dir("&BuildOutDir"))
+  (
+    return
+  )
+
+  &BuildOutDir="&BootBuildPath/Build/"+"&Build_Id_Specific"+"/RELEASE_RVCT501/ARM"
+  if (os.dir("&BuildOutDir"))
+  (
+    return
+  )
+
+  &BuildOutDir="&BootBuildPath/Build/"+"&Build_Id_Specific"+"/DEBUG_RVCT501LINUX/ARM"
+  if (os.dir("&BuildOutDir"))
+  (
+    return
+  )
+  
+  &BuildOutDir="&BootBuildPath/Build/"+"&Build_Id_Specific"+"/RELEASE_RVCT501LINUX/ARM"
+  if (os.dir("&BuildOutDir"))
+  (
+    return
+  )
+
+  if ((&is_cmd_line!=0)||("&GetObjRetryFlag"=="Y"))
+  (
+    print %String %ERROR "Unable to find valid build folder !"
+  )
+  else
+  (
+    print " Enter valid XBL Build for Debug Symbols : "
+    enter &BootBuildPath
+    &BootBuildPath="&BootBuildPath/boot_images"
+    &GetObjRetryFlag="Y"
+    goto GetObjFilesPath
+  )  
+
+  END
+  
+EndOfScript:
+  enddo

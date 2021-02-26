@@ -1,0 +1,714 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--========================================================================-->
+<!-- Copyright (c) 2016-2017 Qualcomm Technologies, Inc.                    -->
+<!-- All Rights Reserved.                                                   -->
+<!-- Confidential and Proprietary - Qualcomm Technologies, Inc.             -->
+<!--========================================================================-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+	<xs:include schemaLocation="..\..\common\globalelements.xsd"/>
+	<xs:include schemaLocation="aecglobalelements.xsd"/>
+	<!--
+
+Core Metering Tuning Definition
+
+-->
+	<xs:element name="Metering" type="AECCoreMeteringType"/>
+	<xs:complexType name="AECCoreMeteringType">
+		<xs:sequence>
+			<xs:element name="module_version">
+				<xs:complexType>
+					<xs:sequence>
+						<xs:element name="major_revision" type="xs:int" fixed="1"/>
+						<xs:element name="minor_revision" type="xs:int" fixed="0"/>
+						<xs:element name="incr_revision" type="xs:int" fixed="0"/>
+					</xs:sequence>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="mtrLumaCalc" type="AECLumaCalcType"/>
+			<xs:element name="mtrLumaTarget" type="AECLumaTargetType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="AECLumaCalcType">
+		<xs:sequence>
+			<xs:element name="indexCalc" type="IndexCalcType"/>
+			<xs:element name="lumaWeight" type="LumaWeightType"/>
+			<xs:element name="mtrTables" type="MtrTableType"/>
+			<xs:element name="lumaRgnAdj" type="RgnAdjType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="IndexCalcType">
+		<xs:sequence>
+			<xs:element name="enableLuxIndexComp">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:boolean">
+							<xs:attribute name="type" default="bool"/>
+							<xs:attribute name="description" type="xs:string" default="The flag enables lux index normalization across different sensor modes and headers."/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="often_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="refSensitivityForExpIndexZero">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="The reference sensitivity value which is used to compare with the current table sensitivity at index 0."/>
+							<xs:attribute name="range" type="xs:string" default="[0,unbounded]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="luxIndexFilterFactor">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Temporal filter factor for lux index to stabilize its value."/>
+							<xs:attribute name="range" type="xs:string" default="[0,0.99]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="bayerGridSubsmplSelect" type="AECBayerGridSubsmplType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="LumaWeightType">
+		<xs:sequence>
+			<xs:element name="weight" minOccurs="3" maxOccurs="3">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="An array of 3 elements in the sequence of R,G,B weights for luma computation. "/>
+							<xs:attribute name="range" type="xs:string" default="[0, 1]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="enableColorAndSensorComp">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:boolean">
+							<xs:attribute name="type" default="bool"/>
+							<xs:attribute name="description" type="xs:string" default="Enable usage of AWB gain to compensate module and illumination difference."/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="refGain" minOccurs="3" maxOccurs="3">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Reference AWB gain used to adjust luma computation weights. "/>
+							<xs:attribute name="range" type="xs:string" default="[0, 3]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="MtrTableType">
+		<xs:sequence>
+			<xs:element name="centerWeighted">
+				<xs:complexType>
+					<xs:sequence>
+						<xs:element name="weights">
+							<xs:simpleType>
+								<xs:restriction base="floatvar">
+									<xs:length value="256"/>
+								</xs:restriction>
+							</xs:simpleType>
+						</xs:element>
+					</xs:sequence>
+					<xs:attribute name="type" default="float"/>
+					<xs:attribute name="description" default="Center weighted metering weight table."/>
+					<xs:attribute name="range" default="[0,1]"/>
+					<xs:attribute name="length" type="xs:int" fixed="256"/>
+					<xs:attribute name="tuning_parameter_level" type="tuning_level" default="often_tune"/>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="spotWeighted">
+				<xs:complexType>
+					<xs:sequence>
+						<xs:element name="weights">
+							<xs:simpleType>
+								<xs:restriction base="floatvar">
+									<xs:length value="256"/>
+								</xs:restriction>
+							</xs:simpleType>
+						</xs:element>
+					</xs:sequence>
+					<xs:attribute name="type" default="float"/>
+					<xs:attribute name="description" default="Spot metering weight table."/>
+					<xs:attribute name="range" default="[0,1]"/>
+					<xs:attribute name="length" type="xs:int" fixed="256"/>
+					<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="RgnAdjType">
+		<xs:sequence>
+			<xs:element name="enableBrightRgnAdj">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:boolean">
+							<xs:attribute name="type" default="bool"/>
+							<xs:attribute name="description" type="xs:string" default="Enable adjustment of weights on bright stats region in luma calculation."/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="often_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="enableDarkRgnAdj">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:boolean">
+							<xs:attribute name="type" default="bool"/>
+							<xs:attribute name="description" type="xs:string" default="Enable adjustment of weights on dark stats region in luma calculation."/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="often_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="minTableWeightForBright">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Minimum metering table weight for bright region adjustment."/>
+							<xs:attribute name="range" type="xs:string" default="[0,1]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="maxStatsPctForBright">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Maximum percentage of bright stats that can be weight adjusted."/>
+							<xs:attribute name="range" type="xs:string" default="[0,1]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="minTableWeightForDark">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Minimum metering table weight for dark region adjustment."/>
+							<xs:attribute name="range" type="xs:string" default="[0,1]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="maxStatsPctForDark">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Maximum percentage of dark stats that can be weight adjusted."/>
+							<xs:attribute name="range" type="xs:string" default="[0,1]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="rgnAdjZone" type="RgnAdjZoneType" maxOccurs="unbounded"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="RgnAdjZoneType">
+		<xs:sequence>
+			<xs:element name="zoneTrigger" type="TriggerPointType"/>
+			<xs:element name="zoneData" type="RgnAdjZoneDataType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="RgnAdjZoneDataType">
+		<xs:sequence>
+			<xs:element name="thresBrightRgn">
+				<xs:complexType>
+					<xs:complexContent>
+						<xs:extension base="TriggerPointType">
+							<xs:attribute name="description" type="xs:string" default="Threshold pair to determine if a region is bright."/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="often_tune"/>
+							<xs:attribute name="range" type="xs:string" default="[0,255]"/>
+						</xs:extension>
+					</xs:complexContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="thresDarkRgn">
+				<xs:complexType>
+					<xs:complexContent>
+						<xs:extension base="StartEndType">
+							<xs:attribute name="description" type="xs:string" default="Threshold pair to determine if a region is dark."/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="often_tune"/>
+							<xs:attribute name="range" type="xs:string" default="[0,255]"/>
+						</xs:extension>
+					</xs:complexContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="weightBrightRgnAdj">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Additional weight to be applied to a bright region. "/>
+							<xs:attribute name="range" type="xs:string" default="[0, 2]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="often_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="weightDarkRgnAdj">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Additional weight to be applied to a dark region. "/>
+							<xs:attribute name="range" type="xs:string" default="[0,1.5]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="often_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="AECLumaTargetType">
+		<xs:sequence>
+			<xs:element name="luxLumaTarget" type="LuxLumaTargetType"/>
+			<xs:element name="histLumaTarget" type="HistLumaTargetType"/>
+			<xs:element name="extrmClrLumaTarget" type="ExtrmClrLumaTargetType"/>
+			<xs:element name="EVLumaTarget" type="EVLumaTargetType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="HistLumaTargetType">
+		<xs:sequence>
+			<xs:element name="enableHistMetering">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:boolean">
+							<xs:attribute name="type" default="bool"/>
+							<xs:attribute name="description" type="xs:string" default="Flag to enable histogram luma target calculation. "/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="often_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="enableADRC">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:boolean">
+							<xs:attribute name="type" default="bool"/>
+							<xs:attribute name="description" type="xs:string" default="Setting this flag enables ADRC. "/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="often_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="enableNonLinearTargetEstimate">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:boolean">
+							<xs:attribute name="type" default="bool"/>
+							<xs:attribute name="description" type="xs:string" default="Enable for histogram AEC to converge faster"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="often_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="enableDarkBoost">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:boolean">
+							<xs:attribute name="type" default="bool"/>
+							<xs:attribute name="description" type="xs:string" default="Setting this flag enables boosting dark area with tone mapping. ADRC enable is pre-requisite."/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="often_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="enableAntiBandingPrioOverADRC">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:boolean">
+							<xs:attribute name="type" default="bool"/>
+							<xs:attribute name="description" type="xs:string" default="Setting this flag makes sure antibanding range is not reduced with ADRC enabled. "/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="antiBandingPrioTriggerRange">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="The index range to gradually allow ADRC to regain full allowance when antibanding becomes unavailable due to scene brightness."/>
+							<xs:attribute name="range" type="xs:string" default="[0,30]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="targetFilterFactor">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Luma target filter factor for this feature. "/>
+							<xs:attribute name="range" type="xs:string" default="[0,0.99]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="never_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="histLumaTargetZone" type="HistLumaTargetZoneType" maxOccurs="unbounded"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="HistLumaTargetZoneType">
+		<xs:sequence>
+			<xs:element name="zoneTrigger" type="TriggerPointType"/>
+			<xs:element name="zoneData" type="HistLumaTargetZoneDataType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="HistLumaTargetZoneDataType">
+		<xs:sequence>
+			<xs:element name="minTargetAdjRatio">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Minimal target adjust ratio for safe exposure. "/>
+							<xs:attribute name="range" type="xs:string" default="[0.6, 1.0]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="often_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="maxTargetAdjRatio">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Maximal target adjust ratio for safe exposure. "/>
+							<xs:attribute name="range" type="xs:string" default="[1.0, 2.0]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="often_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="satRefLow">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Saturation low reference point, which sets the minimal brightness for saturation position."/>
+							<xs:attribute name="range" type="xs:string" default="[100,255]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="often_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="satRefHigh">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Saturation high reference point, which sets the maximal brightness for saturation position."/>
+							<xs:attribute name="range" type="xs:string" default="[100,255]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="often_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="darkRefLow">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Dark low reference point, which sets the minimal brightness for dark position."/>
+							<xs:attribute name="range" type="xs:string" default="[0,50]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="often_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="darkRefHigh">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="This one is not recommended to be used."/>
+							<xs:attribute name="range" type="xs:string" default="[100,1000]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="never_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="histSatPushupRange" minOccurs="3" maxOccurs="3">
+				<xs:complexType>
+					<xs:complexContent>
+						<xs:extension base="StartEndType">
+							<xs:attribute name="description" type="xs:string" default="The percentage range of pixels to be used to calculate saturation position for push up (flat scene compensation). R/G/B channels get to specify independent ranges."/>
+							<xs:attribute name="range" type="xs:string" default="[0.0,0.5]"/>
+						</xs:extension>
+					</xs:complexContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="histSatPushdownRange" minOccurs="3" maxOccurs="3">
+				<xs:complexType>
+					<xs:complexContent>
+						<xs:extension base="StartEndType">
+							<xs:attribute name="description" type="xs:string" default="The percentage range of pixels to be used to calculate saturation position for push down (saturation prevention). R/G/B channels get to specify independent ranges."/>
+							<xs:attribute name="range" type="xs:string" default="[0.0,0.5]"/>
+						</xs:extension>
+					</xs:complexContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="histDarkRange" minOccurs="3" maxOccurs="3">
+				<xs:complexType>
+					<xs:complexContent>
+						<xs:extension base="StartEndType">
+							<xs:attribute name="description" type="xs:string" default="The percentage range of pixels to be used to calculate dark position. R/G/B channels get to specify independent ranges."/>
+							<xs:attribute name="range" type="xs:string" default="[0.0,0.5]"/>
+						</xs:extension>
+					</xs:complexContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="maxDRCGain">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="This parameter determines the max ratio between long and short exposure. "/>
+							<xs:attribute name="range" type="xs:string" default="[1,16]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="often_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="ExtrmClrLumaTargetType">
+		<xs:sequence>
+			<xs:element name="enableExtrmClr">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:boolean">
+							<xs:attribute name="type" default="bool"/>
+							<xs:attribute name="description" type="xs:string" default="Flag to enable extreme color luma target adjustment. "/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="often_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="thresRed">
+				<xs:complexType>
+					<xs:complexContent>
+						<xs:extension base="ExtrmClrThresRangeType">
+							<xs:attribute name="description" type="xs:string" default="Threshold on RG ratio to determine if a stats is red. "/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:complexContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="thresGreenR">
+				<xs:complexType>
+					<xs:complexContent>
+						<xs:extension base="ExtrmClrThresRangeType">
+							<xs:attribute name="description" type="xs:string" default="Threshold on RG ratio to determine if a stats is green. "/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:complexContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="thresGreenB">
+				<xs:complexType>
+					<xs:complexContent>
+						<xs:extension base="ExtrmClrThresRangeType">
+							<xs:attribute name="description" type="xs:string" default="Threshold on BG ratio to determine if a stats is green. "/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:complexContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="thresGreenCenter">
+				<xs:complexType>
+					<xs:complexContent>
+						<xs:extension base="ExtrmClrThresRangeType">
+							<xs:attribute name="description" type="xs:string" default="Threshold on RG/BG jointly to determine if a stats is green. "/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:complexContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="thresBlue">
+				<xs:complexType>
+					<xs:complexContent>
+						<xs:extension base="ExtrmClrThresRangeType">
+							<xs:attribute name="description" type="xs:string" default="Threshold on BG ratio to determine if a stats is blue. "/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:complexContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="thresColorStatsPct">
+				<xs:complexType>
+					<xs:complexContent>
+						<xs:extension base="StartEndType">
+							<xs:attribute name="description" type="xs:string" default="A range in terms of percentage of color stats to determine whether to apply full target adjustment, or no target adjustment. "/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+							<xs:attribute name="range" type="xs:string" default="[0.0,1.0]"/>
+						</xs:extension>
+					</xs:complexContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="thresLumaLow">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Effect of the color stats is discounted if the luma value is below the said threshold. "/>
+							<xs:attribute name="range" type="xs:string" default="[0,25]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="thresLumaHigh">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Effect of the color stats is discounted if the luma value is above the said threshold. "/>
+							<xs:attribute name="range" type="xs:string" default="[150,255]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="extrmClrLumaTargetZone" type="ExtrmClrLumaTargetZoneType" maxOccurs="unbounded"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="ExtrmClrLumaTargetZoneType">
+		<xs:sequence>
+			<xs:element name="zoneTrigger" type="TriggerPointType"/>
+			<xs:element name="zoneData" type="ExtrmClrLumaTargetZoneDataType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="ExtrmClrLumaTargetZoneDataType">
+		<xs:sequence>
+			<xs:element name="channelAdjRatio" minOccurs="3" maxOccurs="3">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Target adjustment ratio for each color channel in the sequence of R/G/B."/>
+							<xs:attribute name="range" type="xs:string" default="[0.4,1.0]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="often_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="ExtrmClrThresRangeType">
+		<xs:sequence>
+			<xs:element name="thres">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Threshold for determining if color ratios (rg, bg) is extreme. "/>
+							<xs:attribute name="range" type="xs:string" default="[0,3]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="often_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="interpPct">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Interpolation percentage (extends both direction from thres) to make stable transition in detection."/>
+							<xs:attribute name="range" type="xs:string" default="[0,0.2]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="often_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="EVLumaTargetType">
+		<xs:sequence>
+			<xs:element name="stepsPerEV">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Number of steps for each full EV (1 stop) in the EVCompTable."/>
+							<xs:attribute name="range" type="xs:string" default="[1,10]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="minEVValue">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="minimal EV values (starting point) in the EVCompTable."/>
+							<xs:attribute name="range" type="xs:string" default="[-3,0]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="maxEVValue">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="maximal EV values (ending point) in the EVCompTable."/>
+							<xs:attribute name="range" type="xs:string" default="[0,3]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="EVCompTable">
+				<xs:complexType>
+					<xs:sequence>
+						<xs:element name="EVCompTableElements">
+							<xs:simpleType>
+								<xs:restriction base="floatvar">
+									<xs:length value="49"/>
+								</xs:restriction>
+							</xs:simpleType>
+						</xs:element>
+					</xs:sequence>
+					<xs:attribute name="type" default="float"/>
+					<xs:attribute name="description" default="Luma target scaling ratios for the particular EV value."/>
+					<xs:attribute name="range" default="[0, 5]"/>
+					<xs:attribute name="length" type="xs:int" fixed="49"/>
+					<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+</xs:schema>

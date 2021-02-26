@@ -1,0 +1,174 @@
+;============================================================================
+;  Name:
+;    load_sec_sym.cmm
+;
+;  Description:
+;     Load symbols only for sec
+;
+; Copyright (c) 2015 Qualcomm Technologies Incorporated.
+; All Rights Reserved.
+; Qualcomm Confidential and Proprietary
+;
+;----------------------------------------------------------------------------
+;============================================================================
+;
+;                        EDIT HISTORY FOR MODULE
+;
+;
+;
+;when         who     what, where, why
+;----------   ---     ----------------------------------------------------------
+;2015-10-15   bh      Initial revision
+;============================================================================;
+
+global &AppSrcPath
+global &AppObjPath
+global &UefiRootDirName
+global &AppSrcDirName
+global &AppObjDirName
+
+; Read the symbol file path from the elf image loaded in memory
+GetSymFilePath:
+  entry &UefiBaseAddr &LoadAddr
+
+  local &CwDir
+  local &ImgBase
+  local &Rva
+  local &ElfFilePath
+  local &LoadFilePathPos
+  local &LoadFilePath
+  local &DxeAddr
+  local &ScanLocation
+  local &IgnoreSymPathParts
+  local &PathSep
+  local &TempPath
+  local &TempPath2
+  local &UefiRootPath
+
+  &CwDir=os.ppd()
+
+  cd &CwDir/../../../
+
+  gosub ValidateFvHeader &UefiBaseAddr
+
+  ; Load Sec symbols first
+  &Rva=data.long(A:&UefiBaseAddr+&RvaOffset)
+  &ElfFilePath=data.string(A:&UefiBaseAddr+&Rva+&RvaOffsetAdd)
+  &ImgBase=&UefiBaseAddr+&SecLoadAddrOffset
+
+  ; Search for boot_images folder in the file path
+  local &scanres
+  &LoadFilePathPos=0.
+  &scanres=0.
+  repeat
+  (
+    &scanres=string.scan("&ElfFilePath","/boot_images/",&LoadFilePathPos)
+    if (&scanres!=-1.)
+    (
+      &LoadFilePathPos=&scanres+1.
+    )
+    else
+    (
+      &scanres=string.scan("&ElfFilePath","\boot_images\",&LoadFilePathPos)
+      if (&scanres!=-1.)
+      (
+        &LoadFilePathPos=&scanres+1.
+      )
+    )
+  )
+  while &scanres!=-1.
+  &PathSep=string.mid("&ElfFilePath",&LoadFilePathPos-1,1)
+
+  &UefiRootPath=os.pwd()
+  print os.pwd()
+  ; Add Symbols paths
+  y.spath.reset
+
+  ; Ensure UEFI core is the 1st directory searched because
+  ; some App Pkgs can sync the entire EDK2 causing
+  ; source mismatch against core UEFI modules 
+  y.spath.SETBASEDIR .
+
+  ; Add App Pkg source path
+  if ("&AppSrcPath"!="")
+  (
+    y.spath.SETBASEDIR &AppSrcPath/../
+  )
+
+  ; Add App Pkg object path which contains the
+  ; AutoGen sources
+  if ("&AppObjPath"!="")
+  (
+    y.spath.SETBASEDIR &AppObjPath/../
+  )
+
+  &IgnoreSymPathParts=0
+  &ScanLocation=string.scan("&ElfFilePath","&PathSep",0)
+  while &ScanLocation<&LoadFilePathPos
+  (
+    &IgnoreSymPathParts=&IgnoreSymPathParts+1
+    &ScanLocation=string.scan("&ElfFilePath","&PathSep",&ScanLocation+1)
+  )
+
+  ; Extract only the elf file path relative to current location
+  &LoadFilePath=string.cut("&ElfFilePath",&LoadFilePathPos)
+
+  ; Check if the DxeCore Symbol file is existing, attempt to load only if its present
+  if (!os.file("&LoadFilePath"))
+  (
+    print %ERROR "COULD NOT LOCATE &LoadFilePath"
+    area.view UEFI_Logs
+    END
+  )
+  &LoadFilePathPos=string.scan("&LoadFilePath","QcomPkg",0)
+
+  print "Sec dll file: &LoadFilePath"
+
+  data.load.elf &LoadFilePath &LoadAddr /nocode /strippart &IgnoreSymPathParts
+  print "Loaded Sec symbols at &LoadAddr from &LoadFilePath"
+
+  ; Find UEFI Root directory name
+  &UefiRootDirName=string.split("&UefiRootPath","\",-1)
+  if ("&UefiRootDirName"!="")
+  (
+    &PathSep="\"
+  )
+  else
+  (
+    &PathSep="/"
+  )
+
+  ; Find AppPkg Src and Obj Root directory names
+  &UefiRootDirName=string.split("&UefiRootPath","&PathSep",-1)
+  if ("&AppObjPath"!="")
+  (
+    &TempPath=os.pwd()
+
+    cd &AppObjPath/..
+    &TempPath2=os.pwd()
+    &AppObjDirName=string.split("&TempPath2","&PathSep",-1)
+
+    cd &AppSrcPath/..
+    &TempPath2=os.pwd()
+    &AppSrcDirName=string.split("&TempPath2","&PathSep",-1)
+
+    cd &TempPath
+  )
+
+enddo
+
+ValidateFvHeader:
+  entry &BaseAddr
+  &Sig=data.long(A:&BaseAddr+0x28)
+  if (&Sig==0x4856465F)
+  (
+    return
+  )
+  else
+  (
+    print %ERROR "Invalid FV header, exiting..."
+    end
+  )
+return
+  
+

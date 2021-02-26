@@ -1,0 +1,304 @@
+<?xml version="1.0" encoding="utf-8"?>
+<xsd:schema xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+<!--
+==========================================================================
+
+  contents.xsd
+
+  General Description
+     Schema definition for contents.xml
+
+ Copyright (c) 2011-2017 by Qualcomm Technologies, Incorporated. All Rights Reserved.
+ QUALCOMM Proprietary/GTDR
+==========================================================================
+ 
+ $Header: //components/rel/build.glue/1.0/lib/contents.xsd#3 $
+ $DateTime: 2017/09/20 18:48:25 $
+ $Change: 14434931 $
+==========================================================================
+-->
+
+  <!-- definition of base type, inherited by all other types -->
+  
+  <xsd:complexType name="baseType">
+    <xsd:simpleContent>
+      <xsd:extension base="xsd:string">
+        <!-- Any value can have a 'cmm_var' attribute.  This can then be set to
+        a CMM script variable name, that CMM scripts can access.  The variable
+        will be set equal to the value of the xml tag. -->
+        <xsd:attribute name="cmm_var" type="xsd:string" use="optional"/>
+      </xsd:extension>
+    </xsd:simpleContent>
+  </xsd:complexType>
+
+  <!-- definition of various string types -->
+
+  <xsd:complexType name="buildIdType">
+    <xsd:simpleContent>
+      <xsd:restriction base="baseType">
+        <xsd:pattern value="\s*(([A-Za-z]\d{4}[A-Za-z]+\d+[A-Za-z]?\.\d+)|([A-Za-z0-9._]+\-[0-9.]+\-[A-Za-z0-9._]+\-[0-9]+))?\s*"/>
+        <!--
+        <xsd:pattern value="\s*((^[A-Za-z]\d{4}[A-Za-z]+\d+[A-Za-z]?\.\d+)|(^[A-Za-z]+\.[A-Za-z_]+(\.\d+)+(\.rcRC\d+)?(\.\d+)?\-\d+(\.\d+)?\-[A-Za-z]\d{4}[A-Za-z]+\-\d+$))?\s*"/>
+        -->
+      </xsd:restriction>
+    </xsd:simpleContent>
+  </xsd:complexType>
+
+  <xsd:complexType name="rootPathType">
+    <xsd:simpleContent>
+      <xsd:extension base="baseType">
+        <!-- Any value can have a 'cmm_var' attribute.  This can then be set to
+        a CMM script variable name, that CMM scripts can access.  The variable
+        will be set equal to the value of the xml tag. -->
+        <xsd:attribute name="cmm_root_path_var" type="xsd:string" use="optional"/>
+      </xsd:extension>
+    </xsd:simpleContent>
+  </xsd:complexType>
+
+  <xsd:complexType name="linuxRootPathType">
+    <xsd:simpleContent>
+      <xsd:restriction base="rootPathType">
+        <xsd:pattern value="\s*([0-9/A-Za-z\-._${:}]*)?\s*"/>
+      </xsd:restriction>
+    </xsd:simpleContent>
+  </xsd:complexType>
+
+  <xsd:complexType name="windowsRootPathType">
+    <xsd:simpleContent>
+      <xsd:restriction base="rootPathType">
+        <xsd:pattern value="\s*(([A-Za-z]:)?[0-9\\/A-Za-z\-._ ${:}]*)?\s*"/>
+      </xsd:restriction>
+    </xsd:simpleContent>
+  </xsd:complexType>
+
+  <xsd:complexType name="relPathTypeRestriction">
+    <xsd:simpleContent>
+      <xsd:restriction base="baseType">
+        <!-- Can't have leading '/' -->
+        <xsd:pattern value="\s*[\-0-9A-Za-z._$]?[/\\\-0-9A-Za-z\-._${:}]*\s*"/>
+      </xsd:restriction>
+    </xsd:simpleContent>
+  </xsd:complexType>
+  
+  <xsd:complexType name="relPathType">
+    <xsd:simpleContent>
+      <xsd:extension base="relPathTypeRestriction">
+      <xsd:attribute name="type" type="xsd:string" use="optional"/>
+      <xsd:attribute name="flavor" type="xsd:string" use="optional"/>
+      </xsd:extension>
+    </xsd:simpleContent>
+  </xsd:complexType>
+  
+  <xsd:complexType name="nameType">
+    <xsd:simpleContent>
+      <xsd:restriction base="baseType">
+        <xsd:pattern value="\s*[*0-9A-Za-z._\-${:}]+\s*"/>
+      </xsd:restriction>
+    </xsd:simpleContent>
+  </xsd:complexType>
+
+  <!-- definition of complex type for product info -->
+
+  <xsd:complexType name="productInfoType">
+    <xsd:sequence>
+      <xsd:element name="product_name" type="xsd:string"/>
+      <xsd:element name="hlos_type" type="baseType"/>
+      <xsd:element name="chipid" type="baseType"/>
+    </xsd:sequence>
+  </xsd:complexType>
+
+  <!-- definition of complex types for build tools -->
+
+  <xsd:complexType name="buildToolType">
+    <xsd:sequence>
+      <!-- Name of tool -->
+      <xsd:element name="name" type="nameType"/>
+      <!-- 'build' name must match a build in the builds_flat section -->
+      <xsd:element name="build" type="nameType"/>
+      <!-- Relative path to tool from build root -->
+      <xsd:element name="path" type="relPathType"/>
+      <!-- One or more lists of parameters for the build.  Interpretation is
+      tool-specific -->
+      <xsd:element name="params" type="baseType" minOccurs="0" maxOccurs="unbounded"/>
+    </xsd:sequence>
+  </xsd:complexType>
+
+  <xsd:complexType name="buildToolsListType">
+    <xsd:sequence>
+      <xsd:element name="tool" type="buildToolType" minOccurs="0" maxOccurs="unbounded"/>
+    </xsd:sequence>
+  </xsd:complexType>
+
+  <!-- definition of complex types for external tools -->
+
+  <xsd:complexType name="externalToolType">
+    <xsd:sequence>
+      <xsd:element name="name" type="nameType"/>
+      <xsd:element name="version" type="baseType"/>
+      <xsd:element name="path" type="relPathType" minOccurs="0" maxOccurs="unbounded"/> 
+    </xsd:sequence>
+  </xsd:complexType>
+
+  <xsd:complexType name="externalToolsListType">
+    <xsd:sequence>
+      <xsd:element name="tool" type="externalToolType" minOccurs="0" maxOccurs="unbounded"/>
+    </xsd:sequence>
+  </xsd:complexType>
+
+  <!-- definition of complex types for builds -->
+
+  <xsd:complexType name="fileType">
+    <xsd:sequence>
+      <xsd:element name="file_name" type="nameType" minOccurs="1" maxOccurs="unbounded"/>
+      <xsd:element name="file_path" type="relPathType" minOccurs="1" maxOccurs="unbounded"/>
+    </xsd:sequence>
+    <xsd:attribute name="cmm_var" type="xsd:string" use="optional"/>
+    <xsd:attribute name="minimized" use="optional"/>
+    <xsd:attribute name="fastboot" type="xsd:string" use="optional"/>
+    <xsd:attribute name="fastboot_complete" type="xsd:string" use="optional"/>
+    <xsd:attribute name="fat_file" type="xsd:boolean" use="optional"/>
+    <xsd:attribute name="symbol" type="xsd:string" use="optional"/>
+    <xsd:attribute name="cmm_file_var" type="xsd:string" use="optional"/>
+    <xsd:attribute name="debug_script" type="xsd:string" use="optional"/>
+    <xsd:attribute name="sparse_image_path" type="xsd:string" use="optional"/>
+    <xsd:attribute name="ignore" type="xsd:boolean" use="optional"/>
+    <xsd:attribute name="cmm_root_path_var" type="xsd:string" use="optional"/>
+    <xsd:attribute name="pil_split" type="xsd:string" use="optional"/>
+    <xsd:attribute name="storage_type" type="xsd:string" use="optional"/>
+    <xsd:anyAttribute processContents="lax" />
+  </xsd:complexType>
+
+  <xsd:complexType name="shortBuildType">
+    <xsd:simpleContent>
+      <xsd:extension base="relPathType">
+      </xsd:extension>
+    </xsd:simpleContent>
+  </xsd:complexType>
+    
+  <xsd:complexType name="buildType">
+    <xsd:sequence>
+      <!-- Name is just a tag used to identify a particular bulid -->
+      <xsd:element name="name" type="nameType"/>
+      <!-- Role specifies the role in the product that the build plays -->
+      <!-- for most products, this will be the same as name, but may be -->
+      <!-- different in combine builds, where more than one build may play -->
+      <!-- the same role. -->
+      <xsd:element name="role" type="nameType"/>
+      <xsd:element name="chipset" type="nameType"/>
+      <xsd:element name="build_id" type="buildIdType" minOccurs="0"/>
+      <xsd:element name="short_build_path" type="shortBuildType" minOccurs="0" maxOccurs="unbounded"/>
+      <!-- Windows Root Path is only evaluated in the Windows environment -->
+      <xsd:element name="windows_root_path" type="windowsRootPathType" minOccurs="0"/>
+      <!-- Linux Root Path is only evaluated in the Linux environment -->
+      <xsd:element name="linux_root_path" type="linuxRootPathType" minOccurs="0"/>
+      <xsd:element name="image_dir" type="nameType"/>
+      <!-- Release path to append in pack directory -->
+      <xsd:element name="release_path" type="relPathType"/>
+      <xsd:choice minOccurs="0" maxOccurs="unbounded">
+         <!-- FILE TYPES -->
+         <xsd:element name="fat_file" type="fileType"/> 
+         <xsd:element name="t32_dl_file" type="fileType"/> 
+         <!-- flash_programmer is used by QPST to program the flash -->
+         <xsd:element name="flash_programmer" type="fileType"/>
+         <xsd:element name="device_programmer" type="fileType"/>
+         <!-- dlow_boot_image is the first image downloaded by QPST -->
+         <xsd:element name="dload_boot_image" type="fileType"/>
+         <!-- download_file's are downloaded by QPST and Trace32 -->
+         <xsd:element name="download_file" type="fileType"/>
+         <!-- build_file has attibutes set to minimized,fat_files based on the usage, Eventually this should replace all the qpst/t32 sections -->
+         <xsd:element name="build_file" type="fileType"/>
+         <!-- partition_file the main partition file used by QPST -->
+         <xsd:element name="partition_file" type="fileType"/>
+         <!-- partition_patch_file the patch partition file used by QPST -->
+         <xsd:element name="partition_patch_file" type="fileType"/>
+         <!-- generic reference file type to be used in the future -->
+         <xsd:element name="file_ref" type="fileType"/>
+         <!-- Makefile elements to save info from image builds -->
+         <xsd:element name="buildfile_path" type="relPathType" minOccurs="0" maxOccurs="1"/>
+         <xsd:element name="build_command" type="baseType" minOccurs="0" maxOccurs="1"/>
+      </xsd:choice>
+    </xsd:sequence>
+  </xsd:complexType>
+
+  <xsd:complexType name="buildRefType">
+    <xsd:all>
+      <xsd:element name="name" type="nameType"/>
+      <xsd:element name="build_id" type="buildIdType"/>
+      <!-- Windows Root Path is only evaluated in the Windows environment -->
+      <xsd:element name="windows_root_path" type="windowsRootPathType" minOccurs="0"/>
+      <!-- Linux Root Path is only evaluated in the Linux environment -->
+      <xsd:element name="linux_root_path" type="linuxRootPathType" minOccurs="0"/>
+    </xsd:all>
+  </xsd:complexType>
+
+  <xsd:complexType name="buildsFlatType">
+    <xsd:sequence>
+      <xsd:element name="build" type="buildType" minOccurs="0" maxOccurs="unbounded"/>
+    </xsd:sequence>
+  </xsd:complexType>
+
+  <xsd:complexType name="workflowType">
+    <xsd:sequence>
+      <xsd:element name="tool" type="buildToolType" minOccurs="0" maxOccurs="unbounded"/>
+      <xsd:element name="step" type="workflowStepType" minOccurs="0" maxOccurs="unbounded"/>
+    </xsd:sequence>
+  </xsd:complexType>
+
+  <xsd:complexType name="workflowStepType">
+    <xsd:sequence>
+      <xsd:any processContents="skip" minOccurs="1" maxOccurs="unbounded"/>
+    </xsd:sequence>
+    <xsd:attribute name="type" type="xsd:string" use="optional"/>
+    <xsd:attribute name="filter" type="xsd:string" use="optional"/>
+  </xsd:complexType>
+  
+  <xsd:complexType name="componentType">
+    <xsd:sequence>
+      <xsd:element name="name"   type="nameType"   minOccurs="1" maxOccurs="unbounded"/>
+      <xsd:element name="flavor" type="nameType"   minOccurs="1" maxOccurs="unbounded"/>
+    </xsd:sequence>
+  </xsd:complexType>
+
+  <xsd:complexType name="pfType">
+    <xsd:sequence>
+      <xsd:element name="name" type="nameType"/>
+      <xsd:element name="component" type="componentType" minOccurs="1" maxOccurs="unbounded"/>
+    </xsd:sequence>
+  </xsd:complexType>
+
+  <xsd:complexType name="productFlavorsType">
+    <xsd:sequence>
+      <xsd:element name="pf" type="pfType" minOccurs="1" maxOccurs="unbounded"/>
+    </xsd:sequence>
+    <xsd:attribute name="cmm_pf_var" type="xsd:string" use="optional"/>
+  </xsd:complexType>
+
+  <!-- Definition of main tag type -->
+
+  <xsd:complexType name="contentsType">
+    <xsd:all>
+      <!-- Information on the product flavor -->
+      <xsd:element name="product_flavors" type="productFlavorsType" minOccurs="0"/>
+      <!-- Information on the product -->
+      <xsd:element name="product_info" type="productInfoType"/>
+      <!-- A list of builds needed for the target -->
+      <xsd:element name="builds_flat" type="buildsFlatType"/>
+      <!-- A list of tools needed to operate on the target -->
+      <xsd:element name="build_tools" type="buildToolsListType"/>
+      <!-- A list of external builds (e.g. QPST, QXDM), and their recommended versions -->
+      <xsd:element name="external_tools" type="externalToolsListType"/>
+      <!-- A list of steps for update_common_info to execute -->
+      <xsd:element name="workflow" type="workflowType" minOccurs="0"/>
+      <!-- QC-Internal -->
+      <xsd:element name="oem_merge_done" type="xsd:string" minOccurs="0"/> 
+    </xsd:all>
+  </xsd:complexType>
+
+  <!-- Define the 'contents' element -->
+
+  <xsd:element name="contents" type="contentsType"/>
+
+</xsd:schema>
+
+
+

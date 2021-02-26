@@ -1,0 +1,69 @@
+#===============================================================================
+#
+# GENERAL DESCRIPTION
+#    Build script for HAL QDSS-CSR Library.
+#
+# Copyright (c) 2012 Qualcomm Technologies Incorporated.
+# All rights reserved.
+# Qualcomm Confidential and Proprietary
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header:$
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 09/07/17   rs      Warlock specific changes
+#===============================================================================
+
+Import('env')
+import qdss
+
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "../src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+env.RequirePublicApi(['HAL','DAL','SERVICES','SYSTEMDRIVERS', 'DEBUGTOOLS','POWER','DEBUGTRACE','KERNEL'])
+env.RequireRestrictedApi(['DEBUGTRACE'])
+env.RequireProtectedApi(['DEBUGTRACE'])
+
+
+
+env.PublishPrivateApi('DEBUGTRACE_TARGET_API', [
+   "${INC_ROOT}/core/debugtrace/csr/config/${IMAGE}/${CHIPSET}"  
+])
+
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+CSR_HAL_SRC= [
+    '${BUILDPATH}/halqdss_csr.c',
+    '${BUILDPATH}/qdss_csr_config.c',
+]
+
+CSR_HAL_SRC_MICRO = [
+   '${BUILDPATH}/qdss_ssc_csr.c',
+]
+
+qdss_micro_tags = qdss.BuildTags(['adsp'])
+
+env.AddLibrary(qdss_micro_tags,
+               '${BUILDPATH}/qdss_csr',CSR_HAL_SRC)
+
+qdss_csr_micro_obj = env.Object(CSR_HAL_SRC_MICRO)
+qdss_csr_micro_lib = env.Library('${BUILDPATH}/qdss_csr_micro', qdss_csr_micro_obj)
+env.AddLibsToImage(qdss_micro_tags, qdss_csr_micro_lib)
+
+if 'USES_ISLAND' in env:
+   env.AddIslandLibrary(qdss_micro_tags, qdss_csr_micro_lib)
+
+

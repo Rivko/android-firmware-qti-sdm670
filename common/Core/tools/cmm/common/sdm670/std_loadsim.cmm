@@ -1,0 +1,1364 @@
+//============================================================================
+//  Name:                                                                     
+//    std_loadsim.cmm 
+//
+//  Description:                                                              
+//    Top level loadlogs script. Target Specific
+//                      
+//    This script has two primary interfaces - command line and GUI.
+//    If command line option is not give  or is wrong, GUI will be invoked.
+//    
+//      Command line usage:
+//          do std_loadsim Img=<image> Bld=<buildpath> Log=<dump path> Type=<USB|JTAG|AUTO> alternateelf=<elf file> extraoption=<silent|forcesilent>
+//              Arguments:
+//                  image (aop,slpi,mpss,adsp etc.. Also 'multipd', which has different arguments)
+//                  imagebuildroot
+//                      path to build used for symbols and loading scripts
+//                  logpath
+//                      path to dump which jtag or QPST produced from target
+//                  type
+//                      USB, JTAG, or AUTO
+//                  alternateelf
+//                      Sometimes an ELF file different from imagebuildroot is desired.
+//                      If this is given the actual elf will be the alternateelf but the 
+//                      Build and symbols mapped will be from imagebuildroot.
+//                  extraoption
+//                      silent
+//                          Will attempt to avoid GUI by using builds in command line 
+//                          If something not found, will revert to GUI
+//                      forcesilent
+//                          Instead of reverting to GUI, system will crash if any file not found
+//                          Intended for automated setups
+//                  For multipd:
+//                      Use 'Img=multipd' with the following arguments:
+//                        logloc - log file
+//                        user_merged - user merged elf
+//                        elf_loader - elf loader elf
+//                        core_user - core user elf, also known as shared object
+//                        rootpdbuildroot - <optional>, can assist with GUI. Build root for elf laoder and shared object.
+//                        userpdbuildroot - <optional>, can assist with GUI. Build root for user merged elf.
+//
+//      GUI usage:
+//          Gui will default open if LOADLOGS not specified.
+//
+//      Other subroutines:
+//          (these subroutines are meant for private use and are not intended to be used by user)
+//          CREATEDIALOG
+//              Called from std_loadsim if no command line given or incorrect command line given
+//              Creates user GUI.
+//          GETSIMDEFAULTS
+//              similar to GET_DEBUG_DEFAULTS from std_debug_<chipset>. Essentially a library from which
+//              A simulator loading script can call with and image name and get a known good configuration.
+//          
+//
+//
+//
+//
+//
+//                                                      
+// Copyright (c) 2012 - 2015 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+// Notes
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who             what, where, why
+// --------   ---             ---------------------------------------------------------
+// 12/02/2016 JBILLING      Minor update to extraoption parsing for resultslog added.
+// 11/22/2016 JBILLING      Call to std_results added
+// 08/12/2016 JBILLING      Added wlan elf load option
+// 03/10/2016 JBILLING      Updated temp path for host OS
+// 12/18/2015 JBILLING      Updated for automation
+// 09/18/2015 JBILLING      Updates for loadsim apps added
+// 09/14/2015 JBILLING      Changes made for automation
+// 09/01/2015 JBILLING      IPA functionality added
+// 08/24/2015 JBILLING      Additional help buttons added
+// 07/15/2015 JBILLING      Command line / automation functionality added
+// 11/08/2014 JBilling      Overhaul for added debug messages, target specific library
+// 07/03/2014 AJCheriyan    Changed the executable search string
+// 07/10/2012 AJCheriyan    Created for B-family 
+
+
+
+//###################Arguments passed #####################
+LOCAL &ArgumentLine
+ENTRY %LINE &ArgumentLine
+LOCAL &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+ENTRY &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+LOCAL &PASS &RVAL0 &RVAL1 &RVAL2 &RVAL3 &RVAL4 &RVAL5 &RVAL6 &RVAL7 &RVAL8 &RVAL9 &RVAL10 &RVAL11
+
+
+//###################Local Variables#######################
+LOCAL &buildverified &logpathverified &UseDialog &GUI_ImageBuildRoot
+&buildverified="false" 
+&logpathverified="false"
+&UseDialog="TRUE"
+&GUI_ImageBuildRoot="NULL"
+LOCAL &image &imagebuildroot &logpath &type &targetprocessor &processor_root_name &loadsimscript &symbolloadscript &multi_elf_option &alternateelf &extraoptions 
+&alternateelf="NULL"
+
+LOCAL &LogLocInitialText &BuildLocInitialText
+&LogLocInitialText="Log Location"
+&BuildLocInitialText="Build Location"
+
+//This is default option - load WLAN symbols on MPSS. Set to 'FALSE' for default to be off
+LOCAL &LOAD_WLAN_OPTION
+&LOAD_WLAN_OPTION="TRUE"
+LOCAL &FirstRun
+&FirstRun="TRUE"
+
+
+IF STRING.SCAN("&OUTPUTFILE","OUTPUTFILE",0)!=-1
+(
+    GLOBAL &OUTPUTFILE &LOGSENABLED    
+
+    &OUTPUTFILE="&TEMPDIR/std_loadsim.log"
+    &LOGSENABLED="FALSE"
+
+    GLOBAL &FAILUREKEYWORD &SUCCESSKEYWORD
+    &FAILUREKEYWORD="FAILURE"
+    &SUCCESSKEYWORD="SUCCESS"
+)
+
+
+//Check T32 version
+do std_versionchecker
+
+do std_utils EXECUTESCRIPT EXIT &TEMPDIR/gen_buildinfo.cmm
+
+
+//#####################Select Subroutine###################
+// Name of the utility we are calling
+LOCAL &SUBROUTINE
+// Any subroutine specific options
+// Default exists for each subroutine
+
+
+// Input Argument 0 is the name of the utility
+&SUBROUTINE=STR.UPR("&UTILITY")
+IF !(("&SUBROUTINE"=="CREATEDIALOG")||("&SUBROUTINE"=="GETSIMDEFAULTS")||("&SUBROUTINE"=="LOADLOGS")||("&SUBROUTINE"=="HELP"))
+(
+    &SUBROUTINE="MAIN" 
+)
+
+    // This should be created by some top level script. The setupenv for each proc would
+    // set this up
+    AREA.SELECT
+    // Call the required utility
+    GOSUB &SUBROUTINE &ArgumentLine
+    ENTRY %LINE &rvalue 
+
+    GOSUB EXIT &rvalue
+
+
+
+////////////////////////////////////////
+//
+//            MAIN
+//            Main std_loadsim logic
+//            Expected input: 
+//            For GUI: None. 
+//            For commandline: needs:
+//              Image (e.g. mpss)
+//              Build location
+//              Log location
+//
+/////////////////////////////////////////
+MAIN:
+        LOCAL &ArgumentLine
+        ENTRY %LINE &ArgumentLine
+        LOCAL &Result
+        //Img at least is required for argument line. else go to GUI
+        
+        IF (STRING.SCAN("&ArgumentLine","Img=",0)==-1)
+        (
+            // Create the dialog for the script and wait for user
+            &UseDialog="TRUE"
+            GOSUB CREATEDIALOG
+            
+        )
+        ELSE
+        (
+            &UseDialog="FALSE"
+
+            GOSUB GETSIMDEFAULTS &ArgumentLine
+                LOCAL &image &imagebuildroot &logpath &type &targetprocessor &processor_root_name &loadsimscript &symbolloadscript &multi_elf_option &alternateelf &extraoptions
+                ENTRY &image &imagebuildroot &logpath &type &targetprocessor &processor_root_name &loadsimscript &symbolloadscript &multi_elf_option &alternateelf &extraoptions 
+            
+            //Catch error at each stage of verification. Exit to error if any part fails
+            IF ("image"=="NULL")
+            (
+                //Error message will be contained in &image variable
+                &Result="&image"
+            )
+            ELSE IF ("&image"=="multipd")
+            (
+                do std_loadsim_multipd &ArgumentLine
+                ENTRY &Result
+                RETURN &Result
+                
+            )
+            ELSE
+            (
+                GOSUB VERIFYBUILD
+                ENTRY %LINE &Result
+
+                IF ("&Result"=="SUCCESS")
+                (
+                    GOSUB VERIFYLOG
+                    ENTRY %LINE &Result
+                )
+                
+            )
+                
+            IF ("&Result"=="SUCCESS")
+            (
+                // Change the header name to make it pretty
+                TITLE "&CHIPSET, "+STR.UPR("&image")+" - Build:&imagebuildroot Logs:&logpath"
+
+                &extraoptions="&extraoptions"+",silent"
+                DO &loadsimscript &image &imagebuildroot &logpath &type &targetprocessor &processor_root_name &loadsimscript &symbolloadscript &multi_elf_option &alternateelf &extraoptions 
+                ENTRY %LINE &Result
+
+            )
+            ELSE IF (STRING.SCAN("&extraoptions","forcesilent",0)==-1)
+            (
+                &UseDialog="TRUE"
+                GOSUB CREATEDIALOG
+                
+            )
+            ELSE
+            (
+                do std_fatalexit USER "Loadsim error. Error: &Result "
+                
+                
+            )
+                
+            
+        )
+           
+        //CREATEDIALOG goes to subsystem script. Never returns
+        RETURN &Result
+        
+
+////////////////////////////////////////
+//
+//            CREATEDIALOG
+//            Sub-routine to create the dialog
+//            Expected input: None. Relies on global variables
+//
+/////////////////////////////////////////
+
+CREATEDIALOG:
+    LOCAL &image &imagebuildroot &logpath &type &targetprocessor &processor_root_name &loadsimscript &symbolloadscript &multi_elf_option &alternateelf &extraoptions 
+    &image="NULL"
+    &imagebuildroot="NULL"
+    &logpath="NULL"
+    &type="NULL"
+    
+    
+    // Check if the window existing
+    WINTOP LOADSIM
+    IF FOUND()
+       RETURN 
+    WINPOS ,,,,,, LOADSIM
+    
+    DIALOG
+    (&
+        HEADER "Load Target Logs"
+
+        POS 0. 0. 31. 8.
+        BOX "Select Log Options"
+        POS 1. 1. 29. 1.
+        SOURCE.JTAG: CHOOSEBOX "Logs collected over JTAG"
+        (
+           &type="JTAG"
+        )
+        SOURCE.USB: CHOOSEBOX "USB Logs (Download Mode)"
+        (
+           &type="USB"
+        )
+        SOURCE.SSR: CHOOSEBOX "SSR Logs (Sub-System Restart)"
+        (
+           &type="SSR"
+        )
+        SOURCE.AUTO: CHOOSEBOX "Autodetect"
+        (
+           &type="AUTODETECT"
+        )
+        POS 1. 5. 15. 1.
+        DEFBUTTON "PD Only Dump" "GOSUB LOAD_PD_DUMP"
+
+
+        POS 35. 0. 25. 9.
+        BOX "Choose Sub-system"
+        POS 36. 1. 23. 1.
+        SUBSYS.AOP: CHOOSEBOX "AOP - Power Manager"
+        (
+           &image="AOP"
+        )
+        SUBSYS.APPS: CHOOSEBOX "APPS - Applications"
+        (
+           &image="APPS"
+        )
+        SUBSYS.MPSS: CHOOSEBOX "MPSS - Modem / WLAN"
+        (
+           &image="MPSS"
+           GOSUB UPDATEMENU
+        )
+        SUBSYS.ADSP: CHOOSEBOX "ADSP - Audio DSP"
+        (
+           &image="ADSP"
+           GOSUB UPDATEMENU
+        )
+        SUBSYS.SLPI: CHOOSEBOX "SLPI - Sensor DSP"
+        (
+           &image="SLPI"
+           GOSUB UPDATEMENU
+        )
+        POS 36. 6. 1. 1.
+        SUBSYS.IPA: CHOOSEBOX " "
+        (
+           &image="IPA"
+        )
+        POS 38. 6. 23. 1
+        SUBSYS.IPATEXT: DYNTEXT "IPA Microcontroller"
+        
+        POS 36. 7. 1. 1.
+        //WLAN_CHECKBOX: CHECKBOX "Load WLAN Symbols" "GOSUB SET_WLAN_SYMBOL_BOX"
+        WLAN_CHECKBOX: CHECKBOX " " "GOSUB SET_WLAN_SYMBOL_BOX"
+        POS 38. 7. 23. 1
+        WLAN_TEXT: DYNTEXT "Load WLAN Symbols"
+        
+        
+        
+        POS 0. 9. 60. 8.
+        BOX "Build Options"
+        POS 1. 10. 48. 1.
+        BUILDTEXT: TEXT "&BuildLocInitialText"
+        BUILDEDIT: DEFEDIT "&BuildLocInitialText" "GOSUB VERIFYBUILD"
+        POS 51. 10. 8. 1.
+        ALTERNATEELFTEXT: TEXT "Alternate Elf"
+        POS 51. 11. 8. 1.
+        ALTERNATEELF: DEFBUTTON "ELF File" "GOSUB SETALTERNATEELF"
+        POS 1. 12. 58. 1.
+        LOGTEXT: TEXT "&LogLocInitialText"
+        LOGEDIT: DEFEDIT "&LogLocInitialText" "GOSUB VERIFYLOG"
+
+        POS 1. 15. 10. 1.
+        DEFBUTTON "Symbol Load Help" "GOSUB LOADSYM_HELP"
+                                    
+        POS 49. 15. 10. 1.
+        DEFBUTTON "Help" "GOSUB HELP"
+        
+        
+        POS 25. 15. 10. 1.
+        LOADBUTTON: DEFBUTTON "Load Logs" "GOSUB CALLLOADLOGS"
+
+        
+
+    )
+    // Set the defaults here
+    DIALOG.SET SOURCE.AUTO
+    &type="AUTODETECT"
+    
+    //Disable alternate elf feature until working
+    //DIALOG.DISABLE ALTERNATEELF
+    
+    // Disable the QDSP6 options if this is an ARM simulator instance and vice-versa
+    
+    IF (STRING.SCAN(OS.PEF(), "qdsp6.exe", 0)>0)
+    (
+       DIALOG.DISABLE SUBSYS.AOP
+       DIALOG.DISABLE SUBSYS.APPS
+       DIALOG.DISABLE SUBSYS.IPA
+       // Set the default subsystem
+       DIALOG.SET SUBSYS.MPSS
+       &image="MPSS"
+    )
+    ELSE IF (STRING.SCAN(OS.PEF(), "t32marm64.exe", 0)>0)
+    (
+       DIALOG.DISABLE SUBSYS.MPSS
+       DIALOG.DISABLE SUBSYS.ADSP
+       DIALOG.DISABLE SUBSYS.SLPI
+       DIALOG.DISABLE SUBSYS.AOP
+       // Set the default sub-system
+       DIALOG.SET SUBSYS.APPS
+       &image="apps"
+    )
+    ELSE
+    (
+       DIALOG.DISABLE SUBSYS.MPSS
+       DIALOG.DISABLE SUBSYS.ADSP
+       DIALOG.DISABLE SUBSYS.SLPI
+       DIALOG.DISABLE SUBSYS.APPS
+       // Set the default sub-system
+       DIALOG.SET SUBSYS.AOP
+       &image="AOP"
+    )
+    
+    IF !FILE.EXIST("&METASCRIPTSDIR/ipa/&CHIPSET/std_loadsim_ipa.cmm")
+    (
+        DIALOG.SET SUBSYS.IPATEXT ""
+        DIALOG.DISABLE SUBSYS.IPA
+    )
+    ELSE
+    (
+        IF (STRING.SCAN(OS.PEF(), "t32marm.exe", 0)>0)
+        (
+            DIALOG.ENABLE SUBSYS.IPA
+        )
+        //DIALOG.SET SUBSYS.IPATEXT "IPA Microcontroller"
+    )
+    
+    GOSUB SETUP_WLAN
+    
+    // Disable the loading button
+    DIALOG.DISABLE LOADBUTTON
+    STOP
+    DIALOG.END
+    
+    RETURN
+
+UPDATEMENU:
+    IF DIALOG.BOOLEAN(SUBSYS.MPSS)
+    (
+        &WLAN_PRESENT="TRUE"
+        //GOSUB GETSYMDEFAULTS MPSS
+        GOSUB SETUP_WLAN
+    )
+    ELSE
+    (
+        &WLAN_PRESENT="FALSE"
+        GOSUB SETUP_WLAN
+        //DIALOG.CLEAR WLAN_CHECKBOX
+        //DIALOG.DISABLE WLAN_CHECKBOX
+    )
+
+RETURN
+
+SETUP_WLAN:
+    IF ("&WLAN_PRESENT"=="FALSE")
+    (
+        DIALOG.SET WLAN_TEXT ""
+        //DIALOG.CLEAR WLAN_CHECKBOX
+        DIALOG.SET WLAN_CHECKBOX FORMAT.DECIMAL(8,16.)
+        DIALOG.DISABLE WLAN_CHECKBOX
+        &LOAD_WLAN_OPTION="FALSE"
+    )
+    ELSE
+    (
+        DIALOG.SET WLAN_TEXT "Load WLAN Symbols"
+        DIALOG.ENABLE WLAN_CHECKBOX
+        IF "&LOAD_WLAN_OPTION"=="TRUE"
+        (
+            DIALOG.SET WLAN_CHECKBOX
+        )
+        ELSE
+        (
+            //DIALOG.CLEAR WLAN_CHECKBOX
+            DIALOG.SET WLAN_CHECKBOX FORMAT.DECIMAL(8,16.)
+        )
+    )
+    RETURN
+LOAD_PD_DUMP:
+    LOCAL &buildloc &logloc
+    &buildloc=STRING.TRIM(DIALOG.STRING(BUILDEDIT))
+    &logloc=STRING.TRIM(DIALOG.STRING(LOGEDIT))
+    DIALOG.END
+    
+    LOCAL &buildrootarg &loglocarg
+    IF "&buildloc"=="&BuildLocInitialText"
+    (
+        &buildrootarg=""
+    )
+    ELSE
+    (
+        &buildrootarg="rootpdbuildroot=&buildloc"
+    )
+    IF "&logloc"=="&LogLocInitialText"
+    (
+        &logloc=""
+    )
+    ELSE
+    (
+        &loglocarg="logloc=&logloc"
+    )
+    do std_loadsim_multipd &buildrootarg &loglocarg
+    
+    ENDDO
+    
+LOADSYM_HELP:
+
+    IF "&image"=="APPS"
+        do std_loadsyms_apps HELP
+    ELSE IF "&image"=="AOP"
+        do std_loadsyms_aop HELP
+    ELSE IF "&image"=="SLPI"
+        do std_loadsyms_slpi HELP
+    ELSE IF "&image"=="ADSP"
+        do std_loadsyms_adsp HELP
+    ELSE IF "&image"=="IPA"
+        do std_loadsyms_ipa HELP
+    ELSE "&image"=="MPSS"
+        do std_loadsyms_mpss HELP
+    
+    RETURN
+
+    
+CALLLOADLOGS:
+
+
+    GOSUB LOADLOGS &image &GUI_ImageBuildRoot &logpath &type &alternateelf &extraoptions
+
+    DIALOG.END
+    RETURN
+    
+SET_WLAN_SYMBOL_BOX:
+    IF (DIALOG.BOOLEAN(WLAN_CHECKBOX))
+    (
+        &LOAD_WLAN_OPTION="TRUE"
+    )
+    ELSE
+    (
+        &LOAD_WLAN_OPTION="FALSE"
+    )
+    RETURN
+    
+    
+SETALTERNATEELF:
+
+    IF OS.DIR("&imagebuildroot")
+    (
+        DIALOG.FILE "&imagebuildroot/*.elf"
+        ENTRY &alternateelf
+    )
+    ELSE
+    (
+        DIALOG.FILE "*.elf"
+        ENTRY &alternateelf
+    )
+    
+    IF FILE.EXIST("&alternateelf")
+    (
+        PRINT "Alternate Elf file will be used: &alternateelf "
+    )
+    
+    RETURN
+    
+    
+    
+    
+////////////////////////////////////////
+//
+//            LOADLOGS
+//            Kick off lower level loadsim script
+//            Expected input: None. Relies on global variables
+//
+/////////////////////////////////////////    
+LOADLOGS:
+        LOCAL &ArgumentLine &rvalue
+        LOCAL &image &imagebuildroot &logpath &type &alternateelf &extraoptions 
+        ENTRY &image &imagebuildroot &logpath &type &alternateelf &extraoptions
+        ENTRY %LINE &ArgumentLine
+        
+        GOSUB GETSIMDEFAULTS &ArgumentLine
+        LOCAL &image &imagebuildroot &logpath &type &targetprocessor &processor_root_name &loadsimscript &symbolloadscript &multi_elf_option &alternateelf &extraoptions
+        ENTRY &image &imagebuildroot &logpath &type &targetprocessor &processor_root_name &loadsimscript &symbolloadscript &multi_elf_option &alternateelf &extraoptions
+            
+
+        //VERIFYBUILD should have been run, which populates parameters.
+        IF (("&imagebuildroot"=="NULL")||("&logpath"=="NULL"))
+        (
+            PRINT %ERROR "Invalid arguments - Build Root or Log Path not specified."
+            PRINT %ERROR "Log type: &type, Build: &imagebuildroot, Log: &logpath"
+            do std_fatalexit USER "Invalid arguments: Log type: &type, Build: &imagebuildroot, Log: &logpath"
+        )
+        
+        IF !(("&logpathverified"=="TRUE")&&("&buildverified"=="TRUE"))
+        (
+            GOSUB VERIFYBUILD &imagebuildroot
+            GOSUB VERIFYLOG &logpath
+            
+            IF !(("&logpathverified"=="TRUE")&&("&buildverified"=="TRUE"))
+            (
+                PRINT %ERROR "Invalid build or log given. Exiting"
+                do std_fatalexit USER "Invalid build or log given. Exiting"
+            )
+        )
+    
+        IF ("&LOAD_WLAN_OPTION"=="FALSE")&&(STRING.SCAN("&extraoptions","nowlan",0)==-1)
+        (
+            &extraoptions="&extraptions,nowlan"
+        )
+        // The subsystem has been choosen now. Make sure the paths for this sub-system's scripts are added to the path
+        &SUBSCRIPT="&METASCRIPTSDIR/"+"&targetprocessor"
+        PATH + &SUBSCRIPT
+        
+        // Change the header name to make it pretty
+        TITLE "&CHIPSET, "+STR.UPR("&image")+" - Build:&imagebuildroot Logs:&logpath"
+
+         // Call the appropriate sub-system script
+        DO &loadsimscript &image &imagebuildroot &logpath &type &targetprocessor &processor_root_name &loadsimscript &symbolloadscript &multi_elf_option &alternateelf &extraoptions 
+        ENTRY %LINE &rvalue
+        
+        LOCAL &std_result_result &result_temp
+        &result_temp=STR.UPPER("&rvalue")
+        IF STRING.SCAN("&result_temp","FAILURE",0)!=-1
+        (
+            &std_result_result="FAILURE"
+        )
+        ELSE IF STRING.SCAN("&result_temp","SUCCESS",0)!=-1
+        (
+            &std_result_result="SUCCESS"
+        )
+        ELSE
+        (
+            &std_result_result="UNKNOWN"
+        )
+        do std_results std_loadsim &rvalue &ArgumentLine
+    
+    RETURN &rvalue
+
+////////////////////////////////////////
+//
+//          VERIFYBUILD
+//          Public function
+//          Check for a valid sub-system build directory, 
+//              and call subsystem script for further verification
+//          Expected input: None
+//
+/////////////////////////////////////////
+VERIFYBUILD:
+    LOCAL &DIR &Result
+    LOCAL &length
+    GOSUB GETSIMDEFAULTS Img=&image Bld=&imagebuildroot Log=&logpath Type=&type
+        LOCAL &image &imagebuildroot &logpath &type &targetprocessor &processor_root_name &loadsimscript &symbolloadscript &multi_elf_option &alternateelf &extraoptions 
+        ENTRY &image &imagebuildroot &logpath &type &targetprocessor &processor_root_name &loadsimscript &symbolloadscript &multi_elf_option &alternateelf &extraoptions 
+
+
+    //Using Dialog
+    IF ("&UseDialog"=="TRUE")
+    (
+
+
+        &DIR=STRING.TRIM(DIALOG.STRING(BUILDEDIT))
+        //Trim trailing '/' or '\'
+        &length=STRING.LENGTH("&DIR")
+        IF (STRING.SCAN("&DIR","\",&length-1)!=-1)||(STRING.SCAN("&DIR","/",&length-1)!=-1)
+        (
+            &DIR=STRING.CUT("&DIR",-1)
+        )
+        
+        IF !OS.DIR("&DIR/&processor_root_name")
+        (
+            DIALOG.SET BUILDEDIT "Invalid &image Build"
+            &Result="FAILURE"
+        )
+        ELSE
+        (
+            
+            DO &loadsimscript VERIFYBUILD &DIR
+            ENTRY %LINE &Result
+            IF (STRING.SCAN("&Result","SUCCESS",0)!=-1)
+            (
+                &imagebuildroot="&DIR"
+                &GUI_ImageBuildRoot="&DIR"
+                &buildverified="TRUE"
+            )
+            ELSE
+            (
+                DIALOG.SET BUILDEDIT "Error found in &image Build"
+                &Result="FAILURE"
+            )
+        )
+            
+    )
+    //Using commandline
+    ELSE
+    (
+        IF !OS.DIR("&imagebuildroot/&processor_root_name")
+        (
+            PRINT %ERROR "Cannot access &imagebuildroot or incorrect directory structure detected for image type &image"
+            &Result="FAILURE - Cannot access &imagebuildroot or incorrect directory structure detected for image type &image"
+        )
+        ELSE
+        (
+            DO &loadsimscript VERIFYBUILD &imagebuildroot
+            ENTRY %LINE &Result
+            IF ("&Result"=="SUCCESS")
+            (
+                &buildverified="TRUE"
+                PRINT "Build &imagebuildroot successfully verified for &image"
+            )
+            ELSE
+            (
+                PRINT %ERROR "Error ocurred during validation of &imagebuildroot. Exiting"
+                &Result="FAILURE - Error ocurred during validation of &imagebuildroot. Exiting"
+            )
+        
+        )
+
+    )
+
+
+
+
+    // We can enable load if all conditions are satisfied
+    IF (("&logpathverified"=="TRUE")&&("&buildverified"=="TRUE")&&("&UseDialog"=="TRUE"))
+    (
+        DIALOG.ENABLE LOADBUTTON
+    )
+
+    
+    
+    RETURN &Result
+    
+////////////////////////////////////////
+//
+//          VERIFYLOG
+//          private function
+//          Verification process to guards against dummy / null entries
+//          Expected input: None
+//
+/////////////////////////////////////////
+VERIFYLOG:
+    LOCAL &logdir &Result
+    
+
+
+    //Using Dialog
+    IF ("&UseDialog"=="TRUE")
+    (
+        &logdir=STRING.TRIM(DIALOG.STRING(LOGEDIT))
+        
+        IF ("&logdir"!="")
+        (
+           IF (OS.DIR(&logdir))
+           (
+               &logpath=DIALOG.STRING(LOGEDIT)
+               &logpathverified="TRUE"
+               &Result="SUCCESS"
+           )
+           ELSE IF (FILE.EXIST(&logdir))
+           (
+
+                PRINT "File specified for Log Location. Assuming SSR Log"
+                &logpath=DIALOG.STRING(LOGEDIT)
+                DIALOG.SET SOURCE.SSR
+                &logpathverified="TRUE"
+                &Result="SUCCESS"
+                &type="SSR"
+            )
+            ELSE
+            (
+                   DIALOG.SET LOGEDIT "Invalid Log Location"
+                   &Result="FAILURE - Invalid Log Location"
+            )
+        )
+        ELSE
+        (
+           DIALOG.SET LOGEDIT "Invalid Log Location"
+           &Result="FAILURE - Invalid Log Location"
+        )
+    )
+    //Using command line
+    ELSE
+    (
+       
+       IF (OS.DIR(&logpath)||FILE.EXIST(&logpath))
+       (
+           &logpathverified="TRUE"
+           &Result="SUCCESS"
+       )
+       ELSE
+       (
+            PRINT %ERROR "Could not access log path location: &logpath"
+            &Result="FAILURE - Could not access log path location: &logpath"
+       )
+    )
+    
+    
+    
+    
+    // We can enable load if all conditions are satisfied
+    IF (("&logpathverified"=="TRUE")&&("&buildverified"=="TRUE")&&("&UseDialog"=="TRUE"))
+    (
+        DIALOG.ENABLE LOADBUTTON
+    )
+
+    RETURN &Result
+
+
+////////////////////////////////////////////
+//            Function: GETSIMDEFAULTS
+//
+//
+//               &rvalue_targetprocessor="AOP" -> 
+//                      Multiple images may map to same processor (e.g. MBA and MPSS on the modem Q6)
+//               &rvalue_loadsimscript="std_loadsim_rpm"
+//                      simulator loading script for this processor
+//               &rvalue_processor_root_name="aop_proc"
+//                      Root directory name that gets appended to BUILDROOT
+//               &rvalue_symbolloadscript="std_loadsyms_rpm"
+//                      Specifies the load script that std_debug will call to load symbols on your target processor
+//               &rvalue_buildpath="&AOP_BUILDROOT"
+//                      The Build Path for your image's symbols.
+//               &rvalue_multi_elf_option="false"
+//                      MultiPD images use multiple elf files. This will be used later to indicate that 
+//                      two separate symbol load script files need to be called
+//               &rvalue_extraoptions="NULL"
+//                      Placeholder for extra parameters
+//
+////////////////////////////////////////////
+GETSIMDEFAULTS:
+
+            LOCAL &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5 &ARG6 &ARG7 &ARG8 &ARG9 &ARG10 &ARG11
+            LOCAL &ArgumentLine
+            ENTRY &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5 &ARG6 &ARG7 &ARG8 &ARG9 &ARG10 &ARG11
+            ENTRY %LINE &ArgumentLine
+            
+            LOCAL &length
+            
+            //Parse out options. If they weren't given as value pairs (Img=..), then just assume user gave arguments in the correct order
+            IF (STRING.SCAN("&ArgumentLine","Img=",0)==-1)
+            (
+                &ArgumentLine="Img=&ARG0 Bld=&ARG1 Log=&ARG2 Type=&ARG3 alternateelf=&ARG4 extraoption=&ARG5"
+            )
+            
+
+            //parse out given variables. NULL should be returned if nothing given
+            LOCAL &given_image &given_imagebuildroot &given_logpath &given_type &given_extraoption &given_alternateelf
+            DO optextract Img,Bld,Log,Type,alternateelf,extraoption &ArgumentLine
+                ENTRY &given_image &given_imagebuildroot &given_logpath &given_type &given_alternateelf &given_extraoption
+            
+            //Workaround since multipd often has elf files with 'IMG' in it
+            IF STRING.SCAN("&ArgumentLine","Img=multipd",0)!=-1
+            (
+                &given_image="multipd"
+            )
+            
+            //This happens if alternateelf / extraoption not given
+            if "&given_alternateelf"=="extraoption"
+            (
+                &given_alternateelf="NULL"
+                &given_extraoption="NULL"
+            )
+            
+            &length=STRING.LENGTH("&given_imagebuildroot")
+            IF (STRING.SCAN("&given_imagebuildroot","\",&length-1)!=-1)||(STRING.SCAN("&given_imagebuildroot","/",&length-1)!=-1)
+            (
+                &given_imagebuildroot=STRING.CUT("&given_imagebuildroot",-1)
+            )
+            
+            //Process return values
+            LOCAL &rvalue_image &rvalue_imagebuildroot &rvalue_logpath &rvalue_type &rvalue_targetprocessor &rvalue_processor_root_name &rvalue_loadsimscript &rvalue_symbolloadscript &rvalue_multi_elf_option &rvalue_extraoption
+
+            
+            //Turn on logging if specified
+            
+            IF (STRING.SCAN("&given_extraoption","resultslog->",0)!=-1) 
+            (
+                &LOGSENABLED="TRUE"
+                
+                LOCAL &string_length &string_size &value_to_cut &current_slave &size_of_slave &tempfile
+                &current_string="&given_extraoption"
+                &current_key="resultslog->"
+
+                &string_length=String.Length("&current_key")
+                &string_size=string.scan("&current_string","&current_key",0)
+
+                //Cut up to current_key
+                &value_to_cut=&string_size+&string_length
+                &current_string=string.cut("&current_string",&value_to_cut)
+
+                //Now cut away ','
+                &string_length=String.Length("&current_string")
+                &string_size=string.scan("&current_string",",",0)
+                if (&string_size==-1) //If there's no ',', then this is our string.
+                (
+                    &tempfile="&current_string"
+                )
+                ELSE //else cut away the remainder of the string.
+                (
+                    //separate the first slave from the rest of the string
+                    &value_to_cut=&string_size-&string_length
+                    &tempfile=string.cut("&current_string",&value_to_cut)
+                )
+                
+                //above ten lines can be replaced by these two lines if newer t32 version used (=>6/22/15)
+                //&tempfile=STRing.SPLIT("&extraoptions","resultslog->",1)
+                //&tempfile=STRing.SPLIT("&tempfile",",",0)
+                &tempdir=OS.FILE.PATH("&tempfile")
+                IF (OS.DIR(&tempdir))
+                (
+                    &OUTPUTFILE="&tempfile"
+                    PRINT "Using log file &tempfile"
+                )
+                ELSE
+                (
+                    PRINT "Warning: Could not find specified directory for log file &tempfile. Using &OUTPUTFILE for logging instead"
+                )
+            )
+        
+            
+            
+            IF ("&given_image"=="NULL")
+            (
+                PRINT %ERROR "Invalid arguments - Unknown Image given: &given_image"
+                RETURN "FAILURE_GETSIMDEFAULTS"
+            )
+            &given_image=STR.LWR("&given_image")
+            &rvalue_image="&given_image"
+            &rvalue_imagebuildroot="&given_imagebuildroot"
+            &rvalue_logpath="&given_logpath"
+            &rvalue_alternateelf="&given_alternateelf"
+            &rvalue_extraoption="&given_extraoption"
+
+            IF !(("&given_type"=="USB")||("&given_type"=="JTAG")||("&given_type"=="SSR"))
+            (
+                &rvalue_type="AUTODETECT"
+            )
+            ELSE
+            (
+                &rvalue_type="&given_type"
+            )
+
+            
+            //For simulator, intercom ports are not initialized.
+            IF (STRING.SCAN("&AOP_PORT","P",0)!=-1)
+            (
+                GLOBAL &AOP_PORT &MPSS_PORT &ADSP_PORT &APPS0_PORT &SLPI_PORT
+                
+                &AOP_PORT=0x0
+                &MPSS_PORT=0x0
+                &ADSP_PORT=0x0
+                &SLPI_PORT=0x0
+                &APPS0_PORT=0x0
+            )
+            
+            
+            
+            //############AOP DEBUG#############        
+            IF ("&given_image"=="rpm")||("&given_image"=="aop")
+            (
+                &rvalue_targetprocessor="AOP"
+                &rvalue_processor_root_name="aop_proc"
+
+                &rvalue_loadsimscript="std_loadsim_rpm"
+                &rvalue_symbolloadscript="std_loadsyms_rpm"
+                //&rvalue_buildpath="&AOP_BUILDROOT"
+
+                &rvalue_multi_elf_option="false"
+                &rvalue_extraoptions="NULL"
+                &LOAD_WLAN_OPTION="FALSE"
+                &WLAN_PRESENT="FALSE"
+            )
+            ELSE IF ("&given_image"=="rpmpbl")
+            (
+               PRINT %ERROR "Invalid option given for simulator loading: &given_image"
+               RETURN "FAILURE_GETSIMDEFAULTS"
+            )
+            
+            //############APPS PROCESSOR DEBUG#############
+            ELSE IF ("&given_image"=="appspbl")
+            (
+               PRINT %ERROR "Invalid option given for simulator loading: &given_image"
+               RETURN "FAILURE_GETSIMDEFAULTS"
+            )
+            ELSE IF ("&given_image"=="sbl1")
+            (
+               PRINT %ERROR "Invalid option given for simulator loading: &given_image"
+               RETURN "FAILURE_GETSIMDEFAULTS"
+            )
+            ELSE IF ("&given_image"=="tz")
+            (
+                &rvalue_targetprocessor="APPS0"
+                &rvalue_processor_root_name="trustzone_images"
+
+                &rvalue_loadsimscript="std_loadsim_tz"
+                &rvalue_symbolloadscript="std_loadsyms_tz"
+                //&rvalue_buildpath="&TZ_BUILDROOT"
+
+                &rvalue_multi_elf_option="false"
+                //&rvalue_extraoptions="NULL"
+                &LOAD_WLAN_OPTION="FALSE"
+                &WLAN_PRESENT="FALSE"
+            )
+            ELSE IF ("&given_image"=="apps")
+            (
+                &rvalue_targetprocessor="APPS0"
+                &rvalue_processor_root_name="LINUX"
+
+                &rvalue_loadsimscript="std_loadsim_apps"
+                &rvalue_symbolloadscript="std_loadsyms_apps"
+                //&rvalue_buildpath="&TZ_BUILDROOT"
+
+                &rvalue_multi_elf_option="false"
+                //&rvalue_extraoptions="NULL"
+                &LOAD_WLAN_OPTION="FALSE"
+                &WLAN_PRESENT="FALSE"
+            )
+            ELSE IF ("&given_image"=="appsboot")
+            (
+               PRINT %ERROR "Invalid option given for simulator loading: &given_image"
+               do std_fatalexit USER "Invalid option given for simulator loading: &given_image"
+            )
+            
+            //############MODEM_Q6 DEBUG#############                    
+            ELSE IF ("&given_image"=="mpss")||("&given_image"=="wlan")
+            (
+                &rvalue_targetprocessor="mpss"
+                &rvalue_processor_root_name="modem_proc"
+
+                &rvalue_loadsimscript="std_loadsim_mpss"
+                &rvalue_symbolloadscript="std_loadsyms_mpss"
+                //&rvalue_buildpath="&MPSS_BUILDROOT"
+                //&rvalue_entry_bkpt="main"
+
+                &rvalue_multi_elf_option="false"
+                //append on loadwlan
+                &WLAN_PRESENT="TRUE"
+                
+                //&LOAD_WLAN_OPTION="TRUE"
+                GOSUB SET_WLAN_SYMBOL_LOAD_OPTIONS &LOAD_WLAN_OPTION &rvalue_extraoption &FirstRun &UseDialog
+                ENTRY &LOAD_WLAN_OPTION &rvalue_extraoption
+                &FirstRun="FALSE"
+                
+            )
+            ELSE IF ("&given_image"=="multipd")
+            (
+                &rvalue_targetprocessor="mpss"
+                &rvalue_processor_root_name="modem_proc"
+
+                &rvalue_loadsimscript="std_loadsim_mpss"
+                &rvalue_symbolloadscript="std_loadsyms_mpss"
+                //&rvalue_buildpath="&MPSS_BUILDROOT"
+                //&rvalue_entry_bkpt="main"
+
+                &rvalue_multi_elf_option="false"
+                //append on loadwlan
+                &WLAN_PRESENT="TRUE"
+                
+                //&LOAD_WLAN_OPTION="TRUE"
+                GOSUB SET_WLAN_SYMBOL_LOAD_OPTIONS &LOAD_WLAN_OPTION &rvalue_extraoption &FirstRun &UseDialog
+                ENTRY &LOAD_WLAN_OPTION &rvalue_extraoption
+                &FirstRun="FALSE"
+                
+            )
+            
+            ELSE IF ("&given_image"=="ipa")
+            (
+                &rvalue_targetprocessor="ipa"
+                &rvalue_processor_root_name="modem_proc"
+
+                &rvalue_loadsimscript="std_loadsim_ipa"
+                &rvalue_symbolloadscript="std_loadsyms_ipa"
+                //&rvalue_buildpath="&MPSS_BUILDROOT"
+                //&rvalue_entry_bkpt="main"
+
+                &rvalue_multi_elf_option="false"
+                //&rvalue_extraoptions="NULL"
+                &WLAN_PRESENT="FALSE"
+                &LOAD_WLAN_OPTION="FALSE"
+                
+            )
+            ELSE IF ("&given_image"=="mba") 
+            (
+               PRINT %ERROR "Invalid option given for simulator loading: &given_image"
+               RETURN "FAILURE_GETSIMDEFAULTS"
+            )
+
+            //############ADSP_Q6 DEBUG#############    
+            ELSE IF (("&given_image"=="adsp"))
+            (
+                &rvalue_targetprocessor="adsp"
+                &rvalue_processor_root_name="adsp_proc"
+
+                &rvalue_loadsimscript="std_loadsim_adsp"
+                &rvalue_symbolloadscript="std_loadsyms_adsp"
+                //&rvalue_buildpath="&ADSP_BUILDROOT"
+
+                &rvalue_multi_elf_option="true"
+                //&rvalue_extraoptions="NULL"
+                &LOAD_WLAN_OPTION="FALSE"
+                &WLAN_PRESENT="FALSE"
+                GOSUB SET_WLAN_SYMBOL_LOAD_OPTIONS &LOAD_WLAN_OPTION &rvalue_extraoption &FirstRun &UseDialog
+                ENTRY &LOAD_WLAN_OPTION &rvalue_extraoption
+                &FirstRun="FALSE"
+                
+            )            
+            ELSE IF (("&given_image"=="sensor")||("&given_image"=="slpi")) 
+            (
+                &rvalue_targetprocessor="slpi"
+                &rvalue_processor_root_name="slpi_proc"
+
+                &rvalue_loadsimscript="std_loadsim_slpi"
+                &rvalue_symbolloadscript="std_loadsyms_slpi"
+                //&rvalue_buildpath="&SLPI_BUILDROOT"
+
+                &rvalue_multi_elf_option="true"
+                
+                &LOAD_WLAN_OPTION="FALSE"
+                &WLAN_PRESENT="FALSE"
+                GOSUB SET_WLAN_SYMBOL_LOAD_OPTIONS &LOAD_WLAN_OPTION &rvalue_extraoption &FirstRun &UseDialog
+                ENTRY &LOAD_WLAN_OPTION &rvalue_extraoption
+                &FirstRun="FALSE"
+                
+                //IF (STRING.SCAN("&rvalue_extraoptions","resultslog->",0)!=-1) 
+                //(
+                //    &rvalue_extraoptions="&given_extraoption"
+                //)
+                //ELSE
+                //(    
+                //    &rvalue_extraoptions="NULL"
+                //)
+            )
+            ELSE
+            (
+                PRINT %ERROR "Error! Unknown image: &ARG0 specified"
+                RETURN "FAILURE_GETSIMDEFAULTS"
+            )
+            
+            
+            
+            RETURN &rvalue_image &rvalue_imagebuildroot &rvalue_logpath &rvalue_type &rvalue_targetprocessor &rvalue_processor_root_name &rvalue_loadsimscript &rvalue_symbolloadscript &rvalue_multi_elf_option &rvalue_alternateelf &rvalue_extraoption
+    
+                    
+////////////////////////////////////////
+//
+//          SET_WLAN_SYMBOL_LOAD_OPTIONS
+//          private fxn
+//          for use by GUI and commandline to determine whether to append 'loadwlan' option to extraoptions
+//          Expected input: LOAD_WLAN_OPTION, extraoption-list, firstrun flag
+//          returns: LOAD_WLAN_OPTION, extraoption-list
+//
+/////////////////////////////////////////
+
+SET_WLAN_SYMBOL_LOAD_OPTIONS:
+LOCAL &load_wlan_menu_option &extraoption &firstrunflag &usedialog
+ENTRY &load_wlan_menu_option &extraoption &firstrunflag &usedialog
+
+
+    IF "&WLAN_PRESENT"=="FALSE"
+    (
+        &load_wlan_menu_option="FALSE"
+        
+    )
+    ELSE
+    (
+        IF ("&usedialog"=="TRUE")
+        (
+            IF ("&load_wlan_menu_option"=="TRUE")
+            (
+                &extraoption="&extraoption,loadwlan"
+            )                
+        )
+        ELSE
+        (
+            IF (STRING.SCAN("&extraoption","nowlan",0)==-1)
+            (
+                &extraoption="&extraoption,loadwlan"
+            )
+        )
+    )
+    
+    RETURN &load_wlan_menu_option &extraoption
+    
+////////////////////////////////////////
+//
+//          HELP
+//          public funciton
+//          Prints usage information
+//          Expected input: None
+//
+/////////////////////////////////////////
+HELP:
+    AREA.RESET
+    AREA.CREATE std_loadsim_help 160. 110.
+    AREA.SELECT std_loadsim_help
+    WINPOS 0. 0. 160. 110.
+    AREA.VIEW std_loadsim_help
+
+    PRINT " "
+    PRINT "  /////////////////std_loadsim HELP/////////////////////"
+    PRINT " "
+    PRINT "  Top level load simulator script. Target specific"
+    PRINT " "
+    PRINT "  This set of scripts is designed to restore ramdumps of different formats (USB, SSR/ELF, BIN, JTAG) "
+    PRINT "  and from different cores (ADSP, MPSS, SLPI, AOP etc.) to a state that the user can debug a crash on that core."
+    PRINT "  There are several options and configurations, as well as a command line interface, detailed below."
+    PRINT "  "
+    PRINT "  Common Issues:"
+    PRINT "      If variables at <Metabuild_Root>/common/core/tools/cmm/gen/gen_buildflavor.cmm are not properly specified, "
+    PRINT "          paths and elf files may not work properly. "
+    PRINT "      ADSP in particular is very sensitive to T32 version used. Please see <Metabuild_Root>/common/core/Readme_msm8998.txt for more details"
+    PRINT "      Apps loadsim is not optimized in this interface. It is expected that customers use apps ram dump parser and other means to load T32 simulator"
+    PRINT "      This script relies on std_loadsyms_adsp/std_loadsyms_mpss/std_loadsyms_slpi etc to choose base build directory, elf path etc. Please "
+    PRINT "          refer to the help documentation there for more information (e.g. 'do std_loadsyms_mpss help')"
+    PRINT "      WLAN PD elfs can now be loaded via GUI or by command line. "
+    PRINT "          To load via GUI, simply ensure that the checkbox is checked when MPSS is selected"
+    PRINT "          To load via command line, append paths to your MERGED_ELF and ELF_LOADER to extraoption list"
+    PRINT "          e.g.: do std_loadsim <..othercommands..> extraoption=MERGED_ELF->\\path\to\my\merged\elf.elf,ELF_LOADER->\\path\to\elf\loader\elf.elf"
+    PRINT "          Please note that alternate elf option is still only used for the main modem elf"
+    PRINT " "
+    PRINT "  This script has two primary interfaces - command line and GUI."
+    PRINT "  If command line option is not give  or is wrong, GUI will be invoked."
+    PRINT "   "
+    PRINT "  Command line usage:"
+    PRINT "      do std_loadsim Img=<image> Bld=<buildpath> Log=<dump path> Type=<USB|SSR|JTAG|AUTO> alternateelf=<elf file> extraoption=<silent|forcesilent>,MERGED_ELF->\\myelf.elf,ELF_LOADER->\\myelfloader.elf"
+    PRINT "      Note that for multipd (Img=multipd), arguments are different. See below."
+    PRINT "  Arguments and Options:"
+    PRINT "      Img (aop,slpi,mpss,adsp etc.)"
+    PRINT "      Bld"
+    PRINT "          Path to image's build root used for symbols and loading scripts"
+    PRINT "      Log"
+    PRINT "          Logpath to dump which jtag or QPST produced from target"
+    PRINT "      Type"
+    PRINT "          USB, SSR, JTAG, or AUTO"
+    PRINT "          ***IMPORTANT***: If using SSR, you must give file path to the ssr file (instead of the directory containing it)."
+    PRINT "          e.g. do std_loadsim Img=slpi Log=c:\temp\mydump.elf Bld=..."
+    PRINT "          If a full filepath is detected, Scripts will assume that SSR mode is being used."
+    PRINT "          If user has a binary dump file (collected from SSR or from JTAG), SSR or JTag mode may be used,"
+    PRINT "          but the physical location of where the image was located in DDR during runtime "
+    PRINT "          must be provided via 'extraoption=physaddr->' (see 'physaddr' below)."
+    PRINT "          Note that JTag Type expects a file DDRPeriph.bin in your provided folder, whereas"
+    PRINT "          SSR Type simply expects the full filepath to your binary"
+    PRINT "      alternateelf"
+    PRINT "          Sometimes an ELF file different from Bld is desired."
+    PRINT "          If this is given the actual elf will be the alternateelf but the "
+    PRINT "          Build and symbols mapped will be from imagebuildroot."
+    PRINT "          Note that WLAN PD elf files cannot be loaded by alternateelf parameter, but are loaded"
+    PRINT "          instead via the extraoption parameter"
+    PRINT "      extraoption (Command line only)"
+    PRINT "          silent"
+    PRINT "              Will attempt to avoid GUI by using builds in command line "
+    PRINT "              If something not found, will revert to GUI"
+    PRINT "          forcesilent"
+    PRINT "              Instead of reverting to GUI, system will crash if any file not found"
+    PRINT "              Intended for automated setups"
+    PRINT "          physaddr->0x........"
+    PRINT "              This option is for SSR or JTag saved-loads when the saved format is in"
+    PRINT "              binary format. T32 needs the start address to map translations.  "
+    PRINT "                      Expects a 32-bit hex address, e.g.: physaddr->0x8F800000 or physaddr->8F800000 "
+    PRINT "          ELF_LOADER->\\myelfloader.elf"
+    PRINT "             These options allow command line loading of elf-loader elf for WLAN PD. "
+    PRINT "             Please not that alternate elf is still only for primary elf file"
+    PRINT "          MERGED_ELF->\\mymergedelf.elf"
+    PRINT "             These options allow command line loading of merged elf for WLAN PD. "
+    PRINT "             Please not that alternate elf is still only for primary elf file"
+    PRINT "          SO_ELF->\\mysoelffile.so"
+    PRINT "             These options allow command line loading of dynamically loaded shared object (.so) file for WLAN PD. "
+    PRINT "             Please not that alternate elf is still only for primary elf file"
+    PRINT "          nowlan "
+    PRINT "             Scripts will not ask for wlan pd elf files during load. For command line function"
+    PRINT "       For multipd:                                                                                           "
+    PRINT "           Use 'Img=multipd' with the following arguments:                                                    "
+    PRINT "             logloc - log file                                                                                "
+    PRINT "             user_merged - user merged elf                                                                    "
+    PRINT "             elf_loader - elf loader elf                                                                      "
+    PRINT "             core_user - core user elf, also known as shared object                                           "
+    PRINT "             rootpdbuildroot - <optional>, to view source. Build root for elf laoder and shared object.  "
+    PRINT "             userpdbuildroot - <optional>, to view source. Build root for user merged elf.               "
+    PRINT " "
+    PRINT " "
+    PRINT " "
+
+    
+
+
+
+
+    RETURN
+
+    
+PRINTRESULTLOG:
+    LOCAL &result
+    ENTRY %LINE &result 
+    
+    IF ("&LOGSENABLED"!="TRUE")
+    (
+        GOSUB EXIT
+    )
+    
+    //Check if directory exists
+    LOCAL &tempdir
+    &tempdir=OS.FILE.PATH("&OUTPUTFILE")
+    IF !(OS.DIR(&tempdir))
+    (
+        PRINT %ERROR "Could not access log directory &tempdir. Cannot print logs"
+        &LOGSENABLED="FALSE"
+        GOSUB EXIT
+    )
+    
+    //Don't want to get caught here
+    ON ERROR CONTINUE
+    PRINTER.FILE &OUTPUTFILE
+    PRINTER.FILETYPE ASCII
+    PRINTER.SIZE 0xFA, 0xFA
+    
+    
+    winpos 0, 0, 100. 10. , , , RESULTWINDOW
+    AREA.CREATE ResultAreaWindow
+    AREA.SELECT ResultAreaWindow
+    area.view ResultAreaWindow
+    PRINT "&result"
+    WINPRT RESULTWINDOW
+    
+    AREA.CLOSE ResultAreaWindow
+    
+    ON ERROR
+    RETURN
+    
+
+////////////////////////////////////////////
+//
+//          FATALEXIT
+//
+//          Exits all scripts.
+//          If logging is enabled, appends failure keyword
+//          to passed string and sends that to PRINTRESULTLOG
+//
+//
+//
+///////////////////////////////////////////
+FATALEXIT:
+    LOCAL &string
+    ENTRY %LINE &string
+
+    PRINT %ERROR "Loadsim error. Error type: &Result "
+    
+    
+    
+        IF ("&LOGSENABLED"=="TRUE")
+        (
+            //Failure keyword is sometimes passed from lower scripts. 
+            //Only append it if it's not already there for cleaner logs.
+            IF STRING.SCAN("&string","&FAILUREKEYWORD",0)!=-1
+            (
+                GOSUB PRINTRESULTLOG &string 
+            )
+            ELSE
+            (
+                GOSUB PRINTRESULTLOG &FAILUREKEYWORD " - " &string 
+            )
+        )
+
+    END
+
+EXIT:
+
+    IF ("&LOGSENABLED"=="TRUE")
+    (
+        LOCAL &string
+        ENTRY %LINE &string
+        
+        GOSUB PRINTRESULTLOG &string 
+    )
+    ENDDO
+
+    

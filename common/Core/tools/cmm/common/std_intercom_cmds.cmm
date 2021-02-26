@@ -1,0 +1,81 @@
+//============================================================================
+//  Name:                                                                     
+//    std_intercom_cmds.cmm
+//
+//  Description:                                                              
+//    It executes a bunch of T32 commands over to a remote session
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//    Edits: Edits
+//    amcheriy    : Created for warehouse 2.1                : 05/03/2014
+// ------------------------------------------------------------------------------------------
+
+// a) Intercom session to execute on b) Wait at the end of all commands c) commands 
+// to be executed as comma separated list
+ENTRY &INTERCOM_HANDLE &OPTWAIT %LINE &COMMANDS
+
+LOCAL &SCRIPT_DIR &COUNTER &CPYCOMMANDS &CMD &CMDEND
+
+&SCRIPT_DIR=OS.PPD()
+
+IF INTERCOM.PING(&INTERCOM_HANDLE)
+(
+        &LENGTH=STRING.LEN("&COMMANDS")
+        &CPYCOMMANDS="&COMMANDS"
+        &COUNTER=0
+
+        WHILE (&LENGTH>0)
+        (
+            &CMDEND=STRING.SCAN("&CPYCOMMANDS",",",0)
+            // Check if this is the last entry in the list
+            IF (&CMDEND==-1)
+            (
+                &CMDEND=&LENGTH
+            )
+            
+            // Extract the command out
+            &CMD=STRING.MID("&CPYCOMMANDS",0,&CMDEND)
+            
+            // Intercom it over if needed
+            IF ("&LOCALHOST"!="&INTERCOM_HANDLE")
+            (
+                INTERCOM.EXECUTE &INTERCOM_HANDLE &CMD
+                // If it is the last command in the list, CMDEND will equal length
+                IF (("&CMDEND"=="&LENGTH")&&("&OPTWAIT"=="WAIT"))
+                (
+                    INTERCOM.WAIT &INTERCOM_HANDLE
+                )
+            )
+            ELSE
+            (
+                // Simply execute the command
+                &CMD=STRING.REPLACE("&CMD","NULL","",0)
+                
+                ON ERROR GOSUB
+                (
+                    ON ERROR DEFAULT
+                    PRINT "Warning: Error ocurred with &CMD"
+                    ENDDO
+                )
+                &CMD
+
+                ON ERROR DEFAULT
+                
+                
+            )
+                
+            
+            // Remove the command from the list
+            &CPYCOMMANDS=STRING.MID("&CPYCOMMANDS",&CMDEND+1,&LENGTH)
+            &LENGTH=STRING.LEN("&CPYCOMMANDS")
+        )
+)
+
+
+EXIT:
+    ENDDO
+        
+            

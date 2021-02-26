@@ -1,0 +1,117 @@
+#===============================================================================
+#
+# TCS system
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+#   Copyright (c) 2016-2017 Qualcomm Technologies, Inc. (QTI).
+#   All Rights Reserved.
+#   Qualcomm Confidential and Proprietary.
+#   Export of this technology or software is regulated by the U.S. Government.
+#   Diversion contrary to U.S. law prohibited.
+#-------------------------------------------------------------------------------
+#  $Header: //components/rel/core.qdsp6/2.1.c4/power/pdc/tcs/build/tcs.scons#1 $
+#  $DateTime: 2018/07/30 01:21:36 $
+#===============================================================================
+import os
+import stat
+import fnmatch
+import itertools
+import subprocess
+from os.path import join, basename, exists
+
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Target Build Options
+#-------------------------------------------------------------------------------
+#Turn off optimizations for easier debug
+#env.Append(CCFLAGS = ' -O0')
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+COMMON_SRCPATH = os.path.join('..', 'src')
+env.VariantDir('${BUILDPATH}', COMMON_SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+  'DAL',
+  'HAL',
+  'DEBUGTOOLS',
+  'POWER',
+  'POWER_PDC',
+  'SERVICES',
+  'SYSTEMDRIVERS',
+  'KERNEL'
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+env.RequirePrivateApi(['POWER_PDC_CMN'])
+
+#-------------------------------------------------------------------------------
+# Source directory roots
+#-------------------------------------------------------------------------------
+TCS_COMMON_SRC_DIR = [
+  'os',
+]
+
+TCS_TARGET_SRC_DIR = [
+  'config'
+]
+
+#-------------------------------------------------------------------------------
+# Global source settings
+#-------------------------------------------------------------------------------
+MAIN_IMG_TAG = ['CORE_Q6_ROOT']
+
+source_patterns = ['*.c']
+sources = []
+
+#-------------------------------------------------------------------------------
+# TCS source files
+#-------------------------------------------------------------------------------
+# Add common root files
+for src_path_root in TCS_COMMON_SRC_DIR:
+  for root, dirnames, filenames in os.walk(os.path.join(COMMON_SRCPATH, src_path_root)):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in source_patterns])
+    files = [os.path.join(root, filename) for filename in matches ]
+    files = [matched_path.replace(COMMON_SRCPATH, '${BUILDPATH}',1) for matched_path in files]
+    sources.extend(files)
+    
+# Add target specific config files
+# Directory layout will always be '/chip/target' from each base directory
+# For example '/baseDir/845/mss'
+for src_path_root in TCS_TARGET_SRC_DIR:
+  for root, dirnames, filenames in os.walk(os.path.join(COMMON_SRCPATH, src_path_root, env['PDC_MSM'], env['POWER_SUBSYSTEM'].lower())):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in source_patterns])
+    files = [os.path.join(root, filename) for filename in matches ]
+    files = [matched_path.replace(COMMON_SRCPATH, '${BUILDPATH}',1) for matched_path in files]
+    sources.extend(files)
+    
+#-------------------------------------------------------------------------------
+# Create libraries
+#-------------------------------------------------------------------------------
+pdc_tcs_lib = env.AddLibrary(MAIN_IMG_TAG,
+                             os.path.join('${BUILDPATH}', 'pdcTcs'),
+                             sources)
+
+#-------------------------------------------------------------------------------
+# Add init function to RCINIT
+#-------------------------------------------------------------------------------
+
+# rpm driver properties
+RCINIT_PROPS = {
+  'sequence_group'             : 'RCINIT_GROUP_0',
+  'init_name'                  : 'PDCTcs',
+  'init_function'              : 'pdcTcs_initialize',
+  'dependencies'               : ['PDCHWIO', 'cmd_db', 'PDCLog', 'pwr_utils_lvl'],
+}
+
+if 'USES_RCINIT' in env:
+  env.AddRCInitFunc(MAIN_IMG_TAG, RCINIT_PROPS)

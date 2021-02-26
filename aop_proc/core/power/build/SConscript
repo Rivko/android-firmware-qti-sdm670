@@ -1,0 +1,100 @@
+#===============================================================================
+#
+# POWER Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2016, 2017 by Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc /GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/aop.ho/1.1.c1/aop_proc/core/power/build/SConscript#1 $
+#  $DateTime: 2018/02/16 04:48:18 $
+#  $Author: pwbldsvc $
+#  $Change: 15485400 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 11/16/09   rks     publish power/utils/inc only inside power sub-system
+# 08/13/09   taw     Initial version.
+#
+#===============================================================================
+Import('env')
+
+env = env.Clone()
+
+
+"""
+  Determine which processor the currently build is for using the
+  actively building image. There cannot be more than one of the
+  same name within a target.  Meaning, 7x30 cannot have two 
+  processors named apps.
+
+  Possible processors are:
+
+  aop - AOP
+"""
+
+target_images = [
+    (['default'],
+        {
+            'aop'   : ['AOP_IMAGE'],
+        },
+    ),
+]
+
+def find_image_list(hal_platform):
+    target_specific_images = [x[1] for x in target_images if hal_platform in x[0]]
+    default_images = [x[1] for x in target_images if 'default' in x[0]]
+    return (target_specific_images + default_images)[0]
+
+def determine_processor_name(env):
+  target_images = find_image_list(env['HAL_PLATFORM'])
+
+  env_var_names = set(env.gvars().keys())
+
+  for image in target_images:
+    if (env_var_names.intersection(set(target_images[image]))):
+      return image
+
+  return 'unknown'
+
+env.AddMethod(determine_processor_name, 'DetermineProcessorName')
+
+#Protected APIs are only accessible to units inside power
+env.PublishProtectedApi('POWER_UTILS', [
+  "${INC_ROOT}/core/power/utils/inc",
+  "${INC_ROOT}/core/power/sleep/inc"
+  ])
+#SDM640_CHANGES  
+if env['MSM_ID'] in ['640']:
+     env.PublishProtectedApi('DDR_MGR', [
+     "${INC_ROOT}/core/power/ddr_mgr/inc",
+     "${INC_ROOT}/core/power/ddr_mgr/src/target/670",
+     ])
+else:
+     env.PublishProtectedApi('DDR_MGR', [
+  "${INC_ROOT}/core/power/ddr_mgr/inc",
+  "${INC_ROOT}/core/power/ddr_mgr/src/target/${MSM_ID}",
+  ])
+#SDM640_CHANGES
+if env['MSM_ID'] in ['640']:
+     env.PublishProtectedApi('SLEEP', [
+     "${INC_ROOT}/core/power/sleep/src/target/670",
+     ])
+else:
+     env.PublishProtectedApi('SLEEP', [
+  "${INC_ROOT}/core/power/sleep/src/target/${MSM_ID}",
+  ])
+  
+#-------------------------------------------------------------------------------
+# Load sub scripts
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()

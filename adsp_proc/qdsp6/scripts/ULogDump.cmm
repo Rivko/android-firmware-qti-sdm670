@@ -1,0 +1,427 @@
+; ULogDump.cmm
+; ------------------------------------------------------------------
+;
+; When to use this script 
+; -----------------------
+; This script should be used to dump ULog logs from T32 when the 
+; on-target application is not practical.
+;
+; 
+; How to use this script
+; ----------------------
+; After after breaking, retrieve all logs by running
+;
+; do ULogDump <logPath> <ulog>
+;
+;
+ENTRY &logPath &ulog
+
+LOCAL &logHead &dump
+
+; Select the output area for messages
+AREA.SELECT A000
+
+if "&ulog"==""
+(
+  &ulog="*"
+)
+
+if ("&logPath"=="")||("&logPath"=="stdout")
+(
+  &logPath="stdout"
+  &dump="PRINT"
+)
+else 
+(
+  ; Trim trailing "\" if necessary
+  IF string.char("&(logPath)", string.len("&(logPath)")-1)=='\'
+  (
+    &logPath=string.cut("&(logPath)", -1)
+  )
+  &dump="WRITE #1"
+)
+  
+; Get the head of the logs
+&logHead=V.VALUE(ulogContext.logHead)
+
+LOCAL &currentLog
+&currentLog=&logHead
+  
+if "&logPath"!="stdout"
+(
+  OPEN #2 "&(logPath)\AvailableLogs.txt" /Create
+)
+; No log was specified.  Dump all logs.
+WHILE &currentLog!=0
+(
+  LOCAL &name &logName
+  &logName=DATA.STRING(D:V.VALUE(((ULOG_TYPE *)&currentLog).name))
+
+  if "&logPath"!="stdout"
+  (
+    WRITE #2 "&(logName)"
+  )
+
+  ; Last expression handles quoted strings as arguments
+  if "&ulog"=="*"||"&ulog"=="&logName"||"&ulog"=="""&logName"""
+  (
+    &name="&(logPath)\&(logName).ulog"
+    if "&logPath"!="stdout"
+    (
+      PRINT "Writing file: &(name)"
+      OPEN #1 "&(name)" /Create
+    )
+    else
+    (
+      PRINT "**** &(logName) ****"
+    )
+
+
+    GOSUB DumpOneLog &currentLog
+    if "&logPath"!="stdout"
+    (
+      CLOSE #1
+    )
+  )
+  &currentLog=V.VALUE(((ULOG_TYPE *)&currentLog).next)
+)
+
+if "&logPath"!="stdout"
+(
+  CLOSE #2
+  PRINT "Completed..."
+)
+
+
+ENDDO
+
+DumpOneLog:
+  ENTRY &log
+  IF V.VALUE(((ULOG_TYPE *)&log).sharedHeader->enabled)!=0
+  (
+
+    LOCAL &buffer &mask &read &write
+   
+    IF V.VALUE(((ULOG_TYPE *)&log).header)!=0
+    (
+      GOSUB DumpHeader 
+    )
+
+    ; Get the buffer pointer,
+    ; the buffer size mask,
+    ; the read pointer,
+    ; the write pointer
+    &buffer=V.VALUE(((ULOG_TYPE *)&log).buffer)
+    &mask=V.VALUE(((ULOG_TYPE *)&log).bufSizeMask)
+    &read=V.VALUE(((ULOG_TYPE *)&log).writerCore->readWriter)
+    &write=V.VALUE(((ULOG_TYPE *)&log).writerCore->write)
+   
+    ; Step through the buffer until we have dumped all the log data.
+    WHILE &read!=&write
+    (
+      LOCAL &msgLength
+      LOCAL &msgExtra
+      ; Read the number of bytes in this message
+      &msgLength=V.VALUE(*((uint32 *)(&buffer + (&read & &mask))))
+      &msgExtra=&msgLength&0x03
+      IF &msgExtra!=0
+      (
+        &msgExtra=4-&msgExtra
+      )
+
+      &read=&read+4
+      IF V.VALUE(((ULOG_TYPE *)&log).iface)==1
+      (
+        ; Handle the RAW type
+        GOSUB DumpRawLog &buffer &mask &read &msgLength
+      )
+      IF V.VALUE(((ULOG_TYPE *)&log).iface)==2
+      (
+        ; Handle the RealTime type
+        GOSUB DumpRealTimeLog &buffer &mask &read &msgLength
+      )
+      &read=&read+&msgExtra+&msgLength
+    )
+  )
+  RETURN
+
+DumpHeader:
+  ; Copy the log header to the output file.
+  ;
+  LOCAL &bytePtr
+  &bytePtr=V.VALUE(((ULOG_TYPE *)&log).header)
+  &dump DATA.STRING(D:&bytePtr)
+  RETURN
+
+DumpRawLog:
+    ; Output Format is:
+    ; - <byte>, <byte>, <byte>, <byte>,\n- <byte>, <byte>,...
+  ENTRY &buffer &mask &read &msgLength
+  LOCAL &bytePtr
+  &dump %CONT "- "
+  WHILE &msgLength!=0
+  (
+    &bytePtr=&buffer+(&read&&mask)
+    &dump %CONT "0x" FORMAT.HEX(2,DATA.BYTE(d:&bytePtr)) ", "
+    &msgLength=&msgLength-1
+    &read=&read+1
+  )
+  &dump
+  RETURN
+
+DumpRealTimeLog:
+  ; Input Format is:
+  ; <Words> <Fmt> <Timestamp> <Data>
+  ENTRY &buffer &mask &localRead &localMsgLength
+  LOCAL &format &outputString
+  GLOBAL &ULogTimestamp
+
+  ; Read the message format
+  &format=V.VALUE(*((uint32 *)(&buffer+(&localRead & &mask))))
+  &localRead=&localRead+4
+  ; Read the message timestamp
+  &ULogTimestamp=V.VALUE(*((uint32 *)(&buffer+(&localRead & &mask))))
+
+  &localRead=&localRead+4
+
+  IF &format==0
+  (
+    ; Handle the RealTime Data type
+    &outputString="Unhandled Message..."
+  )
+  IF &format==1
+  (
+    ; Handle the RealTime Printf type
+    GOSUB DumpRealTimePrintf &buffer &mask &localRead &localMsgLength &outputString
+  )
+  IF &format==2
+  (
+    ; Adding the parsing support for an array of char data
+    ; Handle the RealTime Char Array type
+    GOSUB DumpRealTimeCharArray &buffer &mask &localRead &localMsgLength &outputString
+  )
+  IF &format==3
+  (
+    ; Adding the parsing support for string data.
+    ; Handle RealTime String type
+    GOSUB DumpRealTimeString &buffer &mask &localRead &localMsgLength &outputString
+  )
+  &dump "&(ULogTimestamp): &(outputString)"
+
+  RETURN
+
+DumpRealTimePrintf:
+  ENTRY &buffer &mask &localRead &localMsgLength &outputString
+  LOCAL &formatStringPtr &formatString &subFormatString
+  LOCAL &char 
+  &formatStringPtr=V.VALUE(*((uint32 *)(&buffer+(&localRead & &mask))))
+
+  IF &formatStringPtr==0
+  (
+    &outputString="<NULL REFERENCE FORMAT STRING>"
+    RETURN
+  )
+
+  &formatString=DATA.STRING(D:&formatStringPtr)
+  &localRead=&localRead+4
+
+  ; Parse the string, and build outputString
+  ; How do I do this????
+
+  WHILE STRING.LEN("&(formatString)")!=0
+  (
+    &char=string.mid("&(formatString)", 0, 1)
+    ; Find the first format characters
+    IF "&(char)"=="%"
+    (
+      LOCAL &isAtEnd &parmaValue
+      &subFormatString="%"
+
+      REPEAT
+      ( 
+        &formatString=STRING.CUT("&(formatString)",1)
+        &char=string.mid("&(formatString)", 0, 1)
+        GOSUB IsEndOfFormat &char
+        ENTRY &isAtEnd
+        &subFormatString="&(subFormatString)&(char)"
+      )
+      WHILE &isAtEnd==0  
+
+      ; Add substring to outputString
+      IF "&(char)"=="%"
+      (
+      )
+      ELSE
+      (
+        IF "&(char)"!="t"
+	(
+          &parmaValue=V.VALUE(*((uint32 *)(&buffer+(&localRead & &mask))))
+
+	  ; Check whether the 32 bit value is an address or data  
+          IF string.scan("&subFormatString", "&", 0)!=-1
+          (
+	    ;The 32-bit value is an address. Dereference it to get the data 
+            IF (&parmaValue!=0)
+            (
+              &parmaValue=V.VALUE(*(uint32 *)&parmaValue)
+            )
+	  )
+
+          ; Increment the local read pointer
+          &localRead=&localRead+4
+	)
+        
+        IF "&(char)"=="d"
+        (
+          &char=FORMAT.DECIMAL(0,&parmaValue)
+        )
+        ELSE IF "&(char)"=="u"
+        (
+          &char=FORMAT.UDECIMAL(0,&parmaValue)
+        )
+        ELSE IF "&(char)"=="s"
+        (
+          IF (&parmaValue==0)
+          (
+            &char="<NULL REFERENCE>"
+          )
+          ELSE
+          (
+            &char=DATA.STRING(D:&parmaValue)
+          )
+        )
+        ELSE IF string.scan("xX", "&(char)", 0)!=-1
+        (
+          &char=FORMAT.HEX(8,&parmaValue)
+        )
+	ELSE IF "&(char)"=="c"
+	(
+          &char=CONV.CHAR(&parmaValue)
+          &char=STRING.MID("&char", 1, 1)
+	)
+        ELSE IF "&(char)"=="t"
+	(
+          ; Mark the current timestamp as 0 
+	  &char="0"
+	)
+        ELSE
+        (
+          &char=""
+        )
+      )
+      &outputString="&(outputString)&(char)"
+
+    )
+    ELSE
+    (
+      ; Add the non-format data
+      &outputString="&(outputString)&(char)"
+    )
+    &formatString=STRING.CUT("&(formatString)",1)
+  )
+
+  RETURN
+
+
+
+IsEndOfFormat:
+  ENTRY &char
+  LOCAL &isEndValue
+  &isEndValue=1
+  if string.scan("%EGXcdefginopsuxt", "&(char)", 0)==-1
+  (
+    &isEndValue=0
+  )
+  RETURN &isEndValue
+
+  ; example message  ::
+  ; <readPtr> ->	0x0100 2          ( Format )
+  ; 			0x0104 0x7699     ( TimeStamp )
+  ;                     0x0105 0x10       ( each byte follows )
+  ; 			0x0105 0x20       ( each byte follows )
+  ; 			0x0106 0x30       ( each byte follows )
+  ; 			0x0107 0x40       ( each byte follows )
+
+DumpRealTimeCharArray:
+  ENTRY &buffer &mask &localRead &localMsgLength &outputString
+  LOCAL &bytesOut &columns &charDataLength
+  LOCAL &outChar
+
+  &bytesOut=0
+  &columns=0
+
+  ; Subtract the timestamp and message format from the original message
+  ; to obtain the length of the char data 
+  &charDataLength=&localMsgLength-8
+  
+  WHILE &charDataLength!=0
+  (
+    ; Read each character which follows
+    &outChar=V.VALUE(*((char *)(&buffer+(&localRead & &mask))))
+    &outChar=FORMAT.HEX(2,&outChar)
+    ; add it to output string 
+    &outputString="&(outputString)&(outChar)"
+    ; Add a space after the byte
+    &outChar=" "
+    &outputString="&(outputString)&(outChar)"
+    ; increment the total bytes in the string
+    &bytesOut=&bytesOut+1
+
+    ; Increment the number of bytes read
+    &columns=&columns+1
+
+    ;Put an extra space inbetween groups of four bytes
+    IF &columns==4 
+    (
+      &outChar=" "
+      &outputString="&(outputString)&(outChar)"
+    )
+    
+    ; check if the row of data has been reached.
+    IF &columns==24&&&charDataLength!=0 
+    (
+      ; prep for the next line of data
+      ; add a carriage return for this data
+      &outChar="\n"
+      &outputString="&(outputString)&(outChar)"
+      ; increment the total bytes in the string
+      &bytesOut=&bytesOut+1
+    )
+    ; Increment localRead to point to next byte.
+    &localRead=&localRead+1 
+
+    ; Decrement the message length
+    &charDataLength=&charDataLength-1
+    
+  ); end of WHILE &charDataLength != 0
+
+  RETURN
+  
+  ; example message  ::
+  ; <readPtr> ->	0x0100 2          ( Format )
+  ; 			0x0104 0x7699     ( TimeStamp )
+  ;                     0x0105 0x10       ( each byte follows )
+  ; 			0x0105 0x20       ( each byte follows )
+  ; 			0x0106 0x30       ( each byte follows )
+  ; 			0x0107 0x40       ( each byte follows )
+
+DumpRealTimeString:
+  ENTRY &buffer &mask &localRead &localMsgLength &outputString
+  LOCAL &stringDataLength &inputString
+
+  ; Subtract the timestamp and message format from the original message
+  ; to obtain the length of the char data 
+  &stringDataLength=&localMsgLength-8
+
+  &outputString=DATA.STRING(D:V.VALUE(((uint32 *)(&buffer+(&localRead & &mask)))))
+
+  ; prep for the next line of data
+  ; add a carriage return for this data
+  ; &outChar="\n"
+  ; &outputString="&(outputString)&(outChar)"
+  ; increment the total bytes in the string
+  ; &bytesOut=&bytesOut+1
+
+  RETURN
+
+

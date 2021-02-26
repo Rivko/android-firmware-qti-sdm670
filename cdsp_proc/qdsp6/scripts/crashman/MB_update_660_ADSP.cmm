@@ -1,0 +1,53 @@
+Trace_buffer:
+Area.Create Update
+Area.Select Update
+Area.Clear  Update
+Area Update
+
+local &index
+local &address
+local &mem1
+local &mem2
+local &cursor
+
+&index=v.value(QURTK_trace_buffers[0].index)
+&address=v.value(QURTK_trace_buffers[0].trace_buffer_addr)
+;&mem=(v.value(((QURTK_trace_packet_t*)&address)->pcycle_high)<<20)+v.value(((QURTK_trace_packet_t*)&address)->pcycle_low)
+&size=v.value(QURTK_trace_buffer_size)
+print "1st: &index and &address"
+GOSUB find_index &size &address &index
+ENTRY &new_index
+print "This is updated index &new_index"
+v.set QURTK_trace_buffers[0].index=&new_index
+
+
+&index=v.value(QURTK_trace_buffers[1].index)
+&address=v.value(QURTK_trace_buffers[1].trace_buffer_addr)
+print "2nd: &index and &address"
+GOSUB find_index &size &address &index
+ENTRY &new_index
+print "This is updated index &new_index"
+v.set QURTK_trace_buffers[1].index=&new_index
+
+print "Updated..! "
+ENDDO
+
+find_index:
+ENTRY &size &address &index
+&last=&size+&address
+;print "size = &size"
+&cursor=&address+&index-0x10
+if &cursor<&address
+&cursor=&last-0x10
+here:
+&mem1=(v.value(((QURTK_trace_packet_t*)&cursor)->pcycle_high)<<20)+v.value(((QURTK_trace_packet_t*)&cursor)->pcycle_low)
+&cursor=&cursor+0x10
+if &cursor==&last
+&cursor=&address
+&mem2=(v.value(((QURTK_trace_packet_t*)&cursor)->pcycle_high)<<20)+v.value(((QURTK_trace_packet_t*)&cursor)->pcycle_low)
+;print "&cursor &mem2 and &mem1 "
+IF &mem1<=&mem2
+goto here
+&new_index=&cursor-&address
+;print "Here- &mem2 &cursor &address New Index= &new_index"
+RETURN &new_index

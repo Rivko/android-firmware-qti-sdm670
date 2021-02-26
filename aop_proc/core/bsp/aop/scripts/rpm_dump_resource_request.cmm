@@ -1,0 +1,456 @@
+entry &filter_level &resource_type &resource_id &master_id &set
+
+if v.value((SystemData*)rpm_core_dump.rpmserver_state)!=0x0
+    &rpm="((SystemData*)rpm_core_dump.rpmserver_state)"
+else
+    &rpm="rpm"
+
+&num_classes=v.value(&rpm->supported_classes)
+&num_resources=v.value(&rpm->supported_resources)
+
+;&title="RqByRrc"
+
+;AREA.CREATE "&title" 3000. 3000.
+AREA.VIEW A000
+AREA.SELECT A000
+
+
+if "&filter_level"==""
+    &filter_level=2.
+
+gosub find_image_section_index "RPM_HEAP"
+entry &heap_index
+
+on error gosub
+(
+    print %cont %attr 4 " ? "
+    return
+)
+
+&c=0.
+while &c<&num_classes
+(
+    &rsrc_type=format.string(v.string((char[4])&rpm->classes[&c].type),4,' ')
+    &xlate=string.cut(symbol.varname(d:v.value(&rpm->classes[&c].xlate)), -4)
+    &apply=string.cut(symbol.varname(d:v.value(&rpm->classes[&c].apply)), -4)
+
+    gosub get_class_resouces &c
+
+    &c=&c+1.
+)
+print "================================================================================"
+print
+enddo
+
+;===============================================================================
+get_class_resouces:
+    entry &class_index
+
+    &i=0.
+    while &i<&num_resources
+    (
+        &cls_idx=v.value(&rpm->resources[&i].class_idx)
+
+        if &cls_idx!=&class_index
+        (
+            goto continue
+        )
+
+        &rsrc_id=v.value(&rpm->resources[&i].id)
+
+        &do_it=("&resource_type"=="")||("&resource_type"=="*")||("&resource_type"==string.cut("&rsrc_type",-4+string.len("&resource_type")))
+        if !(("&resource_id"=="")||("&resource_id"=="*"))
+        (
+            &do_it=&do_it&&(&resource_id==&rsrc_id)
+        )
+
+        if !&do_it
+        (
+            goto continue
+        )
+
+        &eec_ptr=v.value(&rpm->resources[&i].ees)
+
+        if &do_it&&"&master_id"!=""&&"&master_id"!="*"
+        (
+            &found=0
+            &ptr=&eec_ptr
+            while &ptr!=0&&&found==0
+            (
+                if "&master_id"==format.decimal(0,v.value(((EEClient*)&ptr)->ee_id))
+                (
+                    &found=1
+                )
+                &ptr=v.value(((EEClient*)&ptr)->next)
+            )
+
+            if &found==0
+                goto continue
+        )
+
+        &num_ecs=v.value(&rpm->resources[&i].num_eecs)
+        &num_ics=v.value(&rpm->resources[&i].num_ics)
+
+        if &do_it
+        (
+            print "================================================================================"
+            &s="num_external_clients="+format.decimal(0,&num_ecs)+", num_internal_clients="+format.decimal(0,&num_ics)
+            print %error "&rsrc_type, "+format.decimal(2,&rsrc_id)+"  (classes["+format.decimal(2.,&cls_idx)+"], resources["+format.decimal(3.,&i)+"])   (&s)   (&xlate, &apply)"
+            print "  CLASS_SETTLING_ESTIMATE: "+format.decimal(5,v.value(&rpm->classes[&cls_idx].settling_estimate))+", RESOURCE_ESTIMATES: ["+format.decimal(5,v.value(&rpm->resources[&i].estimates[0]))+", "+format.decimal(5,v.value(&rpm->resources[&i].estimates[1]))+"]"
+        )
+
+        if &filter_level>0.
+        (
+            print "  ------------------------------------------------------------------------------"
+            print "  CURRENT_STATE:"
+            &cur_state=v.value(&rpm->resources[&i].current_state)
+            gosub is_valid_heap_address &cur_state &i
+            entry &valid
+            if !&valid
+                goto continue
+            gosub get_req_value &xlate &cur_state &rsrc_type
+        )
+
+        &j=0.
+        while &do_it&&&eec_ptr!=0x0
+        (
+            gosub is_valid_heap_address &eec_ptr &i
+            entry &valid
+            if !&valid
+                goto continue
+
+            if "&master_id"==""||"&master_id"=="*"||"&master_id"==format.decimal(0,v.value(((EEClient*)&eec_ptr)->ee_id))
+            (
+                &req0=v.value(((EEClient*)&eec_ptr)->request[0.])
+                &req1=v.value(((EEClient*)&eec_ptr)->request[1.])
+                &req_type0=v.string(((EEClient*)&eec_ptr)->req_type[0.])
+                &req_type1=v.string(((EEClient*)&eec_ptr)->req_type[1.])
+                &sel=v.value(((EEClient*)&eec_ptr)->selected)
+
+                if &filter_level>0.
+                (
+                    &ee_id=v.value(((EEClient*)&eec_ptr)->ee_id)
+                    print "  ------------------------------------------------------------------------------"
+                    print %error "  EXTERNAL_CLIENT[&j] ID: "+format.decimal(0,&ee_id)+" ("+d.string(d:v.value(ee_client_lut[&ee_id].name))+")"
+                    print "    ----------------------------------------------------------------------------"
+                    if &sel==0
+                        print %attr 0x28 "    &req_type0: &req0 (SELECTED)"
+                    else
+                        print "    &req_type0: &req0"
+
+                    if &filter_level>1.
+                    (
+                        gosub is_valid_heap_address &req0 &i
+                        entry &valid
+                        if !&valid
+                            goto continue
+                        gosub get_req_value &xlate &req0 &rsrc_type
+                    )
+
+                    print "    ----------------------------------------------------------------------------"
+                    if &sel==1
+                        print %attr 0x28 "    &req_type1: &req1 (SELECTED)"
+                    else
+                        print "    &req_type1: &req1"
+                    if &filter_level>1.
+                    (
+                        gosub is_valid_heap_address &req1 &i
+                        entry &valid
+                        if !&valid
+                            goto continue
+                        gosub get_req_value &xlate &req1 &rsrc_type
+                    )
+                )
+            )
+
+            &eec_ptr=v.value(((EEClient*)&eec_ptr)->next)
+
+            &j=&j+1
+        )
+
+        if "&master_id"==""||"&master_id"=="*"
+        (
+            &ic_ptr=v.value(&rpm->resources[&i].ics)
+            &j=0.
+            while &do_it&&&j<&num_ics
+            (
+                gosub is_valid_heap_address &ic_ptr &i
+                entry &valid
+                if !&valid
+                    goto continue
+
+                &ic_list_ptr=v.value(&rpm->classes[&cls_idx].internal_types)
+
+                while &ic_list_ptr!=0x0&&v.value(((InternalClient*)&ic_ptr)->type)!=v.value(((InternalClientType*)&ic_list_ptr)->client_type)
+                (
+                    &ic_list_ptr=v.value(((InternalClientType*)&ic_list_ptr)->next)
+                )
+
+                if &filter_level>0.
+                (
+                    if &ic_list_ptr!=0x0
+                    (
+                        print "  ------------------------------------------------------------------------------"
+                        print %error "  INTERNAL_CLIENT[&j] TYPE: "+format.decimal(0,v.value(((InternalClient*)&ic_ptr)->type))+" ("+v.string((pm_rpm_nonstandard_internal_client_types)((InternalClient*)&ic_ptr)->type)+")"
+                        print "    ----------------------------------------------------------------------------"
+                    )
+                    else
+                    (
+                        &t=format.decimal(0,v.value(((InternalClient*)&ic_ptr)->type))
+                        print "  ------------------------------------------------------------------------------"
+                        print %error "  INTERNAL_CLIENT[&j] TYPE: &t (unknown)"
+                        print "    ----------------------------------------------------------------------------"
+                    )
+                    &req=v.value(((InternalClient*)&ic_ptr)->request)
+                    print "    REQUEST: &req"
+                    if &filter_level>1.
+                    (
+                        gosub is_valid_heap_address &req &i
+                        entry &valid
+                        if !&valid
+                            goto continue
+                        gosub get_req_value &xlate &req &rsrc_type
+                    )
+                )
+
+                &ic_ptr=&ic_ptr+v.sizeof(InternalClient)
+                &j=&j+1
+            )
+        )
+
+continue:
+        &i=&i+1
+    )
+
+    return
+
+;===============================================================================
+get_req_value:
+    entry &xlate &req &rsrc_type
+
+    if &req==0x0
+        return
+
+    if "&xlate"=="rpm_npa_xlate"
+    (
+        print "      request  : "+format.decimal(8,v.value(((npa_request_data_t*)&req)->request))
+        print "      max_limit: "+format.decimal(8,v.value(((npa_request_data_t*)&req)->max_limit))
+    )
+    else if "&xlate"=="railway_xlate"
+    (
+        &corner=v.value(((railway_voter_irep*)&req)->corner)
+        print "      corner       : "+v.string(((railway_voter_irep*)&req)->corner)+" (&corner)"
+        &corner=v.value(((railway_voter_irep*)&req)->active_floor)
+        print "      active_floor : "+v.string(((railway_voter_irep*)&req)->active_floor)+" (&corner)"
+    )
+    else if "&xlate"=="pm_rpm_smps_translation"||(("&xlate"=="railway_dummy_pmic_xlate")&&(string.scan("&rsrc_type","smp",0)>=0))
+    (
+        print "      sw_en         : "+format.decimal(8,v.value(((pm_npa_smps_int_rep*)&req)->sw_en))
+        print "      smps_sw_mode  : "+format.decimal(8,v.value(((pm_npa_smps_int_rep*)&req)->smps_sw_mode))
+        print "      pc_en         : "+format.decimal(8,v.value(((pm_npa_smps_int_rep*)&req)->pc_en))
+        print "      pc_mode       : "+format.decimal(8,v.value(((pm_npa_smps_int_rep*)&req)->pc_mode))
+        print "      global_byp_en : "+format.decimal(8,v.value(((pm_npa_smps_int_rep*)&req)->global_byp_en))
+        print "      hr            : "+format.decimal(8,v.value(((pm_npa_smps_int_rep*)&req)->hr))
+        print "      uvol          : "+format.decimal(8,v.value(((pm_npa_smps_int_rep*)&req)->uvol))
+        print "      ip            : "+format.decimal(8,v.value(((pm_npa_smps_int_rep*)&req)->ip))
+        print "      freq          : "+format.decimal(8,v.value(((pm_npa_smps_int_rep*)&req)->freq))
+        print "      freq_reason   : "+format.decimal(8,v.value(((pm_npa_smps_int_rep*)&req)->freq_reason))
+        print "      quiet_mode    : "+format.decimal(8,v.value(((pm_npa_smps_int_rep*)&req)->quiet_mode))
+        print "      byp_allowed   : "+format.decimal(8,v.value(((pm_npa_smps_int_rep*)&req)->byp_allowed))
+        print "      reserve1      : "+format.decimal(8,v.value(((pm_npa_smps_int_rep*)&req)->reserve1))
+    )
+    else if "&xlate"=="pm_rpm_ldo_translation"||(("&xlate"=="railway_dummy_pmic_xlate")&&(string.scan("&rsrc_type","ldo",0)>=0))
+    (
+        print "      sw_en            : "+format.decimal(8,v.value(((pm_npa_ldo_int_rep*)&req)->sw_en))
+        print "      ldo_sw_mode      : "+format.decimal(8,v.value(((pm_npa_ldo_int_rep*)&req)->ldo_sw_mode))
+        print "      pc_en            : "+format.decimal(8,v.value(((pm_npa_ldo_int_rep*)&req)->pc_en))
+        print "      pc_mode          : "+format.decimal(8,v.value(((pm_npa_ldo_int_rep*)&req)->pc_mode))
+        print "      resource_id      : "+format.decimal(8,v.value(((pm_npa_ldo_int_rep*)&req)->resource_id))
+        print "      device_index     : "+format.decimal(8,v.value(((pm_npa_ldo_int_rep*)&req)->device_index))
+        print "      is_en_transition : "+format.decimal(8,v.value(((pm_npa_ldo_int_rep*)&req)->is_en_transition))
+        print "      byp_allowed      : "+format.decimal(8,v.value(((pm_npa_ldo_int_rep*)&req)->byp_allowed))
+        print "      reserve1         : "+format.decimal(8,v.value(((pm_npa_ldo_int_rep*)&req)->reserve1))
+        print "      input_uvol       : "+format.decimal(8,v.value(((pm_npa_ldo_int_rep*)&req)->input_uvol))
+        print "      ip               : "+format.decimal(8,v.value(((pm_npa_ldo_int_rep*)&req)->ip))
+        print "      noise_hr         : "+format.decimal(8,v.value(((pm_npa_ldo_int_rep*)&req)->noise_hr))
+        print "      output_uvol      : "+format.decimal(8,v.value(((pm_npa_ldo_int_rep*)&req)->output_uvol))
+    )
+    else if "&xlate"=="pm_rpm_vs_translation"
+    (
+        print "      sw_en    : "+format.decimal(8,v.value(((pm_npa_vs_int_rep*)&req)->sw_en))
+        print "      pc_en    : "+format.decimal(8,v.value(((pm_npa_vs_int_rep*)&req)->pc_en))
+        print "      ip       : "+format.decimal(8,v.value(((pm_npa_vs_int_rep*)&req)->ip))
+        print "      reserve1 : "+format.decimal(8,v.value(((pm_npa_vs_int_rep*)&req)->reserve1))
+    )
+    else if "&xlate"=="pm_rpm_pbs_translation"
+    (
+        print "      sw_en         : "+format.decimal(8,v.value(((pm_npa_pbs_int_rep*)&req)->sw_en))
+        print "      reserve1      : "+format.decimal(8,v.value(((pm_npa_pbs_int_rep*)&req)->reserve1))
+        print "      start_address : "+format.decimal(8,v.value(((pm_npa_pbs_int_rep*)&req)->start_address))
+    )
+    else if "&xlate"=="pm_rpm_clk_buffer_translation"
+    (
+        print "      sw_enable : "+format.decimal(8,v.value(((pm_npa_clk_buffer_int_rep*)&req)->sw_enable))
+        print "      pc_enable : "+format.decimal(8,v.value(((pm_npa_clk_buffer_int_rep*)&req)->pc_enable))
+        print "      reserved  : "+format.decimal(8,v.value(((pm_npa_clk_buffer_int_rep*)&req)->reserved))
+    )
+    else if "&xlate"=="pm_rpm_boost_translation"
+    (
+        print "      sw_en     : "+format.decimal(8,v.value(((pm_npa_boost_int_rep*)&req)->sw_en))
+        print "      pc_en     : "+format.decimal(8,v.value(((pm_npa_boost_int_rep*)&req)->pc_en))
+        print "      reserved  : "+format.decimal(8,v.value(((pm_npa_boost_int_rep*)&req)->reserved))
+    )
+    else if "&xlate"=="pm_rpm_boost_byp_translation"
+    (
+        print "      sw_en       : "+format.decimal(8,v.value(((pm_npa_boost_byp_int_rep*)&req)->sw_en      ))
+        print "      byp_allowed : "+format.decimal(8,v.value(((pm_npa_boost_byp_int_rep*)&req)->byp_allowed))
+        print "      mode        : "+format.decimal(8,v.value(((pm_npa_boost_byp_int_rep*)&req)->mode       ))
+        print "      reserved    : "+format.decimal(8,v.value(((pm_npa_boost_byp_int_rep*)&req)->reserved   ))
+        print "      uvol        : "+format.decimal(8,v.value(((pm_npa_boost_byp_int_rep*)&req)->uvol       ))
+        print "      pin_uvol    : "+format.decimal(8,v.value(((pm_npa_boost_byp_int_rep*)&req)->pin_uvol   ))
+    )
+    else if "&xlate"=="pm_rpm_bob_translation"
+    (
+        print "      sw_en     : "+format.decimal(8,v.value(((pm_npa_bob_int_rep*)&req)->sw_en    ))
+        print "      mode      : "+format.decimal(8,v.value(((pm_npa_bob_int_rep*)&req)->sw_en    ))+" ("+v.string( (pm_sw_mode_type) (((pm_npa_bob_int_rep*)&req)->mode) )+")"
+        print "      reserved  : "+format.decimal(8,v.value(((pm_npa_bob_int_rep*)&req)->reserved ))
+        print "      uvol      : "+format.decimal(8,v.value(((pm_npa_bob_int_rep*)&req)->uvol     ))
+        print "      pin1_uvol : "+format.decimal(8,v.value(((pm_npa_bob_int_rep*)&req)->pin1_uvol))
+        print "      pin2_uvol : "+format.decimal(8,v.value(((pm_npa_bob_int_rep*)&req)->pin2_uvol))
+        print "      pin3_uvol : "+format.decimal(8,v.value(((pm_npa_bob_int_rep*)&req)->pin3_uvol))
+    )
+    else if "&xlate"=="icb_masters_translate_cb"
+    (
+        print "      bw : "+format.decimal(8,v.value(*(icb_master_bw_req_type*)&req))
+    )
+    else if "&xlate"=="icb_master_latency_translate_cb"
+    (
+        print "      latency : "+format.decimal(8,v.value(*(uint32*)&req))
+    )
+    else if "&xlate"=="icb_slaves_translate_cb"
+    (
+        print "      bw : "+format.decimal(8,v.value(*(icb_slave_req_type*)&req))
+    )
+    else if "&xlate"=="icb_spdm_req_translate_cb"
+    (
+        print "      enable : "+format.decimal(8,v.value(*(icb_spdm_clk_req_type*)&req))
+    )
+    else if "&xlate"=="misc_xlate"
+    (
+        print "      GFX_temp              : "+v.string(((misc_inrep*)&req)->GFX_temp)
+        print "      CX_temp               : "+v.string(((misc_inrep*)&req)->CX_temp)
+        print "      VPU_state             : "+v.string(((misc_inrep*)&req)->VPU_state)
+        print "      CX_limit              : "+v.string(((misc_inrep*)&req)->CX_limit)
+        print "      DDR_address           : 0x"+format.hex(16,v.value(((misc_inrep*)&req)->DDR_address))
+        print "      NPA_dump_trigger_time : 0x"+format.hex(16,v.value(((misc_inrep*)&req)->NPA_dump_trigger_time))
+        print "      DDR_buffer_size       : 0x"+format.hex(8,v.value(((misc_inrep*)&req)->DDR_buffer_size))
+        if v.sizeof(misc_inrep)>40.
+            print "      CX_SVS_HI_enable      : "+format.decimal(0,v.value(((misc_inrep*)&req)->CX_SVS_HI_enable))
+        print "      valid_keys            : 0x"+format.hex(8,v.value(((misc_inrep*)&req)->valid_keys))
+    )
+    else if "&xlate"=="rbcpr_xlate"
+    (
+        print "      disable_sensor : "+format.decimal(8,v.value(((rbcpr_sensor_disable_irep*)&req)->disable_sensor))
+    )
+    else if "&xlate"=="rpm_test_xlate"
+    (
+        print "      : "+format.decimal(8,v.value(*(uint32*)&req))
+    )
+    else if "&xlate"=="rpm_swevent_xlate"
+    (
+        print "      bmsk    : "+format.hex(16,v.value(((swevent_inrep*)&req)->bmsk))
+        print "      type    : "+v.string(((swevent_inrep*)&req)->type   )
+        print "      setting : "+v.string(((swevent_inrep*)&req)->setting)
+    )
+    else if "&xlate"=="rpm_low_power_led_xlate"
+    (
+        &num_colors=v.sizeof((*(low_power_led_inrep*)0).color_map)
+        &idx=0
+        &str=""
+        while &idx<&num_colors
+        (
+            &str="&str"+format.hex(2,v.value(((low_power_led_inrep*)&req)->color_map[&idx]))+" "
+            &idx=&idx+1
+        )
+        print "      color_map : &str"
+        print "      enabled   : 0x"+format.hex(8,v.value(((low_power_led_inrep*)&req)->enabled))
+    )
+    else if "&xlate"=="gpio_toggle_xlate"
+    (
+        print "      reserved_0 : "+format.hex(2,v.value(((gpio_toggle_inrep*)&req)->reserved_0))
+        print "      reserved_1 : "+format.hex(2,v.value(((gpio_toggle_inrep*)&req)->reserved_1))
+        print "      state      : "+format.hex(2,v.value(((gpio_toggle_inrep*)&req)->state     ))
+        print "      pin        : "+format.hex(2,v.value(((gpio_toggle_inrep*)&req)->pin       ))
+    )
+    else
+    (
+        print %error %attr 0x85 "cannot parse &req ... &xlate is not supported"
+    )
+
+    return
+
+;===============================================================================
+find_image_section_index:
+    entry &index
+    &i=0
+    while string.scan(v.string((rpm_image_section_name)&i),"RPM_IMAGE_SECTIONS_COUNT",0)!=0
+    (
+        &s=v.string((rpm_image_section_name)&i)
+        if string.scan("&s",&index,0)==0
+        (
+            &index=&i
+            goto exit
+        )
+        &i=&i+1
+    )
+    print %error "&index not found"
+    enddo
+exit:
+    return &i
+
+
+;===============================================================================
+is_valid_heap_address:
+    entry &addr &resource_idx
+    local &num_sections
+    local &i
+    local &base
+    local &end
+    local &section
+
+    if !y.exist(theHeap)||&addr==0
+        return true()
+
+    &num_sections=v.sizeof(theHeap.heap_sections)/v.sizeof(theHeap.heap_sections[0])
+
+    &i=0
+    repeat
+    (
+        &section=v.value(theHeap.heap_sections[&i])
+        repeat
+        (
+            &base=v.value(((rpm_heap_section_t)&section)->initialPtr)
+            &end=v.value(((rpm_heap_section_t)&section)->heapLimit)
+
+            if (&addr>=&base)&&(&addr<&end)
+            (
+                return true()
+            )
+
+            &section=v.value(((rpm_heap_section_t)&section)->next_section)
+        )
+        while &section!=0
+
+        &i=&i+1
+    )
+    while &i<&num_sections
+
+    area.view A000
+    area.select A000
+    print %error %attr 0x85 "Memory corruption in rpm.resources["+format.decimal(3,&resource_idx)+"]. Invalid HEAP address: &addr"
+    area.select "&title"
+    print %error %attr 0x85 "Memory corruption in rpm.resources["+format.decimal(3,&resource_idx)+"]. Invalid HEAP address: &addr"
+    screen
+
+    return false()
+

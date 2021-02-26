@@ -1,0 +1,94 @@
+/*=============================================================================
+  Readme file for UEFI Crashdumps 
+
+  Copyright (c) 2016 Qualcomm Technologies, Inc. All rights reserved.
+
+                              EDIT HISTORY
+
+ when       who     what, where, why
+ --------   ---     -----------------------------------------------------------
+ 10/20/16   ai      Initial version
+=============================================================================*/
+
+ --------------
+| Introduction |
+ --------------
+
+UEFI scenarios tend to be simple and favor debbuging live target through the use of JTAG and
+T32 CMM scripts as described in DebuggingUEFI.txt. This is the preferred and recommended
+approach to debugging UEFI issues.
+
+In certain specific scenarios, it may be required to enable support for taking crashdumps in UEFI.
+This can be enabled through the use of feature flag "ENABLE_RAMDUMP" in the DSC as described under
+[BuildOptions]. By default, this feature remains disabled.
+
+NOTE: Crashdumps should not be enabled in RETAIL scenarios and this is currently asserted by
+checking if PRODMODE is enabled
+
+Crashdumps are taken under two specific scenarios:
+ - The default exception handler gets called as a result of an abort
+ - The UEFI software watchdog timer expires (default: 10mins)
+
+ -------------------------
+| Software Watchdog Timer |
+ ------------------------
+
+The default s/w watchdog is configured for 10mins. When the s/w watchdog timer expires, the system will
+reset and collect ramdumps. By default, the s/w watchdog timer is disabled under the following scenarios:
+ - Entering BDS menu
+ - Entering EBL (minimal shell)
+ - Entering Shell 2.0 (full shell)
+ - Entering Fastboot
+
+The s/w watchdog timer is controlled through the Boot Services as described in the UEFI Spec. The following
+code snippet demonstrates how to activate and disable the s/w watchdog timer:
+
+/* Disable watchdog timer */
+gBS->SetWatchdogTimer(0, 0, 0, NULL);
+
+/* Start 10min watchdog timer */
+gBS->SetWatchdogTimer(10 * 60, 0, 0, NULL);
+
+Please refer to gBS->SetWatchDogTimer() in the UEFI spec for more details.
+
+NOTE: There may be other scenarios such as low battery charging, stress tests, etc. that require the system
+to execute UEFI for more than 10mins. You must either disable the S/W watchdog or "pet" the watchdog by 
+disabling and setting a new timer within a seperate timer callback registered by your code. This timer
+callback should have a timer period that is less than the default (or new) S/W watchdog timer period.
+
+ -----------
+| Debugging |
+ -----------
+
+To collect and debug crashdumps, use the following procedure: 
+
+1. Collect crashdumps using the "QPST Configuration" tool when the device is in Sahara crashdump mode.
+   This is typically indicated by the display showing "Crashdump Mode".
+   Dumps are automatically collected to the following location: 
+     C:\ProgramData\Qualcomm\QPST\Sahara\Port_COMXX
+
+2. Launch T32 Simulator APPS window and run the load_uefi_dump.cmm script which takes the rampdump 
+   directory as an argument. For example:
+     cd.do load_uefi_dump.cmm C:\ProgramData\Qualcomm\QPST\Sahara\Port_COM10
+
+The rampdump and symbols will be loaded and debugging related windows (source code, call stack, registers,
+etc.) will be displayed.
+
+NOTE: If the callstack shows "SaveCpuCtxt" as the last called function, then the ramdumps were taken as 
+a result of software watchdog expiry. Traverse the callstack further to see the root cause.
+
+NOTE: It is recommended to use the load_uefi_dump.cmm script from the "ABL" QcomModulePkg/Tools directory 
+for debugging ramdumps collected due to crash in ABL 
+
+
+ -------------
+| Limitations |
+ -------------
+
+UEFI crashdumps are not supported by Crashscope and other ramdump analysis tools used for loading/debugging
+HLOS crashdumps. 
+
+However, Crashscope may still be useful in analyzing dumps that are taken as a result of secure world TZ. 
+In such cases, the non-secure world context must be restored through the state of the system backed up 
+in the secure world.
+

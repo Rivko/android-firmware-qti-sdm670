@@ -1,0 +1,540 @@
+entry &loc &CurrentDirectory &Target_Name &UniqueNumber &ADSP_BUILDROOT &ELF &SensorsELF
+
+
+;******************QURT QSAM output************************************
+printer.file &OutputPath_Qurt\dsp_QT.txt
+printer.filetype ascii
+printer.size 0xfa,0xfa
+wp.task.tasklist
+printer.file &OutputPath_Qurt\dsp_IN.txt
+printer.filetype ascii
+printer.size 0xfa,0xfa
+wp.task.irql
+printer.file &OutputPath_Qurt\dsp_MM.txt
+printer.filetype ascii
+printer.size 0xfa,0xfa
+wp.task.memlist
+printer.file &OutputPath_Qurt\dsp_DB.txt
+printer.filetype ascii
+printer.size 0xfa,0xfa
+ext.maxvsize 1000
+wp.task.dbg
+printer.file &OutputPath_Qurt\dsp_MB.txt
+printer.filetype ascii
+printer.size 0xfa,0xfa
+wp.task.tracelist 7
+printer.file &OutputPath_Qurt\dsp_vf_0.txt
+printer.filetype ascii
+printer.size 0xfa,0xfa
+if ("&Target_Name"!="660")&&("&Target_Name"!="845")
+(
+    thread 0
+    ON TIME 1.0s GOTO timeout1
+    wp.v.f
+timeout1:
+    thread 1
+    ON TIME 1.0s GOTO timeout2
+    wp.v.f
+timeout2:
+    thread 2
+    ON TIME 1.0s GOTO timeout3
+    wp.v.f 
+timeout3:
+)
+printer.file &OutputPath_temp\dsp_code_0.txt
+printer.filetype ascii
+printer.size 0xfa,0xfa
+if ("&Target_Name"!="660")&&("&Target_Name"!="845")
+(
+    thread 0
+    wp.d.l
+    thread 1
+    wp.d.l
+    thread 2
+    wp.d.l 
+)
+printer.file &OutputPath_Qurt\dsp_reg_0.txt
+printer.filetype ascii
+printer.size 0xfa,0xfa
+if ("&Target_Name"!="660")&&("&Target_Name"!="845")
+(
+    thread 0
+    wp.register
+    thread 1
+    wp.register
+    thread 2
+    wp.register
+)    
+printer.file &OutputPath_Qurt\dsp_mmu.txt
+printer.filetype ascii
+printer.size 0xfa,0xfa
+wp.mmu.list
+printer.file &OutputPath_Qurt\dsp_qurt_status.txt
+printer.filetype ascii
+printer.size 0xfa,0xfa
+wp.v.v (int)QURT_system_state
+
+;******************SMD info************************************
+printer.file &OutputPath_temp\dsp_smd_info.txt
+printer.filetype ascii
+printer.size 0xfa,0xfa
+wp.v.v %open %string smd_info[2] smd_info[2].info.stream.tx_shared_info_ptr smd_info[2].info.stream.rx_shared_info_ptr smd_info[3] smd_info[3].info.stream.tx_shared_info_ptr smd_info[3].info.stream.rx_shared_info_ptr smd_info[4] smd_info[4].info.stream.tx_shared_info_ptr smd_info[4].info.stream.rx_shared_info_ptr smd_info[5] smd_info[5].info.stream.tx_shared_info_ptr smd_info[5].info.stream.rx_shared_info_ptr smd_info[6] smd_info[6].info.stream.tx_shared_info_ptr smd_info[6].info.stream.rx_shared_info_ptr smd_info[7] smd_info[7].info.stream.tx_shared_info_ptr smd_info[7].info.stream.rx_shared_info_ptr smd_info[8] smd_info[8].info.stream.tx_shared_info_ptr smd_info[8].info.stream.rx_shared_info_ptr smd_info[9] smd_info[9].info.stream.tx_shared_info_ptr smd_info[9].info.stream.rx_shared_info_ptr smd_info[10] smd_info[10].info.stream.tx_shared_info_ptr smd_info[10].info.stream.rx_shared_info_ptr
+
+printer.file &OutputPath_Qurt\Qurt_Error_Info.txt
+printer.filetype ascii
+printer.size 0xfa,0xfa
+wp.v.v %OPEN.2 %HEX QURT_error_info
+&command="perl &CurrentDirectory\CrashedThread.pl &OutputPath_temp"
+OS.Hidden &command
+OPEN #1 "&OutputPath_temp\GetCrashedTCB.txt" /READ
+READ #1 %line &CheckFlag
+READ #1 %line &TCBPointer
+CLOSE #1
+printer.file &OutputPath_temp\SSRELR.txt
+printer.filetype ascii
+printer.size 0xfa,0xfa
+
+wp.v.v (((QURTK_thread_context*)&TCBPointer)->ssrelr) %HEX
+
+;---Check if it is err_ex thread
+;---If it is err_ex thraed , get the qurt error from qurt_error_info
+
+&max_cnt=5
+&error_thread=0
+&crash_error_tcb=&TCBPointer
+&pcycle=0
+&counter=0
+&prev_pcycle=0x7fffffffffffffff
+if ("&CheckFlag"=="")
+(
+    &CheckFlag=0
+)
+if ("&TCBPointer"!="")
+(
+    if (&TCBPointer!=0)
+    (
+        &value_ugpgp=v.value(((QURTK_thread_context*)&crash_error_tcb)->ugpgp)
+        &value_lo=&value_ugpgp&0xFFFFFFFF
+        &value_ugp=&value_ugpgp>>0x20
+        &value_ugp=&value_ugp&0xFFFFFFFF
+
+        &Linkedlist_l_name_full=V.STRING(((QURT_utcb_t)&value_ugp).attr.name)
+        &err_ex_name="err_ex"
+        &err_ex_name1="uerr_ex"
+        &err_ex_pd1_name="err_pd_ex_1"
+        &err_ex_pd2_name="err_pd_ex_2"
+        &err_ex_pd3_name="err_pd_ex_3"
+
+
+        if (("&Linkedlist_l_name_full"=="&err_ex_name")||("&Linkedlist_l_name_full"=="&err_ex_name1")||("&Linkedlist_l_name_full"=="&err_ex_pd1_name")||("&Linkedlist_l_name_full"=="&err_ex_pd2_name")||("&Linkedlist_l_name_full"=="&err_ex_pd3_name"))
+        (
+
+            while (&counter<&max_cnt)
+            (
+               &error_thread=v.value(QURT_error_info.users_errors.entry[&counter].error_tcb)
+
+               if (&error_thread!=0)
+               (
+                  &pcycle=v.value(QURT_error_info.users_errors.entry[&counter].pcycle)
+                  if (&pcycle<&prev_pcycle)
+                  (
+                        &crash_error_tcb= &error_thread
+                        &prev_pcycle=&pcycle
+                  )
+                )
+                &counter=&counter+1
+            ) 
+
+            if (&crash_error_tcb==0)
+            (
+                &crash_error_tcb= &error_thread
+            )
+            &TCBPointer=&crash_error_tcb
+            &CheckFlag=1
+        )
+
+    )
+)    
+if (&CheckFlag==1)
+(
+    printer.file &OutputPath_temp\Crashed_ThreadCallStack.txt
+    printer.filetype ascii
+    printer.size 0xfa,0xfa
+    ON TIME 1.0s GOTO timeout4
+    wp.v.f /task &TCBPointer
+timeout4:    
+    printer.file &OutputPath_temp\Crashed_ThreadCallStack_Locals.txt
+    printer.filetype ascii
+    printer.size 0xfa,0xfa
+    ON TIME 1.0s GOTO timeout5
+    wp.v.f /locals /task &TCBPointer
+timeout5:
+    printer.open &OutputPath_Qurt\QURTVersion.txt
+    wp.v.v %STRING QURTK_version
+    printer.file.close
+    &command="python &CurrentDirectory\FindQurtVer.py &OutputPath_Qurt"
+    Os.Hidden &command
+    OPEN #1 "&OutputPath_Qurt\QURTVerFlag.txt" /READ
+    READ #1 %line &QURTCheckFlag
+    CLOSE #1
+    printer.file &OutputPath_temp\Crashed_Thread_RegSet.txt
+    printer.filetype ascii
+    printer.size 0xfa,0xfa
+    do &CurrentDirectory\loadtcb.cmm &TCBPointer &QURTCheckFlag &OutputPath_temp
+    wp.r
+    &command="perl &CurrentDirectory\CrashedThreadELR.pl &OutputPath_temp"
+    OS.Hidden &command
+    OPEN #1 "&OutputPath_temp\GetCrashedELR.txt" /READ
+    READ #1 %line &CrashedThreadELRVal
+    printer.file &OutputPath_temp\Crashed_ThreadLastExe_Code.txt
+    printer.filetype ascii
+    printer.size 0xfa,0xfa
+    wp.d.l &CrashedThreadELRVal
+    printer.file &OutputPath_temp\Error_Cause.txt
+    printer.filetype ascii
+    printer.size 0xfa,0xfa
+    wp.v.v (((QURTK_thread_context*)&TCBPointer)->error.cause)
+    printer.file &OutputPath_temp\StackWalkerCallStack.txt
+    printer.filetype ascii
+    printer.size 0xfa,0xfa
+    do &CurrentDirectory\q6_stack_walker.cmm &TCBPointer
+    wp.area q6_sw
+    WINClear TOP  
+)
+if (&CheckFlag==2)
+(
+    printer.file &OutputPath_temp\Crashed_ThreadCallStack.txt
+    printer.filetype ascii
+    printer.size 0xfa,0xfa
+    wp.v.f
+    printer.file &OutputPath_temp\Crashed_ThreadCallStack_Locals.txt
+    printer.filetype ascii
+    printer.size 0xfa,0xfa
+    wp.v.f /locals
+    printer.file &OutputPath_temp\Crashed_Thread_RegSet.txt
+    printer.filetype ascii
+    printer.size 0xfa,0xfa
+    wp.r
+    &command="perl &CurrentDirectory\CrashedThreadELR.pl &OutputPath_temp"
+    OS.Hidden &command
+    OPEN #1 "&OutputPath_temp\GetCrashedELR.txt" /READ
+    READ #1 %line &CrashedThreadELRVal
+    printer.file &OutputPath_temp\Crashed_ThreadLastExe_Code.txt
+    printer.filetype ascii
+    printer.size 0xfa,0xfa
+    wp.d.l &CrashedThreadELRVal
+    printer.file &OutputPath_temp\Error_Cause.txt
+    printer.filetype ascii
+    printer.size 0xfa,0xfa
+    wp.v.v %HEX QURT_error_info.status.cause
+    printer.file &OutputPath_temp\StackWalkerCallStack.txt
+    printer.filetype ascii
+    printer.size 0xfa,0xfa
+    do &CurrentDirectory\q6_stack_walker.cmm &TCBPointer
+    wp.area q6_sw
+    WINClear TOP  
+)
+printer.file &loc\Crash_Info.txt
+printer.filetype ascii
+printer.size 0xfa,0xfa
+do &CurrentDirectory\get_error.cmm &TCBPointer
+WINClear TOP  
+printer.file &OutputPath_temp\Error_info.txt
+printer.filetype ascii
+printer.size 0xfa,0xfa
+wp.area err_info
+;dialog.message "&Target_Name"
+
+printer.file &OutputPath_temp\DebugBuffer.txt
+printer.filetype ascii
+printer.size 0xfa,0xfa
+wp.task.dbg
+printer.file &OutputPath_Qurt\MergeBuffer.txt
+printer.filetype ascii
+printer.size 0xfa,0xfa
+wp.task.tracelist 7
+printer.file &OutputPath_temp\ChickenBits_Value.txt
+printer.filetype ascii
+printer.size 0xfa,0xfa
+wp.v.v %hex QURTK_chicken_bits_chicken
+
+&command="python &CurrentDirectory\DSPAnalysis.py &loc &Target_Name"
+Os.Hidden &command
+IF OS.FILE(&OutputPath_ulog\Merged_ulog.ulog)
+(
+    &command="python &CurrentDirectory/LogUtils.py merge op &OutputPath_ulog\Merged_ulog.ulog srcfolder &OutputPath_ulog all ulog withsrc"
+    Os.Hidden &command
+)    
+&command="perl &CurrentDirectory\Compare.pl &OutputPath_temp &UniqueNumber"
+Os.Hidden &command
+OPEN #1 "&OutputPath_temp\Compare.txt" /READ
+READ #1 %line &CompareFlag
+CLOSE #1
+if (&CompareFlag==2)
+(
+    &command="perl &CurrentDirectory\CrashSignature.pl &loc &UniqueNumber &CheckFlag &Target_Name"
+    Os.Hidden &command
+    &command="perl &CurrentDirectory\CrashSigCompare.pl &loc &UniqueNumber &Target_Name &CompareFlag"
+    Os.Hidden &command
+
+    OPEN #1 "&loc\SimilarIssue.txt" /READ
+    READ #1 %line &SimIssue
+    CLOSE #1
+    if (&SimIssue==1)
+    (
+        dialog.message "Similar issue Found for details go to file SimilarCrashes.txt @ &loc"
+    )
+)
+if (&CompareFlag==1)
+(
+    &command="perl &CurrentDirectory\Timestamp.pl &loc"
+    Os.Hidden &command
+    OPEN #1 "&loc\CurTimeStamps.txt" /READ
+    READ #1 %line &TimeUserName
+    CLOSE #1
+    &command="perl &CurrentDirectory\CrashSignature.pl &loc &TimeUserName &CheckFlag &Target_Name"
+    Os.Hidden &command
+    &command="perl &CurrentDirectory\CrashSigCompare.pl &loc &TimeUserName &Target_Name &CompareFlag"
+    Os.Hidden &command
+    OPEN #1 "&loc\SimilarIssue.txt" /READ
+    READ #1 %line &SimIssue
+    CLOSE #1
+    if (&SimIssue==1)
+    (
+        dialog.message "Similar issue Found for details go to file SimilarCrashes.txt @ &loc"
+    )
+)
+(
+    ON ERROR JUMPTO after_NPADump
+    area.select Crashman
+    print "Running NPADump.cmm scripts..."
+    printer.file &OutputPath_temp\Crashman_Log.txt
+    printer.filetype ascii
+    printer.size 0xfa,0xfa
+    wp.area.view Crashman
+    cd.do &CurrentDirectory\NPADump.cmm &OutputPath_ulog &CurrentDirectory
+    Y.BROWSE npa_scheduler
+    WINclear TOP
+    WINclear TOP
+    area.select Crashman
+    print "Running NPADump.cmm scripts...Done"
+    printer.file &OutputPath_temp\Crashman_Log.txt
+    printer.filetype ascii
+    printer.size 0xfa,0xfa
+    wp.area.view Crashman
+)
+after_NPADump:
+area.select Crashman
+print "Running micro_ULogDump.cmm scripts..."
+printer.file &OutputPath_temp\Crashman_Log.txt
+printer.filetype ascii
+printer.size 0xfa,0xfa
+wp.area.view Crashman
+
+if ("&Target_Name"=="8994")
+(
+    area.select Crashman
+    print "Running micro_ULogDump.cmm scripts..."
+    printer.file &OutputPath_temp\Crashman_Log.txt
+    printer.filetype ascii
+    printer.size 0xfa,0xfa
+    wp.area.view Crashman
+    do &CurrentDirectory\micro_ULogDump.cmm &OutputPath_temp
+    WINclear TOP
+    area.select Crashman
+    print "Running micro_ULogDump.cmm scripts.. Done.."
+    printer.file &OutputPath_temp\Crashman_Log.txt
+    printer.filetype ascii
+    printer.size 0xfa,0xfa
+    wp.area.view Crashman
+)
+else if ("&Target_Name"=="8992")
+(
+    area.select Crashman
+    print "Running micro_ULogDump.cmm scripts..."
+    printer.file &OutputPath_temp\Crashman_Log.txt
+    printer.filetype ascii
+    printer.size 0xfa,0xfa
+    wp.area.view Crashman
+    do &CurrentDirectory\micro_ULogDump.cmm &OutputPath_temp
+    WINclear TOP
+    area.select Crashman
+    print "Running micro_ULogDump.cmm scripts.. Done.."
+    printer.file &OutputPath_temp\Crashman_Log.txt
+    printer.filetype ascii
+    printer.size 0xfa,0xfa
+    wp.area.view Crashman
+)
+else if ("&Target_Name"=="8952")
+(
+    area.select Crashman
+    print "Running micro_ULogDump.cmm scripts..."
+    printer.file &OutputPath_temp\Crashman_Log.txt
+    printer.filetype ascii
+    printer.size 0xfa,0xfa
+    wp.area.view Crashman
+    do &CurrentDirectory\micro_ULogDump.cmm &OutputPath_temp
+    WINclear TOP
+    area.select Crashman
+    print "Running micro_ULogDump.cmm scripts.. Done.."
+    printer.file &OutputPath_temp\Crashman_Log.txt
+    printer.filetype ascii
+    printer.size 0xfa,0xfa
+    wp.area.view Crashman
+)
+else if ("&Target_Name"=="8953")
+(
+    area.select Crashman
+    print "Running micro_ULogDump.cmm scripts..."
+    printer.file &OutputPath_temp\Crashman_Log.txt
+    printer.filetype ascii
+    printer.size 0xfa,0xfa
+    wp.area.view Crashman
+    do &CurrentDirectory\micro_ULogDump.cmm &OutputPath_temp
+    WINclear TOP
+    area.select Crashman
+    print "Running micro_ULogDump.cmm scripts.. Done.."
+    printer.file &OutputPath_temp\Crashman_Log.txt
+    printer.filetype ascii
+    printer.size 0xfa,0xfa
+    wp.area.view Crashman
+)
+else if ("&Target_Name"=="8937")
+(
+    area.select Crashman
+    print "Running micro_ULogDump.cmm scripts..."
+    printer.file &OutputPath_temp\Crashman_Log.txt
+    printer.filetype ascii
+    printer.size 0xfa,0xfa
+    wp.area.view Crashman
+    do &CurrentDirectory\micro_ULogDump.cmm &OutputPath_temp
+    WINclear TOP
+    area.select Crashman
+    print "Running micro_ULogDump.cmm scripts.. Done.."
+    printer.file &OutputPath_temp\Crashman_Log.txt
+    printer.filetype ascii
+    printer.size 0xfa,0xfa
+    wp.area.view Crashman
+)
+else
+(
+    area.select Crashman
+    print "Running micro_ULogDump.cmm scripts..."
+    printer.file &OutputPath_temp\Crashman_Log.txt
+    printer.filetype ascii
+    printer.size 0xfa,0xfa
+    wp.area.view Crashman
+    do &CurrentDirectory\micro_ULogDump.cmm &OutputPath_ulog
+    WINclear TOP
+    area.select Crashman
+    print "Running micro_ULogDump.cmm scripts.. Done.."
+    printer.file &OutputPath_temp\Crashman_Log.txt
+    printer.filetype ascii
+    printer.size 0xfa,0xfa
+    wp.area.view Crashman
+)
+area.select Crashman
+print "Running micro_ULogDump.cmm scripts...Done"
+printer.file &OutputPath_temp\Crashman_Log.txt
+printer.filetype ascii
+printer.size 0xfa,0xfa
+wp.area.view Crashman
+
+
+;Updating DSPAnalysis.end file for ASHA
+(
+    area.create DSP
+    area.view Crashman 
+    area.select Crashman    
+    printer.file &OutputPath_temp\DSPAnalysis.end
+    printer.filetype ascii
+    printer.size 0xfa,0xfa
+    wp.area DSP
+    if OS.FILE(&OutputPath_temp\DD.txt)
+    (
+        OPEN #1 "&loc\DSPAnalysis.txt" /WRITE
+        OPEN #2 "&OutputPath_temp\DD.txt" /READ
+        WRITE #1 ""
+        WRITE #1 "DD Algorithm"
+        WRITE #1 "============================================================"
+        RePeaT 
+        (
+            READ #2 %line &headerline
+            IF EOF()
+            GOTO end_loop1
+            WRITE #1 "DD.txt: &headerline"
+        )
+end_loop1: 
+        CLOSE #1
+        CLOSE #2
+    )    
+    if OS.FILE(&OutputPath_temp\Error_CMM_Files.txt)
+    (
+        OPEN #1 "&loc\DSPAnalysis.txt" /APPEND
+        OPEN #2 "&OutputPath_temp\Error_CMM_Files.txt" /READ
+        WRITE #1 ""
+        WRITE #1 "CMM Error Files"
+        WRITE #1 "============================================================"
+        RePeaT 
+        (
+            READ #2 %line &headerline
+            IF EOF()
+            GOTO end_loop2
+            WRITE #1 "&headerline"
+        )
+end_loop2: 
+        CLOSE #1
+        CLOSE #2
+    )    
+    OPEN #1 "&OutputPath_temp\DSPAnalysis.end" /WRITE
+    OPEN #2 "&loc\DSPAnalysis.txt" /READ
+    RePeaT 
+    (
+        READ #2 %line &headerline
+        IF EOF()
+        GOTO end_loop
+        WRITE #1 "&headerline"
+    )
+end_loop: 
+    CLOSE #1
+    CLOSE #2
+)
+;dialog.message "The Crash analysis is provided in the file DSPAnalysis.txt @ &loc"
+(
+    AREA.Create DSPAnaly 500. 1000. ;create and show message area
+    WINPOS 50% 0. 50% 103% 0. 0. DSPAnaly
+    AREA.Select DSPAnaly
+    AREA.view DSPAnaly
+    LOCAL &headerline
+    OPEN #1 "&loc\DSPAnalysis.txt" /READ
+    READ #1 %line &headerline
+    PRINT "&headerline"
+    RePeaT 
+    (
+        READ #1 %line &headerline
+        IF EOF()
+        GOTO endloop
+        IF "&headerline"=="Heap Analysis"
+        GOTO endloop
+        PRINT "&headerline"
+    )
+endloop: CLOSE #1
+    PRINT
+    PRINT "################"
+    PRINT "Complete DSPAnalysis.txt (like Heap analysis, error f3 logs..)"
+    PRINT "@ &loc\DSPAnalysis.txt"
+    PRINT "################"
+)
+
+
+
+
+
+
+
+
+
+
+
+
+

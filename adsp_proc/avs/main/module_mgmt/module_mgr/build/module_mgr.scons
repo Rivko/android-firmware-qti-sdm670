@@ -1,0 +1,100 @@
+#===============================================================================
+#
+# AVS AU
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2016 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/avs.adsp/2.8.5/module_mgmt/module_mgr/build/module_mgr.scons#1 $
+#  $DateTime: 2017/11/07 23:00:25 $
+#  $Author: pwbldsvc $
+#  $Change: 14795016 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+
+#-------------------------------------------------------------------------------
+# Make all warnings into errors
+#-------------------------------------------------------------------------------
+
+
+env.Append(CFLAGS = '-Wunused-variable')
+
+if 'USES_ENABLE_FUNCTION_SECTIONS' in env:
+   env.Append(CFLAGS = '-ffunction-sections')
+
+core_public_apis = [
+   'DEBUGTOOLS',
+   'KERNEL',
+   'POWER',
+   'SERVICES',
+   'DAL',
+   'SYSTEMDRIVERS'
+   ]
+
+env.RequirePublicApi(core_public_apis, area='core')
+env.RequireRestrictedApi(['SHARED_LIBRARY_INC_PATHS'])
+
+env.RequirePublicApi(core_public_apis, area='core')
+
+platform_public_apis = [
+   'PLATFORM_FS'
+  ]
+
+# This has to be the last include command, so that the Elite_CAPI.h and Elite_APPI.h are not overridden
+env.RequirePublicApi(platform_public_apis, area='platform')
+
+env.RequirePublicApi('ADSP_AMDB')
+
+
+env.PublishPrivateApi('MOD_MGR',[
+   '../inc',
+   '../src', #so that autogen can use.
+   ])
+
+if env.get('hy22') == True:
+   env.PublishPrivateApi('MOD_MGR',[
+      '../src/public/',      
+      ])
+else:
+   env.PublishPrivateApi('MOD_MGR',[
+      '../src/prop/',      
+      ])
+      
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = ".."
+LIBNAME = 'module_mgr'
+LIBNAME_STUB = LIBNAME + '_stub'
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+#import pdb;pdb.set_trace()
+if "MDSPMODE" in env:
+   auto_gen_dir = env.subst('${BUILDPATH}')
+   autogen='autogen/%s/*.cpp' %auto_gen_dir
+   avs_reg_sources = env.GlobSourceFiles(['src/*.cpp', 'src/*.c', autogen], SRCPATH,posix=True)
+   avs_stub_sources = env.GlobSourceFiles(['stub_src/*.cpp', 'stub_src/*.c', autogen], SRCPATH,posix=True)
+else:
+   avs_reg_sources = env.GlobSourceFiles(['src/*.cpp', 'src/*.c', 'autogen/*.cpp'], SRCPATH,posix=True)
+   avs_stub_sources = env.GlobSourceFiles(['stub_src/*.cpp', 'stub_src/*.c', 'autogen/*.cpp'], SRCPATH,posix=True)
+
+avs_prop_sources = []
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+bucket=['AVS_ADSP','AVS_ADSP_USER']
+
+env.AddAvsLibrary(bucket,'${BUILDPATH}/'+LIBNAME, [avs_reg_sources, avs_stub_sources,  avs_prop_sources],PACK_SRC=True)     

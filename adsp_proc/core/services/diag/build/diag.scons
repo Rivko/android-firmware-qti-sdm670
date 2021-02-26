@@ -1,0 +1,193 @@
+#===============================================================================
+#
+# Diag Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2013-2014, 2016-2017 by QUALCOMM Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: $
+#  $DateTime: 2010/02/25 18:33:40 $
+#  $Author: sgownipa $
+#  $Change: 1194317 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 02/21/17   ph      Tag DIAG ID header to all the diag packets sent out.
+# 06/08/17   gn      Added support for diag services to uImage
+# 06/05/17   nk      Added debug support for uimage in root PD
+# 10/24/16   gn      Changes to support common PW for ADSP, CDSP and SLPI
+# 05/12/16   ph      SMD references removal and code clean up.
+# 05/20/16   as      Use qsocket id from qsocket_ids.h header file
+# 11/14/14   jtm/vk  Added diagbuf_mpd_common.c
+# 10/17/14   rs      Updated scons api's.
+# 07/06/14   ph      Added support for Diag over STM
+# 05/16/14   sm      Added TISE image support.  Note that 'USES_MSVC' and
+#                    'USES_TISE' are used to specify a subset of files from this
+#                    driver to compile for the Windows (MSVC) compiler.  Please
+#                    do not remove these definitions from this file.
+# 10/21/13   ph      OSAL APIs updated use ATS timers.
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/services/diag/"
+
+if not env.PathExists(SRCPATH):
+   SRCPATH = "${BUILD_ROOT}/services/diag"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+env.Append(CPPDEFINES=['MSG_BT_SSID_DFLT=MSG_SSID_DIAG'])
+env.Append(CPPDEFINES=['FEATURE_DIAG_8K_QDSP6'])
+env.Append(CPPDEFINES=['FEATURE_ALIGNED_QWORD'])
+env.Append(CPPDEFINES=['DIAG_MP'])
+env.Append(CPPDEFINES=['FEATURE_SMD'])
+env.Append(CPPDEFINES=['DIAG_QDSP6_APPS_PROC']) # Common define for ADSP, CDSP and SLPI
+env.Append(CPPDEFINES=['FEATURE_NO_REX'])
+
+if env.has_key('ADSP_PROC'):
+   env.Append(CPPDEFINES=['DIAG_IMAGE_QDSP6_PROC'])
+   env.Append(CPPDEFINES=['DIAG_MMPM_SUPPORT'])
+
+env.Append(CPPDEFINES=['SLEEP_DIAG_OKTS_SIG'])
+env.Append(CPPDEFINES=['FEATURE_SAVE_DEBUG_TRACE'])
+
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'BOOT',
+   'BUSES',
+   'DAL',
+   'DEBUGTOOLS',
+   'DEBUGTRACE',
+   'HAL',
+   'HWENGINES',
+   'MPROC',
+   'POWER',
+   'SERVICES',
+   'STORAGE',
+   'SYSTEMDRIVERS',
+   'WIREDCONNECTIVITY',
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#For qsocket.h header file
+env.RequirePublicApi(['COMMON'], area='QMIMSGS')
+
+# Set this flag to True to compile in Diag over STM support
+# If False, diag_stm.c file will not be compiled and the feature will be disabled
+diag_stm_support=True
+
+if diag_stm_support==True:
+   env.Append(CPPDEFINES=["FEATURE_DIAG_STM"])
+
+#temp for dev testing
+#  env.Append(CPPDEFINES=["FEATURE_DIAG_STRESS_PROFILE"])
+
+if 'USES_ISLAND' in env:
+   env.Append(CPPDEFINES=["DIAG_UIMAGE_MODE"])
+   #We don't support island functions with '-fstack-protector'
+   if "-fstack-protector" in env['HEXAGON_STKPRO']:
+      env.Replace(HEXAGON_STKPRO = "")
+
+
+#-------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+DIAG_SOURCES = [
+    '${BUILDPATH}/DCM/rtos/src/log_api.c',
+    '${BUILDPATH}/DCM/rtos/src/diagpkt.c',
+    '${BUILDPATH}/DCM/rtos/src/event_api.c',
+    '${BUILDPATH}/DCM/rtos/src/msg_api.c',
+    '${BUILDPATH}/DCM/common/src/diag.c',
+    '${BUILDPATH}/DCM/common/src/diagbuf.c',
+    '${BUILDPATH}/DCM/common/src/diagdiag_common.c',
+    '${BUILDPATH}/DCM/common/src/diaglog.c',
+    '${BUILDPATH}/DCM/common/src/msg.c',
+    '${BUILDPATH}/DCM/common/src/event.c',
+    '${BUILDPATH}/DCM/common/src/feature.c',
+    '${BUILDPATH}/DCM/common/src/diagmm.c',
+    '${BUILDPATH}/DCM/common/src/diagdsm.c',
+    '${BUILDPATH}/DCM/common/src/diagcomm_sio.c',
+    '${BUILDPATH}/DCM/common/src/diagcomm_smd.c',
+    '${BUILDPATH}/DCM/common/src/diagcomm_io.c',
+    '${BUILDPATH}/DCM/common/src/diagcomm_ctrl.c',
+    '${BUILDPATH}/DCM/common/src/diag_mode.c',
+#    '${BUILDPATH}/platform/adsp/src/diagstub.c',
+    '${BUILDPATH}/platform/adsp/src/diagtask.c',
+    '${BUILDPATH}/platform/adsp/src/diagstartup.c',
+    '${BUILDPATH}/platform/adsp/src/diag_qdi.c',
+    '${BUILDPATH}/DCM/common/src/diagcomm_cmd.c',
+    '${BUILDPATH}/platform/bmp/src/diagcomm_cfg.c',
+    '${BUILDPATH}/LSM/common/src/diagbuf_mpd_common.c',
+    '${BUILDPATH}/LSM/common/src/diag_pd_common.c',
+    '${BUILDPATH}/LSM/common/src/micro_diagbuf_mpd_core.c',
+    '${BUILDPATH}/DCM/common/src/diagcomm_io_socket.c',
+    '${BUILDPATH}/DCM/common/src/diagcomm_io_udp.c',
+    '${BUILDPATH}/DCM/common/src/diag_diagID.c',
+   ]
+
+if env.has_key('ADSP_PROC'):
+  DIAG_SOURCES+= ['${BUILDPATH}/platform/adsp/src/diagMmpm.c']
+
+if diag_stm_support==True:
+      DIAG_SOURCES += [
+         '${BUILDPATH}/DCM/common/src/diag_stm.c'
+    ]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+env.AddLibrary([
+   'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+   'APPS_IMAGE', 'CBSP_APPS_IMAGE',
+   'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE',
+   'SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE',
+   'WCN_IMAGE'],
+   '${BUILDPATH}/diag',
+   DIAG_SOURCES)
+
+#-------------------------------------------------------------------------------
+# RCINIT Task and Init Fields and Initialization
+#-------------------------------------------------------------------------------
+RCINIT_INIT_DIAG_INIT = {
+  'sequence_group'             : 'RCINIT_GROUP_1',           # required
+  'init_name'                  : 'diag',                     # required
+  'init_function'              : 'diag_startup',             # required
+  'dependencies'               : ['timer_client','smd','osal','ipc_router','sleep_init']
+}
+
+if 'USES_RCINIT' in env:
+   RCINIT_IMG = ['CORE_MODEM', 'CORE_QDSP6_SW']
+   # SMD INIT
+   env.AddRCInitFunc( RCINIT_IMG, RCINIT_INIT_DIAG_INIT )
+
+
+
+#--------------------------------------------------------------------------------
+# Enable this to remove compile optimizations (for debugging)
+# DO NOT leave enabled when checking in file
+#--------------------------------------------------------------------------------
+#env.Replace(HEXAGONCC_OPT = "-O0")

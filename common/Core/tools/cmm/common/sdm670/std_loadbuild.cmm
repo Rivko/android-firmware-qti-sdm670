@@ -1,0 +1,529 @@
+//============================================================================
+//  Name:                                                                     
+//    std_loadbuild.cmm 
+//
+//  Description:                                                              
+//    Top level build loading script. Target specific
+//    
+//    This script has two primary interfaces - command line and GUI.
+//    If command line option is not give  or is wrong, GUI will be invoked.
+//
+//      Command line usage:
+//          do std_loadbuild Option=<Load Option> Images=<list,of,images> Log=<dump path> Type=<USB|JTAG|AUTO> alternateelf=<elf file> extraoption=<silent|forcesilent>
+//              Arguments:
+//                  Load Option 
+//                      ERASEONLY - invokes jtagprogrammer to erase flash
+//                      LOADCOMMON - only loads images necessary to get device to HLOS bootloader (MSM only)
+//                      LOADFULL - Loads full build. This is most common
+//                      LOADIMG - Loads list of images specified by <Images> argument
+//                  list,of,images
+//                      Comma deliminated list of images
+//                      ***Need to have <Option> specified as 'LOADIMG'***
+//                      For 9x55: any of the following:
+//                  extraoption
+//                      outputfile->C:\temp\myoutputfile.txt 
+//                          If specified, log data (success or failure) will be output specified directory
+//                          If not specified, only failure data will be printed to a log at OS.ENV(TEMP) (T32 local dir for unix systems)
+
+//      GUI usage:
+//          Gui will default open if LOADLOGS not specified.
+//
+//      Other subroutines:
+//          (these subroutines are meant for private use and are not intended to be used by user)
+//          CREATEDIALOG
+//              Called from std_loadsim if no command line given or incorrect command line given
+//              Creates user GUI.
+//          GETSIMDEFAULTS
+//              similar to GET_DEBUG_DEFAULTS from std_debug_<chipset>. Essentially a library from which
+//              A simulator loading script can call with and image name and get a known good configuration.
+//          
+//
+//                                                                            
+// Copyright (c) 2012 - 2016 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who             what, where, why
+// --------   ---             ---------------------------------------------------------
+// 12/02/2016 JBILLING      Bug fixed where 'method' not picked up from commandline
+// 11/22/2016 JBILLING      Call to std_results added
+// 03/10/2016 JBILLING      Updated temp path for host OS
+// 02/18/2016 JBILLING      Bug fix to not run gen_buildinfo on second pass (which erased any custom build info)
+// 02/02/2016 JBILLING      Changes for logging/automation
+// 04/01/2015 JBILLING      Added device programmer
+// 07/19/2012 AJCheriyan    Created for B-family 
+
+// ARG0 - Load option - Supported : ERASEONLY, LOADCOMMON, LOADFULL, LOADIMG
+//LOCAL &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5 &ARG6 &ARG7
+//ENTRY &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5 &ARG6 &ARG7
+
+
+//###################Arguments passed #####################
+LOCAL &ArgumentLine
+ENTRY %LINE &ArgumentLine
+LOCAL &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+ENTRY &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+LOCAL &PASS &RVAL0 &RVAL1 &RVAL2 &RVAL3 &RVAL4 &RVAL5 &RVAL6 &RVAL7 &RVAL8 &RVAL9 &RVAL10 &RVAL11
+
+//###################Local Variables#######################
+LOCAL &UseDialog 
+&UseDialog="TRUE"
+
+//Check T32 version
+do std_versionchecker
+
+    
+LOCAL &PROGRAMMER_DEVPROG 
+&PROGRAMMER_DEVPROG="&METASCRIPTSDIR/../deviceprogrammer/deviceprogrammer.cmm"
+&ContentsXML="&METASCRIPTSDIR/../../../../contents.xml"
+
+IF STRING.SCAN("&BUILDINFOHASRUN","BUILDINFOHASRUN",0)!=-1
+(
+    do std_utils EXECUTESCRIPT EXIT &TEMP/gen_buildinfo.cmm
+    GLOBAL &BUILDINFOHASRUN
+    &BUILDINFOHASRUN="TRUE"
+)
+
+IF STRING.SCAN("&OUTPUTFILE","OUTPUTFILE",0)!=-1
+(
+    GLOBAL &OUTPUTFILE &LOGSENABLED    
+    
+    &OUTPUTFILE="&TEMPDIR/std_debug.log"
+    &LOGSENABLED="FALSE"
+
+    GLOBAL &FAILUREKEYWORD &SUCCESSKEYWORD
+    &FAILUREKEYWORD="FAILURE"
+    &SUCCESSKEYWORD="SUCCESS"
+)
+
+
+
+//#####################Select Subroutine###################
+    // Name of the utility we are calling
+    LOCAL &SUBROUTINE
+    // Any subroutine specific options
+    // Default exists for each subroutine
+
+    //&SUBROUTINE=STR.UPR("&UTILITY")
+    //IF !(("&SUBROUTINE"=="CREATEDIALOG")||("&SUBROUTINE"=="GETSIMDEFAULTS")||("&SUBROUTINE"=="LOADLOGS")||("&SUBROUTINE"=="HELP"))
+    //(
+    &SUBROUTINE="MAIN" 
+    //)
+
+    // This should be created by some top level script. The setupenv for each proc would
+    // set this up
+    AREA.SELECT
+    // Call the required utility
+    GOSUB &SUBROUTINE &ArgumentLine
+    ENTRY %LINE &rvalue 
+
+    GOSUB EXIT &rvalue
+
+
+
+
+
+
+
+
+////////////////////////////////////////////////////////////////
+//
+//            MAIN
+//            Main std_loadbuild logic
+//            Expected input: 
+//              For GUI: None. 
+//              For commandline: needs:
+//                  Image(s) (e.g. mpss)
+//                  Log location
+//                  
+//
+////////////////////////////////////////////////////////////////
+MAIN:
+        LOCAL &ArgumentLine
+        ENTRY %LINE &ArgumentLine
+        LOCAL &result
+        
+        IF (STRING.SCAN("&ArgumentLine","Option=",0)==-1)
+        (
+            // Create the dialog for the script and wait for user
+            //Shouldn't return from here
+            &UseDialog="TRUE"
+            do std_buildoptions
+            END
+            
+        )
+        ELSE
+        (
+            &UseDialog="FALSE"
+
+        )
+        
+ //parse out given variables. NULL should be returned if nothing given
+    LOCAL &loadoption &loadimages &method &extraoptions
+    DO optextract Option,Images,Method,extraoption &ArgumentLine
+        ENTRY &loadoption &loadimages &method &extraoptions
+    
+    GOSUB SETUPLOGGING &extraoptions
+    // Reset the chip
+    do std_reset 
+    
+    LOCAL &result &JTagFallBack
+    
+    
+    IF ("&method"=="DEVPROG")&&(FILE.EXIST("&PROGRAMMER_DEVPROG"))
+    (
+        cd.do &PROGRAMMER_DEVPROG --contentsxml="&ContentsXML"
+            ENTRY &result
+        
+        //Regardless, get device to sys.u to boot up gracefully 
+        //(PMIC reset already occured in std_reset call above)
+        do std_reset NOPMIC
+        
+        IF (STRING.TRIM("&result")=="FAIL")
+        (
+            GOSUB DEVPROGFAIL_DIALOG
+            ENTRY &JTagFallBack
+            
+            IF (&JTagFallBack==TRUE())
+            (
+                &method="JTAG"
+            )
+            ELSE
+            (
+                PRINT %ERROR "Device Programmer Error! Exiting."
+                GO
+                do std_fatalexit SYSTEM "Device Programmer Error found, JTag fallback set to NO. Exiting."
+            )
+        )
+        //If file could not be found default to JTag
+        ELSE IF ("&result"=="NOFILE")
+        (
+            &method="JTAG"
+        )
+    )
+    
+    //Device Programmer may default back to Jtag
+    IF ("&method"=="JTAG")
+    (
+        // Call the HLOS specific load script
+        &HLOS_LOADSCRIPT="std_loadbuild_"+STR.LWR("&HLOS")
+        do &HLOS_LOADSCRIPT &loadoption &loadimages &extraoptions
+        ENTRY &result
+        // Now reset the chip to complete whatever loading remains
+        do std_reset
+        
+
+    )
+    
+    
+    //For workaround
+    IF ("&loadoption"=="LOADFULL")
+    (
+        do std_debug_&CHIPSET BOOTUP_WORKAROUND
+        GO
+    )
+    ELSE
+    (
+        // Let the system run and boot
+        do std_utils ATTACHPROC
+    )
+    
+	LOCAL &std_result_result &result_temp
+    &result_temp=STR.UPPER("&result")
+    IF STRING.SCAN("&result_temp","FAILURE",0)!=-1
+    (
+        &std_result_result="FAILURE"
+    )
+    ELSE IF STRING.SCAN("&result_temp","SUCCESS",0)!=-1
+    (
+        &std_result_result="SUCCESS"
+    )
+    ELSE
+    (
+        &std_result_result="UNKNOWN"
+    )
+    do std_results std_loadbuild &std_result_result &ArgumentLine
+	
+    RETURN &result
+
+    
+    
+DEVPROGFAIL_DIALOG:
+    LOCAL &Rvalue
+    WINPOS 40% 10% 44. 6.
+    DIALOG
+    (
+        HEADER "Device Programmer Failure"
+        POS 1. 0. 40. 2.
+        TEXT "Device Programmer has detected an error during loading. "
+        TEXT "Do you wish to load using JTag?"
+        
+        POS 6. 4. 15. 2.
+        YESBUTTON: DEFBUTTON "YES" 
+                            (
+                                &Rvalue=TRUE()
+                                CONTINUE
+                            )
+        POS 24. 4. 15. 2.
+        NOBUTTON: DEFBUTTON "NO"
+                            (
+                                &Rvalue=FALSE()
+                                CONTINUE
+                            )  
+    
+    
+    )
+    STOP
+    
+    DIALOG.END
+    RETURN &Rvalue
+    
+DEVPROGFAIL_DIALOG_RETURN:
+    LOCAL &arg0
+    ENTRY &arg0
+    DIALOG.END
+    
+    
+    IF ("&arg0"=="YES")
+        ENDDO TRUE()
+    ELSE
+        ENDDO FALSE()
+
+
+    RETURN
+
+SETUPLOGGING:
+LOCAL &extraoptions
+ENTRY %LINE &extraoptions
+            //Turn on logging if specified
+            
+            IF (STRING.SCAN("&extraoptions","resultslog->",0)!=-1) 
+            (
+                &LOGSENABLED="TRUE"
+                
+                LOCAL &string_length &string_size &value_to_cut &current_slave &size_of_slave &tempfile
+                &current_string="&extraoptions"
+                &current_key="resultslog->"
+
+                &string_length=String.Length("&current_key")
+                &string_size=string.scan("&current_string","&current_key",0)
+
+                //Cut up to current_key
+                &value_to_cut=&string_size+&string_length
+                &current_string=string.cut("&current_string",&value_to_cut)
+                
+                //Now cut away ','
+                IF STRING.SCAN("&current_string",",",0)!=-1
+                (
+                    &string_length=String.Length("&current_string")
+                    &string_size=string.scan("&current_string",",",0)
+
+                    //separate the first slave from the rest of the string
+                    &value_to_cut=&string_size-&string_length
+                    &tempfile=string.cut("&current_string",&value_to_cut)
+                    //&size_of_slave=STRING.LENGTH("&tempfile")
+                )
+                ELSE
+                (
+                    &tempfile="&current_string"
+                )
+                //above ten lines can be replaced by these two lines if newer t32 version used (=>6/22/15)
+                //&tempfile=STRing.SPLIT("&extraoptions","resultslog->",1)
+                //&tempfile=STRing.SPLIT("&tempfile",",",0)
+                &tempdir=OS.FILE.PATH("&tempfile")
+                IF (OS.DIR(&tempdir))
+                (
+                    &OUTPUTFILE="&tempfile"
+                    PRINT "Using log file &tempfile"
+                )
+                ELSE
+                (
+                    PRINT "Warning: Could not find specified directory for log file &tempfile. Using &OUTPUTFILE for logging instead"
+                )
+            )
+        RETURN
+////////////////////////////////////////
+//
+//          HELP
+//          public function
+//          Prints usage information
+//          Expected input: None
+//
+/////////////////////////////////////////
+HELP:
+    AREA.RESET
+    AREA.CREATE std_loadbuild_help 160. 53.
+    AREA.SELECT std_loadbuild_help
+    WINPOS 0. 0. 160. 53.
+    AREA.VIEW std_loadbuild_help
+
+    PRINT " "
+    PRINT "  /////////////////std_loadbuild HELP/////////////////////"
+    PRINT " "
+    PRINT "  Top level JTag Build Loader"
+    PRINT " "
+    PRINT "  Interfaces"
+    PRINT "      GUI"
+    PRINT "         GUI is reached by menu buttons or by entering 'do std_loadbuild' with no arguments"
+    PRINT "      Command line usage:"
+    PRINT "          do std_loadbuild Option=<Load Option> Images=<list,of,images> Log=<dump path> Type=<USB|JTAG|AUTO> alternateelf=<elf file> extraoption=<silent|forcesilent>"
+    PRINT "              Arguments:  "
+    PRINT "                  Load Option "
+    PRINT "                      ERASEONLY - invokes jtagprogrammer to erase flash                                       "
+    PRINT "                      LOADCOMMON - only loads images necessary to get device to HLOS bootloader (MSM only)    "
+    PRINT "                      LOADFULL - Loads full build. This is most common                                        "
+    PRINT "                      LOADIMG - Loads list of images specified by <Images> argument                           "
+    PRINT "                  list,of,images                                                                              "
+    PRINT "                      Comma deliminated list of images                                                        "
+    PRINT "                      ***Need to have <Option> specified as 'LOADIMG'***                                      "
+    PRINT "                      For 9x55: any of the following:                                                         "
+    PRINT "                  extraoption                                                                                 "
+    PRINT "                      outputfile->C:\temp\myoutputfile.txt                                                    "
+    PRINT "                          If specified, log data (success or failure) will be output specified directory      "
+    PRINT "                      If not specified, only failure data will be printed to a log at T32 temp directory      "
+    PRINT " "
+    PRINT " "
+    PRINT "  Std_loadbuild wraps several scripts which program the target with the specified images."
+    PRINT "     Note that std_loadbuild will only flash those images necessary ('common images') to get the  "
+    PRINT "     target to apps bootloader, at which time it allows the system to boot up and passes control "
+    PRINT "     to another tool to take over loading from there (for Android - fastboot; for WP - FFU tool)."
+    PRINT "     --Exception-- to this is on MDM devices with MN HLOS, where JTAG can flash all images"
+    PRINT "  "
+    PRINT "  IMPORTANT: Note that because of this, updating the paths for non-common images (such as peripheral cores) <<<will not>>> result in those "
+    PRINT "             peripheral cores' software being updated, since std_loadbuild doesn't have control of software at those points"
+    PRINT "             Only updating paths to common images such as AOP, TZ, XBL etc. will have effect"
+    PRINT " "
+    PRINT "  Common Issues"
+    PRINT "     Reset - std_loadbuild first resets the target. If the target is in some sleep state or some boot point prior to reset, "
+    PRINT "             issues can occur. It is recommended to reset the target and run these scripts a few seconds after device starts booting up"
+    PRINT "     Path issues -   std_loadbuild calls jtag programmer scripts from boot (xbl or sbl) iteratavely on each partition. "
+    PRINT "                     If this script is not available, std_loadbuild won't work. Also, if there"
+    PRINT "                     are issues with this script, you may see hangs. Contact Qualcomm storage team if "
+    PRINT "                     You are observing hangs during JTag load."
+    PRINT "     XML Location - XML files are needed for jtagprogrammer. These should be located in <Metabuild Root>/common/build/<storage_type>,"
+    PRINT "                    Where <storage_type> is either ufs or emmc"
+    PRINT "     Error messages in jtagprogrammer.cmm - if you see error messages when jtagprogrammer is running, such as  "
+    PRINT "                                            'ERROR: xbl.elf not found in rawprograme3.xml', These are expected during the loading process and are an "
+    PRINT "                                            artifact from the fashion that std_loadbuild passes commands to the jtag programmer script. "
+    PRINT "                   "
+    PRINT " "
+
+    PRINT "  Product Flavor - "
+    PRINT "         Different product flavors provided by target team. "
+    PRINT "         Not necessary to set this for full build load"
+    PRINT "  Load Options - "
+    PRINT "         Erase Storage Only - erases storage (e.g. erases UFS or EMMC card)"
+    PRINT "         Load common images only  - Goes through load process but doesn't call HLOS loader at the end of execution"
+    PRINT "         Load Full Build - Loads the common images then passes control to HLOS loader"
+    PRINT "         Load Single Image - Allows user to only load images specific to images within common images "
+    PRINT "                         e.g. all TZ-related images, or AOP image, or XBL/PMIC images etc."
+    PRINT "         Loading method"
+    PRINT "             JTag - traditional JTag method. This calls jtagprogrammer.cmm scripts from xbl image"
+    PRINT "             Device Programmer - Uses hybrid Jtag and Sahara/Firehose download via USB. Internal-Qualcomm use only"
+    PRINT "  Load - "
+    PRINT "         Executes command specified in 'Load Options'. (E.G. load full build, load single  image, or load  common images)"
+    PRINT "         and from different cores (ADSP, MPSS, SLPI, AOP etc.) to a state that the user can debug a crash on that core"
+    PRINT "         There are several options and configurations, listed below in the Command line usage area"
+    PRINT "  "
+    PRINT " "
+    PRINT " "
+
+    
+
+
+
+
+    RETURN
+
+    
+PRINTRESULTLOG:
+    LOCAL &result
+    ENTRY %LINE &result 
+    
+    IF ("&LOGSENABLED"!="TRUE")
+    (
+        GOSUB EXIT
+    )
+    
+    //Check if directory exists
+    LOCAL &tempdir
+    &tempdir=OS.FILE.PATH("&OUTPUTFILE")
+    IF !(OS.DIR(&tempdir))
+    (
+        PRINT %ERROR "Could not access log directory &tempdir. Cannot print logs"
+        &LOGSENABLED="FALSE"
+        GOSUB EXIT
+    )
+    
+    //Don't want to get caught here
+    ON ERROR CONTINUE
+    PRINTER.FILE &OUTPUTFILE
+    PRINTER.FILETYPE ASCII
+    PRINTER.SIZE 0xFA, 0xFA
+    
+    
+    winpos 0, 0, 100. 10. , , , RESULTWINDOW
+    AREA.CREATE ResultAreaWindow
+    AREA.SELECT ResultAreaWindow
+    area.view ResultAreaWindow
+    PRINT "&result"
+    WINPRT RESULTWINDOW
+    
+    AREA.CLOSE ResultAreaWindow
+    
+    ON ERROR
+    RETURN
+    
+
+////////////////////////////////////////////
+//
+//          FATALEXIT
+//
+//          Exits all scripts.
+//          If logging is enabled, appends failure keyword
+//          to passed string and sends that to PRINTRESULTLOG
+//
+//
+//
+///////////////////////////////////////////
+FATALEXIT:
+    LOCAL &string
+    ENTRY %LINE &string
+
+    PRINT %ERROR "Loadsim error. Error type: &result "
+    
+    
+    
+        IF ("&LOGSENABLED"=="TRUE")
+        (
+            //Failure keyword is sometimes passed from lower scripts. 
+            //Only append it if it's not already there for cleaner logs.
+            IF STRING.SCAN("&string","&FAILUREKEYWORD",0)!=-1
+            (
+                GOSUB PRINTRESULTLOG &string 
+            )
+            ELSE
+            (
+                GOSUB PRINTRESULTLOG &FAILUREKEYWORD " - " &string 
+            )
+        )
+
+    END
+
+EXIT:
+
+    IF ("&LOGSENABLED"=="TRUE")
+    (
+        LOCAL &string
+        ENTRY %LINE &string
+        
+        GOSUB PRINTRESULTLOG &string 
+    )
+    ENDDO
+
+    

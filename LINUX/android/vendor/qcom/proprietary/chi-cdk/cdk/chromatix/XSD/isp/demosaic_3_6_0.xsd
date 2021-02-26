@@ -1,0 +1,247 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--========================================================================-->
+<!-- Copyright (c) 2016-2017 Qualcomm Technologies, Inc.                    -->
+<!-- All Rights Reserved.                                                   -->
+<!-- Confidential and Proprietary - Qualcomm Technologies, Inc.             -->
+<!--========================================================================-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:include schemaLocation="ispglobalelements.xsd"/>
+  <xs:element name="demosaic36_bps" type="chromatix_demosaic36Type">
+    <xs:annotation>
+      <xs:documentation>demosaic36 bps module parameters</xs:documentation>
+    </xs:annotation>
+  </xs:element>
+  <xs:element name="demosaic36_ife" type="chromatix_demosaic36Type">
+    <xs:annotation>
+      <xs:documentation>demosaic36 ife module parameters</xs:documentation>
+    </xs:annotation>
+  </xs:element>
+  <xs:complexType name="chromatix_demosaic36Type">
+    <xs:sequence>
+      <xs:element name="enable_section">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="demosaic_enable" type="enable_flag_type" default="1"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="module_version">
+        <xs:complexType>
+          <xs:attribute name="major_revision" type="xs:int" default="3"/>
+          <xs:attribute name="minor_revision" type="xs:int" default="6"/>
+          <xs:attribute name="incr_revision" type="xs:int" default="0"/>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="control_variables">
+        <xs:complexType>
+          <xs:sequence minOccurs="3" maxOccurs="3">
+            <xs:element name="control_var_type">
+              <xs:simpleType>
+                <xs:restriction base="control_var_type">
+                  <xs:pattern value="control_drc_gain"/>
+                  <xs:pattern value="control_exp_time_ratio"/>
+                  <xs:pattern value="control_aec_exp_sensitivity_ratio"/>
+                  <xs:pattern value="control_lux_idx"/>
+                  <xs:pattern value="control_gain"/>
+                </xs:restriction>
+              </xs:simpleType>
+            </xs:element>
+          </xs:sequence>
+          <xs:attribute name="default_value" type="xs:string" default="control_drc_gain, control_aec_exp_sensitivity_ratio, control_gain"/>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="control_method">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="aec_exp_control" type="tuning_control_aec_type" default="control_gain"/>
+            <xs:element name="aec_hdr_control" type="tuning_control_aec_hdr_type" default="control_aec_exp_sensitivity_ratio"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="chromatix_demosaic36_core" type="chromatix_demosaic36_coreType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="chromatix_demosaic36_coreType">
+    <xs:sequence maxOccurs="unbounded">
+      <xs:element name="mod_demosaic36_drc_gain_data" type="mod_demosaic36_drc_gain_dataType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="mod_demosaic36_drc_gain_dataType">
+    <xs:sequence>
+      <xs:element name="drc_gain_trigger" type="trigger_pt_type"/>
+      <xs:element name="drc_gain_data">
+        <xs:complexType>
+          <xs:sequence maxOccurs="unbounded">
+            <xs:element name="mod_demosaic36_hdr_aec_data" type="mod_demosaic36_hdr_aec_dataType"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="mod_demosaic36_hdr_aec_dataType">
+    <xs:sequence>
+      <xs:element name="hdr_aec_trigger" type="trigger_pt_type_aec_hdr"/>
+      <xs:element name="hdr_aec_data">
+        <xs:complexType>
+          <xs:sequence maxOccurs="unbounded">
+            <xs:element name="mod_demosaic36_aec_data" type="mod_demosaic36_aec_dataType"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="mod_demosaic36_aec_dataType">
+    <xs:sequence>
+      <xs:element name="aec_trigger" type="trigger_pt_type_aec"/>
+      <xs:element name="demosaic36_rgn_data" type="demosaic36_rgn_dataType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="demosaic36_rgn_dataType">
+    <xs:sequence>
+      <xs:element name="edge_det_weight">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:float">
+              <xs:attribute name="type" default="float"/>
+              <xs:attribute name="description" type="xs:string" default="weight of classifiers in edge detection"/>
+              <xs:attribute name="default_value" type="xs:float" default="0.1"/>
+              <xs:attribute name="range" type="xs:string" default="[0, 0.99]"/>
+              <xs:attribute name="bit_depth" type="xs:string" default="10u"/>
+              <xs:attribute name="length" type="xs:int" fixed="1"/>
+              <xs:attribute name="conversion" type="xs:string"/>
+              <xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+              <xs:attribute name="additional_notes" type="xs:string" default="The vertical/horizontal detection becomes more aggressive as edge_det_weight increases. When edge_det_weight = 0, no horizontal/vertical detection is detected. When edge_det_weight = 0.99, tend to detect either horizontal or vertical direction."/>
+              <xs:attribute name="tool_hint" default="float"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="edge_det_noise_offset">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:unsignedInt">
+              <xs:attribute name="type" default="uint"/>
+              <xs:attribute name="description" type="xs:string" default="noise level in edge detection"/>
+              <xs:attribute name="default_value" type="xs:int" default="128"/>
+              <xs:attribute name="range" type="xs:string" default="[1,400]"/>
+              <xs:attribute name="bit_depth" type="xs:string" default="12u"/>
+              <xs:attribute name="length" type="xs:int" fixed="1"/>
+              <xs:attribute name="conversion" type="xs:string"/>
+              <xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+              <xs:attribute name="additional_notes" type="xs:string" default="The vertical/horizontal edge detection becomes more aggressive as edge_det_noise_offset ak decreases."/>
+              <xs:attribute name="tool_hint" default="float"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="dis_directional_g">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:unsignedInt">
+              <xs:attribute name="type" default="uint"/>
+              <xs:attribute name="description" type="xs:string" default="disable the directional G interpolation"/>
+              <xs:attribute name="default_value" type="xs:int" default="0"/>
+              <xs:attribute name="range" type="xs:string" default="[0,1]"/>
+              <xs:attribute name="bit_depth" type="xs:string" default="1u"/>
+              <xs:attribute name="length" type="xs:int" fixed="1"/>
+              <xs:attribute name="conversion" type="xs:string"/>
+              <xs:attribute name="tuning_parameter_level" type="tuning_level" default="never_tune"/>
+              <xs:attribute name="additional_notes" type="xs:string" default="0: enable directional interpolation (default). 1: disable directional interpolation"/>
+              <xs:attribute name="tool_hint" default="float"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="dis_directional_rb">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:unsignedInt">
+              <xs:attribute name="type" default="uint"/>
+              <xs:attribute name="description" type="xs:string" default="disable the directional RB interpolation"/>
+              <xs:attribute name="default_value" type="xs:int" default="0"/>
+              <xs:attribute name="range" type="xs:string" default="[0, 1]"/>
+              <xs:attribute name="bit_depth" type="xs:string" default="1u"/>
+              <xs:attribute name="length" type="xs:int" fixed="1"/>
+              <xs:attribute name="conversion" type="xs:string"/>
+              <xs:attribute name="tuning_parameter_level" type="tuning_level" default="never_tune"/>
+              <xs:attribute name="additional_notes" type="xs:string" default="0: enable directional interpolation (default). 1: disable directional interpolation"/>
+              <xs:attribute name="tool_hint" default="float"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="lambda_g">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:int">
+              <xs:attribute name="type" default="int"/>
+              <xs:attribute name="description" type="xs:string" default="low-frequency component weighting in G interpolation"/>
+              <xs:attribute name="default_value" type="xs:int" default="128"/>
+              <xs:attribute name="range" type="xs:string" default="[77, 178]"/>
+              <xs:attribute name="bit_depth" type="xs:string" default="8u, q8"/>
+              <xs:attribute name="length" type="xs:int" fixed="1"/>
+              <xs:attribute name="conversion" type="xs:string"/>
+              <xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+              <xs:attribute name="additional_notes" type="xs:string" default="The larger lambda_g, the more blurry the Demosaic output"/>
+              <xs:attribute name="tool_hint" default="float"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="lambda_rb">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:int">
+              <xs:attribute name="type" default="int"/>
+              <xs:attribute name="description" type="xs:string" default="low-frequency component weighting in RB interpolation"/>
+              <xs:attribute name="default_value" type="xs:int" default="0"/>
+              <xs:attribute name="range" type="xs:string" default="[0, 255]"/>
+              <xs:attribute name="bit_depth" type="xs:string" default="8u, q8"/>
+              <xs:attribute name="length" type="xs:int" fixed="1"/>
+              <xs:attribute name="conversion" type="xs:string"/>
+              <xs:attribute name="tuning_parameter_level" type="tuning_level" default="never_tune"/>
+              <xs:attribute name="additional_notes" type="xs:string" default="The larger lambda_rb, the more blurry the Demosaic output"/>
+              <xs:attribute name="tool_hint" default="float"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="en_dyna_clamp_g">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:unsignedInt">
+              <xs:attribute name="type" default="uint"/>
+              <xs:attribute name="description" type="xs:string" default="enable dynamic clamping in G interpolation"/>
+              <xs:attribute name="default_value" type="xs:int" default="1"/>
+              <xs:attribute name="range" type="xs:string" default="[0, 1]"/>
+              <xs:attribute name="bit_depth" type="xs:string" default="1u"/>
+              <xs:attribute name="length" type="xs:int" fixed="1"/>
+              <xs:attribute name="conversion" type="xs:string"/>
+              <xs:attribute name="tuning_parameter_level" type="tuning_level" default="never_tune"/>
+              <xs:attribute name="additional_notes" type="xs:string" default="0: enable dynamic clamping. 1: disable dynamic clamping."/>
+              <xs:attribute name="tool_hint" default="float"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="en_dyna_clamp_rb">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:unsignedInt">
+              <xs:attribute name="type" default="uint"/>
+              <xs:attribute name="description" type="xs:string" default="enable dynamic clamping in RB interpolation"/>
+              <xs:attribute name="default_value" type="xs:int" default="0"/>
+              <xs:attribute name="range" type="xs:string" default="[0,1]"/>
+              <xs:attribute name="bit_depth" type="xs:string" default="1u"/>
+              <xs:attribute name="length" type="xs:int" fixed="1"/>
+              <xs:attribute name="conversion" type="xs:string"/>
+              <xs:attribute name="tuning_parameter_level" type="tuning_level" default="never_tune"/>
+              <xs:attribute name="additional_notes" type="xs:string" default="0: enable dynamic clamping. 1: disable dynamic clamping."/>
+              <xs:attribute name="tool_hint" default="float"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+</xs:schema>

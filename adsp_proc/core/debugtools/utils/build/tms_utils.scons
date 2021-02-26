@@ -1,0 +1,211 @@
+# vi: tw=128 ts=3 sw=3 et
+# @file tms_utils.scons
+# @brief This file contains the API for the TMS Utilities, API 0.1.0
+#===============================================================================
+# NOTE: The @brief description above does not appear in the PDF.
+# The tms_mainpage.dox file contains the group/module descriptions that
+# are displayed in the output PDF generated using Doxygen and LaTeX. To
+# edit or update any of the group/module text in the PDF, edit the
+# tms_mainpage.dox file or contact Tech Pubs.
+#===============================================================================
+#===============================================================================
+# Copyright (c) 2016-2018 Qualcomm Technologies Incorporated.
+# All Rights Reserved.
+# Qualcomm Confidential and Proprietary.
+#===============================================================================
+#===============================================================================
+# Edit History
+# $Header: //components/rel/core.qdsp6/2.1/debugtools/utils/build/tms_utils.scons#2 $
+# $DateTime: 2018/03/28 02:13:17 $
+# $Change: 15791480 $
+# $Author: pwbldsvc $
+#===============================================================================
+
+Import('env')
+
+# BUILD_TAGS For Deliverable (Supported Build Objects)
+
+BUILD_TAGS = [
+
+   'CORE_APPS',                  # Domain(REX + TN)
+   'CORE_EOS',                   # Domain(REX + EOS)
+   'CORE_GSS',                   # Domain(REX + GSS)
+   'CORE_MODEM',                 # Domain(Root + Modem)
+   'CORE_RPM',                   # Domain(REX + RPM)
+   'CORE_VPU',                   # Domain(REX + VPU)
+   'CORE_WCN',                   # Domain(REX + WCN)
+
+   'CORE_ROOT_PD',               # Domain(Root)
+   'CORE_USER_PD',               # Domain(User)
+
+   'CORE_QDSP6_SW',              # Domain(Root + Audio)
+   'MODEM_MODEM',                # Domain(Root + Modem)
+   'CORE_QDSP6_AUDIO_SW',        # Domain(User Audio)
+   'CORE_AUDIO_AVS_PD',          # Domain(User Audio)
+   'CORE_QDSP6_MODEM_SW',        # Domain(User Modem)
+   'CORE_QDSP6_SENSOR_SW',       # Domain(User Sensors)
+   'CNSS_IMAGE',                 # Domain(REX + EOS)
+
+]
+
+BUILD_TAGS_ROOT_ONLY = [
+   'CORE_ROOT_PD',
+   'CORE_QDSP6_SW',
+   'CORE_ADSP_ROOT',
+   'CORE_SLPI_ROOT',
+   'CORE_CDSP_ROOT'
+]
+
+# OPTIONAL MANUAL TUNING (SMALL RESOURCE TARGETS)
+
+if env.IsTargetEnable(['CORE_EOS', 'CNSS_IMAGE', ]):
+   env.Append(CPPDEFINES = ["TMS_UTILS_EXCLUDE_MSG_SWEVT"])      # EXCLUDE USE MSG MACRO
+   env.Append(CPPDEFINES = ["TMS_UTILS_EXCLUDE_TRACER_SWEVT"])   # EXCLUDE USE QDSS TRACER
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+
+env.VariantDir('${BUILDPATH}', '../src', duplicate=0)
+
+#-------------------------------------------------------------------------------
+# External Dependency
+#-------------------------------------------------------------------------------
+
+#env.RequireExternalApi([
+#   'XYZ',
+#])
+
+#-------------------------------------------------------------------------------
+# Internal Dependency
+#-------------------------------------------------------------------------------
+
+env.RequirePublicApi([
+   'DAL',
+   'TMS',
+   'DEBUGTOOLS', # alias to TMS
+   'DEBUGTRACE',
+   'POWER',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'KERNEL', # needs to be last (also contains wrong comdef.h)
+])
+
+env.RequireRestrictedApi([
+   'TMS_RESTRICTED',
+   'DEBUGTOOLS', # alias to TMS
+])
+
+#-------------------------------------------------------------------------------
+# Sources
+#-------------------------------------------------------------------------------
+
+# See Libraries
+
+#-------------------------------------------------------------------------------
+# Libraries
+#-------------------------------------------------------------------------------
+
+env.AddLibrary(BUILD_TAGS, '${BUILDPATH}/tms_utils', # Comment Out Non-Deliverables
+   [
+      '${BUILDPATH}/tms_utils_chr_append.c',
+      '${BUILDPATH}/tms_utils_chr_compare.c',
+      '${BUILDPATH}/tms_utils_chr_copy.c',
+      '${BUILDPATH}/tms_utils_chr_first.c',
+      '${BUILDPATH}/tms_utils_chr_last.c',
+      '${BUILDPATH}/tms_utils_chr_length.c',
+      '${BUILDPATH}/tms_utils_chr_set.c',
+      '${BUILDPATH}/tms_utils_fmt.c',
+      '${BUILDPATH}/tms_utils_fmt_nostring.c',
+      '${BUILDPATH}/tms_utils_hash.c',
+      '${BUILDPATH}/tms_utils_timetick.c',
+      '${BUILDPATH}/tms_utils_msg.c',
+   ])
+
+env.AddLibrary(BUILD_TAGS_ROOT_ONLY, '${BUILDPATH}/tms_utils_root',
+   [
+      '${BUILDPATH}/tms_utils_clock.c',
+   ])
+
+#-------------------------------------------------------------------------------
+# Task Provisioning Information
+#-------------------------------------------------------------------------------
+
+if 'USES_RCINIT' in env:
+
+   env.AddRCInitFunc(
+      BUILD_TAGS,
+      {
+         'sequence_group'             : 'RCINIT_GROUP_0',
+         'init_name'                  : 'tms_timetick',
+         'init_function'              : 'tms_timetick_init',
+         'dependencies'               : ['dalsys', 'tms_utils_msg_init']
+      })
+
+   env.AddRCInitFunc(
+      BUILD_TAGS,
+      {
+         'sequence_group'             : 'RCINIT_GROUP_0',
+         'init_name'                  : 'tms_utils_msg_init',
+         'init_function'              : 'tms_utils_msg_init',
+      })
+
+   env.AddRCInitFunc(
+      BUILD_TAGS_ROOT_ONLY,
+      {
+         'sequence_group'             : 'RCINIT_GROUP_0',
+         'init_name'                  : 'tms_utils_vote_init',
+         'init_function'              : 'tms_utils_vote_init',
+         'dependencies'               : ['tms_utils_msg_init',]
+      })
+
+#-------------------------------------------------------------------------------
+# Tracer Software Events
+#-------------------------------------------------------------------------------
+
+TMS_UTILS_SWE_EVENTS = [
+   ['TMS_UTILS_SWE_EVENT',     'Event Occur          %x %x', 'T'], # Comment on Use
+]
+
+if 'USES_QDSS_SWE' in env and len(TMS_UTILS_SWE_EVENTS) != 0:
+   env.Append(CPPPATH = ['${BUILD_ROOT}/core/debugtools/utils/build/${BUILDPATH}/'])
+   env.SWEBuilder(['${BUILD_ROOT}/core/debugtools/utils/build/${BUILDPATH}/tms_utils_tracer_swe.h'], None)
+   env.AddSWEInfo(BUILD_TAGS, TMS_UTILS_SWE_EVENTS)
+else:
+   env.Append(CPPDEFINES = ["TMS_UTILS_EXCLUDE_TRACER_SWEVT"])
+
+#-------------------------------------------------------------------------------
+# DALCFG Image "Static" Configuration Items
+#-------------------------------------------------------------------------------
+
+# NONE
+
+#-------------------------------------------------------------------------------
+# DDR voting configurations
+#-------------------------------------------------------------------------------
+
+# Master-Slave pairs
+if 'MODEM_PROC' in env:
+   env.Append(CPPDEFINES = ["TMS_UTILS_VOTE_DDR_MSTER = ICBID_MASTER_MSS_PROC"])
+   env.Append(CPPDEFINES = ["TMS_UTILS_VOTE_DDR_SLAVE = ICBID_SLAVE_EBI1"])
+elif 'ADSP_PROC' in env:
+   env.Append(CPPDEFINES = ["TMS_UTILS_VOTE_DDR_MSTER = ICBID_MASTER_LPASS_PROC"])
+   env.Append(CPPDEFINES = ["TMS_UTILS_VOTE_DDR_SLAVE = ICBID_SLAVE_EBI1"])
+elif 'SLPI_PROC' in env:
+   env.Append(CPPDEFINES = ["TMS_UTILS_VOTE_DDR_MSTER = ICBID_MASTER_SENSORS_PROC"])
+   env.Append(CPPDEFINES = ["TMS_UTILS_VOTE_DDR_SLAVE = ICBID_SLAVE_EBI1"])
+elif 'CDSP_PROC' in env:
+   env.Append(CPPDEFINES = ["TMS_UTILS_VOTE_DDR_MSTER = ICBID_MASTER_CDSP_PROC"])
+   env.Append(CPPDEFINES = ["TMS_UTILS_VOTE_DDR_SLAVE = ICBID_SLAVE_EBI1"])
+else:
+   env.PrintError('TMS UTILS VOTE: Unrecognized configuration, scons updates required for new platform')
+   Exit(1)
+
+# IB value in Bytes/second
+if env['HAL_PLATFORM'] in ['670']:
+   env.Append(CPPDEFINES = ["TMS_UTILS_VOTE_IB_VALUE = 6000000000"])
+elif env['HAL_PLATFORM'] in ['845']:
+   env.Append(CPPDEFINES = ["TMS_UTILS_VOTE_IB_VALUE = 3000000000"])
+else:
+   env.PrintError('TMS UTILS VOTE: Unrecognized configuration, scons updates required for new platform')
+   Exit(1)

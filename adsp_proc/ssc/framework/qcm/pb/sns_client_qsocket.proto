@@ -1,0 +1,63 @@
+// @file sns_client_qsocket.proto
+//
+// Defines the interface between external clients and the Sensors QSocket
+// Client Manager.  This file approximately replaces sns_client_api_v01.idl
+// from the QMI Client Manager.
+//
+// Copyright (c) 2018 Qualcomm Technologies, Inc.
+// All Rights Reserved.
+// Confidential and Proprietary - Qualcomm Technologies, Inc.
+syntax = "proto2";
+import "nanopb.proto";
+import "sns_client.proto";
+import "sns_std_type.proto";
+
+// Request Message sent to the QSocket Client Manager
+// The Service may limit this message size to 1000 Bytes
+message sns_client_qsocket_req {
+  // Base message payload; contents will be partially specified by Sensor developer
+  required sns_client_request_msg request = 1;
+
+  // Request ID will be returned in sns_client_qsocket_resp::request_id
+  required fixed32 request_id = 2;
+
+  // Maximum indication size (size of sns_client_qsocket_ind) allowed by the
+  // client.  Individual events larger than this size will be dropped.
+  optional fixed32 ind_len_max = 3;
+}
+
+// Response Message; sent in response to every request message.
+message sns_client_qsocket_resp {
+  // Client ID identifies the client connection
+  required fixed64 client_id = 1;
+
+  // Request ID as provided in sns_client_qsocket_req::request_id
+  required fixed32 request_id = 2;
+
+  // SNS_STD_ERROR_NO_ERROR
+  // SNS_STD_ERROR_INVALID_TYPE - Received an unknown request message
+  // SNS_STD_ERROR_INVALID_VALUE -  Request message exceeded size requirements
+  // SNS_STD_ERROR_NOT_SUPPORTED - Sensor received an unsupported request; or a
+  //    supported request at an unexpected time.
+  required sns_std_error error = 3;
+}
+
+// Indication messages; similar to sns_client_jumbo_report_ind_msg
+message sns_client_qsocket_ind {
+  // Client ID identifies the client connection
+  required fixed64 client_id = 1;
+
+  // Event message contents.
+  required sns_client_event_msg event = 2;
+}
+
+// Top-level message for all QSocket clients.
+// If the QCM Service receives a message type it does not understand, it will
+// return a sns_client_qsocket_resp with error code SNS_STD_ERROR_NOT_SUPPORTED
+message sns_client_qsocket_msg {
+  oneof msg {
+    sns_client_qsocket_req req = 1;
+    sns_client_qsocket_resp resp = 2;
+    sns_client_qsocket_ind ind = 3;
+  }
+}

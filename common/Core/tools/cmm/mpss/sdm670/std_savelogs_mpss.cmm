@@ -1,0 +1,114 @@
+//============================================================================
+//  Name:                                                                     
+//    std_savelogs_mpss.cmm 
+//
+//  Description:                                                              
+//    Script to save MPSS memory locations
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who     		what, where, why
+// --------   ---     		------------------------------------------------------------------
+// 07/27/2014 AJCheriyan    Added IPA RAM space and register space
+// 07/05/2014 AJCheriyan    Save entire peripheral space instead
+// 11/01/2012 AJCheriyan	Added change to enable QDSS access to modem memory with XPU enabled
+// 07/10/2012 AJCheriyan    Created for B-family 
+
+//////////////////////////////////////////////////////
+///////////////////IMPORTANT!//////////////////////////
+//////////////////////////////////////////////////////
+////This function deprecated. Limited functionality///
+//////////////////////////////////////////////////////
+
+PRINT %ERROR "Warning! savelogs for MPSS deprecated. Limited functionality"
+
+// We support one argument for this script
+// &ARG0 - Output location for the logs
+ENTRY &ARG0
+
+LOCAL &LOGLOCATION
+
+MAIN:
+	&LOGLOCATION="&ARG0"
+
+	// Sanity check
+	IF ("&LOGLOCATION"=="")
+	(
+	    PRINT %ERROR "Location to save logs not provided"
+		GOTO FATALEXIT
+	)
+
+	// Load the memory map
+	do std_memorymap DYNAMIC
+	
+	// Flush the caches or anything else we need to do 
+	// before we save the binaries 
+	GOSUB SYNCSTATE
+
+	// Enable access to the memory region with XPU protection (MSSAuth) enabled
+	GOSUB ENABLEACCESS
+
+	// Save the memories first
+	GOSUB SAVEBIN
+
+	// Save the registers
+	GOSUB SAVESTATE
+
+	GOTO EXIT
+
+SAVEBIN:
+	do std_utils SAVEBIN &LOGLOCATION &SHARED_IMEM_log &SHARED_IMEM_start &SHARED_IMEM_size
+	do std_utils SAVEBIN &LOGLOCATION &DDR_Periph_log &DDR_Periph_start &DDR_Periph_size
+	do std_utils SAVEBIN &LOGLOCATION &IPA_IRAM_log &IPA_IRAM_start &IPA_IRAM_size
+    do std_utils SAVEBIN &LOGLOCATION &IPA_DRAM_log &IPA_DRAM_start &IPA_DRAM_size
+    do std_utils SAVEBIN &LOGLOCATION &IPA_SRAM_log &IPA_SRAM_start &IPA_SRAM_size
+    do std_utils SAVEBIN &LOGLOCATION &IPA_MBOX_log &IPA_MBOX_start &IPA_MBOX_size
+    do std_utils SAVEBIN &LOGLOCATION &IPA_REG1_log &IPA_REG1_start &IPA_REG1_size
+    do std_utils SAVEBIN &LOGLOCATION &IPA_REG2_log &IPA_REG2_start &IPA_REG2_size
+    do std_utils SAVEBIN &LOGLOCATION &IPA_REG3_log &IPA_REG3_start &IPA_REG3_size
+
+	RETURN 
+
+ENABLEACCESS:
+	// Once MBA enables the XPU to check for the MSSAuth signal before allowing access
+	// to modem memory, QDSS is unable to access the region unless the DAP bit to enable 
+	// access it set. do that here. Using the JTAG or AHB AP will require you to unlock
+	// access. One less register write with the APB port.
+	do hwio
+	DATA.SET EDAP:HWIO_QDSS_CS_QDSSCSR_DAPMSAVAL_ADDR %LONG 0x1
+	RETURN
+	
+SYNCSTATE:
+	// Flush the cache
+	do std_flushcache QDSP6V5H
+	RETURN 
+
+SAVESTATE:
+	LOCAL &CURR_THREAD
+	&CURR_THREAD=REGISTER(HTID)
+	
+	THREAD 0
+    do std_utils SAVEREGS &LOGLOCATION &MPSS_Thread0_regs
+	THREAD 1
+	do std_utils SAVEREGS &LOGLOCATION &MPSS_Thread1_regs
+	THREAD 2
+	do std_utils SAVEREGS &LOGLOCATION &MPSS_Thread2_regs
+    THREAD 3
+    do std_utils SAVEREGS &LOGLOCATION &MPSS_Thread3_regs
+	// Return to the original thread
+	THREAD &CURR_THREAD	
+
+FATALEXIT:
+	END
+
+EXIT:
+	ENDDO
+
+

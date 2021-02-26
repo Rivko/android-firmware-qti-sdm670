@@ -1,0 +1,37 @@
+#=============================================================================
+#
+#                                    SConscript
+#
+# GENERAL DESCRIPTION
+#
+# EXTERNAL FUNCTIONS
+#        None.
+#
+# INITIALIZATION AND SEQUENCING REQUIREMENTS
+#        None.
+#
+#             Copyright (c) 2013  by Qualcomm Technologies, Inc.  All Rights Reserved.
+#=============================================================================
+import os
+
+Import('env')
+qurtenv = env.Clone()
+
+qurtenv.Append(CCFLAGS= '-G0')
+qurtenv.Append(QDSP6_RELEASE_LIB_DIR = "/G0")
+qurtenv.Append(LIB_DSP_ROOT = "/G0")
+
+qurtenv.Replace(HEXAGON_IMAGE_ENTRY = '0xfe000000')
+
+#Generate custconfig source and object
+cust_config_objname = "${BUILD_DIR}/cust_config"
+cust_config_xml = "qdsp6_qurt"
+cust_config_obj = qurtenv.CustConfigObj(cust_config_objname, cust_config_xml)
+
+#Generate qurt object from c files in current directory
+qurtobj = qurtenv.Object('${BUILD_DIR}/qurt', Glob('*.c'))
+
+#Generate PBN
+qurtelf = qurtenv.Program("${BUILD_DIR}/qurt", [cust_config_obj, qurtobj])
+
+Return('qurtelf')

@@ -1,0 +1,176 @@
+/*!
+ * @file IHidlVpp.hal
+ *
+ * @cr
+ * Copyright (c) 2017 Qualcomm Technologies, Inc.
+ * All Rights Reserved.
+ * Confidential and Proprietary - Qualcomm Technologies, Inc.
+ *
+ * @services Defines the external interface for VPP library.
+ */
+
+package vendor.qti.hardware.vpp@1.1;
+
+import vendor.qti.hardware.vpp@1.1::types;
+import vendor.qti.hardware.vpp@1.1::IHidlVppCallbacks;
+
+interface IHidlVpp {
+
+    /*!
+     * @brief       Synchronous. Initialize the VPP library.
+     *
+     * @description Initializes the VPP library. Session level parameters shall be
+     *              passed during this time. Such information can refer to content
+     *              protection state of the session.
+     *
+     * @input       flags       Indicates session level parameters
+     * @input       cb          The set of callbacks for events of interest.
+     *
+     * @return      NULL if failure, otherwise a context pointer which shall not be
+     *              modified by the client of VPP library, and shall be passed in
+     *              to the VPP library with every subsequent call.
+     */
+    vppInit(uint32_t flags, /* struct */ IHidlVppCallbacks cb) generates (uint32_t /* * */ vppInitRet);
+
+    /*!
+     * @brief       Synchronous. Terminates the VPP library.
+     *
+     * @description Indicate to the VPP library that its services are no longer
+     *              needed. As a result, this will invalidate the context and no
+     *              subsequent calls may be made to the VPP library without first
+     *              calling vpp_init.
+     *
+     *              It is strongly suggested that vpp_flush is called first, and
+     *              all buffers are returned to the client, prior to calling this
+     *              function.
+     *
+     *
+     * @return      uint64_t
+     */
+    vppTerm();
+
+    /*!
+     * @brief       Synchronous. Configures VPP control parameters.
+     *
+     * @description Indicate to the VPP library that a control, specified in ctrl
+     *              should be set. Upon returning from this function, the library
+     *              will indicate the buffering requirements and necessary metadata
+     *              for the session.
+     *
+     *              This function should be called multiple times, foreach control
+     *              that should be turned on.
+     *
+     * @input       ctrl        The control parameters
+     * @output      req         Requirements from VPP for this session
+     *
+     * @return      TODO: should we use this return to indicate if the set of
+     *              controls is not valid and we can not configure for this session?
+     */
+    vppSetCtrl(uint64_t cookie, /* struct */ HqvControl ctrl) generates (VppRequirements vppSetCtrlRet);
+
+    /*!
+     * @brief       Synchronous. Set the parameters for a given port.
+     *
+     * @description This function should be called once for each port. When the VPP
+     *              library has received a call for both ports, it shall transition
+     *              into active video state, where buffers can then be exchanged.
+     *
+     * @input       port        The port to set the parameters on
+     * @input       param       The parameters to set on the port
+     *
+     * @return      OK          if no error and can exchange buffers
+     *              PENDING     if waiting for another parameter on another port
+     *              ERROR       if there was an error with the set_parameter call
+     */
+    vppSetParameter(/* enum */ VppPort port, /* struct */ VppPortParam param) generates (uint32_t vppSetParameterRet);
+
+    /*!
+     * @brief       Asynchronous. Enqueue a buffer to the specified port.
+     *
+     * @description Gives a buffer to the VPP library. If the port is on the input
+     *              port, this will indicate that this buffer should be processed
+     *              by the VPP library. If the port is on the output port, this
+     *              will indicate that this buffer should be written into.
+     *
+     *              It is possible that a buffer that is queued on the input port
+     *              is returned on the output port.
+     *
+     * @input       port        The port to set the parameters on
+     * @input       buf         The buffer descriptor
+     *
+     * @return      OK          if there is no error with accepting the buffer
+     *              ERROR       if there is an error
+     */
+    vppQueueBuf(/* enum */ VppPort port, /* struct */ VppBuffer /* * */ buf) generates (uint32_t vppQueueBufRet);
+
+    /*!
+     * @brief       Asynchronous. Request for a port reconfiguration.
+     *
+     * @description Requests for a port reconfiguration. The new input and output
+     *              port sizes shall be given to the VPP library with this request.
+     *
+     *              Upon receiving a reconfigure request, it is expected that no
+     *              more input buffers shall be queued on the input port. Output
+     *              buffers are expected to continue to be queued, so that there
+     *              are enough output buffers for the VPP to process all of the
+     *              pending input buffers.
+     *
+     *              When all of the input buffers have been processed, VPP library
+     *              shall send an event indicating that the reconfigure has been
+     *              completed. With this event, VPP will convey a new set of
+     *              requirements.
+     *
+     *              It is recommended that after the PORT_RECONFIGURE_EVENT has
+     *              been received, the client flushes both the input and output
+     *              ports of the VPP, prior to queuing any new buffers.
+     *
+     * @input       input_param The new input port parameters
+     * @input       output_param The new output port parameters
+     *
+     * @return      OK          if the request was accepted
+     *              ERROR       if the request can not be accepted
+     */
+    vppReconfigure(/* struct */ VppPortParam inputParam, /* struct */ VppPortParam outputParam) generates (uint32_t vppReconfigureRet);
+
+    /*!
+     * @brief       Asynchronous. Request that a port is flushed.
+     *
+     * @description Requests that a given port is flushed. This call is
+     *              asynchronous. Upon receiving this call, VPP will queue the
+     *              request. All of the buffers that are on the specified port
+     *              shall be returned. If there are any in flight buffers, those
+     *              buffers will finish processing first and be returned via
+     *              input_buffer_done or output_buffer done callbacks. Once all in
+     *              flight buffers have been processed, then any buffers that are
+     *              in the queues on the specified port shall be returned, with
+     *              their filled_len set to 0.
+     *
+     *              Once the flush for the specified port has been returned, the
+     *              VPP will raise the VPP_EVENT_FLUSH_DONE event, indicating the
+     *              port that has been flushed.
+     *
+     * @input       port        The port to flush
+     *
+     * @return      OK          if the request was accepted
+     *              ERROR       if the request can not be accepted
+     */
+    vppFlush(/* enum */ VppPort port) generates (uint32_t vppFlushRet);
+
+    /*!
+     * @brief       Synchronous. Sets VPP video properties.
+     *
+     * @description Indicate to the VPP library that a video property, specified in prop,
+     *              should be set. The property will be stored in the context, available
+     *              for any blocks that may need it.
+     *
+     *              This function should be called multiple times, for each property
+     *              that needs to be set.
+     *
+     * @input       prop        The video property parameters
+     *
+     * @return      OK           if the property was accepted and stored
+     *              ERROR        if the property was not accepted
+     */
+    vppSetVidProp(/* struct */ VideoProperty prop) generates (uint32_t vppSetVidPropRet);
+
+};

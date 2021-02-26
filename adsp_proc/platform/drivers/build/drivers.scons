@@ -1,0 +1,115 @@
+#===============================================================================
+# Copyright (c) 2012 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===============================================================================
+Import('env')
+
+env = env.Clone()
+
+platform_root = '${BUILD_ROOT}/platform'
+env.Replace(ADSP_PLATFORM_ROOT = platform_root)
+
+APIS=[
+  'HAPSDK',
+  'PLATFORM_LIBS',
+  'STDDEF',
+  'A1STD',
+  'ATOMIC',
+  'UTILS',
+  'QLIST',
+  'HAP',
+  'QI',
+  'SBUF',
+  'REMOTE',
+  'DRIVERS',
+  'FASTRPC_PORT',
+  ]
+env.RequireRestrictedApi(APIS)
+env.RequirePublicApi(APIS)
+
+core_public_apis = [
+   'DEBUGTOOLS',
+   'DEBUGTRACE',
+   'SERVICES',
+   'KERNEL',
+   'MPROC',
+   'SYSTEMDRIVERS',
+   'DAL',
+   ]
+env.RequirePublicApi(core_public_apis, area='core')
+
+if env['PLATFORM_SUBSYSTEM'] in ['adsp']:
+   env.Append(CFLAGS='-DVR_IPC_INTR=118')
+elif env['PLATFORM_SUBSYSTEM'] in ['mdsp']:
+   env.Append(CFLAGS='-DVR_IPC_INTR=357')
+elif env['PLATFORM_SUBSYSTEM'] in ['cdsp']:
+   env.Append(CFLAGS='-DVR_IPC_INTR=144')
+else:
+   env.Append(CFLAGS='-DVR_IPC_INTR=0')
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${ADSP_PLATFORM_ROOT}/drivers/src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+platform_root = '${BUILD_ROOT}/platform'
+env.Replace(ADSP_PLATFORM_ROOT = platform_root)
+cpppath = '/'.join(env['BUILDPATH'].split('/')[1:])
+cpppath = '${BUILD_ROOT}/core/debugtrace/tracer/build/core_libs/'+cpppath
+env.AppendUnique(CPPPATH = [cpppath,
+                            "${ADSP_PLATFORM_ROOT}/drivers/src/itoa"])
+
+SOURCES =  [
+  '${BUILDPATH}/vr_qdi_driver.c',
+  '${BUILDPATH}/fastrpc_tracer.c',
+  '${BUILDPATH}/qurt_tracer.c',
+  '${BUILDPATH}/notify_qdi_driver.c',
+  '${BUILDPATH}/itoa/itoa.c',
+  ]
+
+env.PLRegister("vr_qdi", ['PLATFORM_LIBS'])
+env.PLRegister("fastrpc_tracer", ['PLATFORM_ROOT_LIBS', 'PLATFORM_LIBS'])
+env.PLRegister("qurt_tracer", ['PLATFORM_ROOT_LIBS', 'PLATFORM_LIBS'])
+env.PLRegister("notify_qdi", ['PLATFORM_ROOT_LIBS', 'PLATFORM_LIBS'])
+
+#-------------------------------------------------------------------------------
+# Platform Configs
+#-------------------------------------------------------------------------------
+if 'USES_DEVCFG' in env:
+    DEVCFG_IMG = ['DAL_DEVCFG_IMG']
+    # Check if Device Configuration Framework is expecting strict XML files.
+    # SDM845, SDM855 and later chips will require strict XML files.
+    if 'USES_DEVCFG_STRICT_XML' in env:	
+        env.AddDevCfgInfo(DEVCFG_IMG,
+        {
+        '845_xml' : ['${BUILD_ROOT}/platform/drivers/config/sdm845/qurtstmtrace_strict_xml.xml'],
+        '855_xml' : ['${BUILD_ROOT}/platform/drivers/config/sdm855/qurtstmtrace_strict_xml.xml'],    
+        })
+    else:
+        env.AddDevCfgInfo(DEVCFG_IMG,
+        {
+        '8996_xml' : ['${BUILD_ROOT}/platform/drivers/config/msm8996/qurtstmtrace.xml'],
+        '8998_xml' : ['${BUILD_ROOT}/platform/drivers/config/msm8998/qurtstmtrace.xml'],
+        '845_xml' : ['${BUILD_ROOT}/platform/drivers/config/sdm845/qurtstmtrace.xml'],
+        '855_xml' : ['${BUILD_ROOT}/platform/drivers/config/sdm855/qurtstmtrace.xml'],
+        })
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+env.AddBinaryLibrary(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+ 'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE'],'${BUILDPATH}/drivers', SOURCES)
+
+#-------------------------------------------------------------------------------
+# Load Subunits (sys)
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+# Clean / pack rules
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.cpp', '*.h', '*.s'], '${ADSP_PLATFORM_ROOT}/drivers/src'))
+
+env.CleanPack(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+     'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE'], CLEAN_LIST)

@@ -1,0 +1,116 @@
+#===============================================================================
+# Copyright (c) 2012 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===============================================================================
+Import('env')
+
+env = env.Clone()
+
+platform_root = '${BUILD_ROOT}/platform'
+env.Replace(ADSP_PLATFORM_ROOT = platform_root)
+
+APIS=[
+  'FASTRPC_DSP',
+  'FASTRPC_HEAP',
+  'FASTRPC_PROCESS',
+  'FASTRPC_THREAD_QUEUE',
+  'FASTRPC_PORT',
+  'FASTRPC_INVOKE',
+  'FASTRPC_LOADER',
+  'PLATFORM_LIBS',
+  'MOD_TABLE',
+  'QDI_PORTAL',
+  'QAIC',
+  'HAPSDK',
+  'REMOTE',
+  'STDDEF',
+  'A1STD',
+  'ATOMIC',
+  'UTILS',
+  'QLIST',
+  'HAP',
+  'QI',
+  'SECURITY',
+  'RTLD',
+  'RTLD_UIMG_MEM',
+  'PERF',
+  'HAP_POOL',
+  ]
+env.RequireRestrictedApi(APIS)
+env.RequirePublicApi(APIS)
+
+
+core_public_apis = [
+   'KERNEL',
+   ]
+
+env.RequirePublicApi(core_public_apis, area='core')
+if ('USES_ENABLE_GUESTOS_AUDIOPD_SUPPORT' in env):
+   env.PLRegister("fastrpc_smd",['PLATFORM_LIBS', 'SSC_SLPI_USER', 'PLATFORM_ROOT_LIBS', 'FASTRPC_SHELL_IMG', 'SSC_ADSP_USER', 'SENSOR_IMG'])
+   env.PLRegister("rtld",['FASTRPC_SHELL_IMG'])
+else:
+   env.PLRegister("fastrpc_smd",['PLATFORM_LIBS', 'SSC_SLPI_USER', 'PLATFORM_ROOT_LIBS', 'FASTRPC_SHELL_IMG','AVS_ADSP_USER', 'SSC_ADSP_USER', 'SENSOR_IMG'])
+   env.PLRegister("rtld",['FASTRPC_SHELL_IMG','AVS_ADSP_USER'])
+
+#fastrpc_shell_root = str(env.get('BUILD_ROOT', None)) + '/platform/fastrpc_dsp/bin'
+#env.HashLib(fastrpc_shell_root + '/fastrpc_shell_0')
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${ADSP_PLATFORM_ROOT}/fastrpc_dsp/src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+if env['PLATFORM_SUBSYSTEM'] in ['slpi']:
+   env.Append(CFLAGS='-DPLATFORM_SLPI_USER_STUB')
+
+SOURCES =  [
+  '${BUILDPATH}/fastrpc_dsp.c',
+  ]
+
+SSC_SOURCES =  [
+  '${BUILDPATH}/fastrpc_dsp_s.c',
+  ]
+
+SHELL_SOURCES =  [
+  '${BUILDPATH}/fastrpc_dsp_process_user.c',
+  '${BUILDPATH}/sys_mmap.c',
+  '${BUILDPATH}/sys_munmap.c',
+  '${BUILDPATH}/user_stubs.c',
+  ]
+  
+SHELL_SOURCES_AVS = [
+  '${BUILDPATH}/fastrpc_dsp_process_static_pd.c',
+  '${BUILDPATH}/sys_mmap.c',
+  '${BUILDPATH}/sys_munmap.c',
+  ]
+if ('USES_DISABLE_HLOS_PHYSPOOL_DYNAMIC_LOADING' in env):
+    SHELL_SOURCES_AVS = [
+        '${BUILDPATH}/fastrpc_dsp_process_static_pd.c',
+    ]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+libs = env.AddBinaryLibrary(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+ 'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE'],'${BUILDPATH}/fastrpc_dsp', SOURCES)
+
+libs = env.AddBinaryLibrary(['SSC_SLPI_USER', 'SSC_ADSP_USER'],'${BUILDPATH}/fastrpc_dsp', SSC_SOURCES)
+
+fastrpc_shell_dsp = env.AddBinaryObject(['FASTRPC_SHELL_IMG'], SHELL_SOURCES)
+if ('USES_ENABLE_GUESTOS_AUDIOPD_SUPPORT' not in env):
+   env.AddBinaryObject(['AVS_ADSP_USER'], SHELL_SOURCES_AVS)
+
+#-------------------------------------------------------------------------------
+# Load Subunits (sys)
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+# Clean / pack rules
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.cpp', '*.h', '*.s'], '${ADSP_PLATFORM_ROOT}/fastrpc_dsp/src'))
+CLEAN_LIST.extend(env.FindFiles(['*.debug', '*.unstripped'], '${ADSP_PLATFORM_ROOT}/fastrpc_dsp/bin'))
+
+env.CleanPack(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+     'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'SSC_SLPI_USER', 'FASTRPC_SHELL_IMG','AVS_ADSP_USER', 'SSC_ADSP_USER'], CLEAN_LIST)

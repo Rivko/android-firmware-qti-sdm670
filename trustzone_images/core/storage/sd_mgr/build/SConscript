@@ -1,0 +1,84 @@
+#===============================================================================
+#
+#                             Edit History
+#
+# when         who     what, where, why
+# ----------   ---     ---------------------------------------------------------
+# 2013/05/28   jt      Added SW HMAC include files
+# 2012/12/11   jt      Initial version
+#
+#===============================================================================
+#                    Copyright (c) 2012-2013, 2017 QUALCOMM Incorporated.
+#                           All Rights Reserved.
+#                         QUALCOMM Proprietary/GTDR
+#===============================================================================
+
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/storage/sd_mgr/src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_APIS = [
+   'DAL',
+   'HAL',
+   'SERVICES',
+   'KERNEL',
+   'STORAGE',
+]
+
+env.RequirePublicApi(CBSP_APIS, area = 'core')
+env.RequireRestrictedApi(CBSP_APIS)
+env.RequirePrivateApi(CBSP_APIS)
+
+SSG_API = [
+   'UNIFIEDCRYPTO',
+   'SECUREMSM',
+   'MINK',
+   'TZSECAPP',
+   'MINK_LK',
+   'TZCHIPSET',
+   'TZIMGAUTH',
+   'QSEEKERNEL',
+   'LISTENER_ID',
+   'SSGPLATFORM',
+]
+
+env.RequirePublicApi(SSG_API, area='ssg')
+
+env.PublishPrivateApi('STORAGE', [
+   "${INC_ROOT}/ssg/securemsm/trustzone/qsee/kernel/inc",
+])
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+SD_MGR_SOURCES = [
+   '${BUILDPATH}/sd_mgr_rpmb.c',
+   '${BUILDPATH}/sd_mgr_cg.c',
+]
+
+
+#-------------------------------------------------------------------------------
+# Device Configuration Sources
+#-------------------------------------------------------------------------------
+if 'USES_DEVCFG' in env:
+    env.AddDevCfgInfo(['DAL_DEVCFG_IMG'],
+    {
+      'devcfg_xml' : ['${BUILD_ROOT}/core/storage/sd_mgr/config/rpmb.xml', ]
+    })
+
+
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+env.AddBinaryLibrary(['TZOS_IMAGE'], '${BUILDPATH}/sd_mgr', SD_MGR_SOURCES)

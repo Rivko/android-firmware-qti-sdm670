@@ -1,0 +1,69 @@
+#===============================================================================
+#
+# AVS AU
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2015-2016 Qualcomm Technologies, Inc.  All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/avs.adsp/2.8.5/aud/algorithms/audproc/gaincontrol/drc/build/drc.scons#1 $
+#  $DateTime: 2017/11/07 23:00:25 $
+#  $Author: pwbldsvc $
+#  $Change: 14795016 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+import os
+
+if os.environ.get('HEXAGON_RTOS_RELEASE').startswith('8'):
+   env.Append(CFLAGS='-Wno-constant-conversion')
+
+#The flag covers the asm functions in drc_lib_asm.S
+#env.Append(CFLAGS = ' -DQDSP6_DRCLIB_ASM')
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+LIBNAME = 'DrcModule'
+
+items = env.GetSoftwareUnits()
+ 
+x = items.get('LIBS')
+
+avs_reg_sources = []
+avs_stub_sources = []
+avs_prop_sources = list(x)
+
+for i in x: 
+    print i.name
+    if i.name == 'CDrcLib.lib':
+        avs_reg_sources.append(i)
+        avs_prop_sources.remove(i)        
+    if i.name == 'capi_v2_drc.lib':
+        avs_reg_sources.append(i)
+        avs_prop_sources.remove(i)
+    if "_stub" in i.name:
+        avs_stub_sources.append(i)
+        avs_prop_sources.remove(i)
+
+   
+#import pdb; pdb.set_trace()
+
+if 'USES_AVS_LIBRARY_BUILDER' in env:
+   
+   x = env.AddAvsLibrary(['AVS_ADSP','AVS_ADSP_USER'], '${BUILDPATH}/'+LIBNAME,
+      [avs_reg_sources, avs_stub_sources, avs_prop_sources],'MOD')
+
+#import pdb; pdb.set_trace()
+

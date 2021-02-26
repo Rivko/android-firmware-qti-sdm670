@@ -1,0 +1,620 @@
+//============================================================================
+//  Name:                                                                     
+//    std_intercom_init.cmm
+//
+//  Description:                                                              
+//    It initializes the intercom ports for all the subsystems. It will ping
+//    a particular sub-system to check if it is "alive" depending on the arguments
+//    passes
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who             what, where, why
+// --------   ---             ---------------------------------------------------------
+// 01/24/2017 JBILLING      Cleaned up and configured for SDM845
+// 03/10/2016 JBILLING      Configure for 8998
+// 12/14/2015 JBILLING      Add Fusion intercoms
+// 05/13/2015 JBILLING      Added HOSTNAME variable
+// 02/05/2015 JBILLING      Updated for Istari, changed API ports per CPU team's request
+// 08/19/2014 JBILLING      Added checks for apps cluster sessions
+// 05/02/2014 AJCheriyan    Added a return value for a single CHECKSESSION request
+// 07/19/2012 AJCheriyan    Fixed localhost issue and renamed intercom ports 
+// 07/10/2012 AJCheriyan    Created for B-family
+//
+//
+
+// We support two values for the first argument with arguments = no.of sub-systems + 1  
+// SessionUtility - NEWSESSION or CHECKSESSION. If NEWSESSION, we just initialize the intercom ports and return
+//           If CHECKSESSION is chosen, sessions indicated by ARG1 - ARGn are checked and global
+//           variables are updated
+// SessionNumber - No. of sessions to check. Used only if SessionUtility is CHECKSESSION
+//                 If SessionUtility is NEWSESSION, this argument is used for EUD.
+// Session# - n > 1 - SESSION names to check for. Currently supports the following
+//                     AOP, APPS0, APPS1, APPS2, APPS3, APPS4, APPS5, APPS6, APPS7, MPSS, ADSP, CDSP, SLPI
+//
+//###################Arguments passed #####################
+LOCAL &ArgumentLine
+ENTRY %LINE &ArgumentLine
+LOCAL &SUBROUTINE &argline
+ENTRY &SUBROUTINE %LINE &argline
+
+
+
+LOCAL &SessionUtility &SessionNumber &Session0 &Session1 &Session2 &Session3 &Session4 &Session5 &Session6 &Session7 
+ENTRY &SessionUtility &SessionNumber &Session0 &Session1 &Session2 &Session3 &Session4 &Session5 &Session6 &Session7 
+
+
+//################### Global Variables #####################
+
+GLOBAL &AOP_ALIVE &AOP_PORT 
+GLOBAL &RPM_ALIVE &RPM_PORT
+GLOBAL &APPS0_ALIVE &APPS0_PORT 
+GLOBAL &APPS1_ALIVE &APPS1_PORT 
+GLOBAL &APPS2_ALIVE &APPS2_PORT 
+GLOBAL &APPS3_ALIVE &APPS3_PORT
+GLOBAL &APPS4_ALIVE &APPS4_PORT
+GLOBAL &APPS5_ALIVE &APPS5_PORT
+GLOBAL &APPS6_ALIVE &APPS6_PORT
+GLOBAL &APPS7_ALIVE &APPS7_PORT
+GLOBAL &APPSC0_ALIVE &APPSC0_PORT
+GLOBAL &APPSC1_ALIVE &APPSC1_PORT
+GLOBAL &MPSS_ALIVE &MPSS_PORT
+GLOBAL &ADSP_ALIVE &ADSP_PORT
+GLOBAL &SLPI_ALIVE &SLPI_PORT
+GLOBAL &CDSP_ALIVE &CDSP_PORT
+GLOBAL &WLAN_ALIVE &WLAN_PORT
+GLOBAL &VSS_ALIVE &VSS_PORT
+GLOBAL &GPMU_ALIVE &GPMU_PORT
+
+GLOBAL &BOOTPROCESSORPORT &BOOTPROCESSORNAME
+
+GLOBAL &MDM_APPS0_PORT &MDM_RPM_PORT &MDM_MPSS_PORT &MDM_IPA_PORT
+
+// Handle for this processor
+GLOBAL &LOCALHOST &LOCALNAME
+
+// Any locals for this script
+LOCAL &rvalue
+
+
+//#####################Various env prep####################
+AREA.SELECT
+
+//#####################Select Subroutine###################
+
+// Input Argument 0 is the name of the utility
+&SUBROUTINE=STR.UPR("&SUBROUTINE")
+
+IF !(("&SUBROUTINE"=="HELP")||("&SUBROUTINE"=="NEWSESSION")||("&SUBROUTINE"=="CHECKSESSION"))
+(
+    &SUBROUTINE="HELP"
+    &argline="&ArgumentLine"
+)
+
+// Call the required utility
+GOSUB &SUBROUTINE &argline
+LOCAL &rvalue
+ENTRY %LINE &rvalue
+GOSUB EXIT &rvalue
+
+
+//################################Subroutines#########################################
+
+
+    
+////////////////////////////////////////////////////    
+///
+/// NEWSESSION
+/// Set up intercom values
+///
+////////////////////////////////////////////////////      
+NEWSESSION:
+
+   &rvalue=0
+   // Setup intercom ports only if NEWSESSION    
+    // Intercom port number of the currrent session
+       &LOCALHOST=INTERCOM.PORT()
+    
+    &AOP_PORT="1008."
+    &RPM_PORT="1008."
+    &APPS0_PORT="15370."
+    &APPS1_PORT="15371."
+    &APPS2_PORT="15372."
+    &APPS3_PORT="15373."
+
+    &APPS4_PORT="15374."
+    &APPS5_PORT="15375."
+    &APPS6_PORT="15376."
+    &APPS7_PORT="15377."
+    
+    &APPSC0_PORT="15378."
+    &APPSC1_PORT="15379."
+
+    &MPSS_PORT="15401."
+    &ADSP_PORT="15402."
+    &SLPI_PORT="15403."
+    &CDSP_PORT="15404."
+
+    &VSS_PORT="15405."
+    &GPMU_PORT="15405."
+    
+    
+    //For fusion setup
+    &MDM_APPS0_PORT="15407."
+    &MDM_RPM_PORT="15406."
+    &MDM_MPSS_PORT="15408."
+    &MDM_IPA_PORT="15409."
+    
+    
+    
+    
+    IF ("&SessionNumber"=="EUD")
+    (
+        GOSUB EUDIntercomCheck
+        
+        &APPS0_PORT="25370."
+        &APPS1_PORT="25371."
+        &APPS2_PORT="25372."
+        &APPS3_PORT="25373."
+                     
+        &APPS4_PORT="25374."
+        &APPS5_PORT="25375."
+        &APPS6_PORT="25376."
+        &APPS7_PORT="25377."
+
+        &APPSC0_PORT="25378."
+        &APPSC1_PORT="25379."
+        
+        &AOP_PORT="25400."
+        &RPM_PORT="25400."
+        &MPSS_PORT="25401."
+        &ADSP_PORT="25402."
+        &SLPI_PORT="25403."
+
+        &CDSP_PORT="25404."
+        
+        &VSS_PORT="25404."
+        &GPMU_PORT="25405."
+        
+    )
+    &BOOTPROCESSORPORT=&APPS0_PORT
+    &BOOTPROCESSORNAME="APPS0"
+    IF ("&FUSION_PLATFORM"=="TRUE")
+    (
+        &MPSS_PORT="&MDM_MPSS_PORT"
+    )
+    
+    //Populate localname
+    IF (&LOCALHOST==&AOP_PORT)
+    (
+        &LOCALNAME="AOP"
+    )
+    ELSE IF (&LOCALHOST==&APPS0_PORT)
+    (
+        &LOCALNAME="APPS0"
+    )
+    ELSE IF (&LOCALHOST==&APPS1_PORT)
+    (
+        &LOCALNAME="APPS1"
+    )
+    ELSE IF (&LOCALHOST==&APPS2_PORT)
+    (
+        &LOCALNAME="APPS2"
+    )
+    ELSE IF (&LOCALHOST==&APPS3_PORT)
+    (
+        &LOCALNAME="APPS3"
+    )
+    
+    ELSE IF (&LOCALHOST==&APPS4_PORT)
+    (
+        &LOCALNAME="APPS4"
+    )
+    ELSE IF (&LOCALHOST==&APPS5_PORT)
+    (
+        &LOCALNAME="APPS5"
+    )
+    ELSE IF (&LOCALHOST==&APPS6_PORT)
+    (
+        &LOCALNAME="APPS6"
+    )
+    ELSE IF (&LOCALHOST==&APPS7_PORT)
+    (
+        &LOCALNAME="APPS7"
+    )
+    
+    ELSE IF (&LOCALHOST==&APPSC0_PORT)
+    (
+        &LOCALNAME="APPSC0"
+    )
+    ELSE IF (&LOCALHOST==&APPSC1_PORT)
+    (
+        &LOCALNAME="APPSC1"
+    )
+    ELSE IF (&LOCALHOST==&MPSS_PORT)
+    (
+        &LOCALNAME="MPSS"
+    )
+    ELSE IF (&LOCALHOST==&ADSP_PORT)
+    (
+        &LOCALNAME="ADSP"
+    )
+    ELSE IF (&LOCALHOST==&SLPI_PORT)
+    (
+        &LOCALNAME="SLPI"
+    )
+    ELSE IF (&LOCALHOST==&CDSP_PORT)
+    (
+        &LOCALNAME="CDSP"
+    )
+    ELSE IF (&LOCALHOST==&VSS_PORT)
+    (
+        &LOCALNAME="VSS"
+    )
+    ELSE IF (&LOCALHOST==&GPMU_PORT)
+    (
+        &LOCALNAME="GPMU"
+    )
+    
+    &rvalue=1
+  
+    RETURN SUCCESS
+    
+    
+////////////////////////////////////////////////////    
+///
+/// CHECKSESSION
+/// We want to check if a particular session is 
+/// active. So ping and find out 
+///
+////////////////////////////////////////////////////      
+CHECKSESSION:
+    LOCAL &rvalue &temp_rvalue
+    &rvalue=""
+    GOSUB CHECKSESSIONARG &Session0
+    ENTRY &temp_rvalue
+    &rvalue="&rvalue"+" "+"&temp_rvalue"
+    GOSUB CHECKSESSIONARG &Session1
+    ENTRY &temp_rvalue
+    &rvalue="&rvalue"+" "+"&temp_rvalue"
+    GOSUB CHECKSESSIONARG &Session2
+    ENTRY &temp_rvalue
+    &rvalue="&rvalue"+" "+"&temp_rvalue"
+    GOSUB CHECKSESSIONARG &Session3
+    ENTRY &temp_rvalue
+    &rvalue="&rvalue"+" "+"&temp_rvalue"
+    GOSUB CHECKSESSIONARG &Session4
+    ENTRY &temp_rvalue
+    &rvalue="&rvalue"+" "+"&temp_rvalue"
+    GOSUB CHECKSESSIONARG &Session5
+    ENTRY &temp_rvalue
+    &rvalue="&rvalue"+" "+"&temp_rvalue"
+    GOSUB CHECKSESSIONARG &Session6
+    ENTRY &temp_rvalue
+    &rvalue="&rvalue"+" "+"&temp_rvalue"
+    GOSUB CHECKSESSIONARG &Session7
+    ENTRY &temp_rvalue
+    &rvalue="&rvalue"+" "+"&temp_rvalue"
+    GOSUB CHECKSESSIONARG &SessionNumber0
+    ENTRY &temp_rvalue
+    &rvalue="&rvalue"+" "+"&temp_rvalue"
+    
+    RETURN &rvalue
+
+////////////////////////////////////////////////
+///
+/// EUDIntercomCheck
+/// It is incompatible to have EUD and normal JTAG dongle
+/// windows open simultaneously. This check polls non-EUD
+/// intercom windows and raises an error to user.
+/// 
+////////////////////////////////////////////////
+EUDIntercomCheck:
+
+
+    LOCAL &nonEUDwindowpresent
+    &nonEUDwindowpresent="TRUE"
+    
+    //Only check apps0 or apps_cluster_0 for speed.
+    WHILE ("&nonEUDwindowpresent"=="TRUE")
+    (
+        IF INTERCOM.PING(&APPS0_PORT)
+        (
+            DIALOG.OK "Detected EUD dongle-less environment. Please close all non-EUD Trace32 windows"
+        )
+        ELSE
+        (
+            &nonEUDwindowpresent="FALSE"
+        )
+    )
+    
+    RETURN 
+//////////////////////////////////////////////////////////
+ // Function to check if the session is valid or not
+ // If invalid, it will exit the script. The assumption
+ // is that the first argument which is "NULL" will be 
+ // followed by more NULL arguments and hence, can exit. 
+ // The arguments must be checked in serial order for this 
+ // to be true.
+ /////////////////////////////////////////////////////////
+CHECKSESSIONARG:
+    LOCAL &session &rvalue
+    ENTRY &session
+
+
+    IF ("&session"=="")
+    (
+        RETURN
+    )
+
+    IF ("&session"=="RPM")||("&session"=="AOP")
+    (
+        IF INTERCOM.PING(&AOP_PORT)
+        (
+            &AOP_ALIVE=1.
+            &RPM_ALIVE=1.
+            &rvalue=1.
+            PRINT "AOSS Session Active."
+        )
+        ELSE
+        (
+            &AOP_ALIVE=0.
+            &RPM_ALIVE=0.
+            &rvalue=0.
+        )
+        
+    )
+
+    IF ("&session"=="APPS0")
+    (
+        IF INTERCOM.PING(&APPS0_PORT)
+        (
+            &APPS0_ALIVE=1.
+            &rvalue=1.
+            PRINT "Apps Session 0 Active."
+        )
+        ELSE
+        (
+            &APPS0_ALIVE=0.
+            &rvalue=0.
+        )
+        
+    )
+
+    IF ("&session"=="APPS1")
+    (
+        IF INTERCOM.PING(&APPS1_PORT)
+        (
+            &APPS1_ALIVE=1.
+            &rvalue=1.
+            PRINT "Apps Session 1 Active."
+        )
+        ELSE
+        (
+            &APPS1_ALIVE=0.
+            &rvalue=0.
+        )
+        
+    )
+
+    IF ("&session"=="APPS2")
+    (
+        IF INTERCOM.PING(&APPS2_PORT)
+        (
+            &APPS2_ALIVE=1.
+            &rvalue=1.
+            PRINT "Apps Session 2 Active."
+        )
+        ELSE
+        (
+            &APPS2_ALIVE=0.
+            &rvalue=0.
+        )
+        
+    )
+
+    IF ("&session"=="APPS3")
+    (
+        IF INTERCOM.PING(&APPS3_PORT)
+        (
+            &APPS3_ALIVE=1.
+            &rvalue=1.
+            PRINT "Apps Session 3 Active."
+        )
+        ELSE
+        (
+            &APPS3_ALIVE=0.
+            &rvalue=0.
+        )
+        
+    )
+
+    IF ("&session"=="APPS4")
+    (
+        IF INTERCOM.PING(&APPS4_PORT)
+        (
+            &APPS4_ALIVE=1.
+            &rvalue=1.
+            PRINT "Apps Session 4 Active."
+        )
+        ELSE
+        (
+            &APPS4_ALIVE=0.
+            &rvalue=0.
+        )
+        
+    )
+    IF ("&session"=="APPS5")
+    (
+        IF INTERCOM.PING(&APPS5_PORT)
+        (
+            &APPS5_ALIVE=1.
+            &rvalue=1.
+            PRINT "Apps Session 5 Active."
+        )
+        ELSE
+        (
+            &APPS5_ALIVE=0.
+            &rvalue=0.
+        )
+        
+    )
+    IF ("&session"=="APPS6")
+    (
+        IF INTERCOM.PING(&APPS6_PORT)
+        (
+            &APPS6_ALIVE=1.
+            &rvalue=1.
+            PRINT "Apps Session 6 Active."
+        )
+        ELSE
+        (
+            &APPS6_ALIVE=0.
+            &rvalue=0.
+        )
+        
+    )
+    IF ("&session"=="APPS7")
+    (
+        IF INTERCOM.PING(&APPS7_PORT)
+        (
+            &APPS7_ALIVE=1.
+            &rvalue=1.
+            PRINT "Apps Session 7 Active."
+        )
+        ELSE
+        (
+            &APPS7_ALIVE=0.
+            &rvalue=0.
+        )
+        
+    )
+    IF ("&session"=="APPSC0")
+    (
+        IF INTERCOM.PING(&APPSC0_PORT)
+        (
+            &APPSC0_ALIVE=1.
+            &rvalue=1.
+            PRINT "Apps Session Cluster0 Active."
+        )
+        ELSE
+        (
+            &APPSC0_ALIVE=0.
+            &rvalue=0.
+        )
+        
+    )
+
+    IF ("&session"=="APPSC1")
+    (
+        IF INTERCOM.PING(&APPSC1_PORT)
+        (
+            &APPSC1_ALIVE=1.
+            &rvalue=1.
+            PRINT "Apps Session Cluster1 Active."
+        )
+        ELSE
+        (
+            &APPSC1_ALIVE=0.
+            &rvalue=0.
+        )
+        
+    )
+
+    
+    IF ("&session"=="MPSS")
+    (
+        IF INTERCOM.PING(&MPSS_PORT)
+        (
+            &MPSS_ALIVE=1.
+            &rvalue=1.
+            PRINT "MPSS Session Active."
+        )
+        ELSE
+        (
+            &MPSS_ALIVE=0.
+            &rvalue=0.
+        )
+        
+    )
+
+    IF ("&session"=="ADSP")
+    (
+        IF INTERCOM.PING(&ADSP_PORT)
+        (
+            &ADSP_ALIVE=1.
+            &rvalue=1.
+            PRINT "ADSP Session Active."
+        )
+        ELSE
+        (
+            &ADSP_ALIVE=0.
+            &rvalue=0.
+        )
+        
+    )
+    
+    IF ("&session"=="CDSP")
+    (
+        IF INTERCOM.PING(&CDSP_PORT)
+        (
+            &CDSP_ALIVE=1.
+            &rvalue=1.
+            PRINT "CDSP Session Active."
+        )
+        ELSE
+        (
+            &CDSP_ALIVE=0.
+            &rvalue=0.
+        )
+        
+    )
+    IF ("&session"=="SLPI")
+    (
+        IF INTERCOM.PING(&SLPI_PORT)
+        (
+            &SLPI_ALIVE=1.
+            &rvalue=1.
+            PRINT "SLPI Session Active."
+        )
+        ELSE
+        (
+            &SLPI_ALIVE=0.
+            &rvalue=0.
+        )
+        
+    )
+    IF ("&session"=="VSS")
+    (
+        IF INTERCOM.PING(&VSS_PORT)
+        (
+            &VSS_ALIVE=1.
+            &rvalue=1.
+            PRINT "VSS Session Active."
+        )
+        ELSE
+        (
+            &VSS_ALIVE=0.
+            &rvalue=0.
+        )
+        
+    )
+    RETURN &rvalue
+
+///////////////////
+///
+/// EXIT
+/// Exit with return value
+///
+////////////////////
+EXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    ENDDO &rvalue

@@ -1,0 +1,319 @@
+//============================================================================
+//  Name:                                                                     
+//    startup.cmm 
+//
+//  Description:                                                              
+//    Common startup script that calls the processor specific init scripts 
+//                                                                            
+// Copyright (c) 2012 - 2017 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who           what, where, why
+// --------   ---           ---------------------------------------------------------
+// 04/06/2017 JBILLING      Updates for sdm845
+// 01/16/2016 JBILLING      Changed for 9645 automotive
+// 03/10/2016 JBILLING      Updated temp path for host OS
+// 10/26/2015 JBILLING      Changed location of gen_buildflavor.cmm
+// 12/03/2013 AJCheriyan    Added MPQ support
+// 05/02/2013 AJCheriyan    Added support for History
+// 04/18/2013 AJCheriyan    Added default access specifier option
+// 04/04/2013 AJCheriyan    Added option for SWD connectivity
+// 07/10/2012 AJCheriyan    Created for B-family
+//
+
+// Supports three input arguments 
+// ARG0 - T32 connection property
+// ARG1 - Chipset Name 
+// ARG2 - Sub-system Name
+// ARG3 - Core Number
+// ARG4 - Connectivity option
+// ARG5 - Fusion platform option
+// ARG6 - RUMI option
+LOCAL &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5 &ARG6 &ARG7
+ENTRY &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5 &ARG6 &ARG7
+
+&currdir=os.ppd()
+CD &currdir\..
+
+// Global variables for the args passed in along with product flavor information
+GLOBAL &T32PROP &CHIPSET &SUBSYS &CORENUM &PRODUCT_FLAVOR &CONNECT &ACCESS &CHIPTYPE
+GLOBAL &DEVICEID
+LOCAL &RumiOption
+// Save the arguments 
+//&T32PROP=STR.LWR("&ARG0")
+&T32PROP="&ARG0"
+&CHIPSET=STR.LWR("&ARG1")
+&SUBSYS="&ARG2"
+// &SUBSYS=STR.LWR("&ARG2")
+&CORENUM=STR.LWR("&ARG3")
+&CONNECT=STR.LWR("&ARG4")
+&ACCESS="AXI"
+&RumiOption=STR.UPR("&ARG6")
+&DEVICEID=STR.UPR("&ARG7")
+// Assign the type of the chip for fusion setups
+LOCAL &CHIPSET_UPR
+&CHIPSET_UPR=STR.UPR("&CHIPSET")
+IF (STRING.SCAN("&CHIPSET_UPR","MDM",0)!=-1)||(STRING.SCAN("&CHIPSET_UPR","SDX",0)!=-1)
+(
+    &CHIPTYPE="MDM"
+)
+ELSE
+(
+    &CHIPTYPE="MSM"
+)
+
+//////////////////////Fusion options////////////////////////
+GLOBAL &FUSION_PLATFORM &FUSION_TYPE
+
+IF STR.LWR("&ARG5")=="fusion2"
+(
+    //Fusion2 setup is two distinct boards but with one t32 instance opening them
+    //i.e., not really a fusion setup.
+    &FUSION_PLATFORM="FUSION_MDM"
+    &FUSION_TYPE="FUSION_MDM"
+
+)
+ELSE IF STR.LWR("&ARG5")=="fusion3"
+(
+	IF ("&CHIPTYPE"=="MSM")
+	(
+		&FUSION_PLATFORM="FUSION_MSM"
+		&FUSION_TYPE="NONE"
+	)
+	ELSE
+	(
+		&FUSION_PLATFORM="TRUE"
+		&FUSION_TYPE="FUSION3"
+	)
+)
+ELSE IF STR.LWR("&ARG5")=="fusion"
+(
+    &FUSION_PLATFORM="TRUE"
+    &FUSION_TYPE="FUSION1"
+)
+ELSE
+(
+    &FUSION_PLATFORM="FALSE"
+    &FUSION_TYPE="NONE"
+)
+
+
+GLOBAL &RUMI
+&RUMI="FALSE"
+//IF "&CHIPSET_UPR"=="SDM845"
+IF ("&ARG6"=="TRUE")
+(
+    &RUMI="TRUE"
+)
+ELSE
+(
+    &RUMI="FALSE"
+)
+// Locals used
+LOCAL &SUBSYSCRIPT &SESSIONSCRIPT
+
+GLOBAL &EUD
+LOCAL &configprefix
+IF "&T32PROP"=="EUD"
+(
+    do config/EUD_CONFIG &CHIPSET &CORENUM &CONNECT &DEVICEID
+    &configprefix="DAP"
+)
+ELSE
+(
+    &configprefix="DAP"
+)
+// Now call the subsystem level script
+&SUBSYSCRIPT="&configprefix"+"_"+"&SUBSYS"
+PRINT "Calling script: &SUBSYSCRIPT with args: &CHIPSET &CORENUM &CONNECT"
+do config/&SUBSYSCRIPT &CHIPSET &CORENUM &CONNECT
+
+// At this point we have the location of the scripts for 
+// this session. Call the script to populate the build information
+PRINT "Calling script: gen_buildinfo"
+
+
+
+////////////////////////////HOST OS Variables//////////////////////////////////
+//Get host os type
+GLOBAL &TEMPDIR &HOSTOS &TEMP
+IF (VERSION.BUILD()<65625.)
+(
+    &HOSTOS="Windows"
+)
+ELSE
+(
+    &HOSTOS=OS.NAME()
+)
+IF ("&HOSTOS"=="Windows")
+(
+    &TEMPDIR=OS.ENV(TEMP)
+)
+ELSE
+(
+    &TEMPDIR="~~~"
+)
+
+IF FILE.EXIST("&TEMPDIR/gen_buildinfo.cmm")
+(
+    GLOBAL &BUILDINFOHASRUN
+    &BUILDINFOHASRUN="TRUE"
+    do &TEMPDIR/gen_buildinfo.cmm
+)
+ELSE
+(
+    PRINT "Warning - Could not access gen_buildinfo.cmm at &TEMPDIR"
+)
+&TEMP="&TEMPDIR"
+//FIXME - here until variable name is changed
+IF ((STRING.SCAN("&APPS_BUILDROOT","APPS_BUILDROOT",0)!=-1)&&(STRING.SCAN("&APSS_BUILDROOT","APSS_BUILDROOT",0)==-1))
+(
+    GLOBAL &APPS_BUILDROOT
+    &APPS_BUILDROOT="&APSS_BUILDROOT"
+)
+
+//FIXME - better wa yto do this
+IF STR.LWR("&ARG5")=="fusion2"
+(
+    &HLOS="LE"
+)
+ELSE IF STR.LWR("&ARG5")=="fusion3"
+(
+    //&HLOS="MN"
+	IF ("&CHIPTYPE"=="MDM")
+	(
+		&HLOS="MN"
+	)
+)
+// Now setup the scripts information first
+PRINT "Calling script: std_toolsconfig with args: &CHIPSET &SUBSYS"
+do std_toolsconfig &CHIPSET &SUBSYS
+// Load up the product flavor information for the meta build
+// PRODUCT_FLAVOR information is obtained from 
+IF ("&PRODUCT_FLAVORS"=="")
+(
+    PRINT %ERROR "Product Flavor invalid. Invalid meta build configuration"
+    GOTO FATALEXIT
+)
+
+GLOBAL &BUILD_FLAVOR_SCRIPT
+IF FILE.EXIST(&METASCRIPTSDIR/../../../build/app/gen_buildflavor.cmm)
+(
+    &BUILD_FLAVOR_SCRIPT="&METASCRIPTSDIR/../../../build/app/gen_buildflavor.cmm"
+)
+ELSE IF (FILE.EXIST(&METASCRIPTSDIR/gen/gen_buildflavor.cmm))
+(
+    &BUILD_FLAVOR_SCRIPT="&METASCRIPTSDIR/gen/gen_buildflavor.cmm"
+)
+ELSE
+(
+
+            WINPOS 0. 0. 50. 10.
+            area.create gen_buildflavor
+            AREA.SELECT gen_buildflavor
+            area.view gen_buildflavor
+            PRINT %ERROR "   Warning! gen_buildflavor.cmm not found!" 
+            PRINT " "
+            PRINT %ERROR "   Metabuild binary paths, "
+            PRINT %ERROR "   ELF file paths and build "
+            PRINT %ERROR "   flavors will be missing."
+            PRINT " "
+            PRINT " "
+            PRINT " "
+            area.select A000
+            wait.3s
+    
+    &BUILD_FLAVOR_SCRIPT="NULL"
+)
+IF STR.LWR("&ARG5")=="fusion2"
+(
+    //Fusion2 setup is two distinct boards but with one t32 instance opening them
+    
+    //i.e., not really a fusion setup.
+    //IF ("&BUILD_FLAVOR_SCRIPT"!="NULL")
+    //(
+    //    do &BUILD_FLAVOR_SCRIPT asic
+    //)
+    
+    //if tagged with 'fusion2', it's the MDM portion. 
+    //MDM portion doesn't need to know it's a fusion, just replace variables appropriately.
+    &APSS_BUILDROOT="&APSS_BUILDROOT_MDM"
+    GLOBAL &APPS_BUILDROOT
+    &APPS_BUILDROOT="&APSS_BUILDROOT"
+    &MPSS_BUILDROOT="&MPSS_BUILDROOT_MDM"
+    &TZ_BUILDROOT="&TZ_BUILDROOT_MDM"
+    &BOOT_BUILDROOT="&BOOT_BUILDROOT_MDM"
+    &BTFM_BUILDROOT="&BTFM_BUILDROOT_MDM"
+    &RPM_BUILDROOT="&RPM_BUILDROOT_MDM"
+    
+    
+    
+    
+    //FIXME
+    //&HLOS=&HLOS_MDM
+    
+    GLOBAL &HLOS
+    &HLOS="LE"
+
+
+) 
+ELSE IF STR.LWR("&ARG5")=="fusion3"
+(
+	IF ("&CHIPTYPE"=="MDM")
+	(
+		&HLOS="MN"
+	)
+)
+IF "&BUILD_FLAVOR_SCRIPT"!="NULL"
+(
+    IF (STR.SCAN("&PRODUCT_FLAVORS",",",0)<0.)
+    (
+        // This means there is just one product flavor
+        do &BUILD_FLAVOR_SCRIPT &PRODUCT_FLAVORS
+        &PRODUCT_FLAVOR="&PRODUCT_FLAVORS"
+    )
+    ELSE
+    (
+        // Populate the data using the first one and make it the default
+        &DEFAULT_FLAVOR=STR.MID("&PRODUCT_FLAVORS",0,STR.SCAN("&PRODUCT_FLAVORS",",",0))
+        do &BUILD_FLAVOR_SCRIPT &DEFAULT_FLAVOR
+        &PRODUCT_FLAVOR="&DEFAULT_FLAVOR"
+    )
+)
+// Perform the intercom initialization
+do std_intercom_init NEWSESSION
+
+//EUD reporting
+IF ("&EUD"=="TRUE")&&("&ARG3"=="0")
+(
+    LOCAL &argument
+    &argument="EUD_"+"&SUBSYS"
+    do common/std_results &argument SUCCESS NULL
+)
+// Now perform the debug session specific setup
+// Pass the sub-system name along as well
+PRINT "Calling script: std_sessioncfg with args: &SUBSYS"
+&SESSIONSCRIPT="std_sessioncfg_"+STR.LWR("&SUBSYS")
+ON ERROR GOTO USE_DIRECT_PATH
+do &SESSIONSCRIPT INIT &CHIPSET &SUBSYS
+GOTO CONTINUESCRIPT
+USE_DIRECT_PATH:
+do &SUBSYS/&SESSIONSCRIPT INIT &CHIPSET &SUBSYS
+CONTINUESCRIPT:
+// Other various varaibles
+GLOBAL &STDRESETPMIC
+&STDRESETPMIC="TRUE"
+
+
+EXIT:
+    ENDDO
+
+FATALEXIT:
+    END
+

@@ -1,0 +1,72 @@
+;============================================================================
+;
+; SEE Thread Manager Walker
+;
+; To be called by ssc_parser.cmm to walk the Thread Manager DB
+;
+; Copyright (c) 2016-2018 Qualcomm Technologies, Inc.
+; All Rights Reserved.
+; Qualcomm Technologies, Inc. Confidential and Proprietary.
+;============================================================================
+
+ENTRY
+
+print "##### Thread Manager #####"
+print ""
+
+&thread_pool_cnt=V.VALUE(sizeof(thread_pools) / sizeof(sns_thread_pool))
+&j=0
+
+while &j<&thread_pool_cnt
+(
+  &pool=V.VALUE(&thread_pools[&j])
+  &thread_cnt=V.VALUE(thread_pools[&j].threads_len)
+
+  print "Thread Pool "+format.decimal(1,&j)+" - (sns_thread_pool*)0x"+format.HEX(8,&pool)
+
+  &k=0
+  while &k<&thread_cnt
+  (
+    &thread=V.VALUE(&thread_pools[&j].threads[&k])
+    &library=V.VALUE(thread_pools[&j].threads[&k].library)
+    &thread_utilization=V.VALUE(thread_pools[&j].threads[&k].thread_utilization)
+
+    print "    Thread "+format.decimal(1,&k)+" - (sns_worker_thread*)0x"+format.HEX(8,&thread)
+    print "        Current library    = (sns_sensor_library*)0x"+format.HEX(8,&library)
+    print "        Thread utilization = "+format.decimal(1,&thread_utilization)
+    &k=&k+1.
+  )
+
+  &task_cnt=0
+  &task_idx=0
+  &num_tasks=V.VALUE(thread_pools[&j].pending_tasks.cnt)
+  &task=V.VALUE(thread_pools[&j].pending_tasks.item.next)
+
+  while &task_idx<&num_tasks
+  (
+    &m=0
+    while &m<10.
+    (
+      &func=V.VALUE(((sns_tmgr_task_arr*)&task)->tasks[&m].func)
+      &lib=V.VALUE(((sns_tmgr_task_arr*)&task)->tasks[&m].library)
+      if (&lib!=0)&&(&func!=0)
+      (
+        &task_cnt=&task_cnt+1.
+      )
+      &m=&m+1.
+    )
+
+    &task=V.VALUE(((sns_list_item*)&task)->next->item)
+    &task_idx=&task_idx+1.
+  )
+
+  print ""
+  print "    Pending task cnt  = "+format.decimal(1,&task_cnt)+" in "+format.decimal(1,&num_tasks)+" arrays"
+  print ""
+  &j=&j+1.
+)
+
+print "==================================================================================="
+print ""
+enddo
+

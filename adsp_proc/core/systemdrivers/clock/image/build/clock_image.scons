@@ -1,0 +1,99 @@
+#===============================================================================
+#
+# CLOCK DRIVER HW (CHIPSET) LIBRARY
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2016 Qualcomm Technologies Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1/systemdrivers/clock/image/build/clock_image.scons#3 $
+#  $DateTime: 2017/10/23 05:26:35 $
+#  $Author: pwbldsvc $
+#  $Change: 14666121 $
+#
+#===============================================================================
+
+import os
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Add API folders
+#-------------------------------------------------------------------------------
+
+CLOCK_BUILD_ROOT = os.getcwd();
+
+#-------------------------------------------------------------------------------
+# Define paths
+#-------------------------------------------------------------------------------
+
+SRCPATH = "../"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Define any features or compiler flags
+#-------------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+CBSP_API = [
+   'DAL',
+   'DEBUGTRACE'
+   'HAL',
+   'KERNEL',
+   'MPROC',
+   'POWER',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'POWER',
+   'KERNEL',
+   'DEBUGTRACE'
+]
+ 	 
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Define sources
+#-------------------------------------------------------------------------------
+
+CLOCK_IMAGE_SOURCES = [
+   '${BUILDPATH}/ClockImage.c',
+   '${BUILDPATH}/ClockCPU.c',
+   '${BUILDPATH}/ClockQDSS.c',
+   '${BUILDPATH}/ClockEnv.c',
+   '${BUILDPATH}/ClockImageBIST.c',
+]
+
+#-------------------------------------------------------------------------------
+# Add libraries to image
+#-------------------------------------------------------------------------------
+
+env.AddLibrary(
+   ['CORE_SLPI_ROOT', 'CORE_ADSP_ROOT','CORE_SLPI_ADSP_ROOT','CORE_CDSP_ROOT'],
+   '${BUILDPATH}/ClockImage',
+   CLOCK_IMAGE_SOURCES)
+
+#-------------------------------------------------------------------------------
+# Invoke the image-specific scons scripts
+#-------------------------------------------------------------------------------
+
+base_scons_path = '{ROOT}/core/systemdrivers/clock/image/{IMAGE}/hw/{{CHIPSET}}/build/clock_chipset.scons'.format(
+  ROOT=env['BUILD_ROOT'],
+  IMAGE=env['IMAGE'])
+scons_path = base_scons_path.format(CHIPSET=env['CHIPSET'])
+
+# Stub image if no chipset-specific scons file defined yet.
+if not os.path.exists(scons_path):
+    scons_path = base_scons_path.format(CHIPSET='stub')
+
+env.SConscript(scons_path, exports='env')
+

@@ -1,0 +1,314 @@
+/** @file II2C.idl  */
+/* 
+  Copyright (c) 2015-2017 Qualcomm Technologies, Inc.  All Rights Reserved.
+  Qualcomm Technologies Proprietary and Confidential. */
+
+/**
+ * @addtogroup core
+ * @{
+ */
+
+
+/** Bus configuration settings. */
+struct II2C_BusConfig {
+   uint32 fsBusFreqInKhz;
+   /**< Bus frequency in Fast-speed mode. */
+
+   uint32 hsBusFreqInKhz;
+   /**< Bus frequency in High-speed mode; currently unsupported. */
+
+   int32  i2cInterface;
+   /**< Interface to use. */
+
+   int32  maxBusAcquireWaitTimeMsec;
+   /**< Bus acquisition timeout time in microseconds. */
+};
+
+/** Slave device configuration settings. */
+struct II2C_SlaveDeviceConfig {
+   uint32 slaveAddress;
+   /**< I2C slave device address. */
+
+   int32  slaveAddressOption;
+   /**< I2C slave device address options. */
+
+   int32  slaveDeviceType;
+   /**< I2C slave device type. */
+
+   int32  readOption;
+   /**< I2C slave device read option. */
+
+   int32  byteTransferWaitTimeUsec;
+   /**< Byte transfer timeout time in microseconds. Clock stretching for
+        a slower device can be achieved by increasing this timeout value.
+        Use the I2C_DEFAULT_WAIT_TIME constant for the default timeout time
+        preset by the driver. @newpagetable */
+};
+
+struct II2C_Config {
+   int32  useDefaultBusConfig;
+   /**< Set to nonzero for default bus configuration. */
+
+   II2C_BusConfig  busConfig;
+   /**< Bus configuration. */
+
+   II2C_SlaveDeviceConfig  slaveConfig;
+   /**< Slave device configuration. */
+};
+/** @} */ /* end_addtogroup core */
+
+interface II2C /** <b>Note:</b> The acquireExclusiveAccess() and releaseExclusiveAccess() are deprecrated. */{ 
+/**
+ * @addtogroup core
+ * @{
+ */
+  const int32 DEFAULT_WAIT_TIME = -1;
+  /**< Default wait time. */
+
+  const int32 INVALID_DEVICE = -1;
+  /**< Invalid device. */
+
+  //--------------------------------------------------------
+  //  qsee_i2c_interface_t
+  //--------------------------------------------------------
+
+  const int32 INVALID_INTERFACE = -1;
+  /**< Invalid interface. */
+
+  const int32 STANDARD_INTERFACE = 0;  
+  /**< Standard set of I/O pins in use. */
+
+  const int32 AUXILIARY_INTERFACE = 1;  
+  /**< Alternate auxiliary set of I/O pins in use; not all targets support the auxiliary interface. */
+
+/** @cond */
+  const int32 INTERFACE_COUNT = 2;  
+  /* Checks the bounds of this enumeration. */ 
+/** @endcond */
+
+  //--------------------------------------------------------
+  //  qsee_i2c_slaveaddr_options_t
+  //--------------------------------------------------------
+
+  const int32 INVALID_SLAVE_ADDRESS = -1;
+  /**< Invalid slave address. */
+
+  const int32 SEVEN_BIT_SLAVE_ADDRESS = 0;  
+  /**< Slave is a 7-bit address device. */
+
+  const int32 TEN_BIT_SLAVE_ADDRESS = 1;  
+  /**< Slave is a 10-bit address device; currently unsupported. */
+/** @cond */
+  const int32 SLAVE_ADDR_OPTIONS_COUNT = 2;  
+  /* Checks the bounds of this enumeration. */
+/** @endcond */
+
+  //--------------------------------------------------------
+  //  qsee_i2c_slave_device_t
+  //--------------------------------------------------------
+
+  const int32 INVALID_ADDRESS_DEVICE = -1;
+  /**< Invalid device address. */
+
+  const int32 DEFAULT_ADDRESS_DEVICE = 0;  
+  /**< No memory or register address is written to the slave device before
+       any reads or writes from or to the slave device. Message format is
+       as follows:
+       @verbatim
+<SlaveAddr><R/W bit><ACK/NACK><R/W data>
+       @endverbatim */
+
+  const int32 MEMORY_ADDRESS_DEVICE = 1;  
+  /**< Two bytes of the address are written to the slave device before starting
+       any reads or writes from or to the slave device. Message format is as follows:
+       @verbatim
+Write: <SlaveAddr><W bit><ACK/NACK><2 Byte Mem Addr><ACK/NACK><W data>
+Read:  <SlaveAddr><W bit><ACK/NACK><2 Byte Mem Addr><ACK/NACK><SlaveAddr><R bit>
+       <ACK/NACK><R data>
+       @endverbatim */
+
+  const int32 REGISTER_ADDRESS_DEVICE = 2;
+  /**< One byte of the address is written to the slave device before starting
+       any reads or writes from or to the slave device. Message format is as follows:
+       @verbatim
+Write: <SlaveAddr><W bit><ACK/NACK><1 Byte Mem Addr><ACK/NACK><W data>
+Read:  <SlaveAddr><W bit><ACK/NACK><1 Byte Mem Addr><ACK/NACK><SlaveAddr><R bit>
+       <ACK/NACK><R data>
+       @endverbatim */
+/** @cond */
+  const int32 SLAVE_DEVICE_COUNT = 3;
+  /* Checks the bounds of this enumeration. */ /** @endcond */
+
+  //--------------------------------------------------------
+  //  qsee_i2c_read_options_t
+  //--------------------------------------------------------
+
+  const int32 INVALID_READ_OPTION = -1;
+  /**< Invalid read option. */
+
+  const int32 READ_OPTION_DEFAULT = 0;
+  /**< Default option where only a START condition is generated
+       between writing the address bytes and reading from the slave
+       device. */
+
+  const int32 GEN_START_BEFORE_READ = 1;
+  /**< Only a START condition is generated between writing the address
+       bytes and reading from the slave device. */
+
+  const int32 GEN_STOP_START_BEFORE_READ = 2;
+  /**< STOP and START condition is generated between writing the
+       address bytes and reading from the slave device. */
+/** @cond */
+  const int32 READ_OPTIONS_COUNT = 3;
+  /* Checks the bounds of this enumeration. */ /** @endcond */
+
+/**  Transfers access of the I2C QUP back to the REE.
+    
+     @param[in] deviceId  ID of the I2C device to be closed.
+
+     @detdesc
+     This method only returns success if each operation is successful, as follows:    
+      -# Remove the exclusive access lock to the I2C bus. 
+      -# Close the device. 
+      -# Remove the QUP block protection for the GSBI3 device. 
+      -# Remove the control block protection for GSBI3 device. 
+      -# Re-enable the I2C interrupt. 
+      -# Deregister for the I2C interrupt to transfer the
+         I2C interrupt back to the REE.  \n     
+    
+     @return
+     Object_OK if successful.
+
+     @dependencies
+     The #II2C::open() method must be successfully called first. 
+     @newpage
+   */
+
+  method close(in int32 deviceId);
+
+/**  Transfers access to the I2C bus to the calling application.    
+    
+     @param[in] deviceId  ID of the I2C device ID to attach to.
+
+     @detdesc
+     This method only returns success if each operation is successful, as follows:    
+     -# Obtain a handle to the requested device. 
+     -# Open the device.
+     -# Lock the I2C bus for exclusive access.
+     -# Register for the I2C interrupt in TZBSP
+        (transfers the interrupt from the REE to TZ).
+     -# Disable the I2C interrupt (TZ I2C is not interrupt-driven). 
+     -# Protect the control block for device. 
+     -# Protect the QUP block for the device. \n
+
+     @return
+     Object_OK if successful. @newpage 
+   */
+
+  method open(in int32 deviceId);
+
+/**  Reads data from a slave device.
+    
+     @param[in] deviceId       I2C device ID being read from.
+
+     @param[in] config         Bus and slave configuration
+                               for this read transaction.
+
+     @param[in] startAddr      Address to read from.
+
+     @param[out] payload       Returned data.
+
+     @detdesc
+     The read is aborted if the slave device does not acknowledge control/address
+     bytes written to it (before the data read starts). A read operation is always
+     terminated with a STOP condition.
+     @par
+     An error is generated if the bus is in an inconsistent state,
+     i.e., uninitialized or busy.
+     @par
+     The following diagram shows the bus activity during a read. The second
+     START shown is interpreted as a repeated START, but might be replaced
+     by a STOP and START by some protocols.
+
+     @verbatim
+                 |<------optional------>|
+     ------------------------------------------------------------
+     |S|       | |        | |S|       | |                   |N|S|
+     |T|Control|A|Address |A|T|Control|A|      Data         |O|T|
+     |A| Byte  |C|[Offset |C|A| Byte  |C|                   |A|O|
+     |R|       |K| or Reg]|K|R|       |K|                   |C|P|
+     |T|       | |        | |T|       | |                   |K| |
+     ------------------------------------------------------------
+     @endverbatim
+     @par
+     The address can be 0, 1, or 2 bytes depending on the slave. Every address
+     byte written to the slave device must be acknowledged.
+     @par
+     This method is blocking. It returns when either data
+     has been read, or an error has occurred.
+    
+     @return
+     Object_OK if successful.
+
+     @dependencies
+     The #II2C::open() method must be successfully called first. 
+     @newpage
+  */
+
+  method read(in int32 deviceId, in II2C_Config config, in uint32 startAddr, out buffer payload);
+
+/**
+     Writes data to a slave device.
+      
+     @param[in] deviceId         ID of the I2C device being written to.
+
+     @param[in] config           Bus and slave configuration
+                                 for this write transaction.
+
+     @param[in] startAddr        Address to write to.
+
+     @param[in] payload          Data to write.
+
+     @param[out] bytesWritten    Number of bytes written.
+
+     @detdesc
+     The write is aborted if the slave device does not acknowledge
+     control/address/data bytes written to it. The write operation is always
+     terminated with a STOP condition.
+     @par
+     If a write is attempted with a count of zero, the slave device is selected
+     and a success is returned if the slave device acknowledges. Otherwise, a
+     failure is returned.
+     @par
+     You can use this feature to test if a slave device is addressable, such as
+     NVRAM devices that are busy performing internal cache writes.
+     @par
+     The following diagram shows the bus activity during a write operation.
+     @verbatim
+                 |<--opt.-->|
+     ------------------------------------------------
+     |S|       | |        | |                   | |S|
+     |T|Control|A|Address |A|      Data         |A|T|
+     |A| Byte  |C|[Offset |C|                   |C|O|
+     |R|       |K| or Reg]|K|                   |K|P|
+     |T|       | |        | |                   | | |
+     ------------------------------------------------
+     @endverbatim
+     @par
+     The address can be 0, 1, or 2 bytes depending on the slave. Every address
+     byte written to the slave device must be acknowledged.
+    
+     @return
+     Object_OK if successful.
+
+     @dependencies
+     The #II2C::open() method must be successfully called first. 
+     @newpage
+   */
+
+  method write(in int32 deviceId, in II2C_Config config, in uint32 startAddr, in buffer payload, out uint64 bytesWritten);
+/** @} */ /* end_addtogroup core */
+};
+ 
+ 
+

@@ -1,0 +1,68 @@
+#===============================================================================
+#
+#                             Edit History
+#
+# $Header: //components/rel/core.qdsp6/2.1.c4/systemdrivers/coreinit/build/coreinit.scons#1 $
+# when         who     what, where, why
+# ----------   ---     ---------------------------------------------------------
+# 2017/01/06   sds     Initial Creation
+#
+#===============================================================================
+#           Copyright (c) 2017 Qualcomm Technologies, Incorporated.
+#                     All Rights Reserved.
+#                   QUALCOMM Proprietary/GTDR
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Python library imports
+#-------------------------------------------------------------------------------
+import os
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+BUILDPATH = '..'
+env.VariantDir('${BUILDPATH}', BUILDPATH, duplicate=0)
+SRCPATH = os.path.join( BUILDPATH, 'image' )
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_APIS = [
+  'DAL',
+  'POWER',
+  'SYSTEMDRIVERS',
+  'PMIC',
+  'SERVICES',
+  'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_APIS)
+env.RequireRestrictedApi(CBSP_APIS)
+
+#-------------------------------------------------------------------------------
+# Build products for RCINIT
+#-------------------------------------------------------------------------------
+if 'USES_RCINIT' in env and env['MSM_ID'] in ['845','670']:
+  RCINIT_IMG = ['CORE_Q6_ROOT']
+
+  RCINIT_INIT_COREINIT = {
+    'sequence_group' : 'RCINIT_GROUP_0', # required
+    'init_name'      : 'coreinit',       # required
+    'init_function'  : 'coreinit_init',  # required
+    'dependencies'   : ['npa','icbarb'], # opt [python list]
+  }
+  env.AddRCInitFunc( RCINIT_IMG, RCINIT_INIT_COREINIT )
+
+#-------------------------------------------------------------------------------
+# Sources, target specific
+#-------------------------------------------------------------------------------
+coreinit_src = env.GlobFiles( os.path.join(SRCPATH, env['IMAGE'], 'hw', env['CHIPSET'], '*.c') )
+
+#-------------------------------------------------------------------------------
+# Images 
+#-------------------------------------------------------------------------------
+env.AddLibrary( ['CORE_Q6_ROOT'], '${BUILDPATH}/coreinit', coreinit_src )
+

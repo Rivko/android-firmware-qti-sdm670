@@ -1,0 +1,81 @@
+#===============================================================================
+#
+# AVS APIs
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2009 by QUALCOMM Technologies,  Incorporated.
+# All Rights Reserved.
+# QUALCOMM Technologies Proprietary.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: $
+#  $DateTime:  $
+#  $Author:  $
+#  $Change:  $
+#                      EDIT HISTORY FOR FILE
+#                      
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#  
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+
+if env.PathExists("${BUILD_ROOT}/audio_avs"):
+   env.Replace(AVS_AU_NAME ='audio_avs')
+   env.AddUsesFlags('MDSPMODE',  True)
+   env.Append(CFLAGS='-DMPSPMODE ') 
+else:
+   env.Replace(AVS_AU_NAME ='avs')
+   env.AddUsesFlags('ADSPMODE',  True)
+   env.Append(CFLAGS='-DADSPMODE ') 
+
+env.Replace(AVS_FOLDER_ROOT = '${INC_ROOT}/${AVS_AU_NAME}')
+env.Replace(AVS_ROOT = '${AVS_FOLDER_ROOT}/main')
+env.Replace(AVS_THIRD_PARTY_ALOGS_ROOT = '${AVS_FOLDER_ROOT}/tpa')
+
+env.PublishPublicApi('AVS',[
+   '${AVS_FOLDER_ROOT}/main/elite/qurt_elite/inc/',
+   '${AVS_FOLDER_ROOT}/main/elite/module_interfaces/shared_lib_api/inc/qurt_elite/',
+   '${AVS_FOLDER_ROOT}/main/elite/utils/inc',
+   '${AVS_FOLDER_ROOT}/main/elite/utils/devcfg/inc',
+   '${AVS_FOLDER_ROOT}/main/aud/common/utils/inc',
+   '${AVS_FOLDER_ROOT}/main/aud/algorithms/utils/audio_cmn_lib/inc',
+   '${AVS_FOLDER_ROOT}/main/elite/module_interfaces/shared_lib_api/inc',
+   '${AVS_FOLDER_ROOT}/main/elite/module_interfaces/shared_lib_api/inc/audio_cmn_lib',
+   '${AVS_FOLDER_ROOT}/main/api/audio/inc',
+   '${AVS_FOLDER_ROOT}/main/api/mmutils',
+   '${AVS_FOLDER_ROOT}/main/api/afe/inc',
+   '${AVS_FOLDER_ROOT}/main/afe/services/static/inc',
+   '${AVS_FOLDER_ROOT}/main/afe/drivers/afe/vfr/common/inc',
+   '${AVS_FOLDER_ROOT}/main/afe/drivers/afe/codec/inc',
+   '${AVS_FOLDER_ROOT}/main/elite/qurt_elite/inc',
+   ])
+
+env.PublishRestrictedApi('AVS',[
+   '${AVS_ROOT}/elite/module_interfaces/shared_lib_api/inc/qurt_elite/',
+   '${AVS_ROOT}/elite/qurt_elite/inc/',
+   '${AVS_ROOT}/elite/utils/inc',
+   '${AVS_ROOT}/elite/utils/devcfg/inc',
+   '${AVS_ROOT}/elite/module_interfaces/shared_lib_api/inc/adsp_license_db',
+   '${AVS_ROOT}/aud/services/dynamic_svcs/audio_enc_svc/inc',
+   '${AVS_ROOT}/aud/services/dynamic_svcs/audio_dec_svc/inc',
+   '${AVS_ROOT}/aud/services/static_svcs/audio_stream_mgr/inc',
+   '${AVS_ROOT}/aud/services/static_svcs/audio_dev_mgr/inc',
+   '${INC_ROOT}',
+   ])
+   
+#This gets invoked only when compiled for 8926 vunicore, decision is based on the alias names passed in Vunicore.
+#This flag is used for wrapping the 8926 vunicore code under this compile time flag
+if 'modem_audio_bringup' in map(str, COMMAND_LINE_TARGETS)  or 'audio_avs_image' in map(str, COMMAND_LINE_TARGETS):
+    print "Passing the 8926 vunicore compile flag as vunicore_8926"
+    env.Append(CFLAGS= '-DVUNICORE_8926')
+if 'AVS_TEST' in env:
+    env.Append(CFLAGS = '-DADSP_TEST_ENTRY -DSIM -DSIM_DEFINED')
+
+env.LoadAPIUnits()

@@ -1,0 +1,100 @@
+#===============================================================================
+#
+# Power INC PATHs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009-2010, 2017 by QUALCOMM Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //source/qcom/qct/core/pkg/trustzone/rel/1.4/trustzone_images/core/power/build/paths.sconscript#1 $
+#  $DateTime: 2012/02/29 15:54:43 $
+#  $Author: coresvc $
+#  $Change: 2238812 $
+#                      EDIT HISTORY FOR FILE
+#                      
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#  
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 06/09/17   sm      Adding in temporary stub support for Hana.
+# 05/04/17   sm      Decentralize deployment of required header files.
+# 01/24/17   sm      Exposing Restricted APIs as Public APIs.
+# 04/29/14   dp      Removing CPU DCVS from entire build.
+# 06/25/10   tau     Added include paths for SPM.
+# 02/16/10   tau     Updated sleep common include path.
+# 10/08/09   bjs     Adding core\power\utils 
+# 08/13/09   taw     Initial version.
+#
+#===============================================================================
+Import('env')
+
+
+env.Replace(POWER_SUBSYSTEM = 'tz')
+env.Replace(POWER_API_MSM = env['MSM_ID'] 
+               if env.PathExists("${INC_ROOT}/core/api/power/${MSM_ID}")
+               else "stubs")
+
+# Adding #define for Power Utils macros when others includes
+env.Append(CPPDEFINES = ['-DPOWER_ENV_TZ'])
+
+#-------------------------------------------------------------------------------
+# Publish Public APIs
+# these are accessible internal or external to CoreBSP
+#-------------------------------------------------------------------------------
+env.PublishPublicApi('POWER', [
+   "${INC_ROOT}/core/api/power",
+   "${INC_ROOT}/core/api/power/${POWER_API_MSM}/${POWER_SUBSYSTEM}",
+   "${INC_ROOT}/core/api/power/${POWER_API_MSM}",
+])
+
+#-------------------------------------------------------------------------------
+# Publish Restricted APIs
+# these are accecible only within CoreBSP
+#-------------------------------------------------------------------------------
+env.PublishRestrictedApi('POWER', [
+   "${INC_ROOT}/core/power/mpm/inc",
+   "${INC_ROOT}/core/power/mpm/hal/include",
+   "${INC_ROOT}/core/power/mpm/hal/bsp/include",
+   "${INC_ROOT}/core/power/spm/inc",
+   "${INC_ROOT}/core/power/spm/hal/include",
+   "${INC_ROOT}/core/power/sleepctl/inc",
+   "${INC_ROOT}/core/power/dem/inc",
+   "${INC_ROOT}/core/power/sleep/inc",
+   "${INC_ROOT}/core/power/sleep/src/common",
+   "${INC_ROOT}/core/power/utils/inc",
+   "${INC_ROOT}/core/power/rpmh/inc",
+   "${INC_ROOT}/core/power/cmd_db/inc",
+   "${INC_ROOT}/core/power/pdc/seq/inc",
+   "${INC_ROOT}/core/power/pdc/interrupt/inc",
+   "${INC_ROOT}/core/power/pdc/tcs/inc",
+   "${INC_ROOT}/core/power/pdc/tcs/src/config/${MSM_ID}/apss" 
+       if env.PathExists("${INC_ROOT}/core/power/pdc/tcs/src/config/${MSM_ID}/apss")
+       else "${INC_ROOT}/core/power/pdc/tcs/src/config/stubs/apss",  # Direct Port - FIXME
+   "${INC_ROOT}/core/power/sequencer/inc",
+   "${INC_ROOT}/core/power/pcu/inc",
+   "${INC_ROOT}/core/power/rsc/seq/inc",
+])
+
+if "USES_DEPLOY_BUILDER" in env:
+   # Deploy required header files for customer packaging.
+   env.Deploy([
+      'paths.sconscript',
+      'SConscript',
+      '${INC_ROOT}/core/api/power/npa.h',
+      '${INC_ROOT}/core/api/power/npa_resource.h',
+      '${INC_ROOT}/core/api/power/rpmh_client.h',
+      '${INC_ROOT}/core/api/power/rpmh_common.h',
+      env.subst('${INC_ROOT}/core/api/power/${POWER_API_MSM}/rpmh_drv.h'),
+      env.subst("${INC_ROOT}/core/api/power/${POWER_API_MSM}/${POWER_SUBSYSTEM}/rpmh_image_config.h"),
+      ])
+
+#-------------------------------------------------------------------------------
+# Continue loading API units
+#-------------------------------------------------------------------------------
+env.LoadAPIUnits()

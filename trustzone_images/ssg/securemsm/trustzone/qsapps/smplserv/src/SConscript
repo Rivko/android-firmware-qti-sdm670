@@ -1,0 +1,76 @@
+#===========================================================================
+#  Copyright (c) 2011-2014, 2017 QUALCOMM Technologies Incorporated.
+#  All Rights Reserved.
+#  Qualcomm Confidential and Proprietary
+#===========================================================================
+#
+# App Core
+#
+# GENERAL DESCRIPTION
+#    build script
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains schedulerents describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+
+#===============================================================================
+import os
+
+Import('env')
+env = env.Clone()
+#-------------------------------------------------------------------------------
+# Compiler, object, and linker definitions
+#-------------------------------------------------------------------------------
+includes = [
+  "#../../ssg/securemsm/trustzone/qsapps/smplserv/idl",
+  "#../../ssg/securemsm/trustzone/qsapps/smplserv/src",
+  "#../../core/api/kernel/libstd/stringl",
+  "#../../ssg/securemsm/trustzone/qsapps/libs/applib/qsee/src",
+]
+
+#------------------------------------------------------------------------------
+# We need to specify "neon" to generate SIMD instructions in 32-bit mode
+#------------------------------------------------------------------------------
+if env['PROC'] == 'scorpion':
+  env.Append(CCFLAGS = " -mfpu=neon ")
+
+#----------------------------------------------------------------------------
+# App core Objects
+#----------------------------------------------------------------------------
+sources = [
+  'app_main.c',
+  'COEMUnwrapKeys.c',
+  'CTestSandbox.c',
+  'CTestSMCInvoke.c',
+]
+
+#-------------------------------------------------------------------------------
+# Add metadata to image
+#-------------------------------------------------------------------------------
+md = {
+   'appName':           'smplserv',
+   'privileges':        ['default','SPI','I2C','HwFuse', 'LegacySandbox'],
+   'services':          ['OEMUnwrapKeys','TestSandbox', 'HavenTokenApp'],
+   'acceptBufSize':     16384,
+   #'memoryType':       'Unprotected',
+}
+
+sec_xml_config = '${BUILD_ROOT}/ssg/bsp/trustzone/qsapps/smplserv/build/${SECIMAGE_CONFIG}'
+
+deploy_header_files = env.Glob('../inc/*') + env.Glob('*.h') + env.Glob('../idl/*')
+
+smplserv_units = env.SecureAppBuilder(
+  sources = sources,
+  includes = includes,
+  metadata = md,
+  image = 'smplserv',
+  sec_xml_config = sec_xml_config,
+  deploy_sources = [sources , 'SConscript', env.subst(sec_xml_config), deploy_header_files],
+  deploy_variants = env.GetDefaultPublicVariants()
+)
+
+for image in env['IMAGE_ALIASES']:
+  op = env.Alias(image, smplserv_units)

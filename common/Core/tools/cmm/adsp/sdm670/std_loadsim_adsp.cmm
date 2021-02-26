@@ -1,0 +1,1183 @@
+//============================================================================
+//  Name:                                                                     
+//    std_loadsim_adsp.cmm 
+//
+//  Description:                                                              
+//    Script to load ADSP logs
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//  Description:
+//  T32 simulator loader specific to adsp dumps. This file has some 8994 specific areas.
+// 
+//  Dependencies:
+//  Depends on cmm script framework (various dependent files) to work, and assumes that a 
+//  sanitized argument line has been passed in from std_loadsim.cmm script
+//  
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who             what, where, why
+// --------   ---             ---------------------------------------------------------
+// 03/10/2016 JBILLING      Created for 8998
+// 03/10/2016 JBILLING      Updated temp path for host OS
+// 02/23/2016 JBILLING      Added more robust code to make sure DDR binary filenames match up with hex address in load.cmm
+// 02/12/2016 JBILLING      BUILDID for context scripts
+// 10/20/2015 JBILLING      Added postmortem script call, newer automation changes
+// 08/12/2015 JBILLING      Updated qurtv2 pagetable scanning
+// 07/22/2015 JBILLING      Added support for automation and error message passing
+// 07/07/2015 JBILLING      Add SSR functionality
+// 06/25/2015 JBILLING      Add functionality for QURTV2 pagetables
+// 05/11/2015 JBILLING      Fixes for command line functionality
+// 11/07/2014 JBILLING      Overhaul with new mmu sequence and error messages
+// 10/23/2013 yzhai         Removed "restore saved TCM" and "restore TBL state" part of the script.
+// 09/06/2012 AJCheriyan    Added USB RAM dump support
+// 08/21/2012 AJCheriyan    Fixed references to ADSP roots
+// 07/10/2012 AJCheriyan    Created for B-family 
+//
+
+
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////// std_loadsim_adsp //////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+//###################Arguments passed #####################
+LOCAL &ArgumentLine
+ENTRY %LINE &ArgumentLine
+LOCAL &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+ENTRY &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+
+
+//#####################Select Subroutine###################
+// Name of the utility we are calling
+LOCAL &SUBROUTINE
+// Any subroutine specific options
+// Default exists for each subroutine
+
+
+// Input Argument 0 is the name of the utility
+&SUBROUTINE="&UTILITY"
+IF !(("&SUBROUTINE"=="VERIFYBUILD")||("&SUBROUTINE"=="HELP")||("&SUBROUTINE"=="help"))
+(
+    &SUBROUTINE="MAIN"   
+)
+
+    // This should be created by some top level script. The setupenv for each proc would
+    // set this up
+    AREA.SELECT
+    // Call the required utility
+    GOSUB &SUBROUTINE &ArgumentLine
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+
+    ENDDO &rvalue
+
+
+
+////////////////////////////////////////
+//
+//            MAIN
+//            Main std_loadsim_adsp logic
+//            Expected input: None. Relies on global variables
+//
+/////////////////////////////////////////
+
+MAIN:
+    LOCAL &image &imagebuildroot &logpath &logtype &targetprocessor &processor_root_name &loadsimscript &symbolloadscript &multi_elf_option &alternateelf &extraoptions 
+    ENTRY &image &imagebuildroot &logpath &logtype &targetprocessor &processor_root_name &loadsimscript &symbolloadscript &multi_elf_option &alternateelf &extraoptions 
+
+    LOCAL &rvalue
+    
+    // Load the memory map to initialize variables
+    do std_memorymap 
+
+    // First, all the sanity checks
+    GOSUB CHECKBINARIES
+        ENTRY %LINE &rvalue
+        IF "&rvalue"!="SUCCESS"
+        (
+            GOSUB EXIT &rvalue
+        )
+        
+    // Binaries look good. Else, we wouldn't be here    
+    GOSUB SETUPSIM
+    
+    // Load the binaries
+    GOSUB LOADBIN
+    
+    // Setup the environment
+    do std_setupenv noareaclear
+    
+    // Load the symbols
+    do std_loadsyms_adsp &imagebuildroot locally NULL loadsecondelf &alternateelf &extraoptions
+        ENTRY %LINE &rvalue
+        IF "&rvalue"!="SUCCESS"
+        (
+            GOSUB EXIT &rvalue    
+        )
+        
+    
+    // Load the "state" at the time of the crash
+    GOSUB RESTORESTATE
+    ENTRY %LINE &rvalue
+        ENTRY %LINE &rvalue
+        IF "&rvalue"!="SUCCESS"
+        (
+            GOSUB EXIT &rvalue    
+        )
+        
+    GOSUB POSTMORTEM_ANALYSIS
+    ENTRY %LINE &rvalue
+    //Wait for a few seconds if in automation mode  
+    //in case user wants to spot check results.
+    IF STRING.SCAN("&extraoptions","forcesilent",0)!=-1
+    (
+        WAIT.3s
+    )
+    // Off you go..
+    GOSUB EXIT &rvalue
+
+////////////////////////////////////////
+//
+//          VERIFYBUILD
+//          Public function
+//          Verify that needed files are present
+//          Expected input: Build Location
+//
+/////////////////////////////////////////
+VERIFYBUILD:
+    LOCAL &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10
+    ENTRY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10
+    LOCAL &result &LOCAL_BUILDROOT
+    
+    &result="SUCCESS"
+    &LOCAL_BUILDROOT="&IARG0"
+    PRINT "Checking that needed files exist"
+
+    LOCAL &scriptpath
+    IF OS.DIR("&LOCAL_BUILDROOT/&processor_root_name/core/products/scripts/&ADSP_BUILDID")&&("&ADSP_BUILDID"!="")
+    (
+        &scriptpath="&LOCAL_BUILDROOT/&processor_root_name/core/products/scripts/&ADSP_BUILDID"
+    )
+    ELSE
+    (
+        do std_utils GET_SCRIPT_PATH EXIT &LOCAL_BUILDROOT/&processor_root_name/core/products/scripts std_extensions.cmm
+        ENTRY &scriptpath
+    )
+    
+    AREA.RESET
+    AREA.CREATE std_loadsim_build_verify 125. 6.
+    AREA.SELECT std_loadsim_build_verify
+    WINPOS 0. 0. 80. 6.
+    AREA.VIEW std_loadsim_build_verify
+    
+    IF (!OS.DIR("&scriptpath"))||("&scriptpath"=="")
+    (
+        PRINT %ERROR "Warning! Could not find context menu scripts for this image! (std_extensions, std_toolsconfig etc.)"
+    )
+    
+    IF FILE.EXIST("&scriptpath/std_extensions.cmm")
+    (
+        PRINT "Found std_extensions.cmm"
+    )
+    ELSE
+    (
+        PRINT %ERROR "Missing core/products/std_extensions.cmm. Context loading will fail"
+        &result="FAILURE_VERIFYBUILD_ADSP"
+    )
+    
+    IF FILE.EXIST("&scriptpath/std_toolsconfig.cmm")
+    (
+        PRINT "Found std_toolsconfig.cmm"
+    )
+    ELSE
+    (
+        PRINT %ERROR "Missing core/products/std_toolsconfig.cmm. Context loading will fail"
+        &result="FAILURE_VERIFYBUILD_ADSP"
+    )
+    
+    IF FILE.EXIST("&scriptpath/std_scripts.men")
+    (
+        PRINT "Found std_scripts.men"
+    )
+    ELSE
+    (
+        PRINT %ERROR "Missing core/products/std_scripts.men. Context loading will fail"
+        &result="FAILURE_VERIFYBUILD_ADSP"
+    )
+    
+    IF FILE.EXIST("&LOCAL_BUILDROOT/&processor_root_name/core/debugtools/err/cmm/load_coredump.cmm")
+    (
+        PRINT "Found load_coredump.cmm"
+    )
+    ELSE
+    (
+        PRINT "Missing core/debugtools/err/cmm/load_coredump.cmm. Some context may be lost!"
+        //&result="FAILURE_VERIFYBUILD_ADSP"
+    )
+
+    IF ("&result"=="SUCCESS")
+    (
+        PRINT "Verification success: Found needed context files"
+        PRINT " "
+    )
+    ELSE
+    (
+        do std_fatalexit USER "Error: Needed build files (std_extensions, std_scripts, std_toolsconfig) not found"
+    )
+
+    
+    
+
+    RETURN &result
+////////////////////////////////////////
+//
+//          SETUPSIM
+//          Private function
+//          Set the simulator for the processor we want
+//          Expected input: None
+//
+/////////////////////////////////////////
+SETUPSIM:
+    SYS.CPU HEXAGONV62
+    SYS.UP
+    
+
+    RETURN
+
+    
+////////////////////////////////////////
+//
+//          CHECKBINARIES
+//          Private function
+//          Checks if the binaries for the system are present in the location
+//          Loglocation should not be empty and assumes memory map is loaded
+//          Expected input: None. Uses global variables
+//          &logtype=<AUTODETECT,JTAG,USB> 
+//
+/////////////////////////////////////////
+CHECKBINARIES:
+LOCAL &file1 &file2 &logclass
+
+    
+    // This is the best place to determine the type of the log too
+    IF ("&logtype"=="AUTODETECT")
+    (
+    
+                &logclass="&logtype"
+                
+                //Check files present and try and auto-assign.
+                IF ("&logclass"!="SSR")
+                (
+                    // Check for SSR logs
+                    // User should have given full path to ssr file. 
+                    IF (FILE.EXIST(&logpath))
+                    (
+                        &filetype=FILE.TYPE(&logpath)
+                        IF ("&filetype"=="ELF")||("&filetype"=="BINARY")
+                        (
+                            &logclass="SSR"
+                        )
+                    )
+                )
+
+                IF ("&logclass"=="AUTODETECT")
+                (
+                    // Check for USB logs
+                    do std_utils FILEXIST EXIT &logpath &DDR_1_USB_log
+                    ENTRY &file1
+
+                    IF ("&file1"=="TRUE")
+                    (
+                        &logclass="USB"
+                    )
+                )
+                
+                IF ("&logclass"=="AUTODETECT")
+                (
+                    // Check for JTAG logs
+                    do std_utils FILEXIST EXIT &logpath &DDR_Periph_log
+                    ENTRY &file1
+
+                    IF ("&file1"=="TRUE")
+                    (
+                         &logclass="JTAG"
+                    )
+                )
+                IF ("&logclass"=="AUTODETECT")
+                (
+                    // If we  couldn't find correct files, check if there's a load.cmm script provided
+                    do std_utils FILEXIST EXIT &logpath load.cmm
+                    ENTRY &file1
+
+                    IF ("&file1"=="TRUE")
+                    (
+                         &logclass="LOADSCRIPT"
+                    )
+                )
+                
+                // If we even after that, we are stuck with "AUTODETECT" we have a problem
+                IF ("&logclass"=="AUTODETECT")
+                (
+                    AREA
+                    PRINT %ERROR "USB/SSR/JTAG logs not found in folder: &logpath. If using SSR type log, please give full path and filename.'do std_loadsim help' for more"
+                    do std_fatalexit USER "Failed to auto-detect log type. Unexpected file names or types in &logpath"
+                )
+                ELSE
+                (
+                    // Safe to change the logtype
+                    &logtype="&logclass"
+                    PRINT "Detected &logtype logs in: &logpath"
+                )
+    )
+            
+    IF ("&logtype"=="JTAG")
+    (
+        
+        
+        // Check for JTAG logs
+        do std_utils FILEXIST EXIT &logpath &DDR_Periph_log
+        ENTRY &file1
+
+        IF ("&file1"=="FALSE")
+        (
+            AREA
+            PRINT %ERROR "JTAG ADSP logs not present in folder: &logpath"
+            PRINT %ERROR "If you have only a binary, provide address"
+            PRINT %ERROR "of ADSP's DDR location when binary collected, via command line. e.g.: "
+            PRINT %ERROR "do std_loadsim Img=adsp Bld=C:\my\build Log=C:\temp\mylog\binary.bin extraoption=physaddr->0x8F800000"
+            PRINT %ERROR "Type 'do std_loadsim help' for more information"
+            do std_fatalexit USER "JTag logs not found in &logpath"
+            
+        )
+        //If user has specified jtag logs and provided a physical address,
+        //Then use the logic from SSR mode. If they haven't provided a
+        //physical address, then look for Shared Imem log. If it's not there, exit.
+        IF STRING.SCAN("&extraoptions","physaddr->",0)!=-1
+        (
+            &logpath="&logpath/&DDR_Periph_log"
+            &logtype="SSR"
+        )
+        ELSE
+        (
+            // Check for Shared IMEM logs
+            do std_utils FILEXIST EXIT &logpath &SHARED_IMEM_log
+            ENTRY &file1
+
+            IF ("&file1"=="FALSE")
+            (
+                AREA
+                PRINT %ERROR "JTAG Shared IMEM logs not present in folder: &logpath"
+                PRINT %ERROR "If you have only a binary, provide address"
+                PRINT %ERROR "of ADSP's DDR location when binary collected, via command line. e.g.: "
+                PRINT %ERROR "do std_loadsim Img=adsp Bld=C:\my\build Log=C:\temp\mylog\binary.bin extraoption=physaddr->0x8F800000"
+                PRINT %ERROR "Type 'do std_loadsim help' for more information"
+                do std_fatalexit USER "Shared IMEM logs not found in &logpath, for log type &logtype"
+            )
+        )
+
+    )
+    
+    IF ("&logtype"=="USB")
+    (
+        
+        // Check for USB logs
+        do std_utils FILEXIST EXIT &logpath &DDR_1_USB_log
+        ENTRY &file1
+
+        IF ("&file1"=="FALSE")
+        (
+    
+            do std_utils FILEXIST EXIT &logpath load.cmm
+            ENTRY &file1
+            IF ("&file1"=="FALSE")
+            (
+                AREA
+                PRINT %ERROR "USB ADSP logs not present in folder: &logpath. (If trying ot use SSR log type, please provide full path and filename. 'do std_loadsim help' for more)"
+                PRINT %ERROR "please provide full path and filename. 'do std_loadsim help' for more)"
+                do std_fatalexit USER "USB logs not found in &logpath, for log type &logtype"
+            )
+            ELSE
+            (
+                AREA 
+                PRINT "USB Logs not detected but load.cmm script found"
+                PRINT "Will attempt to use &logpath\load.cmm to load dumps"
+                &logtype="LOADSCRIPT"
+        
+            )
+            
+            
+
+        )
+        
+        //Found USB logs and not using load.cmm
+        // Check for remainder of USB logs
+        do std_utils FILEXIST EXIT &logpath &OCIMEM_USB_log
+        ENTRY &file1
+
+        IF ("&file1"=="FALSE")
+        (
+            PRINT %ERROR "USB Shared IMEM logs not present in folder: &logpath"
+            do std_fatalexit USER "Shared IMEM logs not found in &logpath, for log type &logtype"
+        )
+        
+        
+    )
+    
+    IF ("&logtype"=="SSR")
+    (
+        LOCAL &filetype
+        // Check for SSR logs
+        IF !(FILE.EXIST(&logpath))
+        (
+            AREA
+            PRINT %ERROR "Not able to access SSR ADSP logs at: &logpath. If using SSR type log, please give full path and filename. 'do std_loadsim help' for more"
+            do std_fatalexit USER "SSR logs not found at &logpath, for log type &logtype"
+            
+        )
+        
+        &filetype=FILE.TYPE(&logpath)
+        
+        IF ("&filetype"!="ELF")
+        (
+            IF ("&filetype"=="BINARY")
+            (
+        
+                //IF STRING.SCAN("&extraoptions","physaddr->",0)==-1
+                IF FALSE()
+                (
+                
+                        WINPOS 37% 37% 85. 15.
+                        AREA.CREATE A0003
+                        AREA.SELECT A0003
+                        AREA.VIEW A0003
+                        //AREA.RESET
+                        //AREA
+                        PRINT %ERROR "Binary dump file type specified for dump file, but no 'physaddr->' specified "
+                        PRINT %ERROR "in extraoption. Please specify a physaddr->0x<physical_base> in command"
+                        PRINT %ERROR "line for  binary standalone load. Note that binary standalone loading is only "
+                        PRINT %ERROR "available from command line at this time"
+                        PRINT " "
+                        PRINT %ERROR "Type 'do std_loadsim help' for additional details"
+                        PRINT " "
+                        PRINT " "
+                        PRINT " "
+                        AREA.SELECT A000
+                        AREA.VIEW A000
+                        do std_fatalexit USER "physical address needed for logtype &logtype and filetype &filetype. See help menu"
+
+                
+                )
+            )
+            ELSE
+            (
+                PRINT %ERROR "Wrong Filetype for SSR Log file: &logpath. Expected: ELF or BIN, got &filetype"
+                do std_fatalexit USER "Wrong Filetype for SSR Log file: &logpath. Expected: ELF or BIN, got &filetype"
+            )
+        )
+        
+    )
+
+    
+ 
+    RETURN SUCCESS
+
+////////////////////////////////////////
+//
+//          LOADBIN
+//          Private function
+//          Loads the saved binaries
+//          Expected input: None. Uses global variables
+//          &logtype=<JTAG,USB> 
+//
+/////////////////////////////////////////
+
+LOADBIN:
+    
+    IF ("&logtype"=="JTAG")
+    (
+        do std_utils LOADBIN &logpath &SHARED_IMEM_log &SHARED_IMEM_start
+        
+        // Load the memory map again for relocated images
+        do std_memorymap DYNAMIC
+        
+        // Now load the logs
+        do std_utils LOADBIN &logpath &DDR_Periph_log &DDR_Periph_start
+    )
+    
+    IF ("&logtype"=="USB")
+    (
+        //Make sure the file we're loading is the one that loads to ddr start address.
+        LOCAL &result &ddr_log_filename &errorfound &ocimem_log_filename
+        //defaults
+        &ddr_log_filename="&DDR_1_USB_log"
+        &ocimem_log_filename="&OCIMEM_USB_log"
+        &errorfound=0.
+        
+        IF FILE.EXIST("&logpath/load.cmm")
+        (
+            //Get the file which matches to DDR start.
+            do std_utils GET_LOADCMM_HEX_FILE EXIT &logpath &DDR_1_start
+                ENTRY &result
+            IF STRING.SCAN("&result","FAILURE",0)!=-1
+            (
+                PRINT "Couldn't resolve file match at &DDR_1_start. Resorting to running load.cmm"
+                &ddr_log_filename="NULL"
+                &logtype="LOADSCRIPT"
+                &errorfound=1.
+            )
+            ELSE
+            (
+                //Success, we found a file with hex address match
+                &ddr_log_filename="&result"
+            )
+            //Do the same for shared IMEM
+            do std_utils GET_LOADCMM_HEX_FILE EXIT &logpath &OCIMEM_start
+                ENTRY &result
+            IF STRING.SCAN("&result","FAILURE",0)!=-1
+            (
+                PRINT "Couldn't resolve file match at &OCIMEM_start. Resorting to running load.cmm"
+                &ocimem_log_filename="NULL"
+                &logtype="LOADSCRIPT"
+                &errorfound=1.
+            )
+            ELSE
+            (
+                //Success, we found a file with hex address match
+                &ocimem_log_filename="&result"
+            )
+        )
+        ELSE
+        (
+            //Else just give it at try with the defaults stored from std_memorymap.cmm
+            PRINT %ERROR "Warning: Did not find load.cmm at log directory. Cannot guarantee correct binary load addresses. Log directory: &logpath"
+            WAIT.2s
+        )
+        
+        //Now load the files
+        IF &errorfound==0.
+        (
+            // Load the shared IMEM logs
+            do std_utils LOADBIN &logpath &ocimem_log_filename &OCIMEM_start
+            
+            // Load the memory map again for relocated images
+            do std_memorymap DYNAMIC
+            
+            //Load the binary. 
+            //skip memory up to start of subsystem software dump, subtracting start of ddr region start
+            do std_utils LOADBIN &logpath &ddr_log_filename &ADSP_SW_start &ADSP_SW_start&(~&DDR_1_start) &ADSP_SW_size
+        )
+        //Else load from load.cmm, our file names and location of memory is off.
+        ELSE
+        (
+            &logtype="LOADSCRIPT"
+        )
+    )
+    
+    
+    IF ("&logtype"=="LOADSCRIPT")
+    (
+        PRINT "Running &logpath\load.cmm"
+        ON ERROR GOSUB
+        (
+            PRINT %ERROR    "Error detected running &logpath\load.cmm. Please review dump and file"
+            do std_fatalexit USER "Error detected running &logpath\load.cmm. Please review dump and file"
+        )
+        do std_utils EXECUTESCRIPT EXIT &logpath\load.cmm
+        ON ERROR
+        do std_memorymap DYNAMIC
+        LOCAL &result
+        ENTRY %LINE  &result
+        
+        IF "&result"!="SUCCESS"
+        (
+        
+                        WINPOS 37% 37% 85. 15.
+                        AREA.CREATE A0002
+                        AREA.SELECT A0002
+                        AREA.VIEW A0002
+                        //AREA.RESET
+                        //AREA
+                        PRINT %ERROR "   Error while reading physical image addresses from relocatable data. "
+                        PRINT %ERROR "   Context loading will fail. If physical address is known, try running "
+                        PRINT %ERROR "   simulator in ssr/bin mode with physaddr provided. "
+                        PRINT %ERROR "   Use 'do std_loadsim help' for how to enter that command line"
+                        PRINT " "
+                        PRINT " "
+                        PRINT " "
+                        AREA.SELECT A000
+                        AREA.VIEW A000
+                        
+                        do std_fatalexit SYSTEM "Error while reading physical image addresses from relocatable data. "
+                        PLIST
+                        PSTEP
+        
+        )
+
+    )
+    IF ("&logtype"=="SSR")
+    (
+        
+        
+        IF FILE.TYPE(&logpath)=="ELF"
+        (
+            // Load the memory map again for relocated images
+            //do std_memorymap DYNAMIC
+            ON ERROR CONTINUE
+
+            &tempfile="&TEMPDIR\datalogfile.txt"
+            PRINTER.FILE &tempfile
+            PRINTER.FILETYPE ASCII
+            PRINTER.SIZE 0XFA, 0XFA
+            
+            
+            SYS.LOG.INIT
+            SYS.LOG.RESET
+            SYS.LOG.SIZE 10000.
+            SYS.LOG.ON
+            
+            //DATA.LOG
+            DATA.LOAD.ELF &logpath /noclear
+            WP.DATA.LOG
+                    
+            SYS.LOG.OFF
+            
+            LOCAL &linelst &index
+            open #1 &tempfile
+            read #1 %line &linelst
+            read #1 %line &linelst
+            read #1 %line &linelst
+            close #1
+            &index=string.scan("&linelst","P:",0)
+            
+            &address=string.mid("&linelst",&index+2,8.)
+            &ADSP_SW_start=ADDRESS.OFFSET(P:&address)
+            ON ERROR
+            PRINT "Detected from &logpath that ADSP SW start is at &ADSP_SW_start"
+        )
+        ELSE IF FILE.TYPE(&logpath)=="BINARY"
+        (
+            IF STRING.SCAN("&extraoptions","physaddr->",0)==-1
+            (
+                //PRINT %ERROR "Binary dump file specified for SSR file, but no 'physaddr->' specified "
+                WINPOS 0. 0. 100. 7.
+                AREA
+                PRINT " "
+                PRINT %ERROR "Warning! no 'physaddr->' specified for &image phys start. Using default &ADSP_SW_start"
+                PRINT %ERROR "If context loading fails, make sure physical address is correct"
+                PRINT " " 
+                DATA.LOAD.BINARY &logpath &ADSP_SW_start
+            )
+            ELSE
+            (
+                &index=string.scan("&extraoptions","physaddr->",0)
+                
+                &address=string.mid("&extraoptions",&index+10.,8.)
+                //If '0x' specified, shift address up. Else leave it.
+                IF STRING.SCAN(STRING.UPR("&address"),"0X",0)!=-1
+                (
+                    &address=&address*0x100
+                )
+                &ADSP_SW_start=ADDRESS.OFFSET(P:&address)
+                PRINT "Setting ADSP Start address as &ADSP_SW_start per extraoption specified"
+                DATA.LOAD.BINARY &logpath &ADSP_SW_start
+            )
+        
+        
+        )
+        ELSE
+        (
+            //Never should get here
+            PRINT %ERROR "Unrecognized filetype. expected BIN or ELF"
+        )
+        
+    
+    )
+    RETURN
+    
+////////////////////////////////////////
+//
+//          RESTORESTATE
+//          Private function
+//          To load the error information from the saved logs
+//          Expected input: None. Uses global variables
+//          &logtype=<JTAG,USB> 
+//          Expects various files to be present
+//
+/////////////////////////////////////////
+RESTORESTATE:
+
+            // Symbols should be loaded prior to this step
+            
+            LOCAL &VIRT_START &startsym
+
+            
+            IF SYMBOL.EXIST(\\M8998AAAAAAAAQ1234_reloc\Global\start)
+            (
+                &startsym="\\M8998AAAAAAAAQ1234_reloc\Global\start"
+            )
+            ELSE IF SYMBOL.EXIST(\\M8998AAAAAAAAQ1234\Global\start)
+            (
+                &startsym="\\M8998AAAAAAAAQ1234\Global\start"
+            )
+            ELSE IF SYMBOL.EXIST(\\M8998AAAAAAAAQ1234\Global\_start)
+            (
+                &startsym="\\M8998AAAAAAAAQ1234\Global\_start"
+            )
+            ELSE
+            (
+                PRINT %ERROR "Symbol '\\M8998AAAAAAAAQ1234_reloc\Global\start' not defined. Error with symbol loading ocurred. Context loading may fail"
+                //If in automation mode this is an error
+                IF (STRING.SCAN("&extraoptions","forcesilent",0)!=-1)
+                (
+                    do std_fatalexit USER "Symbol \\M8998AAAAAAAAQ1234_reloc\Global\start' not defined. Error with symbol loading ocurred."
+                )
+                &VIRT_START=0xF0000000
+                GOTO SKIP_PAGETABLE_LOAD
+            )
+                    
+            &VIRT_START=ADDRESS.OFFSET(&startsym)
+
+            // Restore saved TCM. No need. uImage currently uses L2 line locking instead of L2 TCM mode.
+            //IF (Y.EXIST(qurt_tcm_dump))
+            //(
+            //    DATA.COPY (qurt_tcm_dump-&VIRT_START+&ADSP_SW_start)++y.sizeof(qurt_tcm_dump) d.l(QURTK_l2tcm_base)
+            //
+            //    mmu.create &ADSP_VIRT_START_ISLAND++&ADSP_ISLAND_SIZE &ADSP_TCM_start
+            //
+            //    DATA.COPY Y.RANGE(qurt_tcm_dump) a:&ADSP_TCM_start
+            //
+            //)
+            //ELSE
+            //(
+            //   PRINT %ERROR "Could not find symbol qurt_tcm_dump. Something wrong with elf file. Exiting"
+            //    GOSUB BADDUMP
+            //)
+            
+            
+            LOCAL &T32build
+            &T32build=SOFTWARE.BUILD()
+            
+            //Format MMU to QuRT Pagetables
+            IF SYMBOL.EXIST(QURTK_page_table_v2)
+            (
+            
+                
+                IF (&T32build<&MINIMUM_QURT_PGT_T32_version)
+                (
+                        WINPOS 37% 37% 85. 15.
+                        AREA.CREATE A0002
+                        AREA.SELECT A0002
+                        AREA.VIEW A0002
+                        //AREA.RESET
+                        //AREA
+                        PRINT %ERROR "   Error! Scripts environment detects that QuRT"
+                        PRINT %ERROR "   is using QURTV2 pagetables but T32 version"
+                        PRINT %ERROR "   is too old to support it. Please use T32 build"
+                        PRINT %ERROR "   version of &MINIMUM_QURT_PGT_T32_version or newer "
+                        PRINT %ERROR "   Attempting to load context from TLB's, but context loading"
+                        PRINT %ERROR "   and QuRT buttons will likely fail to work."
+                        PRINT " "
+                        PRINT " "
+                        PRINT " "
+                        AREA.SELECT A000
+                        AREA.VIEW A000
+                        //If in automation mode, fatal exit. Else keep trying.
+                        IF STRING.SCAN("&extraoptions","forcesilent",0)==-1
+                        (
+                            GOTO SKIP_PAGETABLE_LOAD
+                        )
+                        ELSE
+                        (
+                            do std_fatalexit USER "Invalid T32 version used with QURTV2 pagetables"
+                        )
+                )
+                
+                &ABS_QURTK_pagetables=(QURTK_page_table_v2-&VIRT_START+&ADSP_SW_start)
+                //MMU.FORMAT QURTV2 &ABS_QURTK_pagetables &VIRT_START++&ADSP_SW_size &ADSP_SW_start
+                &v_pgt=ADDRESS.OFFSET(D:QURTK_page_table_v2)&0xFFF00000
+                &p_pgt=(&v_pgt-&VIRT_START+&ADSP_SW_start)
+                MMU.FORMAT QURTV2 QURTK_page_table_v2 &v_pgt++0xFFFFF &p_pgt
+                TRANS.TABLEWALK.ON
+                TRANS.ON
+                
+            )
+            ELSE
+            (
+                &ABS_QURTK_pagetables=(QURTK_pagetables-&VIRT_START+&ADSP_SW_start)
+                MMU.FORMAT QURT d.l(&ABS_QURTK_pagetables) &VIRT_START++&ADSP_SW_size &ADSP_SW_start
+                MMU.ON
+                MMU.SCAN KernelPageTable
+            
+            )
+            
+            IF (&MINIMUM_QURT_EABI_T32_version<=&T32build)
+            (
+                //Turn on frame config feature. Also should only be used with recent 
+                FRAME.CONFIG.EABI.ON
+            )
+            
+SKIP_PAGETABLE_LOAD:
+            ON ERROR
+            GOSUB RESTORE_TLB
+            
+            GOSUB DUMP_STATE_ANALYSIS
+            ENTRY %LINE &rvalue
+            
+            
+            
+            
+
+    RETURN &rvalue
+    
+////////////////////////////////////////
+//
+//          RESTORE_TLB
+//          Private function
+//          Scan and sync through TLB dumps 
+//          Expected input: None. Uses global variables
+//          Needs TLB dump to be populated or will print error
+//
+/////////////////////////////////////////
+RESTORE_TLB:
+        
+        //Restore TLB state
+        IF (Y.EXIST(QURTK_tlb_dump))
+        (
+            IF (V.VALUE((int)QURTK_tlb_dump)!=0x0)
+            (
+                &tlb_idx=0
+                // 128 entries in the TLB for QDSP6V5A,H,128_A
+                REPEAT 128
+                (
+                     &val0=V.VALUE(((unsigned int *)&QURTK_tlb_dump)[2*&tlb_idx])
+                    &val1=V.VALUE(((unsigned int *)&QURTK_tlb_dump)[2*&tlb_idx+1])
+                    MMU.SET TLB &tlb_idx &val0 &val1
+                    &tlb_idx=&tlb_idx+1
+                )
+                MMU.TLB.SCAN
+            )
+            ELSE
+            (
+                PRINT %ERROR "Warning! TLB Dump empty. Some context may be lost or menus may not work properly"
+            )
+        )
+RETURN
+
+////////////////////////////////////////
+//
+//          RESTORE_REGISTER_CONTEXT
+//          Private function
+//          Restore register context from existing dump files 
+//          Expected input: None. Uses global variables
+//          Needs script files to be present, or will throw error
+//
+/////////////////////////////////////////
+RESTORE_REGISTER_CONTEXT:
+LOCAL &logtype
+ENTRY &logtype
+    IF ("&logtype"=="USB")
+    (
+            &runscript="true"
+            ON ERROR GOSUB
+            (
+                    PRINT "Warning! Error ocurred during load_coredump. Some information may be lost."
+                    &runscript="false"
+            )
+            IF ("&runscript"=="true")
+            (
+                //coredump not always populated
+                do std_utils EXECUTESCRIPT EXIT &imagebuildroot/&processor_root_name/core/debugtools/err/cmm/load_coredump.cmm
+            )
+            ON ERROR
+            
+           
+    )
+    
+
+    // Restore the registers from file if JTAG logs
+    IF ("&logtype"=="JTAG")
+    (
+        THREAD 0
+        do std_utils EXECUTESCRIPT EXIT &logpath/&ADSP_Thread0_regs
+        THREAD 1
+        do std_utils EXECUTESCRIPT EXIT &logpath/&ADSP_Thread1_regs
+        THREAD 2
+        do std_utils EXECUTESCRIPT EXIT &logpath/&ADSP_Thread2_regs
+        THREAD 3
+        do std_utils EXECUTESCRIPT EXIT &logpath/&ADSP_Thread3_regs
+
+    )
+    
+    RETURN
+    
+
+
+
+
+
+/////////////////////////////////////////
+//
+//          DSP_LOAD_PAGETABLES_ADSP
+//          Private function
+//          Wraps DSP_LOAD_PAGETABLES ADSP since with island mode 
+//          special mappings need to be removed
+//          Not used in current implementation 
+//          Expected input: None. Uses global variables
+//          Needs dump to be good and symbols to be correct, or will throw error
+//
+/////////////////////////////////////////
+DSP_LOAD_PAGETABLES_ADSP:
+            &runscript="true"
+            ON ERROR GOSUB
+                (
+                    PRINT "Warning! Error ocurred during pagetable loading. Possible symbol mismatch. Context loading may be incomplete"
+                    GOSUB BACKUP_MEM_MAP
+                    &runscript="false"
+                    
+                )
+            IF ("&runscript"=="true")
+            (
+                printer.file c:\temp\DSP_pgt.txt
+                printer.filetype ASCII
+                printer.size 0xfa, 0xfa
+                wp.task.pgt
+    
+                mmu.delete &ADSP_VIRT_START_ISLAND++&ADSP_ISLAND_SIZE
+    
+                GOSUB DSP_LOAD_PAGETABLES
+                    ENTRY &result
+                IF ("&result"!="SUCCESS")
+                (
+                    PRINT "Warning! Error ocurred during pagetable loading. Symbol mismatch or bad dump possible. Context information lost"
+                )
+                
+            )
+            ON ERROR
+	    
+	    RETURN
+
+/////////////////////////////////////////
+//
+//          DSP_LOAD_PAGETABLES
+//          Private function
+//          Prints out entire pagetable and creates translation entries upon reading in
+//          Not used in current implementation 
+//          Expected input: None. Uses global variables
+//          Needs dump to be good and symbols to be correct, or will throw error
+//
+/////////////////////////////////////////
+DSP_LOAD_PAGETABLES:
+
+            LOCAL &linelst &vpage &ppage &size &vend &pend &result
+            //&loc="c:\temp"
+            // moved to up layer because one mapping needs deletion
+            // printer.file &loc\DSP_pgt.txt
+            // printer.filetype ASCII 
+            // printer.size 0xfa, 0xfa
+            // wp.task.pgt
+            &result="SUCCESS"
+            
+            open #1 c:\temp\DSP_pgt.txt
+            read #1 %line &linelst
+            read #1 %line &linelst
+            read #1 %line &linelst
+start:
+            read #1 %line &linelst 
+            &vpage=string.mid("&linelst", 0, 7)
+            if (("&vpage"=="B::task")||("&vpage"=="Pagetab")||("&vpage"=="VPage  ")||("&vpage"=="PPage  "))
+            (
+                goto start
+            )
+
+            if ("&vpage"=="       ")
+            (
+                goto done_reading
+            )
+            
+            if "&vpage"==""
+            (
+                goto done_reading
+            )
+            &ppage=string.mid("&linelst",0xa, 7)
+            if "&ppage"==""
+            (
+                goto done_reading
+            )
+            
+            if (STRING.SCAN("&ppage","******",0)!=-1)
+            (
+                PRINT "Warning! Pagetable dumps invalid. May be a bad dump. Context loading could be limited"
+                &result="FAILURE"
+                GOTO done_reading
+            )
+            &size=string.mid("&linelst", 0x14, 8)
+            if "&size"==""
+            (
+                goto done_reading
+            )
+            
+            // print "&vpage"+" "+"&ppage"+" "+"&size"
+            &vpage=&vpage<<0xc
+            &ppage=&ppage<<0xc
+            &vend=&vpage+&size
+            &pend=&ppage+&size
+            mmu.create &vpage--&vend &ppage--&pend
+            goto start
+done_reading:
+            close #1
+
+RETURN &result
+
+RUN_ANALY_QURT_ERROR:
+            //Run analy_qurt_error.cmm
+            //After this, task list works!
+            &runscript="true"
+            ON ERROR GOSUB
+                (
+                    PRINT "Warning! Error ocurred during analy_qurt_error. Context loading may be incomplete"
+                    &runscript="false"
+                    
+                )
+            IF ("&runscript"=="true")
+            (
+                if FILE.EXIST("&imagebuildroot\&processor_root_name\core\kernel\qurt\build\adsp_link\qdsp6\AAAAAAAA\install\ADSPv60MP\scripts\analy_qurt_error.cmm")
+                (
+                    do &imagebuildroot\&processor_root_name\core\kernel\qurt\build\adsp_link\qdsp6\AAAAAAAA\install\ADSPv60MP\scripts\analy_qurt_error.cmm
+                )
+                ELSE
+                (
+                    PRINT "Warning! Could not find analy_qurt_error.cmm in given build. You'll need to locate it and run it manually for best context load."
+                )
+            )
+            ON ERROR
+	    
+	    RETURN
+	    
+	    
+////////////////////////////////////////
+//
+//          DUMP_STATE_ANALYSIS
+//          Private function
+//          Examines key variables used in QuRT menu plugins to determine symbol mismatch
+//          Expected input: None. Uses global variables and ELF symbols
+//          Needs dump to be good and symbols to be correct, or will throw error
+//
+/////////////////////////////////////////
+DUMP_STATE_ANALYSIS:
+
+        LOCAL &qurt_state_results &rvalue
+        &qurt_state_results=1
+
+        IF ((!Y.EXIST(QURTK_CONTEXT_SIZE))||(!Y.EXIST(QURTK_MAX_THREADS))||(!Y.EXIST(qurt_has_initted))||(!Y.EXIST(QURTK_flush_cache_status)))
+        (
+            PRINT %ERROR "QuRT variables not known. Error with ELF file. Exiting"
+            do std_fatalexit USER "QuRT variables not known. Error with ELF file. Exiting"
+        )
+        
+        //FIXME these should be set in a library of some sort
+        //These three variables needed for QuRT threads.
+        ON ERROR GOSUB
+        (
+            do std_fatalexit USER "Error! MMU translation fault occurred. RAM dump / ELF file likely not configured correctly"
+        )
+        IF ((v.value(QURTK_CONTEXT_SIZE)<240.)||(v.value(QURTK_CONTEXT_SIZE)>600.))
+        (
+            PRINT %ERROR "Warning - QURTK_CONTEXT_SIZE is an unexpected value. Could be a symbol mismatch issue. QuRT menu extensions may not run"
+            &qurt_state_results=0
+        )
+        IF (v.value(QURTK_MAX_THREADS)>600.)
+        (
+            PRINT %ERROR "Warning - QURTK_MAX_THREADS is an unexpected value. Could be a symbol mismatch issue. QuRT menu extensions may not run"
+            &qurt_state_results=0
+        )
+        IF (v.value(qurt_has_initted)!=1.)
+        (
+            PRINT %ERROR "Warning - qurt_has_initted is not equal to 1. Could be a symbol mismatch issue. QuRT menu extensions may not run"
+            &qurt_state_results=0
+        )
+        
+        &DumpState=v.value((int)QURTK_flush_cache_status)
+        IF ((&DumpState==0x02)||(&DumpState==0x03))
+        (
+            PRINT %ERROR "Warning! QURTK_flush_cache_status is &DumpState. Cache is flushed, but TCM and L2VIC were not saved"
+            &qurt_state_results=0
+        )
+        
+        IF (&qurt_state_results==0x1)
+        (
+            PRINT "Qurt State variable verification successful."
+            &rvalue="SUCCESS"
+        )
+        ELSE
+        (
+            &rvalue="FAILURE - Qurt state verification failed. Possible symbol mismatch."
+        )
+  
+        WINPOS 34% 63% 35% 41% 0. 0. W005
+        task.TaskList
+        ON ERROR
+
+        RETURN &rvalue
+
+POSTMORTEM_ANALYSIS:
+    
+    GOSUB RESTORE_REGISTER_CONTEXT &logtype    
+    
+    //Execute registered postmortem scripts
+    LOCAL &scriptpath
+    IF OS.DIR("&imagebuildroot/&processor_root_name/core/products/scripts/&ADSP_BUILDID")&&("&ADSP_BUILDID"!="")
+    (
+        &scriptpath="&imagebuildroot/&processor_root_name/core/products/scripts/&ADSP_BUILDID"
+    )
+    ELSE
+    (
+        do std_utils GET_SCRIPT_PATH EXIT &imagebuildroot/&processor_root_name/core/products/scripts std_postmortem.cmm
+        ENTRY &scriptpath
+    )
+
+    IF (!OS.DIR("&scriptpath"))||("&scriptpath"=="")
+    (
+        PRINT %ERROR "Warning! Could not find context menu scripts for this image! std_postmortem cannot run"
+    )
+    ELSE
+    (
+        do std_utils EXECUTESCRIPT EXIT &scriptpath/std_postmortem.cmm    
+    )
+    ENDDO SUCCESS
+    
+    
+    
+BADDUMP:
+    PRINT "Unrecoverable errors ocurred during dump. Cannot restore context"
+    do std_fatalexit USER "Unrecoverable errors ocurred during dump. Cannot restore context"
+    
+EXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    ENDDO &rvalue
+    
+
+//Should never get here. 
+FATALEXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    IF STRING.SCAN("&FAILUREKEYWORD","FAILUREKEYWORD",0)==-1
+    (
+        PRINT %ERROR "&FAILUREKEYWORD - &rvalue"
+        GOSUB EXIT &FAILUREKEYWORD - &rvalue
+    )
+    ELSE
+    (
+        PRINT %ERROR "&rvalue"
+        GOSUB EXIT &rvalue
+    )
+    
+//Should never get here
+    END

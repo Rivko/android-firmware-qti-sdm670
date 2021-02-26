@@ -1,0 +1,115 @@
+#===============================================================================
+#
+# Sensors libraries
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2016-2018 by Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Id: //components/rel/ssc.slpi/3.2/sensors/build/sensors.scons#3 $
+#  $DateTime: 2018/06/11 18:52:26 $
+#  $Change: 16382842 $
+#
+#===============================================================================
+Import('env')
+import os, inspect
+
+ME = inspect.getfile(inspect.currentframe())
+MY_ROOT = os.path.dirname(os.path.dirname(ME))
+
+#-------------------------------------------------------------------------------
+# Adds self
+#-------------------------------------------------------------------------------
+if 'SENSORS_DD_DEV_FLAG' in env:
+  bin_lib = True
+else:
+  bin_lib = False
+
+if 'USES_SSC_STATIC_LIB_BUILDER' in env:
+  env.AddSSCSU(ME, flavor = [], core_public_api = [], binary_lib = bin_lib)
+
+#-------------------------------------------------------------------------------
+# Remove source files
+#-------------------------------------------------------------------------------
+PB_PATH = os.path.join(MY_ROOT, 'pb')
+sim_path= os.path.join(MY_ROOT, 'sim')
+intr_x86_path = os.path.join(MY_ROOT, 'interrupt','x86')
+
+REMOVE_FILES =  env.FindFiles(['*.c','*.h'], PB_PATH)
+PROTO_FILES = env.FindFiles(['*.proto'], PB_PATH)
+
+WHITELIST = [
+  'sns_accel.proto',
+  'sns_ambient_light.proto',
+  'sns_ambient_temperature.proto',
+  'sns_async_com_port.proto',
+  'sns_async_uart.proto',
+  'sns_cal.proto',
+  'sns_device_mode.proto',
+  'sns_gyro.proto',
+  'sns_hall.proto',
+  'sns_humidity.proto',
+  'sns_interrupt.proto',
+  'sns_mag.proto',
+  'sns_motion_detect.proto',
+  'sns_physical_sensor_test.proto',
+  'sns_pressure.proto',
+  'sns_proximity.proto',
+  'sns_rgb.proto',
+  'sns_sensor_temperature.proto',
+  'sns_std_batch_trig_flush.proto',
+  'sns_std_event_gated_sensor.proto',
+  'sns_std.proto',
+  'sns_std_sensor.proto',
+  'sns_std_type.proto',
+  'sns_thermopile.proto',
+  'sns_timer.proto',
+  'sns_ultra_violet.proto',
+  'sns_heart_rate.proto',
+  'sns_offbody_detect.proto',
+  'sns_ppg.proto']
+
+if 'SENSORS_ALGO_DEV_FLAG' in env:
+   WHITELIST += [
+     'sns_oem1.proto',
+     'sns_resampler.proto',
+     'sns_amd.proto',
+     'sns_rmd.proto',
+     'sns_mag_cal.proto',
+     'sns_gyro_cal.proto',
+     'sns_tilt.proto',
+     'sns_sig_motion.proto',
+     'sns_rotv.proto',
+     'sns_psmd.proto',
+     'sns_offbody_detect.proto',
+     'sns_heart_rate.proto',
+     'sns_heart_beat.proto',
+     'sns_gravity.proto',
+     'sns_geomag_rv.proto',
+     'sns_game_rv.proto',
+     'sns_device_orient.proto',
+     'sns_pedometer.proto']
+
+for file in PROTO_FILES:
+  folder, filename = os.path.split(file)
+  if filename not in WHITELIST and \
+    'SENSORS_DD_DEV_FLAG' in env:
+    REMOVE_FILES += [file]
+
+if 'SENSORS_DD_DEV_FLAG' not in env:
+  REMOVE_FILES +=  env.FindFiles(['*.*'], intr_x86_path)
+  REMOVE_FILES +=  env.FindFiles(['*.*'], sim_path)
+  REMOVE_FILES +=  env.FindFiles(['*_log.proto'], MY_ROOT)
+
+env.CleanPack(env['SSC_BUILD_TAGS'], REMOVE_FILES)
+
+#-------------------------------------------------------------------------------
+# Scan subdirectories to find more /build folders
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+

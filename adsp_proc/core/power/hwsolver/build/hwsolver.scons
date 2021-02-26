@@ -1,0 +1,122 @@
+#===============================================================================
+#
+# HWSolver build script
+#
+# GENERAL DESCRIPTION
+#    Builds the hardware solver libraries for targets that have the supported HW.
+#
+#    Copyright (c) 2016-2017 Qualcomm Technologies, Inc. (QTI).
+#    All Rights Reserved.
+#    Qualcomm Confidential and Proprietary.
+#    Export of this technology or software is regulated by the U.S. Government.
+#    Diversion contrary to U.S. law prohibited.
+#-------------------------------------------------------------------------------
+#  $Header: //components/rel/core.qdsp6/2.1/power/hwsolver/build/hwsolver.scons#5 $
+#  $DateTime: 2017/10/27 10:53:19 $
+#===============================================================================
+import os
+
+Import('env')
+env = env.Clone()
+
+if 'USES_HWSOLVER' not in env:
+  env.PrintWarning('HWSOLVER is not available/enabled on this target.')
+  Return()
+
+#-------------------------------------------------------------------------------
+# SRC PATH
+#-------------------------------------------------------------------------------
+SRCPATH = ".."
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+  'DAL',
+  'DEBUGTOOLS',
+  'POWER',
+  'SERVICES',
+  'SYSTEMDRIVERS',
+
+  # needs to be last also contains wrong comdef.h
+  'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(['POWER', 'POWER_PDC', 'POWER_RSC'])
+env.RequireProtectedApi(['POWER_UTILS'])
+
+# Set target based dir path
+HWSLV_TARGET = env['MSM_ID']
+HWSLV_DIR_ROOT = os.path.join(env['BUILD_ROOT'], 'core/power/hwsolver/cfg')
+
+# Check if HWIO target directory exists, if not use default target
+if not os.path.exists(os.path.join(HWSLV_DIR_ROOT, HWSLV_TARGET)):
+  env.PrintWarning('HWsolver target ' + HWSLV_TARGET + ' not found, using default')
+  HWSLV_TARGET = env['PWR_TARGET_DFLT']
+
+HWSOLVER_DEFINES=[]
+uses_island = False
+modes_src = '${BUILDPATH}/cfg/'+ HWSLV_TARGET + '/' + env['POWER_SUBSYSTEM'].lower() + '/hwsolver_modes.c'
+
+HWSOLVER_RCINIT_DEPS=['dalsys']
+
+# Enable uNPA support in hwsolver
+if 'UNPA_SUPPORT' in env:
+  HWSOLVER_DEFINES += ['HWSOLVER_USES_UNPA']
+  HWSOLVER_RCINIT_DEPS.append('uNPA')
+
+if 'USES_ISLAND' in env or 'USES_ISLAND_FEATURE' in env:
+  HWSOLVER_DEFINES += ['HWSOLVER_USES_ISLAND']
+  HWSOLVER_RCINIT_DEPS.append('uSleep')
+  uses_island = True
+
+HWSOLVER_SOURCES = [
+  '${BUILDPATH}/src/hwsolver.c',
+  '${BUILDPATH}/src/hwsolver_lpr.c',
+]
+
+HWSOLVER_ISLAND_SOURCES = [ '${BUILDPATH}/src/hwsolver_island.c', ]
+
+(HWSOLVER_ISLAND_SOURCES if uses_island else HWSOLVER_SOURCES).append( modes_src )
+
+HWSOLVER_DEFINES += ['HWSOLVER_LPR_DRVID=0']
+env.Append( CPPDEFINES=HWSOLVER_DEFINES )
+
+# Add LPR into build
+if 'USES_CORESLEEP_TOOL' in env:
+  xml_file = env['BUILD_ROOT'] + '/core/power/hwsolver/lpr'
+  env.AddCoreSleepLPR(['CORE_SLPI_ADSP_ROOT'], {'sleep_lpr_xml' : [xml_file]})
+else:
+  assert False, "** ERROR: Unable to add HWSolver LPR XML into build"
+
+#-------------------------------------------------------------------------------
+# Compile and create library
+#-------------------------------------------------------------------------------
+
+hwsolver_lib = env.AddLibrary(
+  ['CORE_SLPI_ADSP_ROOT'], '${BUILDPATH}/hwsolver', HWSOLVER_SOURCES )
+  
+if uses_island:
+  hwsolver_island_lib = env.AddLibrary( 
+    ['CORE_SLPI_ADSP_ROOT'], '${BUILDPATH}/hwsolver_island', HWSOLVER_ISLAND_SOURCES )
+  
+  # TODO: Do we need this check? Is there a difference between USES_ISLAND and USES_ISLAND_FEATURE?
+  if 'USES_ISLAND' in env:
+    env.AddIslandLibrary( ['CORE_QDSP6_SW'], hwsolver_island_lib )    
+  
+#-------------------------------------------------------------------------------
+# Setup RCINIT
+#-------------------------------------------------------------------------------
+if 'USES_RCINIT' in env:
+  RCINIT_IMG = ['CORE_SLPI_ADSP_ROOT']
+  
+  env.AddRCInitFunc(            # Code Fragment in TMC: NO
+    RCINIT_IMG,                 # define TMC_RCINIT_INIT_HWSOLVER_INIT
+    {
+    'sequence_group'             : 'RCINIT_GROUP_0',
+    'init_name'                  : 'hwsolver',
+    'init_function'              : 'hwsolver_init',
+    'dependencies'               : HWSOLVER_RCINIT_DEPS
+    })

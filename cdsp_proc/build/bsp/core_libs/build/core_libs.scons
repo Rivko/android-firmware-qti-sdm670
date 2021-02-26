@@ -1,0 +1,391 @@
+#===============================================================================
+#
+# Basic skeleton image scrip
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009-2012 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/dspbuild.adsp/5.0.c3/bsp/core_libs/build/core_libs.scons#1 $
+#  $DateTime: 2018/08/07 05:36:15 $
+#  $Change: 16823152 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 2015/01/12 sm      Add 'CORE_ADSP_ROOT' to the build tags.
+#===============================================================================
+
+import os, re
+Import('env')
+#------------------------------------------------------------------------------
+# Init image vars 
+#------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
+# Init aliases array.
+# first alias (0th elemten in array) is always unique name, there should
+# never be two images with the same unique name
+aliases = ['core_libs', 'adsp_proc', 'adsp_mpd_core_images', 'adsp_spd_core_images',
+           'msm8998_ADSP', 'sdm845_ADSP', 'sdm660_ADSP', 'sdm670_ADSP','sdm855_ADSP','sdm1000_ADSP'
+          ]
+
+#------------------------------------------------------------------------------
+# Init environment variables
+build_tools = ['buildspec_builder.py',
+            '${BUILD_ROOT}/core/bsp/build/scripts/mbn_builder.py',
+            '${BUILD_ROOT}/core/bsp/build/scripts/dnt_builder.py',
+            '${BUILD_ROOT}/core/bsp/build/scripts/tms_builder_servreg.py',
+            '${BUILD_ROOT}/core/bsp/build/scripts/cmm_builder.py',
+            '${BUILD_ROOT}/core/bsp/build/scripts/swe_builder.py',
+            '${BUILD_ROOT}/core/bsp/build/scripts/sleep_lpr_builder.py']
+
+
+if env.get('CHIPSET') in ["msm8994", "msm8992", "msm8952", "sdm660", "sdm670"]:
+   build_tools += [
+            '${BUILD_ROOT}/core/bsp/build/scripts/island_builder.py']
+
+# Define the SCons image build tags.
+build_tags = ['CORE_ADSP_ROOT', 'CORE_Q6_ROOT', 'ROOT_PD', 'QDSS_EN_IMG','AVS_ADSP','VIDEO_ADSP', 'QMIMSGS_ADSP', 
+              'IMAGE_TREE_VERSION_AUTO_GENERATE', 'IMAGE_TREE_UUID_AUTO_GENERATE'
+             ]
+if env['CHIPSET'] in ['sdm660', 'sdm670']:
+   build_tags += [
+            'CORE_SLPI_ADSP_ROOT']
+            
+# Deprecated Build Tags
+deprecated_build_tags = ['CORE_QDSP6_SW',
+   'CORE_ADSP','CBSP_QDSP6_SW_IMAGE']
+
+env.InitImageVars(
+   alias_list=aliases,  # aliases list
+   proc='qdsp6',      # proc (depending on tool chain arm, hexago, etc)
+   config='adsp',
+   plat='qurt',           # platform (l4, blast, foo, bar, etc)
+#build_tags = ['BASIC_IMAGE_EXAMPLE'],
+   build_tags = build_tags,
+   deprecated_build_tags = deprecated_build_tags,
+   tools = build_tools
+)
+#------------------------------------------------------------------------------
+# Check if we need to load this script or just bail-out
+#------------------------------------------------------------------------------
+if not env.CheckAlias():
+   Return()
+
+#---------------------------------------------------------------------------
+# Include PWRDB to the build via USES_PWRDB flag
+#---------------------------------------------------------------------------
+env.AddUsesFlags('USES_PWRDB')
+
+#---------------------------------------------------------------------------
+# Load in CBSP uses and path variables
+#---------------------------------------------------------------------------
+env.LoadToolScript('build_utils', toolpath = ['${BUILD_ROOT}/build/scripts'])
+env.InitTargetVariation()
+env.InitBuildConfig()
+#------------------------------------------------------------------------------
+# Image_cfg.xml setup
+#------------------------------------------------------------------------------
+devcfg_toolpath = '${BUILD_ROOT}/core/kernel/devcfg/scripts'
+if 'USES_DEVCFG_STRICT_XML' in env['USES_FLAGS_CL']:
+   devcfg_toolpath = '${BUILD_ROOT}/core/kernel/devcfg_strict/scripts'
+env.Replace(IMAGE_CONFIG_XML = env.subst("${BUILD_ROOT}/build/chipset/${CHIPSET}/adsp/image_cfg_core_root.xml"))
+env.LoadToolScript('devcfg_builder', toolpath = [devcfg_toolpath])
+
+if 'USES_UNIFIED_DEVCFG' not in env: 
+   env.Replace(USES_DEVCFG = 'yes')
+   env.Replace(DEVCONFIG_ASSOC_FLAG = 'DAL_DEVCFG_IMG')
+env.AddUsesFlags('USES_SERVICE_REGISTRY_PLAYBOOK')
+if ('USES_FEATURE_DYNAMIC_LOADING_GLOBAL' in env) :
+   env.Replace(USES_FEATURE_DYNAMIC_LOADING = 'yes')
+   #import pdb; pdb.set_trace()
+   env.LoadToolScript('sharedlib_symbols', toolpath = ['${BUILD_ROOT}/core/bsp/build/scripts'])
+   env.LoadToolScript('dlinker_symbols', toolpath = ['${BUILD_ROOT}/core/bsp/build/scripts'])
+
+#Add ADSP Image specific linker inputs here
+env.LoadToolScript('hexagon_adsp', toolpath = ['${BUILD_ROOT}/build'])
+env.PrintInfo("Building Q6 Image for %s"%env['IMAGE'])
+
+if 'USES_MULTI_PD' in env:
+   env.PrintInfo("This adsp core image is being built for Multi PD version")
+   env.AddUsesFlags('USES_MPD')
+   env.AddUsesFlags('USES_QURTOS_IMG') #this is the flag to be used for mpd builds to compile for guest os
+   env.Append(CPPDEFINES=["MULTI_PD_BUILD"])
+if env['CHIPSET'] in ['sdm660', 'sdm670']:
+   env.AddUsesFlags('USES_SLPI_ADSP_IMG')
+else:
+   env.PrintInfo("This adsp core image is being built for Single PD version")
+env.AddUsesFlags('USES_RCINIT_PLAYBOOK')
+#---------------------------------------------------------------------------
+# Include PWRDB to the build via USES_PWRDB flag
+#---------------------------------------------------------------------------
+env.AddUsesFlags('USES_PWRDB')
+
+#if image wants to own "main": # image calls core_main to init cbsp
+env.Append(CPPDEFINES=["COREMAIN_EXCLUDE_MAIN"])
+
+
+#---------------------------------------------------------------------------
+# Load in the tools-set init scripts
+#---------------------------------------------------------------------------
+if 'USES_MALLOC_WRAPPER_ENABLED' in env:
+    env.Append(CFLAGS='-DMALLOC_WRAPPER ')
+
+#Append sim flag if building for sim
+if 'USES_AVS_TEST' in env:
+    env.Append(CFLAGS='-DSIM')
+
+
+#top level control enable/disable Power Collapse feature
+#define the flag to disable PC
+if 'USES_FEATURE_DISABLE_SLEEP_MODES' in env:
+    env.Append(CPPDEFINES=['FEATURE_DISABLE_SLEEP_MODES'])
+
+#---------------------------------------------------------------------------
+# Libs/Objs
+#---------------------------------------------------------------------------
+image_libs = []
+image_objs = []
+img_shlibs = []
+#---------------------------------------------------------------------------
+# Libraries Section
+#---------------------------------------------------------------------------
+if 'USES_UNIFIED_DEVCFG' in env: 
+    #-----LoadAreas other than 'core' for devcfg XMLs if any---------------
+    devcfg_env = env.Clone()
+    clearlist = env.get('DEPRECATED_BUILD_TAGS')+env.get('BUILD_TAGS')+['USES_RCINIT']
+    for keys in clearlist:
+        devcfg_env.Dictionary().pop(keys)
+    if 'USES_DEVCFG_STRICT_XML' in env['USES_FLAGS_CL']:
+        devcfg_build_tag = env.get('DEVCFG').devcfgImgBuildTag
+    else:
+        devcfg_build_tag = env.get('DEVCFG').getFeature('devcfgImgBuildTag')
+    devcfg_env.Replace(BUILD_TAGS = [devcfg_build_tag])
+    devcfg_env.Replace(DEPRECATED_BUILD_TAGS = [])
+    devcfg_env.Dictionary()[devcfg_build_tag] = env['PROC']
+
+    devcfgClients = ["qdsp6","platform","performance"]
+    if 'AUDIO_IN_USERPD' not in devcfg_env and 'BUILD_BAREBONE' not in devcfg_env and 'USES_DISABLE_AUDIO' not in devcfg_env:
+        devcfgClients += ["avs"]
+    if env.get('CHIPSET') != "msm8996" or env.get('CHIPSET') != "msm8998" :
+        devcfgClients += ["sensors"]
+    for client in devcfgClients:
+        if devcfg_env.PathExists(devcfg_env.RealPath('${{BUILD_ROOT}}/{}'.format(client))):
+           au_name_items = devcfg_env.LoadAreaSoftwareUnits(client)
+           image_objs.extend(au_name_items['OBJS'])
+       
+    #Add hash values of the shared objects to the ELF 
+    if 'BUILD_BAREBONE' not in env:
+         if 'USES_DEVCFG_STRICT_XML' in env:
+            hash_xml = '${BUILD_MS_ROOT}/SHARED_LIBS_${BUILD_ID}_HASH_strict_xml.xml'
+         else:
+            hash_xml = '${BUILD_MS_ROOT}/SHARED_LIBS_${BUILD_ID}_HASH.xml'
+         env.PrintInfo("Adding Hash XML(containing hash values of shared objects) to devcfg Info")
+         hash_xml_img = env.AddDevCfgInfo([devcfg_build_tag], {'soc_xml' : [hash_xml]})
+         env.Depends(hash_xml_img, hash_xml)
+    #----------------------------------------------------------------------------
+    oem_root_path = os.environ.get('OEM_ROOT')
+    if oem_root_path != None: 
+       env.PrintInfo("OEM_ROOT: Hashing dynamic objects from "+ oem_root_path)
+       if 'USES_DEVCFG_STRICT_XML' in env:
+          hash_custom_libs_xml = '${BUILD_MS_ROOT}/CUSTOM_SHARED_LIBS_${BUILD_ID}_HASH_strict_xml.xml'
+       else:
+          hash_custom_libs_xml = '${BUILD_MS_ROOT}/CUSTOM_SHARED_LIBS_${BUILD_ID}_HASH.xml'
+       hash_custom_xml_img = env.AddDevCfgInfo([devcfg_build_tag], {'soc_xml' : [hash_custom_libs_xml]})
+       env.Depends(hash_custom_xml_img, hash_custom_libs_xml)
+
+       dynmod_oem_path = env.RealPath(os.path.join(oem_root_path, 'build/dynamic_modules_hash'))
+       if env.PathExists(dynmod_oem_path):
+          so_list = env.FindFiles(root_dir=env.RealPath(dynmod_oem_path),posix=True) 
+          hash_prebuilt_libs_strict_xml = "${BUILD_MS_ROOT}/CUSTOM_PREBUILT_LIBS_HASH_strict_xml.xml" 
+          hash_prebuilt_libs_xml = "${BUILD_MS_ROOT}/CUSTOM_PREBUILT_LIBS_HASH.xml" 
+          dummy_files = env.FindFiles(file_name_patterns='*.txt', root_dir=env.RealPath(dynmod_oem_path),posix=True)
+          so_list = list(set(so_list)-set(dummy_files))
+          if so_list:
+              env.PrintInfo("OEM_ROOT: Found pre-built customer shared object/s at " + ", ".join(so_list))
+              hash_prebuilt_libs_xml_out = env.HashXmlBuilder(hash_prebuilt_libs_xml, so_list)
+              strict_env = env.Clone()
+              strict_env.AddUsesFlags('USES_DEVCFG_STRICT_XML')
+              hash_prebuilt_libs_strict_xml_out = strict_env.HashXmlBuilder(hash_prebuilt_libs_strict_xml, so_list)
+              if 'USES_DEVCFG_STRICT_XML' in env:
+                  hash_prebuilt_xml_img = env.AddDevCfgInfo([devcfg_build_tag], {'soc_xml' : [hash_prebuilt_libs_strict_xml]})
+                  env.Depends(hash_prebuilt_xml_img, hash_prebuilt_libs_strict_xml)
+              else:
+                  hash_prebuilt_xml_img = env.AddDevCfgInfo([devcfg_build_tag], {'soc_xml' : [hash_prebuilt_libs_xml]})
+                  env.Depends(hash_prebuilt_xml_img, hash_prebuilt_libs_xml)
+       
+
+# load au_name libs/objs build rules.
+au_name_items = env.LoadAreaSoftwareUnits('core')
+image_libs.extend(au_name_items['LIBS'])
+image_objs.extend(au_name_items['OBJS'])
+if env.GetUsesFlag('USES_FEATURE_DYNAMIC_LOADING'):
+   img_shlibs.extend(au_name_items['SHARED_LIBS'])
+
+
+image_units = [image_objs, image_libs, img_shlibs]
+
+if 'USES_ISLAND' in env:
+   island_list = env.GenerateIslandList()
+   image_units += [
+      island_list,
+   ]
+
+#--- RCINIT Playbook Extension, Library Specific Details -------------------
+
+PLAYLISTS = [ ] # NONE USED
+
+# Follows all LoadAreaSoftwareUnits(). Precedes Link Step Details.
+# Image Owner supplies PLAYLISTS. Avoid other customization this step.
+
+# FOR SCONS TOOL EMITTERS TO PLACE OUTPUT PROPERLY
+if not os.path.exists(env.RealPath('${SHORT_BUILDPATH}')):
+   if Execute(Mkdir(env.RealPath('${SHORT_BUILDPATH}'))):
+      raise
+
+# ONLY WHEN DNT_BUILDER SCONS TOOL LOADED
+if 'USES_RCINIT' in env and 'USES_RCINIT_PLAYBOOK' in env:
+
+   # NEVER POLLUTE ENV CONSTRUCTION ENVIRONMENT WHICH GETS INHERITED
+   playbook_env = env.Clone()
+
+   # PLAYLIST OUTPUT THIS LIBRARY
+   rcinit_out_rcpl = playbook_env.RealPath('${SHORT_BUILDPATH}/rcinit_playlist.rcpl')
+   playbook_env.AddRCInitPlaylist(build_tags, rcinit_out_rcpl)
+   playbook_env.AddArtifact(build_tags, rcinit_out_rcpl)
+   playbook_env.Depends(build_tags, rcinit_out_rcpl)     # Manage explicit detail outside of AU
+   image_units.append(rcinit_out_rcpl)                   # Manage explicit detail outside of AU
+
+   # PLAYBOOK TXT OUTPUT THIS LIBRARY
+   rcinit_out_txt = playbook_env.RealPath('${SHORT_BUILDPATH}/rcinit_playlist.txt')
+   playbook_env.AddRCInitPlaybook(build_tags, rcinit_out_txt, None)
+   playbook_env.AddArtifact(build_tags, rcinit_out_txt)
+   playbook_env.Depends(rcinit_out_txt, rcinit_out_rcpl) # Manage explicit detail outside of AU
+   image_units.append(rcinit_out_txt)                    # Manage explicit detail outside of AU
+
+#--- RCINIT Playbook Extension, Library Specific Details -------------------
+
+#--- SERVICE REGISTRY Playbook Extension, Library Specific Details ------------BEGIN
+#build_tags = ['CORE_QDSP6_SW', 'BUILD_TEST_MODEM', 'QDSS_EN_IMG','AVS_ADSP','VIDEO_ADSP', 'QMIMSGS_ADSP', 'CORE_ADSP',
+#              'IMAGE_TREE_VERSION_AUTO_GENERATE',
+#              'IMAGE_TREE_UUID_AUTO_GENERATE', 'CORE_ADSP_ROOT', 'ROOT_PD'
+#             ]
+SERVREG_PLAYLISTS = [ ] # NONE USED
+
+# FOR SCONS TOOL EMITTERS TO PLACE OUTPUT PROPERLY
+if not os.path.exists(env.RealPath('${SHORT_BUILDPATH}')):
+   if Execute(Mkdir(env.RealPath('${SHORT_BUILDPATH}'))):
+      raise
+
+# ONLY WHEN DNT_BUILDER_SREG SCONS TOOL LOADED
+if 'USES_SERVICE_REGISTRY' in env and 'USES_SERVICE_REGISTRY_PLAYBOOK' in env:
+
+   # NEVER POLLUTE ENV CONSTRUCTION ENVIRONMENT WHICH GETS INHERITED
+   playbook_servreg_env = env.Clone()
+
+   # PLAYLIST OUTPUT THIS LIBRARY
+   servreg_out_pl = playbook_servreg_env.RealPath('${SHORT_BUILDPATH}/servreg_playlist.pl')
+   playbook_servreg_env.AddServRegPlaylist(build_tags, servreg_out_pl)
+   playbook_servreg_env.Depends(build_tags, servreg_out_pl)
+   image_units.append(servreg_out_pl)
+
+#--- SERVICE REGISTRY Playbook Extension, Library Specific Details ------------END
+
+#------------------------------------------------------------------------------
+# Putting the image together
+#------------------------------------------------------------------------------
+
+if 'IMAGE_BUILD_LOCAL_FILES' in env:
+   #-------------------------------------------------------------------------
+   # Local Files
+   #-------------------------------------------------------------------------
+
+   # this is where local files are created, for example link scripts (lcs)
+   # for qdsp6 like images, or scatter load files (scl) for amr like images.
+   local_itmes= []
+
+   image_units += local_itmes
+
+   #------------------------------------------------------------------------------
+   # Dynamic Loading Info
+   #------------------------------------------------------------------------------
+   if env.GetUsesFlag('USES_FEATURE_DYNAMIC_LOADING'):
+      dll_itmes= []
+      
+      dlexpose_sym_lst= env.RealPath('${SHORT_BUILDPATH}/DLEXPOSE_CORE_SYMS_${BUILD_ID}.txt')
+      dlexpose_sym_lst_node = env.DLExposeGenerateList([dlexpose_sym_lst], None)
+      dll_itmes += dlexpose_sym_lst_node
+      
+      if(len(img_shlibs) !=0) :
+         sh_libs_sym_lst= env.RealPath('${SHORT_BUILDPATH}/SHLIBS_CORE_SYMS_${BUILD_ID}.txt')
+         sh_libs_sym_lst_node = env.SharedLibGenerateList([sh_libs_sym_lst], img_shlibs)
+         dll_itmes += sh_libs_sym_lst_node
+      
+         sym_lst= env.RealPath('${SHORT_BUILDPATH}/CORE_SYMS_${BUILD_ID}.txt')
+         sym_lst_node = env.ConsolidateSymsList([sym_lst], [dlexpose_sym_lst_node[0], sh_libs_sym_lst_node[0]])
+         dll_itmes += sym_lst_node
+      
+      else:
+         sym_lst= env.RealPath('${SHORT_BUILDPATH}/CORE_SYMS_${BUILD_ID}.txt')
+         sym_lst_node = env.ConsolidateSymsList([sym_lst], [dlexpose_sym_lst_node[0]])
+         dll_itmes += sym_lst_node
+      
+      image_units += dll_itmes
+
+   
+if 'IMAGE_BUILD_LINK' in env:
+   #-------------------------------------------------------------------------
+   # Link image
+   #-------------------------------------------------------------------------
+
+   # this is where the rule to "link" is done.
+   #image_elf = env.AddProgram("${SHORT_BUILDPATH}/${TARGET_NAME}", image_objs, LIBS=image_libs)
+
+   # this is just to create something for testing
+   image_elf = env.ListFileBuilder("${SHORT_BUILDPATH}/${TARGET_NAME}.txt", [image_objs, image_libs],
+         add_header=False, relative_path="${BUILD_ROOT}/build/ms", posix=True)
+   
+   if env.GetUsesFlag('USES_FEATURE_DYNAMIC_LOADING') and len(img_shlibs) !=0 :
+      shlib_elf = env.ListFileBuilder("${SHORT_BUILDPATH}/${TARGET_NAME}" + "_SYMS.txt", [img_shlibs],
+         add_header=False, relative_path="${BUILD_ROOT}/build/ms", posix=True)
+
+if 'IMAGE_BUILD_POST_LINK' in env:
+   #-------------------------------------------------------------------------
+   # Post process image
+   #-------------------------------------------------------------------------
+
+   # this is where any aditional rules after linking are done.
+   if 'USES_CMMBUILDER' in env:
+      if 'USES_CMMBUILDER_V2' in env:
+         cmmfiles = env.CreateCMMImageFile([],[])
+         image_units += [cmmfiles]
+      else:
+         cmm_image_list_file=env.RealPath('${SHORT_BUILDPATH}/cmmoutputlist.txt')
+         cmmfiles = env.CreateCMMImageFile(cmm_image_list_file,[])
+         image_units += [cmmfiles]
+   #=========================================================================
+   # Define targets needed
+   #
+   image_units += [
+      image_elf,
+   ]
+  
+   if env.GetUsesFlag('USES_FEATURE_DYNAMIC_LOADING') and len(img_shlibs) !=0 :
+      image_units += [
+      shlib_elf,
+      ]
+ 
+#=========================================================================
+# Finish up...
+env.BindAliasesToTargets(image_units)
+env.CMMBuilder(None, None)
+	

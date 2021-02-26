@@ -1,0 +1,89 @@
+#===============================================================================
+# Copyright (c) 2012 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===============================================================================
+Import('env')
+
+env = env.Clone()
+
+platform_root = '${BUILD_ROOT}/platform'
+env.Replace(ADSP_PLATFORM_ROOT = platform_root)
+
+APIS=[
+  'FASTRPC_PORT',
+  'REMOTE',
+  'HAPSDK',
+  'FASTRPC_HEAP',  
+  'PLATFORM_LIBS',
+  'STDDEF',
+  'A1STD',
+  'ATOMIC',
+  'UTILS',
+  'QLIST',
+  'HAP',
+  'QI',
+  'PERF',
+  ]
+env.RequireRestrictedApi(APIS)
+env.RequirePublicApi(APIS)
+
+core_public_apis = [
+   'DEBUGTOOLS',
+   'SERVICES',
+   'KERNEL',
+   'MPROC',
+   ]
+env.RequirePublicApi(core_public_apis, area='core')
+
+if env['PLATFORM_SUBSYSTEM'] in ['adsp']:
+   env.Append(CFLAGS='-DADSP_PROC')
+   env.Append(CFLAGS='-DLOCAL_PORT_NAME="lpass"')
+elif env['PLATFORM_SUBSYSTEM'] in ['mdsp']:
+   env.Append(CFLAGS='-DMDSP_PROC')
+   env.Append(CFLAGS='-DLOCAL_PORT_NAME="mpss"')
+elif env['PLATFORM_SUBSYSTEM'] in ['cdsp']:
+   env.Append(CFLAGS='-DCDSP_PROC')
+   env.Append(CFLAGS='-DLOCAL_PORT_NAME="cpss"')
+elif env['PLATFORM_SUBSYSTEM'] in ['slpi']:
+   env.Append(CFLAGS='-DSLPI_PROC')
+   env.Append(CFLAGS='-DLOCAL_PORT_NAME="dsps"')
+
+if env.GetUsesFlag('USES_SLPI_ADSP_IMG'):
+   env.Append(CFLAGS='-DSLPI_ADSP_IMG')
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${ADSP_PLATFORM_ROOT}/fastrpc_port/src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+
+#if env['PLATFORM_SUBSYSTEM'] in ['slpi']:
+SOURCES =  [
+    '${BUILDPATH}/fastrpc_port_s.c',
+    '${BUILDPATH}/fastrpc_port_qdi_driver.c',
+    ]
+env.PLRegister("fp_qdi", ['PLATFORM_ROOT_LIBS', 'PLATFORM_LIBS'])
+env.PLRegister("fastrpc_port", ['PLATFORM_ROOT_LIBS', 'PLATFORM_LIBS'])
+#else:
+#   SOURCES =  [
+#     '${BUILDPATH}/fastrpc_port.c',
+#     ]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+env.AddBinaryLibrary(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+ 'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE'],'${BUILDPATH}/fastrpc_port', SOURCES)
+
+#-------------------------------------------------------------------------------
+# Load Subunits (sys)
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+# Clean / pack rules
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.cpp', '*.h', '*.s'], '${ADSP_PLATFORM_ROOT}/fastrpc_port/src'))
+
+env.CleanPack(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+     'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE'], CLEAN_LIST)

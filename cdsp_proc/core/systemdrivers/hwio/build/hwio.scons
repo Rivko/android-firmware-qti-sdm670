@@ -1,0 +1,102 @@
+#=============================================================================
+# HWIO LIBRARY
+#
+# Target:    All
+# Processor: All
+#
+#=============================================================================
+# $Header: //source/qcom/qct/core/systemdrivers/hwio/common/main/latest/build/SConscript#3 $
+#=============================================================================
+#  Copyright 2010 - 2017 QUALCOMM Technologies Incorporated.
+#  All Rights Reserved.
+#  QUALCOMM Proprietary/GTDR
+#=============================================================================
+
+import os
+
+Import('env')
+env = env.Clone()
+
+#------------------------------------------------------------------------------
+# Add API folders
+#------------------------------------------------------------------------------
+
+HWIO_BUILD_ROOT = os.getcwd();
+
+env.PublishPrivateApi('SYSTEMDRIVERS_HWIO', [
+   HWIO_BUILD_ROOT + "/../src"
+])
+
+#-----------------------------------------------------------------------------
+# Define paths
+#-----------------------------------------------------------------------------
+
+SRCPATH = "../"
+SRCPATHSCRIPTS = env['BUILD_ROOT'] + '/core/systemdrivers/hwio/scripts/' + env['CHIPSET']
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+CBSP_API = [
+   'DAL',
+   'HAL',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'KERNEL',
+   'HWIO_DEVCFG_INTERFACE',
+]
+ 	 
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Define sources
+#-------------------------------------------------------------------------------
+
+HWIO_SOURCES = [
+   '${BUILDPATH}/src/DalHWIO.c',
+   '${BUILDPATH}/src/DalHWIOMap.c',
+   '${BUILDPATH}/src/DalHWIOFwk.c'
+]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+env.AddLibrary(
+  [ 'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE',
+   'CORE_QDSP6_SENSOR_SW'],
+  '${BUILDPATH}/DalHWIO', HWIO_SOURCES)
+
+#---------------------------------------------------------------------------
+# Pack out the address files.
+#---------------------------------------------------------------------------
+
+ARM_ADDRESS_FILES = env.FindFiles(
+  'ARM_ADDRESS_FILE.FLAT',
+  '${BUILD_ROOT}/core/api/systemdrivers/hwio/')
+
+env.CleanPack(['MODEM_MODEM', 'CORE_QDSP6_SW'], ARM_ADDRESS_FILES)
+
+#---------------------------------------------------------------------------
+# Invoke document generation SConscript
+#---------------------------------------------------------------------------
+
+if os.path.exists(env['BUILD_ROOT'] + '/core/api/systemdrivers/docsrc/hwio/SConscript') :
+  env.SConscript(
+    '${BUILD_ROOT}/core/api/systemdrivers/docsrc/hwio/SConscript',
+    exports='env')
+
+#-------------------------------------------------------------------------------
+# Add CMM Scripts to T32 Menu
+#-------------------------------------------------------------------------------
+
+CMM_ARGUMENT = ''
+
+try:
+    env.AddCMMScripts ('ADSP', [SRCPATHSCRIPTS], { 'hwioreg.per' : ['HWIO', CMM_ARGUMENT] }, 'SystemDrivers')
+except:
+  pass

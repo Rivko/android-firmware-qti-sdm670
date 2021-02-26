@@ -1,0 +1,104 @@
+#===============================================================================
+#
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2017 by Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/ssg.tz/1.0.2/securemsm/secimgauth/build/SConscript#1 $
+#  $DateTime: 2018/02/06 03:00:17 $
+#  $Author: pwbldsvc $
+#  $Change: 15399933 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 09/18/2017  hw     Initial Version
+#===============================================================================
+import os
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/ssg/securemsm/secimgauth"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+
+#-------------------------------------------------------------------------------
+# Request APIs from Core Platform
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'SERVICES',
+   'DAL',
+   'SYSTEMDRIVERS',
+   'BOOT',
+]
+
+env.RequirePublicApi(CBSP_API, area='core')
+
+
+#-------------------------------------------------------------------------------
+# Request APIs from SSG
+#-------------------------------------------------------------------------------
+
+SSG_API = [
+   'SECUREMSM',
+   'SECUREFUSES',
+   'TZCHIPSET',
+   'SECBOOT',
+   'TZSECAPP',  # for elf format definition
+   'UIE_API',
+]
+
+env.RequirePublicApi(SSG_API, area = 'ssg')
+env.RequireRestrictedApi(SSG_API)
+
+#-------------------------------------------------------------------------------
+# Publish Private Include Paths from secimgauth
+#-------------------------------------------------------------------------------
+INC_PATH = [
+    "${INC_ROOT}/ssg/securemsm/secimgauth/src/env/tz",
+    "${INC_ROOT}/ssg/securemsm/secimgauth/src/vers/inc",
+    "${INC_ROOT}/ssg/securemsm/secimgauth/src",
+]
+
+env.Append(CPPPATH = INC_PATH)
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+if env.get('IMAGE_ALIASES')[0] == 'xbl_sec':
+  SECIMG_LIB_SOURCES = [
+  	'${BUILDPATH}/src/sec_img_accessor.c',
+  ]
+else:
+  SECIMG_LIB_SOURCES = [
+    '${BUILDPATH}/src/sec_img_hashseg_api.c',
+    '${BUILDPATH}/src/sec_img_auth.c',
+  ]
+  if env['CHIPSET'] in ['sdm845', 'sdm670']:
+    env.Append(CCFLAGS = '-DSUPPORT_MBNV5 ')
+    SECIMG_LIB_SOURCES += [
+  		'${BUILDPATH}/src/vers/src/sec_img_hashseg_mbnv5.c',
+  	]
+  else:
+    env.Append(CCFLAGS = '-DSUPPORT_MBNV6 -DSUPPORT_MISC')
+    SECIMG_LIB_SOURCES += [
+  		'${BUILDPATH}/src/vers/src/sec_img_hashseg_mbnv6.c',
+  	]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to MBA Image
+#-------------------------------------------------------------------------------
+env.AddBinaryLibrary(['TZOS_IMAGE','XBL_SEC_IMAGE'], '${BUILDPATH}/secimgauth',  SECIMG_LIB_SOURCES)

@@ -1,0 +1,149 @@
+; writen by Waleed Eshmawy
+; input output directory
+entry &loc
+printer.file &OutputPath_Qurt\DSP_QT.txt
+printer.filetype ASCII 
+printer.size 0xfa, 0xfa
+wp.task.tasklist
+
+
+open #1 &OutputPath_Qurt\DSP_QT.txt
+read #1 %line &linelst
+read #1 %line &linelst
+open #2 &loc\DSP_stack_check.txt /create
+write #2 "[&name][&tcb][&ugp][&stackaddr][&stacksize][&stackend]"
+&Error=0
+start:
+read #1 %line &linelst 
+&tcb=string.mid("&linelst", 0, 8)
+if "&tcb"=="B::task"
+(
+goto start
+)
+if "&tcb"=="Pagetab"
+(
+goto start
+)
+if "&tcb"=="        "
+(
+goto done_reading
+)
+if "&tcb"==""
+(
+goto done_reading
+)
+&ugp=string.mid("&linelst",0xc, 8)
+if "&ugp"==""
+(
+goto done_reading
+)
+&stackptr=v.value(((*(((QURTK_thread_context *)0x&tcb))).r2928)>>0x20)
+&stackptr=&stackptr&0xffffffff
+&name=v.string(((char[0x10])(0x&ugp+0x28)))
+&stackaddr=v.value((unsigned int&)(0x&ugp+0x44))
+&stacksize=v.value((unsigned int&)(0x&ugp+0x40))
+;print "tcb ugp = [&name][&tcb][&ugp][&stackaddr][&stacksize]"
+&stackend=v.value((long long&)(&stackaddr))
+;print "name end = [&name][&stackend]"
+
+&stackratio=0
+
+if (&stacksize)>0
+(
+&stackratio= (&stackaddr+&stacksize-&stackptr)*100.0/(&stacksize*1.0)
+)
+else 
+(
+&stackratio=0
+)
+
+write #2 "[&name][&tcb][&ugp][&stackaddr][&stacksize][&stackend][&stackptr][&stackratio%]"
+
+if (&stackratio)>100.0
+(
+area.select
+area.view
+print " "
+print " "
+print "Issue with Thread Stack"
+print "name       [&name]"
+print "tcb        [&tcb]"
+print "ugp        [&ugp]"
+print "stackaddr  [&stackaddr]"
+print "stacksize  [&stacksize]"
+print "stackend   [&stackend]"
+print "stackratio [&stackratio%]"
+print " "
+print " "
+write #2 "-----------------------------------------Issue with above thread"
+&Error=1
+goto start
+)
+
+if "&stackend"=="0xF8F8F8F8F8F8F8F8"
+(
+
+) 
+else if "&stackend"=="0xFFFFFFFFFFFFFFFF"
+(
+
+) 
+else if "&name"=="M8974AAAAAAAAQ1"
+(
+
+)
+else if "&name"=="M8x26AAAAAAAAQ1"
+(
+
+)
+else if "&name"=="M8962AAAAAAAAQ1"
+(
+
+)
+else if "&name"=="M8084AAAAAAAAQ1"
+(
+
+)
+else if "&name"=="M8092AAAAAAAAQ1"
+(
+
+)
+else 
+(
+area.select
+area.view
+print " "
+print " "
+print "Issue with Thread Stack"
+print "name       [&name]"
+print "tcb        [&tcb]"
+print "ugp        [&ugp]"
+print "stackaddr  [&stackaddr]"
+print "stacksize  [&stacksize]"
+print "stackend   [&stackend]"
+print "stackratio [&stackratio%]"
+print " "
+print " "
+write #2 "-----------------------------------------Issue with above thread"
+&Error=1
+) 
+goto start
+
+done_reading:
+if &Error==1
+(
+print "Issue with thread Stacks"
+write #2 "Issue with thread Stacks"
+
+) 
+else 
+(
+print "No Issues"
+write #2 "No Issues"
+)
+close #1
+close #2
+enddo
+
+
+

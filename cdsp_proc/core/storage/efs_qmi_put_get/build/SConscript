@@ -1,0 +1,179 @@
+#===============================================================================
+#
+# EFS_QMI_PUT_GET Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2011-2013,2015 by QUALCOMM Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1.c4/storage/efs_qmi_put_get/build/SConscript#1 $  $DateTime: 2018/07/30 01:21:36 $  $Author: pwbldsvc $
+#  $Change: 16759227 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who    what, where, why
+# --------   ---    -----------------------------------------------------------
+# 2015-03-25 dks    Port to work on qurt
+# 2013-03-28 dks    Added support to query commands/TLVs supported by service.
+# 2013-02-22 nr     Bring in changes to remove deprecated api "AddLibsToImage".
+# 2012-08-12 dks    Add qmi_fw dependency for client RCINIT initialization.
+# 2012-06-20 dks    Make fs_qmi_client be started by RCINIT
+# 2012-03-23 dks    Add remote processor access check for paths.
+# 2012-01-30 dks    Move fs_qmi_service task to grp 1 to depend on fs_task.
+# 2012-01-04 dks    Update api path to include common.
+# 2011-10-04 dks    Removed dependency on FEATURE_RCINIT.
+# 2011-10-04 dks    Create.
+#
+#===============================================================================
+
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/storage/efs_qmi_put_get"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+env.PublishPrivateApi('EFS_QMI_PUT_GET_PRIVATE', [
+    '${BUILD_ROOT}/core/storage/efs_qmi_put_get/common/inc',
+])
+
+#-------------------------------------------------------------------------------
+# External depends within CoreBSP
+#-------------------------------------------------------------------------------
+# add support for qmimsgs so api folder can rename to qmimsgs
+qmimsgs_path = env.RealPath('${BUILD_ROOT}/qmimsgs')
+if env.PathExists(qmimsgs_path):
+   env.RequirePublicApi(['COMMON', 'MFS'], area='QMIMSGS')
+
+api_path = env.RealPath('${BUILD_ROOT}/api')
+if env.PathExists(api_path):
+   env.RequirePublicApi(['COMMON', 'MFS'], area='api')
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'DEBUGTOOLS',
+   'MPROC',
+   'SERVICES',
+   'STORAGE',
+   'SYSTEMDRIVERS',
+   'EFS_QMI_PUT_GET_PRIVATE',
+   # needs to be last as it may contain wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+EFS_QMI_PUT_GET_COMMON_SOURCES  =  [
+  '${BUILDPATH}/common/src/fs_qmi_util.c'
+]
+
+EFS_QMI_PUT_GET_CLIENT_SOURCES = [
+  '${BUILDPATH}/client/src/fs_qmi_client.c'
+]
+fs_qmi_cli_obj = env.Object(EFS_QMI_PUT_GET_CLIENT_SOURCES)
+
+EFS_QMI_PUT_GET_SERVICE_SOURCES = [
+  '${BUILDPATH}/service/src/fs_qmi_service.c',
+  '${BUILDPATH}/service/src/fs_qmi_service_access_check.c',
+  '${BUILDPATH}/service/src/fs_qmi_service_task.c'
+]
+fs_qmi_ser_obj = env.Object(EFS_QMI_PUT_GET_SERVICE_SOURCES)
+
+#-------------------------------------------------------------------------------
+# Configuartions
+#-------------------------------------------------------------------------------
+cpp_flags = []
+fs_qmi_obj =[]
+
+if 'USES_EFS_QMI_PUT_GET_SERVICE' in env:
+  cpp_flags += ['FEATURE_EFS_QMI_PUT_GET_SERVICE']
+  fs_qmi_obj += fs_qmi_ser_obj
+if 'USES_EFS_QMI_PUT_GET_CLIENT' in env:
+  cpp_flags += ['FEATURE_EFS_QMI_PUT_GET_CLIENT']
+  fs_qmi_obj += fs_qmi_cli_obj 
+if 'USES_RCINIT' in env:
+  cpp_flags += ['FEATURE_EFS_USE_RCINIT']
+
+if env.IsTargetEnable ('CORE_APPS'):
+  cpp_flags += ['FEATURE_FS_QMI_USE_REX_QMI_CLIENT']
+
+env.Append (CPPDEFINES = cpp_flags);
+env.LoadToolScript('${BUILD_ROOT}/core/storage/fs_osal/build/' \
+                   'fs_write_list_builder.py')
+fs_qmi_cpp_flags = env.FsWriteList ('${BUILDPATH}/fs_qmi_cpp_flags.txt',
+                                    EFS_QMI_PUT_GET_COMMON_SOURCES, FS_WRITE_LIST=cpp_flags)
+env.Depends (fs_qmi_obj, fs_qmi_cpp_flags);
+
+  
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+
+EFS_QMI_PUT_GET_CLIENT_IMAGES = [
+   'APPS_IMAGE',
+   'CBSP_APPS_IMAGE',
+   'CORE_APPS',
+   'APPS_IMAGE',
+   'CORE_ADSP_ROOT',
+]
+
+if 'USES_EFS_QMI_PUT_GET_CLIENT' in env:
+   env.AddLibrary(EFS_QMI_PUT_GET_CLIENT_IMAGES,'${BUILDPATH}/common', EFS_QMI_PUT_GET_COMMON_SOURCES)
+   env.AddLibrary(EFS_QMI_PUT_GET_CLIENT_IMAGES,'${BUILDPATH}/client', EFS_QMI_PUT_GET_CLIENT_SOURCES)
+
+
+EFS_QMI_PUT_GET_SERVICE_IMAGES = [
+   'MODEM_IMAGE',
+   'CBSP_MODEM_IMAGE',
+   'CORE_MODEM',
+   'CORE_QDSP6_MODEM_SW',
+   'QDSP6_SW_IMAGE',
+   'CBSP_QDSP6_SW_IMAGE'
+]
+
+if 'USES_EFS_QMI_PUT_GET_SERVICE' in env:
+   env.AddLibrary(EFS_QMI_PUT_GET_SERVICE_IMAGES,'${BUILDPATH}/common', EFS_QMI_PUT_GET_COMMON_SOURCES)
+   env.AddLibrary(EFS_QMI_PUT_GET_SERVICE_IMAGES,'${BUILDPATH}/service', EFS_QMI_PUT_GET_SERVICE_SOURCES)
+
+
+
+if ('USES_EFS_QMI_PUT_GET_SERVICE' in env):
+   env.AddRCInitTask(                # EFS_QMI_PUT_GET_SERVICE
+    EFS_QMI_PUT_GET_SERVICE_IMAGES,  # define TMC_RCINIT_REXTASK_FS_QMI_SERVICE
+    {
+      'sequence_group'             : 'RCINIT_GROUP_1',      #depends on fs_task
+      'thread_name'                : 'fs_qmi_service',
+      'thread_entry'               : 'fs_qmi_service_task',
+      'stack_size_bytes'           : '4096',
+      'priority_amss_order'        : 'FS_PRI_ORDER',
+      'cpu_affinity'               : 'REX_ANY_SMT_MASK',
+    })
+
+if ('USES_EFS_QMI_PUT_GET_CLIENT' in env):
+    env.AddRCInitFunc(                  # FS_QMI_CLIENT
+    EFS_QMI_PUT_GET_CLIENT_IMAGES,
+    {
+      'sequence_group'             : 'RCINIT_GROUP_0',
+      'init_name'                  : 'fs_qmi_client',
+      'init_function'              : 'fs_qmi_client_init',
+      'dependencies'               : ['fs_os']
+    })

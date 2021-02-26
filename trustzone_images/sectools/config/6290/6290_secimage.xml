@@ -1,0 +1,163 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+===============================================================================
+
+  Copyright (c) 2013-2017 Qualcomm Technologies, Inc.
+  All Rights Reserved.
+  Confidential and Proprietary - Qualcomm Technologies, Inc.
+
+===============================================================================
+-->
+<tns:secimage xmlns:tns="http://www.qualcomm.com/secimage"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.qualcomm.com/secimage ../xsd/secimage.xsd">
+
+    <!-- This is for QCA6290 target -->
+    <metadata>
+        <chipset>6290</chipset>
+        <version>2.0</version>
+    </metadata>
+
+    <!--
+       See documentation on general_properties below.
+    -->
+    <general_properties>
+        <selected_signer>local_v2</selected_signer>
+        <selected_encryptor></selected_encryptor>
+        <selected_cert_config>qti_presigned_certs</selected_cert_config>
+        <cass_capability>secboot_sha2_pss_subca1</cass_capability>
+
+        <key_size>2048</key_size>
+        <exponent>65537</exponent>
+
+        <mrc_index>0</mrc_index>
+        <num_root_certs>1</num_root_certs>
+        <root_revoke_activate_enable>disable</root_revoke_activate_enable>
+
+        <msm_part>0x000AB0E1</msm_part>
+        <soc_hw_version>0x40040100</soc_hw_version>
+        <in_use_soc_hw_version>enable</in_use_soc_hw_version>
+        <use_serial_number_in_signing>disable</use_serial_number_in_signing>
+        <oem_id_independent>disable</oem_id_independent>
+        <oem_id>0x0000</oem_id>
+        <model_id>0x0000</model_id>
+        <debug>nop</debug>
+        <multi_serial_numbers>
+            <!--<serial>0x12345678</serial>-->
+        </multi_serial_numbers>
+        <serial_number></serial_number>
+
+        <secboot_version>2.0</secboot_version>
+
+        <max_cert_size>2048</max_cert_size>
+        <num_certs_in_certchain>3</num_certs_in_certchain>
+
+        <hmac>false</hmac>
+        <rsa_padding>pss</rsa_padding>
+    </general_properties>
+
+    <!--
+        ***general_properties***
+
+        The default properties for all images. These properties maybe overridden
+        per image in the 'images' section below as needed.
+
+        Supported signer are:
+        local_v2: use local signer with test keys
+        cass: use cass signer with production key
+
+        Capability selected the signing key used. Currently, the following capabilities are supported.
+        OEM may obtain additional capabilities from CASS support.
+
+        secboot_sha2_pss_subca1: use SHA256, RSAPSS signed root cert
+
+        If "secboot_sha2_pss_subca1" is selected,the PK_HASH_IN_FUSE needs to be blown,
+        and the ROOT CERT HASH below needs to be blown in OEM PK HASH:
+        afca69d4235117e5bfc21467068b20df85e0115d7413d5821883a6d244961581
+
+        key_size: Size (in bits) of the key used for signing.
+        exponent: exponent value used in attestation key generation.
+
+        mrc_index: the root index for multiple root certificates (MRC) use case (0-3)
+        num_root_certs: Number of root certificates in the certificate chain (1-4)
+        root_revoke_activate_enable: enable revocation and activation (in hex)
+
+        msm_part: jtag_id for signing. (in hex)
+        soc_hw_version: MSM identifier used for latest family of chips (in hex)
+        in_use_soc_hw_version: flag to use JTAG_ID or SOC_HW_VERSION (0 or 1)
+        use_serial_number_in_signing: flag to use serial number in HW_ID (0 or 1)
+        oem_id_independent: flag to set oem_id=0x0001 and model_id=0x0000 (0 or 1)
+        oem_id: oem_id for signing. (in hex)
+        model_id: model_id for signing. (in hex)
+        debug: debug_id for signing. (in hex)
+        multi_serial_numbers: serial number list that enable serial binding (in hex)
+        serial_number: serial number to set in HW_ID (in hex)
+
+        max_cert_size: Maximum size (in bytes) of one certificate.
+        num_certs_in_certchain: Number of certificates in the certificate chain (2,3)
+
+        hmac: use HMAC or SHA256 (in boolean)
+        rsa_padding: PKCS1.5 or RSAPSS for signature and certificate chain (pkcs or pss)
+
+        QTI internal: (shall not be modified by customer)
+        secboot_version: define ELF image header format (1.0 or 2.0)
+    -->
+
+    <parsegen>
+        <!--
+        Parsegen information by default will be read from parsegen_config.xml.
+        Additional image_id's can be included here or existing image_id's may be overwritten
+        to be generated with the default image_ids.
+        -->
+    </parsegen>
+
+    <!-- Signing configurations used by secimage. -->
+    <signing>
+        <signer_attributes>
+            <!--
+                Use of CASS signer will require additional license agreement
+                and contract. Hardware token is required for access.
+            -->
+            <cass_signer_attributes>
+                <!--
+                    keystore_type: PKCS11 (hardware token)
+                    token_password: User will be prompted if password
+                                    is an empty string
+                    token_driver_home: Safenet driver location
+                -->
+                <user_identity>
+                    <keystore_type>PKCS11</keystore_type>
+                    <token_password></token_password>
+                    <token_driver_home>
+                        <windows>C:/WINDOWS/SYSTEM32/eTpkcs11.dll</windows>
+                        <linux>/usr/lib/libeTPkcs11.so</linux>
+                    </token_driver_home>
+                </user_identity>
+            </cass_signer_attributes>
+        </signer_attributes>
+    </signing>
+
+    <post_process>
+        <pil_splitter>$(META_BUILD)/common/tools/misc/pil-splitter.py</pil_splitter>
+    </post_process>
+
+    <data_provisioning>
+        <base_path>./../../resources/data_prov_assets/</base_path>
+    </data_provisioning>
+
+    <images_list>
+        <image sign_id="wlan" name="wlan.mbn" image_type="elf_has_ht">
+            <general_properties_overrides>
+                <sw_id>0x0000000000000000</sw_id>
+                <hash_pageseg_as_segment>true</hash_pageseg_as_segment>
+            </general_properties_overrides>
+        </image>
+
+        <image sign_id="bdf" name="bdf.mbn" image_type="elf_has_ht">
+            <general_properties_overrides>
+                <sw_id>0x0000000000000001</sw_id>
+            </general_properties_overrides>
+        </image>
+    </images_list>
+
+</tns:secimage>

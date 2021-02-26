@@ -1,0 +1,74 @@
+;=============================================================================
+;
+;                                    fix_merge_buffers.cmm
+;
+; GENERAL DESCRIPTION
+;
+; EXTERNAL FUNCTIONS
+;        None.
+;
+; INITIALIZATION AND SEQUENCING REQUIREMENTS
+;        None.
+;
+;             Copyright (c) 2013  by Qualcomm Technologies, Inc.  All Rights Reserved.
+;=============================================================================
+// fix_merge_buffers.cmm can be used to update the merge buffer related internal data structures 
+// in cases where we see that the merge buffer content is suspicious, for ex: merge buffer contents
+// do show up or have some issues
+//
+// Usage:
+// 
+// do <path>/fix_merge_buffers.cmm
+//
+
+
+&maxthreads=v.value(QURTK_MAX_HTHREADS)
+LOCAL &i
+
+&i=0
+
+while (&i<&maxthreads)
+(
+  Var.Set QURTK_trace_buffers[&i].trace_buffer_addr=QURTK_trace_buffers_bk[&i].trace_buffer_addr
+  &i=&i+1
+)
+
+LOCAL &bufcnt
+&bufcnt=0
+LOCAL &bufsize
+&bufsize=Var.VALUE(QURTK_trace_buffer_size)
+LOCAL &offset
+&offset=0
+&i=0
+
+ENTRY &curadr
+ENTRY &nextadr
+
+while (&i<&maxthreads)
+(
+	// now travers through the buffer to find the roll-over point to update the index
+	while (&bufcnt<&bufsize)
+	(
+	  &curadr=Var.VALUE(QURTK_trace_buffers[&i].trace_buffer_addr)
+      &curadr=&curadr+&bufcnt
+      &nextadr=&curadr+10
+	  &curval=Data.long(D:&curadr)
+	  &nextval=Data.long(D:&nextadr)
+	  	  
+	  if (&curval>&nextval)
+	  (
+	     Var.Set QURTK_trace_buffers[&i].index=&nextadr-QURTK_trace_buffers[&i].trace_buffer_addr
+		 
+	     // we need to break this loop.. exit so
+	     &bufcnt=&bufsize
+	  )
+	  else
+          (
+	         &bufcnt=&bufcnt+(4*4)
+          )
+	  
+	)
+	
+	&i=&i+1
+    &bufcnt=0
+)

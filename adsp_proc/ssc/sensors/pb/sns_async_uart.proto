@@ -1,0 +1,76 @@
+//  @file sns_async_uart.proto
+//
+//  Defines standard message types for the Async UART
+//
+// Copyright (c) 2017 Qualcomm Technologies, Inc.
+// All Rights Reserved.
+// Confidential and Proprietary - Qualcomm Technologies, Inc.
+
+syntax = "proto2";
+import "nanopb.proto";
+import "sns_std.proto";
+
+// Asynchronous UART
+//
+//
+
+// Configuration message
+// This will automatically open the UART port and place it in a state where it
+// is ready to receive any incoming data. The client must be capable of
+// handling received UART buffers after setting the config.
+//
+// Currently, there can only be one client per async UART instance.
+message sns_async_uart_config
+{
+  // UART Port Instance
+  required fixed32 port_id = 1;
+
+  // Baud Rate
+  optional fixed32 baud_rate = 2 [default = 460800];
+  
+  // Receive Buffer Length
+  // This should be set to the maximum amount of bytes the client expects to
+  // receive in a single transaction. If this field isn't set correctly, the
+  // client risks dropping some of the received data.
+  optional fixed32 rx_buffer_length = 3 [default = 128];
+}
+
+// TX/RX Buffer message
+// A buffer that carries the UART transmitted or received data.
+// When this is sent by the client, it is interpreted as a transmit request.
+// When this is received by the client, it should be interepreted as data that
+// was received over the UART channel.
+message sns_async_uart_tx_rx_buffer
+{
+  // Buffer
+  required bytes buffer = 1;
+
+  // Transaction ID
+  // This is an identifier that can be used to track the transaction.
+  optional fixed32 transaction_id = 2;
+}
+
+// Acknowledgement event
+// This event is sent by the async UART sensor to notify the client of the
+// status of a TX/RX Buffer message.
+message sns_async_uart_ack_event
+{
+  // Error code
+  required sns_std_error error_code = 1;
+
+  // Transaction ID
+  // This field is set to the same value as the transaction_id set in the
+  // associated TX/RX buffer message. If the transaction_id wasn't set for the
+  // associated TX/RX buffer message then this field will not be set either.
+  optional fixed32 transaction_id = 2;
+}
+
+// Message IDs
+enum sns_async_uart_msgid
+{
+  option (nanopb_enumopt).long_names = false;
+
+  SNS_ASYNC_UART_MSGID_SNS_ASYNC_UART_CONFIG = 512;
+  SNS_ASYNC_UART_MSGID_SNS_ASYNC_UART_TX_RX_BUFFER = 1024;
+  SNS_ASYNC_UART_MSGID_SNS_ASYNC_UART_ACK_EVENT = 1025;
+}

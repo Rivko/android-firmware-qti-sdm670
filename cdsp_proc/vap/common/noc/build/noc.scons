@@ -1,0 +1,66 @@
+#===============================================================================
+#
+# ADSP System Monitor
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2015 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===============================================================================
+
+Import('env')
+env = env.Clone()
+
+core_public_apis = [
+    'KERNEL',
+    'SERVICES',
+    'DEBUGTOOLS',
+    'ADSPPM',
+    'POWER',
+    'MPROC',
+    'SYSTEMDRIVERS',
+    'DEBUGTRACE',
+    'DAL',
+    'DIAG',
+    'BUSES',
+    ]
+
+platform_public_apis = [
+    'PLATFORM_LIBS',
+    'MOD_TABLE',
+	'HAP',
+    'STDDEF',
+    'REMOTE',
+    ]
+env.RequirePublicApi(platform_public_apis, area='platform')
+env.RequirePublicApi(core_public_apis, area='core')    
+env.PublishPrivateApi('VAP_COMMON_NOC',[
+    '../core/inc',
+    '${BUILD_ROOT}/vap/ubwcdma/platform/vp/inc',
+    '${BUILD_ROOT}/vap/ubwcdma/core/hal',    
+    '${BUILD_ROOT}/core/api/dap',
+    '${BUILD_ROOT}/core/api/systemdrivers',
+	'${BUILD_ROOT}/platform/inc/HAP',
+    '${BUILD_ROOT}/performance/sysmon/inc_global',# For sysmon_cachelock.h    
+])   
+env.RequirePrivateApi('VAP_COMMON_NOC')
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/vap/common/noc"
+LIBNAME = 'vap_noc'
+env.PublishPrivateApi('VAP_COMMON_NOC', "${BUILD_ROOT}/vap/common/noc/build")
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+#LIB
+#-------------------------------------------------------------------------------        
+env.Append(CFLAGS = '-Wno-error')
+ 
+SRC = [ '${BUILDPATH}/core/src/nocDD.c', 
+'${BUILDPATH}/core/src/nocHal.c', 
+'${BUILDPATH}/core/src/nocOsal.c', 
+]
+node=env.AddBinaryLibrary(['VAP_COMMON_NOC_SW_IMAGE'], '${BUILD_PATH}'+LIBNAME, [SRC])

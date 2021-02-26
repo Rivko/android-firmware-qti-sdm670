@@ -1,0 +1,49 @@
+#===============================================================================
+#
+# BMI160 sensor implementation
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2016-2017 by Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Id: //components/rel/ssc.slpi/3.2/sensors/bmi160/build/sns_bmi160.scons#3 $
+#  $DateTime: 2018/12/11 09:46:33 $
+#  $Change: 17823719 $
+#
+#===============================================================================
+Import('env')
+import inspect
+
+# To add island support for drivers:
+# 1. Refactor driver files to separate all island mode functions in a separate
+#    file(s) with filenames ending in "_island". See 80-P9361-1 for details.
+#    Example: sns_bmi160_hal_island.c
+# 2. Use a dedicated environment flag to check if island mode is enabled for the
+#    driver. Use format SNS_ISLAND_INCLUDE_<sensor_name>
+#    Example: SNS_ISLAND_INCLUDE_BMI160.
+# 3. Use this flag to decide whether add_island_files is set to True ot False
+#    when env.AddSSCSU() is called.
+# 4. Include the flag in build flag options (-f) to enable island mode for
+#    the driver.
+
+#if ('DISABLE_BMI160' in env['CPPDEFINES']):
+#  Return()
+
+bmi160_island_enable = False
+
+if 'SNS_ISLAND_INCLUDE_BMI160' in env:
+  bmi160_island_enable = True
+
+if 'USES_SSC_STATIC_LIB_BUILDER' in env:
+  if 'SSC_TARGET_HEXAGON' in env['CPPDEFINES']:
+    env.AddSSCSU(inspect.getfile(inspect.currentframe()),
+               flavor = ["hexagon"],
+               register_func_name = "sns_register_bmi160", 
+               binary_lib = False,
+               add_island_files = bmi160_island_enable)
+

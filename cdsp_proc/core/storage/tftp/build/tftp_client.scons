@@ -1,0 +1,130 @@
+Import('env')
+env = env.Clone()
+
+#-----------------------------------------------------------
+#  Source PATH
+#-----------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/storage/tftp/"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-----------------------------------------------------------
+# External depends within CoreBSP
+#-----------------------------------------------------------
+env.RequireExternalApi([
+   'MPROC',
+])
+
+#-----------------------------------------------------------
+# Internal depends within CoreBSP
+#-----------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'DEBUGTOOLS',
+   'MPROC',
+   'SERVICES',
+   'STORAGE',
+   'SYSTEMDRIVERS',
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-----------------------------------------------------------
+# Include scripts needed
+#-----------------------------------------------------------
+env.LoadToolScript('${BUILD_ROOT}/core/storage/fs_osal/build/' \
+                   'fs_write_list_builder.py')
+
+#-----------------------------------------------------------
+# Sources, libraries
+#-----------------------------------------------------------
+TFTP_CLIENT_SOURCES = [
+    '${BUILDPATH}/client/src/tftp_client.c',
+    '${BUILDPATH}/common/src/tftp_connection.c',
+    '${BUILDPATH}/common/src/tftp_log.c',
+    '${BUILDPATH}/common/src/tftp_malloc.c',
+    '${BUILDPATH}/common/src/tftp_pkt.c',
+    '${BUILDPATH}/common/src/tftp_protocol.c',
+    '${BUILDPATH}/os/src/tftp_file_modem.c',
+    '${BUILDPATH}/os/src/tftp_msg_modem.c',
+    '${BUILDPATH}/os/src/tftp_os_modem.c',
+    '${BUILDPATH}/os/src/tftp_socket_ipcr_modem.c',
+    '${BUILDPATH}/os/src/tftp_string_modem.c',
+    '${BUILDPATH}/os/src/tftp_threads_modem.c',
+    '${BUILDPATH}/os/src/tftp_utils_modem.c',
+]
+
+#-------------------------------------------------------------
+# Get the build configuration flags and add them to the environment
+#-------------------------------------------------------------
+cpp_flags = []
+cpp_flags += ['FEATURE_TFTP_CLIENT_BUILD']
+cpp_flags += ['TFTP_NHLOS_BUILD']
+
+chipset = env['CHIPSET']
+chipset_lowcase = chipset.lower ()
+
+if chipset_lowcase.find('mdm') != -1 or chipset_lowcase.find('sdx') != -1:
+  cpp_flags += ['TFTP_MDM_BUILD']
+elif chipset_lowcase.find('msm') != -1 or chipset_lowcase.find('sdm') != -1:
+  cpp_flags += ['TFTP_MSM_BUILD']
+elif chipset_lowcase.find('sdm') != -1:
+  cpp_flags += ['TFTP_MSM_BUILD']
+
+if env.IsTargetEnable(['CORE_MODEM']):
+  cpp_flags += ['TFTP_MPSS_BUILD']
+elif env.IsTargetEnable(['CORE_ADSP_ROOT','CORE_ADSP_USER','CORE_CDSP_ROOT']):
+  cpp_flags += ['TFTP_ADSP_BUILD']
+elif env.IsTargetEnable(['CORE_SLPI_ROOT','CORE_SLPI_USER']):
+  cpp_flags += ['TFTP_SLPI_BUILD']
+elif env.IsTargetEnable(['CORE_APPS']):
+  cpp_flags += ['TFTP_TN_BUILD']
+
+
+if 'USES_TFTP_CLIENT_DEBUG_FLAGS' in env:
+  cpp_flags += ['TFTP_LOG_CONFIG_ENABLE_ERR_LOGGING']
+  cpp_flags += ['TFTP_LOG_CONFIG_ENABLE_WARN_LOGGING']
+  cpp_flags += ['TFTP_LOG_CONFIG_ENABLE_DEBUG_LOGGING']
+  cpp_flags += ['TFTP_LOG_CONFIG_ENABLE_INFO_LOGGING']
+  cpp_flags += ['TFTP_LOG_CONFIG_ENABLE_LINE_NO_LOGGING']
+  cpp_flags += ['TFTP_LOG_CONFIG_ENABLE_CONSOLE_LOGGING']
+
+env.Append (CPPDEFINES = cpp_flags);
+
+#-----------------------------------------------------------
+# Add Libraries to image
+#-----------------------------------------------------------
+
+TFTP_CLIENT_IMAGES = [
+  'CORE_APPS',                  # Domain(REX + TN)
+  'CORE_MODEM',                 # Domain(Root + Modem)
+  'MODEM_MODEM',                # Domain(Root + Modem)
+  'CORE_QDSP6_MODEM_SW',        # Domain(User Modem)
+  'CORE_QDSP6_SW',              # Domain(Root + Audio)
+  'CORE_QDSP6_AUDIO_SW',        # Domain(User Audio)
+  'CORE_QDSP6_SENSOR_SW',       # Domain(User Sensors)
+  'CORE_ROOT_PD',               # Domain(Root)
+  'CORE_USER_PD',               # Domain(User)
+  'CORE_ADSP_ROOT',             # Domain(Audio Root)  
+  'CORE_SLPI_ADSP_ROOT'
+  'CORE_SLPI_ROOT'
+]
+
+if 'USES_TFTP_CLIENT' in env:
+  tftp_obj = env.Object(TFTP_CLIENT_SOURCES)
+  tftp_config_pp = env.PreProcess('${BUILDPATH}/client/src/tftp_config_list.pp',
+                                 '${BUILDPATH}/client/src/tftp_config_list.c')
+  tftp_cpp_flags = env.FsWriteList ('${BUILDPATH}/tftp/client/src/tftp_cpp_flags.txt',
+                                  TFTP_CLIENT_SOURCES, FS_WRITE_LIST=cpp_flags)
+  env.Depends (tftp_obj, [tftp_config_pp, tftp_cpp_flags]);   
+  env.AddLibrary(TFTP_CLIENT_IMAGES,'${BUILDPATH}/tftp/client', TFTP_CLIENT_SOURCES)
+
+#-----------------------------------------------------------
+# Pack rules. Remove sources when not needed.
+#-----------------------------------------------------------
+TFTP_PACK_SRC = env.FindFiles("*", "${BUILD_ROOT}/core/storage/tftp/")
+if 'USES_NO_TFTP_SRC' in env:
+  env.CleanPack(TFTP_CLIENT_IMAGES, TFTP_PACK_SRC)

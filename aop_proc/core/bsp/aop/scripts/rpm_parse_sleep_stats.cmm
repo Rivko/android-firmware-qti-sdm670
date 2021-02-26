@@ -1,0 +1,184 @@
+
+&num_sleep_modes=2
+
+v.v %std %e %open %index sleep_stats[0..&num_sleep_modes-1]
+
+&i=0
+
+area.select A000
+area.view
+
+print
+print
+print
+
+while &i<&num_sleep_modes
+(
+    gosub to_str v.value(sleep_stats[&i].stat_type)
+    entry &type
+
+    print "Sleep Type   : &type"
+    print "Count        : "+format.decimal(0,v.value(sleep_stats[&i].count))
+    print "Last Entered : 0x"+format.hex(0,v.value(sleep_stats[&i].last_entered_at))
+    print "Last Exited  : 0x"+format.hex(0,v.value(sleep_stats[&i].last_exited_at))
+    print "Acc. Duration: 0x"+format.hex(0,v.value(sleep_stats[&i].accumulated_duration))
+
+    if "&type"=="vlow"
+    (
+        &ind="  "
+        print "XO Votes     : 0x"+format.hex(0,v.value(sleep_stats[&i].client_votes))
+
+        print
+        print "&ind"+"Timeline"+" | "+"Vote"+" | "+format.string("Clock",5,' ')+" | "
+        &num_ees=v.sizeof(ee_client_lut)/v.sizeof(ee_client_lut[0])
+        &k=&num_ees-1
+        while &k>=0
+        (
+            print %cont format.string(d.string(d:v.value(ee_client_lut[&k].name)),5,' ')+" | "
+            &k=&k-1
+        )
+
+        print "&ind"+"--------"+"-+-"+"----"+"-+-"+"-----"+"-+-"
+        &k=&num_ees-1
+        while &k>=0
+        (
+            if &k==0
+                print %cont "-----"+"-+"
+            else
+                print %cont "-----"+"-+-"
+            &k=&k-1
+        )
+
+        &votes=v.value(sleep_stats[&i].client_votes)
+        &j=v.sizeof(sleep_stats[0].client_votes)-1
+        while &j>=0
+        (
+            &attr=""
+            print "&ind"
+            if &j==0
+            (
+                &attr="%attr 2"
+                print %cont &attr format.string("Current",8,' ')+" | "
+            )
+            else if &j==v.sizeof(sleep_stats[0].client_votes)-1
+                print %cont &attr format.string("Oldest",8,' ')+" | "
+            else
+                print %cont &attr format.string(" ",8,' ')+" | "
+
+            &vote=(&votes>>(8*&j))&0xff
+
+            if (&vote&0x80)!=0
+                print %cont &attr format.string("&vote",-4,' ')+" | "+format.string("1",-5,' ')+" | "
+            else
+                print %cont &attr format.string("&vote",-4,' ')+" | "+format.string("0",-5,' ')+" | "
+
+            &k=&num_ees-1
+            while &k>=0
+            (
+                &val="0"
+                if ((1<<&k)&&vote)!=0
+                (
+                    &val="1"
+                )
+
+                print %cont &attr format.string("&val",-5,' ')+" | "
+
+                &k=&k-1
+            )
+
+            &j=&j-1
+        )
+
+        print "&ind"+"--------"+"---"+"----"+"---"+"-----"+"---"
+        &k=0
+        while &k<&num_ees
+        (
+            if &k==&num_ees-1
+                print %cont "-----"+"--"
+            else
+                print %cont "-----"+"---"
+            &k=&k+1
+        )
+    )
+    print
+
+    &i=&i+1
+)
+
+print %attr 2 "Clocks preventing XO Shutdown"
+if v.value(pDrvCtxt->nNumInsupDomain)>0.
+(
+    &num_domains=v.value(pDrvCtxt->nNumClockDomains)
+    &j=0.
+    while &j<&num_domains
+    (
+        if v.value(pDrvCtxt->aClockDomains[&j].nReferenceCountInSuppress)>0.
+        (
+            &i=0.
+            &num_clocks=v.value(pDrvCtxt->nNumClocks)
+            while &i<&num_clocks
+            (
+                if (v.value(pDrvCtxt->aClocks[&i].pDomain)==v.value(&pDrvCtxt->aClockDomains[&j]))
+                (
+                    if v.value(pDrvCtxt->aClocks[&i].pDomain->pActiveMuxConfig)!=0x0
+                    (
+                        print "  "+"pDrvCtxt->aClocks["+format.decimal(3,&i)+"]: "+format.string(d.string(d:v.value(pDrvCtxt->aClocks[&i].szName)),40.,' ')+"    "+format.float(7,2,v.value(pDrvCtxt->aClocks[&i].pDomain->pActiveMuxConfig->nFreqHz)/1000000.0)+"MHz    "
+                    )
+                    else
+                    (
+                        print "  "+"pDrvCtxt->aClocks["+format.decimal(3,&i)+"]: "+format.string(d.string(d:v.value(pDrvCtxt->aClocks[&i].szName)),40.,' ')
+                    )
+                )
+                &i=&i+1.
+            )
+        )
+        &j=&j+1.
+    )
+)
+print
+
+print %attr 2 "Clocks preventing VDD Minimization"
+
+&CLOCK_FLAG_DOMAIN_SUPPRESSIBLE=0x00000200
+&num_clocks=v.value(pDrvCtxt->nNumClocks)
+&j=2.
+while &j<10.
+(
+    &i=0.
+    while &i<&num_clocks
+    (
+        if v.value(pDrvCtxt->aClocks[&i].pDomain->eVRegLevel)==&j&&(&CLOCK_FLAG_DOMAIN_SUPPRESSIBLE&v.value(pDrvCtxt->aClocks[&i].pDomain->nFlags))==0
+        (
+            print "  "+format.string(v.string((ClockVRegLevelType)&j),35.,' ')
+
+            if v.value(pDrvCtxt->aClocks[&i].pDomain->pActiveMuxConfig)!=0x0
+            (
+                print %cont "pDrvCtxt->aClocks["+format.decimal(3,&i)+"]: "+format.string(d.string(d:v.value(pDrvCtxt->aClocks[&i].szName)),40.,' ')+"    "+format.float(7,2,v.value(pDrvCtxt->aClocks[&i].pDomain->pActiveMuxConfig->nFreqHz)/1000000.0)+"MHz"
+            )
+            else
+            (
+                print %cont "pDrvCtxt->aClocks["+format.decimal(3,&i)+"]: "+format.string(d.string(d:v.value(pDrvCtxt->aClocks[&i].szName)),40.,' ')
+            )
+        )
+
+        &i=&i+1.
+    )
+    &j=&j+1.
+)
+print
+
+enddo
+
+
+to_str:
+    entry &str_val
+    &s=""
+    while &str_val!=0
+    (
+        &chr=0xff&&str_val
+        &s="&s"+format.char(&chr,1,' ')
+        &str_val=&str_val>>8
+    )
+
+    return &s
+

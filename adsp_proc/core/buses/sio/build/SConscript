@@ -1,0 +1,131 @@
+#===============================================================================
+#
+# SIO Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2013 by QUALCOMM, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+##                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#11/04/13    rc      Initial version.
+#===============================================================================
+Import('env')
+env = env.Clone()
+env.Append(CPPDEFINES=['MSG_BT_SSID_DFLT=MSG_SSID_SIO'])
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+
+SRCPATH = "${BUILD_ROOT}/core/buses/sio/src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+
+#-------------------------------------------------------------------------------
+# External depends outside CoreBSP
+#-------------------------------------------------------------------------------
+
+#  Use a common list of APIs across all targets.  If an API identifier doesn't
+#  exist on a specific target, it's silently ignored.
+
+CBSP_XAPI = [
+    'CS',
+    'DSM',
+    'MODEM_API',
+    'MODEM_DATA',
+    'MODEM_HDR',
+    'MODEM_LTE',
+    'MODEM_PMIC',
+    'MODEM_RF',
+    'MODEM_SERVICES',
+    'MULTIMEDIA_AUDIO',
+    'WCONNECT',
+    'WIRELESSCONNECTIVITY',
+]
+
+env.RequireExternalApi( CBSP_XAPI )
+env.RequirePublicApi(['UTILS'], area='MODEM')
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+CBSP_API = [
+    'BOOT',
+    'BUSES',
+    'DAL',
+    'DEBUGTOOLS',
+    'HAL',
+    'HWENGINES',
+    'MEMORY',
+    'MPROC',
+    'POWER',
+    'QBI',   
+    'SERVICES',
+    'STORAGE',
+    'SYSTEMDRIVERS',
+    'UART',
+
+    # needs to be last also contains wrong comdef.h
+    'KERNEL',
+]
+
+env.RequirePublicApi( CBSP_API )
+env.RequireRestrictedApi( CBSP_API )
+
+#-------------------------------------------------------------------------------
+# Source Code
+#-------------------------------------------------------------------------------
+
+SIO_SOURCES =  [
+   '${BUILDPATH}/sio.c',
+   '${BUILDPATH}/sio_wrapper.c'
+]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+if env['MSM_ID'] in ['6615','6695']:
+
+    env.AddLibrary(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE'], '${BUILDPATH}/sio',SIO_SOURCES )
+
+elif env['MSM_ID'] in ['7x30']:
+
+    env.AddLibrary(['MODEM_IMAGE', 'CBSP_MODEM_IMAGE', 'APPS_IMAGE', 'CBSP_APPS_IMAGE'], '${BUILDPATH}/sio',SIO_SOURCES )
+
+elif env['MSM_ID'] in ['9x00']:
+
+    env.AddLibrary(['MODEM_IMAGE', 'CBSP_MODEM_IMAGE', 'APPS_IMAGE', 'CBSP_APPS_IMAGE', 'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE'], '${BUILDPATH}/sio',SIO_SOURCES )
+
+else: 
+
+    #  Everything else (8660, 8960, 8064, 8974, 9x15, etc.).  We don't want to add a case for each target.
+
+    env.AddLibrary(['MODEM_IMAGE', 'CBSP_MODEM_IMAGE', 'APPS_IMAGE', 'CBSP_APPS_IMAGE', 'CORE_QDSP6_SW'], '${BUILDPATH}/sio',SIO_SOURCES )
+#---------------------------------------------------------------------------
+# RCInit framework.
+#---------------------------------------------------------------------------
+
+if 'USES_RCINIT' in env:
+   RCINIT_IMG = ['CORE_MODEM', 'CORE_QDSP6_SW']
+   env.AddRCInitFunc(           # Code Fragment in TMC: NO
+    RCINIT_IMG,                 # define TMC_RCINIT_INIT_SIO_INIT
+    {
+     'sequence_group'             : 'RCINIT_GROUP_0',                   # required
+     'init_name'                  : 'sio',                              # required
+     'init_function'              : 'sio_init',                         # required
+     'dependencies'               : ['GPIOInt','timer_init','timer_client']
+    })
+

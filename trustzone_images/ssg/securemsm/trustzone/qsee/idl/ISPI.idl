@@ -1,0 +1,188 @@
+// Copyright (c) 2015-16 Qualcomm Technologies, Inc.  All Rights Reserved.
+// Qualcomm Technologies Proprietary and Confidential.
+
+//----------------------------------------------------------
+//  Corresponds to qsee_spi_config_t.
+//----------------------------------------------------------
+
+/** @brief Structure that is used for SPI configuration. */
+
+struct ISPI_Config
+{
+ int32     clkPolarity;      /**< Clock polarity  type to be used for the SPI core. */
+ int32     clkAlwaysOn;      /**< Clock mode type to be used for the SPI core. */
+ int32     csPolarity;       /**< CS polarity type to be used for the SPI core. */
+ int32     csMode;           /**< CS Mode to be used for the SPI core. */
+ int32     shiftMode;        /**< Shift mode(CPHA) type to be used for SPI core. */
+ int32     bitsPerWord;      /**< SPI bits per word, any value from 3 to 31. */
+ int32     maxFreq;          /**< Maximum operating frequency. */
+ int32     hsMode;           /**< SPI HS Mode. */ 
+ int32     loopBack;         /**< SPI loop-back enable/disable. */
+ int32     slaveIndex;       /**< SPI Slave index, any value from 0 to 3. */
+ int32     deassertionTime;  /**< De-assertion Time in nano seconds.  */
+};
+
+struct ISPI_Config_Ext
+{
+ int32     spiFreq;              /**< SPI serial bus frequency */
+ int32     spiMode;              /**< SPI clk phase and clk polarity modes */
+ int32     endianness;           /**< Byte order of SPI words */
+ int32     csPolarity;           /**< CS polarity type to be used for the SPI core. */
+ int32     csToggle;             /**< If set, chip select signal deasserts between words */
+ int32     bitsPerWord;          /**< SPI bits per word, any value from 3 to 31. */
+ int32     loopBack;             /**< SPI loop-back enable/disable. */
+ int32     slaveIndex;           /**< SPI bits per word, any value from 3 to 31. */
+ int32     csClkDelayCycles;     /**< Delay (in SPI clk cycles) between CS assertion & Clk start */
+ int32     interWordDelayCycles; /**< Delay between SPI words, in SPI clock cycles */
+};
+
+interface ISPI
+{
+  //--------------------------------------------------------
+  //  Corresponds to enum qsee_spi_clock_polarity_t.
+  //--------------------------------------------------------
+
+  /**
+   * In the idle state whether the SPI clk is high or low.
+   */
+
+  const int32 CLK_POLARITY_INVALID   = 0;
+  const int32 CLK_POLARITY_IDLE_LOW  = 1;
+  const int32 CLK_POLARITY_IDLE_HIGH = 2;
+
+  //--------------------------------------------------------
+  //  Corresponds to enum qsee_spi_clock_mode_t.
+  //--------------------------------------------------------
+
+  /**
+   * SPI Clock is always on or turned off after every transaction,
+   * this enum is deprecated.  The driver ignores the value passed.
+   */
+
+  const int32 CLK_MODE_INVALID   = 0;
+  const int32 CLK_MODE_NORMAL    = 1;
+  const int32 CLK_MODE_ALWAYS_ON = 2;
+
+  //--------------------------------------------------------
+  //  Corresponds to enum qsee_spi_cs_polarity_t.
+  //--------------------------------------------------------
+
+  /**
+   * In idle state whether the Chip Select is high or low.
+   */
+
+  const int32 CS_POLARITY_INVALID     = 0;
+  const int32 CS_POLARITY_ACTIVE_LOW  = 1;
+  const int32 CS_POLARITY_ACTIVE_HIGH = 2;
+
+  //--------------------------------------------------------
+  //  Corresponds to enum qsee_spi_cs_mode_t.
+  //--------------------------------------------------------
+
+  /**
+   * List of values that inidicates, whether the Chip select is always active or
+   * if it's brought back to its idle state after N clock cycles.
+   */
+
+  const int32 CS_MODE_INVALID       = 0;
+  const int32 CS_MODE_DEASSERT      = 1;
+  const int32 CS_MODE_KEEP_ASSERTED = 2;
+
+  //--------------------------------------------------------
+  //  Corresponds to enum qsee_spi_shift_mode_t.
+  //--------------------------------------------------------
+
+  /**
+   * Shift mode(CPHA), detemines which signal (input or output) is sampled first.
+   */
+
+  const int32 SHIFT_MODE_INVALID      = 0;
+  const int32 SHIFT_MODE_INPUT_FIRST  = 1;
+  const int32 SHIFT_MODE_OUTPUT_FIRST = 2;
+  
+  const int32 MODE_INVALID = 0;
+  const int32 MODE_0 = 1;
+  const int32 MODE_1 = 2;
+  const int32 MODE_2 = 3;
+  const int32 MODE_3 = 4;
+  
+  const int32 ENDIAN_INVALID = 0;
+  const int32 NATIVE = 1;
+  const int32 LITTLE_ENDIAN = 2;
+  const int32 BIG_ENDIAN = 3;
+
+  /**
+   * Transfer access to the SPI bus to the calling application.
+   *
+   *   2. Open the device
+   *   3. Lock the SPI bus for exclusive access
+   *
+   * @param[in] deviceId The SPI device ID to attach to
+   *
+   * @return Object_OK on success
+   */
+
+  method close( in int32 deviceId );
+
+  /**
+   * Open the device, and perform some HW intialization
+   *
+   * @param[in] deviceId The SPI device ID to attach to
+   *
+   * @return Object_OK on success
+   */
+
+  method open( in int32 deviceId );
+
+  /**
+   * Reads data from SPI bus.
+   *
+   * @param[in] deviceId The SPI device ID to attach to
+   * @param[in] config The desired SPI configuration
+   * @param[in] buffer Read buffer information
+   *
+   * @return 0 on success, negative on failure
+   */
+
+  method read( in int32 deviceId, in ISPI_Config config, out buffer data );
+
+  /**
+   * Writes data on SPI bus.
+   *
+   * @param[in] deviceId The SPI device ID to attach to
+   * @param[in] config The desired SPI configuration
+   * @param[in] data Write buffer
+   * @param[out] bytesWritten Number of bytes actually written
+   *
+   * @return Object_OK on success
+   */
+
+  method write( in int32 deviceId, in ISPI_Config config, in buffer data, out uint64 bytesWritten );
+
+  /**
+   * Writes data on SPI bus.
+   *
+   * @param[in] deviceId The SPI device ID to attach to
+   * @param[in] config The desired SPI configuration
+   * @param[in] data Write buffer
+   * @param[out] bytesWritten Number of bytes actually written
+   * @param[out] returnedData Data buffer for data read back
+   *
+   * @return Object_OK on success
+   */
+
+  method writeFullDuplex( in int32 deviceId, in ISPI_Config config, in buffer data, out uint64 bytesWritten, out buffer returnedData );
+
+  /**
+   * Transfers bi-directional data on SPI bus.
+   *
+   * @param[in] deviceId The SPI device ID to attach to
+   * @param[in] config The desired SPI configuration specified by ISPI_Config_Ext
+   * @param[in] data Write buffer
+   * @param[out] bytesWritten Number of bytes actually written
+   * @param[out] returnedData Data buffer for data read back
+   *
+   * @return Object_OK on success
+   */  
+  method writeFullDuplexExt( in int32 deviceId, in ISPI_Config_Ext config, in buffer data, out uint64 bytesWritten, out buffer returnedData );
+};

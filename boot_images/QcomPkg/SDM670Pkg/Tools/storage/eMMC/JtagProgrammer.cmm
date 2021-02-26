@@ -1,0 +1,2667 @@
+;============================================================================
+;  Name:
+;    JtagProgrammer.cmm
+;
+;  Description:
+;    Basic jtag programming support for SD and MMC memory devices
+;
+;
+; Copyright (c) 2014-2015,2017 Qualcomm Technologies Incorporated.
+; All Rights Reserved.
+; Qualcomm Confidential and Proprietary
+;
+;----------------------------------------------------------------------------
+;============================================================================
+;
+;                        EDIT HISTORY FOR MODULE
+;
+;
+;when         who     what, where, why
+;----------   ---     ----------------------------------------------------------
+;2017-06-12   sb      Cleanup
+;2015-08-18   wek     Allow ELF path to be passed as argument "elfpath="
+;2015-07-31   whc     Added 8996v3 support
+;2015-02-01   bn      Added workarounds fro 8996 bringup
+;2014-09-16   bn      Initial verison. Ported from boot jtagprogrammer
+;
+;
+;============================================================================;
+;============================================================================
+; Declare local variables used - as far as possible do not include variables
+; which are also present in the elf file
+;============================================================================
+
+local &CurrentCmd
+local &AutoCommand
+local &Choice
+local &ArgLine
+local &Command
+local &CmdName
+
+local &CodeAddr &ParamAddr &RomBegin &RomEnd &ParamBufferSize
+local &SectorSize
+
+
+;============================================================================
+; Declare variables used for commands/operations
+;============================================================================
+local &EraseCmd &ProgramCmd
+local &ReadSectorCmd &WriteSectorCmd &EraseGenericCmd &ComputeCRCCmd
+local &PrintMemInfo &ReadConfigdata
+local &BootPartiAccess &BootPartiEnable
+local &UserPartiEnable &ReadEXT_CSD 
+local &ChipEraseCmd
+local &ForceEraseCmd
+local &EnableHWResetCmd
+local &SetPartitionCmd &SetHWPartitionCmd
+local &LoadPartitionCmd 
+local &SetProgRedirectCmd
+local &DebugFreqScanCmd
+local &SetActBootPartCmd
+local &DebugStartRxTest
+local &ProgramGPPCmd
+
+local &ParmData
+
+local &dev_type
+
+; command values for parameter block
+;
+&ProgramCmd=          0x01 ;; Lauterbach cmd to program
+&EraseCmd=            0x02 ;; Lauterbach cmd to erase
+&ChipEraseCmd=        0x05 ;; Lauterbach cmd to erase chip
+&ReadSectorCmd=       0x09 ;; our cmd to read sector
+&WriteSectorCmd=      0x0A ;; our cmd to write sector
+&ForceEraseCmd=       0x0D ;; Lauterbach cmd to force erase, unlock password
+&EnableHWResetCmd=    0x0E ;; enable hw reset on the MMC
+
+; command values for diagnostic
+; 
+&PrintMemInfo=        0x20 ;; our cmd to print device shared info
+&DebugStartRxTest=    0x21 ;; Run a single block memory RX test
+
+; command values for partition related
+; 
+&SetPartitionCmd=     0x30 ;; Use this command to update partition
+&SetHWPartitionCmd=   0x31 ;; Switch partition the operation is operating on
+&LoadPartitionCmd=    0x32 ;; Load the partition with data
+&SetProgRedirectCmd=  0x33 ;; Command used to set the redirect of programming command
+&DebugFreqScanCmd=    0x34 ;; Debug command used to scan a transfer using different clock frequency
+&SetActBootPartCmd=   0x35 ;; Set the active boot partition 
+&ProgramGPPCmd=       0x36 ;; Test the GPP programing API
+&EraseGenericCmd=     0x40 ;; our cmd to erase sector
+&ComputeCRCCmd=       0x41 ;; our cmd to compute CRC over sectors
+
+
+&AutoCommand=""
+ENTRY &AutoCommand %LINE &ArgLine
+if "&AutoCommand"=="0"||"&AutoCommand"=="0."
+(
+    &AutoCommand=""
+)
+gosub FixAutoCommand &AutoCommand
+
+;=========================================================================
+; Load SDC flash programming routine and configure flash command
+;==========================================================================
+gosub SetupTrace32Environment
+
+gosub ParseArg elfpath 0 &ArgLine
+entry &elf_path
+if "&elf_path"==""
+(
+   local &elf_la_path &elf_wp_path &elf_default_path
+   &elf_la_path="../../../Bin/670/LA/DEBUG/JtagProgrammer.elf"
+   &elf_wp_path="../../../Bin/670/WP/DEBUG/JtagProgrammer.elf"
+   &elf_default_path="JtagProgrammer.elf"
+   if os.file("&elf_la_path")
+   (
+      &elf_path="&elf_la_path"
+   )
+   else if os.file("&elf_wp_path")
+   (
+      &elf_path="&elf_wp_path"
+   )
+   else
+   (
+      &elf_path="&elf_default_path"
+   )
+   print "ELF Path not defined, using default of: &elf_path "
+   print "Define elf path by adding argument elfpath="
+)
+print "Loading ELF &elf_path"
+
+data.load.elf &elf_path /verify
+; need this breakpoint as per Lauterbach Spec so that we
+; can hand back control to the Debugger
+; break.delete /ALL
+
+;device type eMMC
+;
+&dev_type=v.address("device_type")
+; 0x1 means eMMC, and 0x0 would mean UFS
+data.set &dev_type %LONG 0x1
+
+; Clear out some specific memory area for Virtio emulation
+v.set probe_status = 0
+; v.set ufs_is_inited = 0
+
+break.set main_c /onchip /program
+go
+wait !run()
+
+&CodeAddr=V.VALUE(&main_c)
+&ParamAddr=V.VALUE(&jtag_prog_param)
+&ParmData=V.VALUE(&jtag_prog_param.data)
+
+; temp workaround for 8996 bu. hardcode the buffer size to 16KB
+;&ParamBufferSize=V.VALUE(sizeof(jtag_prog_param.data))
+&ParamBufferSize=16384.
+&SectorSize=V.VALUE(BLOCK_SIZE)
+
+;======================================================
+; Create the ROM mapping to be used with all commands
+;======================================================
+&RomBegin=0x00000000
+&RomEnd=0x0FFFFFFF
+gosub CreateRom
+
+on error gosub
+(
+  term.close
+  print "terminal output closed"
+  enddo
+  return
+)
+
+;==
+;Detect auto run condition, select the right card to use
+local &DefaultDevice
+gosub ParseArg slot 0 &ArgLine
+entry &DefaultDevice
+if "&DefaultDevice"==""
+(
+    &DefaultDevice="0"
+)
+if "&DefaultDevice"=="0"  
+   (
+      v.set card_slot_in_use=0
+      print "Updated current card slot used to 0."   
+   )
+if "&DefaultDevice"=="1"  
+   (
+      v.set card_slot_in_use=1
+      print "Updated current card slot used to 1."   
+   )
+if "&DefaultDevice"=="2"  
+   (
+      v.set card_slot_in_use=2
+      print "Updated current card slot used to 2."   
+   )
+if "&DefaultDevice"=="3"  
+   (
+      v.set card_slot_in_use=3
+      print "Updated current card slot used to 3."   
+   )
+
+local &CurrentSlot &CurrentHWPartition &CurrentHWPartitionNum &CurrentPartitionInfoRead
+&CurrentSlot=V.VALUE(card_slot_in_use)
+&CurrentHWPartition="Default (User Partition)"
+&CurrentHWPartitionNum=0.
+&CurrentPartitionInfoRead=0.
+
+&CmdName=      "No command yet"
+
+
+local &EnterFlag
+
+MainMenu:
+;============================================================================
+; don't proceed without user confirmation
+;============================================================================
+      
+print "                                    "
+print "       JTAG PROGRAMMER FOR eMMC     "
+print "                                    "
+print
+print "  Please type HELP for automation examples"
+print
+print "  0: Exit"
+print "  1: Read sector"
+print "  2: Write sector"
+print "  3: Download program"
+print "  4: Print Memory Card Info"
+print "  5: Quick Debug"
+print "  6: Erase Card"
+print "  7: Switch Hardware Partition"
+print "  8: Switch card slot to use"
+print "  9: Set active boot partition"
+print "  10: Force Erase (unlock password)"
+print "  20: Debug - Scan the clock frequency and detect failure"
+print "  21: Debug - Single block data RX test"
+print "  22: Enable HW Reset on MMC"
+print
+print "  DUMP      : Dump sectors to file (maximum of 64.)"
+print "  PROGRAM   : Program specific file from 'rawprogram0.xml'"
+print "  ZEROOUT   : Zero out specific regions from 'rawprogram0.xml'"
+print "  LOAD      : Load all files from 'rawprogram0.xml'"
+print "  READBYTES : READBYTES numbytes=5 sector=0 offset=0 <-- Reads first 5 bytes of sector 0"
+print "  PATCH     : Apply all patches from 'patch0.xml'"
+print "  ERASE     : Erase the User partition"
+print "            Issue 'eMMC erase' enabling card controller to erase USER PARTITION 0"
+print "  GPP       : Program GPP [WARNING! DESTRUCTIVE, PERMANENT & IRREVERSIBLE]"
+print
+print "  HELP      : Display usage and automation info"
+print
+print "On HW partition: &CurrentHWPartition, Card slot &CurrentSlot"
+print
+print "NOTE: If you can't see your output, type 'area.view JSDCC_OUT'"
+print "NOTE: If you can't type in a choice, type 'cont'"
+print
+print " Please make a choice: "
+
+&EnterFlag="no"
+
+if "&AutoCommand"==""
+  (
+    &t32_cmm_stopped=1
+    enter &Choice
+    &t32_cmm_stopped=0
+    print
+    print
+  )
+else
+  (
+    &Choice="&AutoCommand"
+    print "Select &Choice"
+  )
+&Choice=string.upr("&Choice")
+&AutoCommand=string.upr("&AutoCommand")
+
+if "&Choice"=="0"  
+  (  
+    print "...exiting eMMC Flash Program"
+    gosub CleanUp
+    gosub Exit
+   )
+
+if "&Choice"=="1"  
+  ( 
+    gosub ReadSector
+    goto LoopBackToMain
+  )
+
+if "&Choice"=="2"  
+  ( 
+    gosub WriteSector
+    goto LoopBackToMain
+  )
+
+if "&Choice"=="3"  
+  ( 
+    &EnterFlag="yes"
+    print
+    print
+    print "Download program...  "
+
+    print
+    gosub LoadProgram
+    goto LoopBackToMain
+  )
+
+if "&Choice"=="4"  
+  ( 
+    print
+    print
+    print "Print Memory Shared Infomation...  "
+    print
+    gosub PrintFlashInfo
+    goto LoopBackToMain
+  )
+
+if "&Choice"=="5"  
+  ( 
+    print
+    print
+    print "Quick debug script"
+    print
+
+    break.set main_c /onchip       ; Use for debugging
+    d.l sdcc_bsp_vdd_control
+
+    gosub QuickDebugScript
+    goto LoopBackToMain
+  )
+
+if "&Choice"=="6"||"&Choice"=="ERASE"
+  ( 
+      print "      "
+      print "      __        __               _             "
+      print "      \ \      / /_ _ _ __ _ __ (_)_ __   __ _ "
+      print "       \ \ /\ / / _` | '__| '_ \| | '_ \ / _` |"
+      print "        \ V  V / (_| | |  | | | | | | | | (_| |"
+      print "         \_/\_/ \__,_|_|  |_| |_|_|_| |_|\__, |"
+      print "                                         |___/ "
+      print " "
+      print
+      print
+      print
+      if "&Choice"=="6"||"&Choice"=="ERASE"
+      (
+        print " You are about to erase the entire User partition"
+      )
+      print " "
+      print " "
+      print
+      print " Please enter YES to continue, any other value will abort::     "
+        
+
+      if "&AutoCommand"==""
+      (
+        &t32_cmm_stopped=1
+        enter &ConfirmChoice
+        &t32_cmm_stopped=0
+        print
+        print
+
+        if "&ConfirmChoice"=="YES" 
+        (  
+            print "Erasing entire User partition....."
+        )
+        else
+        (
+            print "Bailing out, correct answer not given" 
+            goto LoopBackToMain
+        )
+      )
+      else
+      (
+        print "Erasing entire User partition..... This may take several minutes to complete."
+      )
+    
+    gosub EraseChip
+    goto LoopBackToMain
+  )
+
+if "&Choice"=="7"  
+  ( 
+    print
+    print
+    print "Switch Partition"
+    print
+    gosub Switch_Partition
+    goto LoopBackToMain
+  )
+
+if "&Choice"=="8"  
+  ( 
+    print
+    print
+    print "Select which card slot to use."
+    print
+    gosub RunSelectCardSlot
+    goto LoopBackToMain
+  )
+
+if "&Choice"=="9"
+  ( 
+    print
+    print
+    print "Select the partition as active boot partition"
+    print
+    gosub SelectActivePartition
+    goto LoopBackToMain
+  )
+
+if "&Choice"=="10"
+  ( 
+      print "      "
+      print "      __        __               _             "
+      print "      \ \      / /_ _ _ __ _ __ (_)_ __   __ _ "
+      print "       \ \ /\ / / _` | '__| '_ \| | '_ \ / _` |"
+      print "        \ V  V / (_| | |  | | | | | | | | (_| |"
+      print "         \_/\_/ \__,_|_|  |_| |_|_|_| |_|\__, |"
+      print "                                         |___/ "
+      print " "
+      print
+      print
+      print
+      print " Force erase will erase entire contents of the card"
+      print " "
+      print " "
+      print
+      print " Please enter YES to continue, any other value will abort::     "
+        
+      &t32_cmm_stopped=1
+      enter &Choice
+      &t32_cmm_stopped=0
+      print
+      print
+          
+      if "&Choice"=="YES" 
+      (  
+          print "Erasing entire chip....."
+          gosub ForceErase
+      )
+      else
+      (
+          print "Bailing out, correct answer not given" 
+      )
+      goto LoopBackToMain
+  )
+
+if "&Choice"=="20"  
+  ( 
+    print
+    print
+    print "Debug - Clock frequency scan."
+    print
+    gosub RunClockFrequencyScan
+    goto LoopBackToMain
+  )
+
+if "&Choice"=="21"  
+  ( 
+RunRxTestAgain:
+    print
+    print
+    print "Debug - Single block RX test."
+    print
+    gosub RunRxTest
+    goto RunRxTestAgain
+  )
+if "&Choice"=="DUMP"  
+  ( 
+    gosub ReadSectorToFile
+    goto LoopBackToMain
+  )
+if "&Choice"=="22"
+  ( 
+    print "Enabling HW Reset on the MMC Device....."
+    gosub EnableHWReset
+    goto LoopBackToMain
+  )  
+if "&Choice"=="PROGRAM"
+  ( 
+    print
+    print
+    print "Program specific file from 'rawprogram0.xml'."
+    print
+    
+    local &RawProgramFile
+RawProgramFileLoop:
+    gosub RawProgram 4. 0
+    gosub PrintMenuError
+    print "Enter 0 to exit this menu"
+    print "NOTE: This input must be taken as an INTEGER!!!"
+    print "**IMPORTANT** ----> For 12 type 12. or 0xC ::"
+    print "Enter file number to program: "
+    &t32_cmm_stopped=1
+    enter &RawProgramFile
+    &t32_cmm_stopped=0
+    if &RawProgramFile!=0.
+    (
+        gosub RawProgram 1. &RawProgramFile
+        goto RawProgramFileLoop
+    )
+    goto LoopBackToMain
+  )   
+if "&Choice"=="ZEROOUT"  
+  ( 
+    print
+    print
+    print "Erase specific region from 'rawprogram0.xml'."
+    print
+    
+    if "&AutoCommand"==""
+    (
+        local &phy_partition_num
+        local &start_sector
+        local &num_sectors
+        
+        gosub GetUserInput "Enter physical partition number"
+        entry &phy_partition_num
+        gosub GetUserInput "Enter start sector"
+        entry &start_sector
+        gosub GetUserInput "Number of sectors to zero-out"
+        entry &num_sectors
+        
+        print
+        print
+        print "Try adding this line into your rawprogram0.xml"
+        print "<zeroout label=""temp"" num_partition_sectors=""&num_sectors"" physical_partition_number=""&phy_partition_num"" start_sector=""&start_sector""/>"
+        print
+        print "Press Enter to continue"
+        &t32_cmm_stopped=1
+        enter &temp
+        &t32_cmm_stopped=0
+    )
+    else
+    (
+        gosub ZeroOut
+    )
+    goto LoopBackToMain
+  )   
+if "&Choice"=="READBYTES"  
+  ( 
+    print
+    print
+    print "READBYTES "
+    print
+    gosub ReadBytes
+    goto LoopBackToMain
+  )   
+if "&Choice"=="LOAD"
+  ( 
+    print
+    print
+    print "Program all partitions from 'rawprogram0.xml'."
+    print
+    
+    local &total_write_count
+    &total_write_count=0
+    
+    gosub ParseArg files 0 &ArgLine
+    entry &load_files
+    if "&load_files"!=""
+    (
+        while "&load_files"!=""
+        (
+            gosub SplitMultipleArgs &load_files
+            entry &file_to_load
+            gosub RemoveArgDelimiter &file_to_load &load_files
+            entry &load_files
+            gosub RawProgram 3. &file_to_load
+            entry &temp
+            &total_write_count=&total_write_count+&temp
+        )
+    )
+    else
+    (
+        gosub RawProgram 3. 0
+        entry &total_write_count
+    )
+    print "&total_write_count file(s) loaded successfully"
+    goto LoopBackToMain
+  )   
+if "&Choice"=="PATCH"  
+  ( 
+    print
+    print
+    print "Apply all patches from 'patch0.xml'"
+    print
+    gosub Patch
+    goto LoopBackToMain
+  )   
+if "&Choice"=="HELP"
+  (
+    gosub Usage
+    goto LoopBackToMain
+  )
+if "&Choice"=="GPP"
+  ( 
+    print
+    print
+    print "Programming the GPP layout information"
+    print "WARNING! DESTRUCTIVE, PERMANENT & IRREVERSIBLE"
+    print
+    break.set main_c /onchip       ; Use for debugging
+    gosub GPP_Partition
+    goto LoopBackToMain
+  )
+enddo
+ 
+LoopBackToMain:
+  if "&AutoCommand"==""
+  (
+    goto MainMenu
+  )
+  else
+  (
+    enddo
+  )
+
+;=========================================================
+;     Function to print usage information
+;=========================================================
+Usage:
+    print "Arguments:"
+    print "[NOTE: Commas separate search paths and files]"
+    print "==================================================="
+    print "    xml=<filename>"
+    print "    slot=0|1|2|3"
+    print "    files=file1,file2,file3"
+    print "    searchpaths=path1,path2,path3"
+    print
+    print "Automation examples:"
+    print "==================================================="
+    print "    Erase the user partition"
+    print "        do jtagprogrammer.cmm ERASE"
+    print "    Program a selection of files from rawprogram0.xml"
+    print "        do jtagprogrammer.cmm LOAD searchpaths=../../../../build/ms/bin/AAABQNBG,Y: xml=rawprogram0.xml files=sbl3.mbn,sbl1.mbn"
+    print "    Program ALL files from rawprogram0.xml"
+    print "        do jtagprogrammer.cmm LOAD searchpaths=../../../../build/ms/bin/AAABQNBG,Y: xml=rawprogram0.xml"
+    print "    Apply ALL disk patches from patch0.xml"
+    print "        do jtagprogrammer.cmm PATCH xml=patch0.xml"
+    print
+    print "NOTE: You must run the PATCH command after programming the card, or the"
+    print "      device will not boot."
+    print
+    print "Please visit go/storagetools for more information"
+    print
+    print "Press Enter to continue"
+    &t32_cmm_stopped=1
+    enter &temp
+    &t32_cmm_stopped=0
+    return
+
+;=========================================================
+; --- Function to print flash information
+;=========================================================
+PrintFlashInfo:
+
+  if "&Verbose"=="yes"
+  (
+    print "Printing Flash Shared Infomation"
+  )
+
+  &Command="Print Flash Infomation"
+  v.set jtag_prog_param.cmd_status=&PrintMemInfo
+  &CurrentCmd=&PrintMemInfo
+  go
+
+  ; check status
+  &CheckStatusExit="yes"
+  gosub check_status
+
+  &SectorSize=V.VALUE(BLOCK_SIZE)
+  
+return
+
+;=====================================================
+; --- Function to load program
+;=====================================================
+LoadProgram: 
+    
+  if "&Verbose"=="yes"
+  (
+    print "Program an image"
+  )
+
+ if "&Sector"==""
+ (
+   gosub EnterSector
+  )
+  else
+  (
+     if "&EnterFlag"=="yes"
+     (
+        gosub EnterSector
+    )
+  )
+
+  print "Select image to program: "
+  dialog.file &curr_dir/*.*n
+  entry &file_name
+  &file_size=OS.FILE.SIZE(&file_name)
+
+  print "Image size = &file_size"
+
+  &PbnImage="&file_name"
+   
+  gosub DoProgramming
+ 
+return
+
+
+;=====================================================
+; --- Function select card slot to use
+;=====================================================
+RunSelectCardSlot:
+ 
+  if "&Verbose"=="yes"
+  (
+    print "Select Card Slot Begin."
+  )
+
+  ;-- Get a file to load into memory
+  print "Which card slot to use (0-3) >"
+  local &SlotNum
+  enter &SlotNum
+
+  v.set card_slot_in_use=&SlotNum
+
+  if "&Verbose"=="yes"
+  (
+     print "Updated current card slot used."   
+  )
+  &CurrentSlot=&SlotNum
+
+  gosub PrintFlashInfo
+
+return
+
+
+;=====================================================
+; --- Function Debug - Clock frequency scan
+;=====================================================
+RunClockFrequencyScan:
+   &Command="Debug clock frequency scan."
+   v.set jtag_prog_param.cmd_status=&DebugFreqScanCmd
+   v.set jtag_prog_param.addr=0
+   v.set jtag_prog_param.data_length=0
+   &CurrentCmd=&DebugFreqScanCmd  
+   
+   go
+
+   gosub check_status  ;; will not return if error 
+
+  if "&Verbose"=="yes"
+  (
+     print "Run clock frequency scan completed."   
+  )
+return
+
+
+;=====================================================
+; --- Function Debug - Single block RX test
+;=====================================================
+RunRxTest:
+   &Command="Debug RX test."
+   v.set jtag_prog_param.cmd_status=&DebugStartRxTest
+   v.set jtag_prog_param.addr=0
+   v.set jtag_prog_param.data_length=0
+   &CurrentCmd=&DebugStartRxTest  
+   
+   go
+
+   gosub check_status  ;; will not return if error 
+
+  if "&Verbose"=="yes"
+  (
+     print "Run debug RX test completed."   
+  )
+return
+
+
+;=====================================================
+; --- Function read a sector
+;=====================================================
+ReadSector:
+    local &startSector
+    local &numSectors
+
+    gosub GetUserInput "Enter start sector to read"
+    entry &startSector
+
+    gosub GetUserInput "Enter number of sectors to read"
+    entry &numSectors
+
+    if &numSectors==0
+    (
+        print "numSectors was zero, Setting it to 1"
+        &numSectors=1
+    )
+
+    &Command="Read Sector command."
+    v.set jtag_prog_param.cmd_status=&ReadSectorCmd
+    v.set jtag_prog_param.addr=&startSector
+    v.set jtag_prog_param.data_length=&numSectors
+    &CurrentCmd=&ReadSectorCmd
+    go
+
+    gosub check_status  ;; will not return if error 
+    
+    gosub prettyPrintDataBuffer &numSectors
+    if "&Verbose"=="yes"
+    (
+        print "Read Sector completed."   
+    )
+    return
+
+;=====================================================
+; --- Function read sector(s) to file
+;=====================================================
+ReadSectorToFile:
+
+    local &FileSpec    
+    local &VRAM_BASE
+    local &SectorsRemaining
+    local &SectorsNext
+    local &temp
+    local &temp2
+    local &startSector
+    local &numSectors
+    local &physicalPartition
+
+    print
+    print
+    print "NOTE: The maximum number of &SectorSize byte sectors you can read is 64. (or 32KB)"
+    print "NOTE: The maximum number of &SectorSize byte sectors you can read is 64. (or 32KB)"
+    print
+    print
+
+    gosub ParseArg startsector 1 &ArgLine
+    entry &startSector
+    if "&startSector"==""
+    (
+        gosub GetUserInput "Enter start sector to read"
+        entry &startSector
+    )
+
+    gosub ParseArg numsectors 1 &ArgLine
+    entry &numSectors
+    if "&numSectors"==""
+    (
+        gosub GetUserInput "Enter number of sectors to read"
+        entry &numSectors
+    )
+
+    if &numSectors>64.
+    (
+      print "ERROR: Maximum number of sectors is 64. Exiting SD Flash Program"
+      print "ERROR: Maximum number of sectors is 64. Exiting SD Flash Program"
+      return
+    )
+
+    gosub ParseArg physicalpartition 1 &ArgLine
+    entry &physicalPartition
+    if "&physicalPartition"==""
+    (
+        gosub GetUserInput "Enter physical partition"
+        entry &physicalPartition
+    )
+    if &physicalPartition!=&CurrentHWPartitionNum||&CurrentPartitionInfoRead==0.
+    (
+        gosub SwitchPartition &physicalPartition
+    )
+
+    gosub ParseArg dumpfile 0 &ArgLine
+    entry &FileSpec
+    if "&FileSpec"==""
+    (
+        gosub GetFilespec
+        entry %LINE &FileSpec
+    )
+
+    &VRAM_BASE=0x00000000 ; Base of virtual RAM for data spool
+    print "Read sector begin."
+
+    if &numSectors>0x80000
+    (
+        &numSectors=0x80000
+    )
+
+    &SectorsRemaining=&numSectors
+    while &SectorsRemaining>0
+    (
+        &SectorsNext=0
+        if (&SectorsRemaining*&SectorSize)<&ParamBufferSize
+        (
+            &SectorsNext=&SectorsRemaining
+        )
+        else
+        (
+            &SectorsNext=&ParamBufferSize/&SectorSize
+        )
+
+        &Command="Read Sector command."
+        print "No of sectors to read = &SectorsNext"
+
+        v.set jtag_prog_param.cmd_status=&ReadSectorCmd
+        v.set jtag_prog_param.addr=(&startSector+&numSectors-&SectorsRemaining)
+        v.set jtag_prog_param.data_length=&SectorsNext 
+        &CurrentCmd=&ReadSectorCmd  
+
+        go
+
+        gosub check_status  ;; will not return if error 
+
+        data.copy &ParmData--(&ParmData+(&SectorsNext*&SectorSize)-1) vm:((&numSectors-&SectorsRemaining)*&SectorSize) /long
+        &SectorsRemaining=&SectorsRemaining-&SectorsNext
+    )
+    
+    ; Save the virtual memory image we have been building
+    &temp=(&VRAM_BASE+(&numSectors*&SectorSize)-1)
+    print "&FileSpec, &VRAM_BASE, &temp"
+    data.save.binary &FileSpec vm:&VRAM_BASE--(&VRAM_BASE+(&numSectors*&SectorSize)-1)
+
+    if "&Verbose"=="yes"
+    (
+        print "Read Sector completed."   
+    )
+   
+return
+
+;=====================================================
+; --- Function read a sector with debugging breakpoint
+;=====================================================
+QuickDebugScript:
+   v.set jtag_prog_param.cmd_status=&ReadSectorCmd
+   v.set jtag_prog_param.addr=0x0
+   v.set jtag_prog_param.data_length=0x1
+
+   go
+   d.l
+
+return
+
+;=====================================================
+; --- Function write a sector
+;=====================================================
+WriteSector:
+    local &startSector
+    local &numSectors
+    local &filename
+
+    print "Write sector begin."
+
+    gosub GetUserInput "Enter start sector to write"
+    entry &startSector
+
+    gosub GetUserInput "Enter number of sectors to write"
+    entry &numSectors
+
+    if &numSectors==0
+    (
+        return
+    )
+
+    ;-- Get a file to load into memory
+    print "Select image file in browser"
+    dialog.file *.*
+    entry &filename
+    if "&filename"==""
+    (
+        print %ERROR "Failed to select file"
+        return
+    )
+
+    &Command="Write Sector"
+    v.set jtag_prog_param.cmd_status=&WriteSectorCmd
+    v.set jtag_prog_param.addr=&startSector
+    v.set jtag_prog_param.data_length=&numSectors
+    data.load.binary &filename &ParmData  /byte /nosymbol
+ 
+    &CurrentCmd=&WriteSectorCmd   
+   
+    go
+    gosub check_status  ;; will not return if error 
+    
+    print "Write Sector completed."   
+    return
+
+;=====================================================
+; --- Function erase the entire chip
+;=====================================================
+EraseChip:
+   v.set jtag_prog_param.cmd_status=&ChipEraseCmd
+   v.set jtag_prog_param.addr=0x0
+   v.set jtag_prog_param.data_length=0x1
+
+   &Command="Chip Erase"
+   break.set jsdcc_mem_chip_erase /soft       ; Use for debugging
+   go
+   gosub check_status  ;; will not return if error 
+return
+
+;=====================================================
+; --- Function force erase the entire chip (Unlock password)
+;=====================================================
+ForceErase:
+   v.set jtag_prog_param.cmd_status=&ForceEraseCmd
+   v.set jtag_prog_param.addr=0x0
+   v.set jtag_prog_param.data_length=0x1
+
+;  break.set jsdcc_mem_force_erase /soft       ; Use for debugging
+   go
+return
+
+;=====================================================
+; --- Function Enable HW Reset on the MMC
+;=====================================================
+EnableHWReset:
+   v.set jtag_prog_param.cmd_status=&EnableHWResetCmd
+   v.set jtag_prog_param.addr=0x0
+   v.set jtag_prog_param.data_length=0x1
+   go
+return
+
+;=====================================================
+; --- Function to Program Large number of sectors but not verify
+;=====================================================
+DoProgramming:
+
+   ;--------------------------------------------------------
+   ; put into program mode 
+   ;--------------------------------------------------------
+   flash.program all
+   
+   ;--------------------------------------------------------
+   ; actual flash programming happens here
+   ;--------------------------------------------------------
+   &Command="Flash Program"
+   &CurrentCmd=&ProgramCmd
+   
+   if "&Verbose"=="yes"
+   (
+     print "Choose &ImageName Binary"
+   )
+   data.load.binary &PbnImage /NOSYMBOL
+   
+   &CheckStatusExit="yes"
+   gosub check_status  ;; will not return if error
+   
+   ;--------------------------------------------------------
+   ; OK we're finished, turn off programming mode.
+   ; If we do not turn it off, any data writes within
+   ; the address range of the defined ROM will be taken
+   ; as flash programming commands and this will cause
+   ; failures if the code size overlaps the parameter
+   ; block address.
+   ;--------------------------------------------------------
+   flash.program off
+  
+   ;--------------------------------------------------------
+   ; restore breakpoint which flash.program deleted
+   ;--------------------------------------------------------
+   
+return
+
+;=====================================================
+; --- Function accepts user input sector
+;=====================================================
+
+EnterSector:
+  print "NOTE: This input must be taken as an INTEGER!!!"
+  print "**IMPORTANT** ----> For 12 type 12. or 0xC ::"
+  &t32_cmm_stopped=1
+  enter &Sector
+  &t32_cmm_stopped=0
+return
+
+;=====================================================
+; --- Get user input
+;=====================================================
+
+GetUserInput:
+    entry &prompt
+    local &inputval
+
+    print "&prompt"
+    print "NOTE: This input must be taken as an INTEGER!!!"
+    print "**IMPORTANT** ----> For 12 type 12. or 0xC ::"
+    &t32_cmm_stopped=1
+    enter &inputval
+    &t32_cmm_stopped=0
+    return &inputval
+
+;=========================================================
+; --- Program BOOT_PARTITION_ACCESS
+;=========================================================
+
+EnablePartitionForBoot:
+
+  ; First, make sure clear boot partition access
+  &DataLength=0
+  gosub Parti_Access
+
+  print "  0: Enable User Partition for Boot"
+  print "  1: Enable Boot partition 1 for Boot."
+  print "  2: Enable Boot partition 1 for Boot."
+  print " Please make a choice: "
+
+  &t32_cmm_stopped=1
+  enter &Choice
+  &t32_cmm_stopped=0
+  print
+  print
+
+  if "&Choice"=="0"
+  (
+     ;; Enable user partition for boot
+     &Command="Enable user Partition for boot"
+     v.set jtag_prog_param.cmd_status=&UserPartiEnable
+     &CurrentCmd=&UserPartiEnable
+  )
+  else
+  (
+     ; Enable boot partition 1 or 2 for boot
+     &Command="Enable Boot Partition 1 or 2 for boot"
+     v.set jtag_prog_param.cmd_status=&BootPartiEnable
+     &CurrentCmd=&BootPartiEnable
+     v.set jtag_prog_param.data_length=&Choice
+  )
+
+  go
+
+  ; check status
+  &CheckStatusExit="yes"
+  gosub check_status
+
+return 
+
+;=========================================================
+; --- Switch Partition 
+;=========================================================
+Switch_Partition:
+
+  if "&Verbose"=="yes"
+  (
+    print "Switch Partition "
+  )
+
+  &Command="Switch partition to..."
+  v.set jtag_prog_param.cmd_status=&BootPartiAccess
+  print "  0: User Partition"
+  print "  1: Boot partition 1 for R/W access."
+  print "  2: Boot partition 2 for R/W access."
+  print "  Switching to GPPs will fail if they do not exist"
+  print "  4: GPP 1."
+  print "  5: GPP 2."
+  print "  6: GPP 3."
+  print "  7: GPP 4."
+  print " Please make a choice: "
+
+  &t32_cmm_stopped=1
+  enter &Sector
+  &t32_cmm_stopped=0
+  print
+  print
+
+  gosub SwitchPartition &Sector
+
+return 
+
+
+;=========================================================
+; --- GPP Partition programming
+;=========================================================
+GPP_Partition:
+  local &gppsize1
+  local &gppsize2
+  local &gppsize3
+  local &gppsize4
+
+   &gppsize1=0.
+   &gppsize2=0.
+   &gppsize3=0.
+   &gppsize4=0.
+   
+   local &gpp_sizes  
+   local &gpp_size_to_use
+   local &gpp_count   
+
+   &gpp_count=0.
+
+   gosub ParseArg gpps 0 &ArgLine
+   entry &gpp_sizes
+
+
+   if "&gpp_sizes"!=""
+   (
+    while "&gpp_sizes"!=""
+    (
+     gosub SplitMultipleArgs &gpp_sizes
+
+     entry &gpp_size_to_use
+     gosub RemoveArgDelimiter &gpp_size_to_use &gpp_sizes
+     entry &gpp_sizes
+
+     if &gpp_count==0.
+     (
+      &gppsize1=&gpp_size_to_use
+     )
+      
+     if &gpp_count==1.
+     (
+      &gppsize2=&gpp_size_to_use
+     )      
+    
+     if &gpp_count==2.
+     (
+      &gppsize3=&gpp_size_to_use
+     )      
+    
+     if &gpp_count==3.
+     (
+      &gppsize4=&gpp_size_to_use
+     )      
+    
+     &gpp_count=&gpp_count+1.
+     
+    )
+   
+
+   print "      "
+   print "      __        __               _             "
+   print "      \ \      / /_ _ _ __ _ __ (_)_ __   __ _ "
+   print "       \ \ /\ / / _` | '__| '_ \| | '_ \ / _` |"
+   print "        \ V  V / (_| | |  | | | | | | | | (_| |"
+   print "         \_/\_/ \__,_|_|  |_| |_|_|_| |_|\__, |"
+   print "                                         |___/ "
+   print " "
+   print
+
+   print "GPPs Will be set to:"
+   print "GPP1: " &gppsize1
+   print "GPP2: " &gppsize2
+   print "GPP3: " &gppsize3
+   print "GPP4: " &gppsize4
+   print 
+   print "THIS WILL BE  DESTRUCTIVE, PERMANENT & IRREVERSIBLE"
+   print " Please enter YES to continue, any other value will abort::     "
+   print 
+
+   &t32_cmm_stopped=1
+   enter &ConfirmChoice
+   &t32_cmm_stopped=0
+   print
+   print
+
+   if "&ConfirmChoice"=="YES" 
+   (  
+     print "Erasing entire chip....."
+   )
+   else
+   (
+     print "Bailing out, correct answer not given" 
+     goto LoopBackToMain
+   )
+
+
+
+  )
+else
+  (
+   gosub GetUserInput "Enter size of the GPP 1 partition in KB"
+   entry &gppsize1
+   gosub GetUserInput "Enter size of the GPP 2 partition in KB"
+   entry &gppsize2
+   gosub GetUserInput "Enter size of the GPP 3 partition in KB"
+   entry &gppsize3
+   gosub GetUserInput "Enter size of the GPP 4 partition in KB"
+   entry &gppsize4
+  )
+
+
+
+  print "Issuing the GPP creation command..."
+  &Command="Issuing the GPP creation command..."
+
+  print "GPP sizes (KB):"
+
+  print &gppsize1
+  print &gppsize2
+  print &gppsize3
+  print &gppsize4
+  print ""
+
+  ; Use 4 bytes to store each of the GPP sizes
+  v.set jtag_prog_param.cmd_status=&ProgramGPPCmd
+  data.set &ParmData %LONG &gppsize1
+  data.set &ParmData+4. %LONG &gppsize2
+  data.set &ParmData+8. %LONG &gppsize3
+  data.set &ParmData+12. %LONG &gppsize4
+  &CurrentCmd=&ProgramGPPCmd
+  go
+
+  ; check status
+  &CheckStatusExit="yes"
+  gosub check_status
+return 
+
+
+;=========================================================
+; --- Set Active Boot Partition 
+;=========================================================
+SelectActivePartition:
+
+  local &activeboot
+  if "&Verbose"=="yes"
+  (
+    print "Set Active Boot Partition "
+  )
+
+  gosub ParseArg activeboot 1 &ArgLine
+  entry &activeboot
+  
+  if "&activeboot"==""
+  (
+      &Command="Set active boot partition to..."
+      v.set jtag_prog_param.cmd_status=&BootPartiAccess
+      print "  0: User Partition"
+      print "  1: Boot partition 1"
+      print "  2: Boot partition 2"
+      print "  4: GPP 1"
+      print "  5: GPP 2"
+      print "  6: GPP 3"
+      print "  7: GPP 4"
+      print " Please make a choice: "
+
+      &t32_cmm_stopped=1
+      enter &activeboot
+      &t32_cmm_stopped=0
+      print
+      print
+  )
+  print "Setting Active Boot Partition to &activeboot"
+
+;; Set MMC active boot partition for booting
+  &Command="Enable Active Boot Partition."
+  v.set jtag_prog_param.cmd_status=&SetActBootPartCmd
+  v.set jtag_prog_param.addr=&activeboot
+  &CurrentCmd=&SetActBootPartCmd
+  go
+
+  ; check status
+  &CheckStatusExit="yes"
+  gosub check_status
+
+return
+
+;=====================================================
+; --- Function to check command status return
+;       and exit if 0x100
+;=====================================================
+check_status:
+  local &Result
+  wait !run()
+   
+  gosub printOutputBuffer
+
+  &Result=V.VALUE(jtag_prog_param.cmd_status)
+  if &Result==0x100
+  (
+      print " " 
+      print "---- &Command failed"
+      &Result=V.VALUE(jtag_prog_param.reserved)
+      print "     Extended status is &Result"
+      print " "
+      print "EXITING due to failed command:: &Command"
+      end
+  )
+  else
+  (
+     if "&Result"=="&CurrentCmd"
+     (
+       print "Command &Command failed - never completed"
+     )
+     else
+     (
+        print "+++++ &Command Succeeded"  
+     )
+  )
+
+return
+
+;=====================================================
+; --- Function to create the FLASH map
+;=====================================================
+CreateRom:
+  ;======================================================
+  ; Map flash readonly - must encompass the addresse
+  ;     of the image being loaded
+  ;======================================================
+   map.readonly &RomBegin--&RomEnd
+  
+
+   ;--------------------------------------------------------
+   ; reset our flash command
+   ;--------------------------------------------------------
+   flash.res
+   
+   ;--------------------------------------------------------
+   ; Let flash command know where our routine and buffer is located
+   ; code at &JnandCodeAddr, data at &JnandParamAddr, buffer size = 16K
+   ; Earlier versions of JTAG s/w would allow larger buffer of 64k
+   ; but now we seem to be limited to 16k
+   ;--------------------------------------------------------
+   ;
+   flash.target &CodeAddr &ParamAddr 4000 
+   
+   ;--------------------------------------------------------
+   ; Define our flash range and tell flash command we're using
+   ; our own flash programming routine via keyword "target"
+   ; right now, we are defining 3 MBytes for code which in
+   ; the SD flash environment is not used. It is here in order for 
+   ; JTAG Flash functions to work.
+   ;--------------------------------------------------------
+   ;
+   flash.create &RomBegin--&RomEnd target byte
+return
+
+
+;=====================================================
+; --- Function to clean up the FLASH map after each
+;     iteration of the loop
+;=====================================================
+CleanUp:
+   ;--------------------------------------------------------
+   ; ok we're finished, turn off programming mode
+   ;--------------------------------------------------------
+   flash.program off
+   FLASH.Reset
+   MAP.Reset
+return
+
+;=====================================================
+; --- Program GPT
+;=====================================================
+RawProgram:
+    ;; Commands: 0 [List], 1 [Program specific file], 2 [Erase specific partition], 3 [Program All], 4 [List only files], 5 [List only partitions]
+    local &operation_specific_number
+    local &program_xml_name
+
+    entry &operation &specific_number
+    
+    if "&program_xml_name"==""
+    (
+        gosub ParseArg xml 0 &ArgLine
+        entry &program_xml_name
+        if "&program_xml_name"==""
+        (
+            gosub LocateFile "&program_xml_name" "Raw Program XML"
+        )
+        else
+        (
+            gosub LocateFile &program_xml_name "Raw Program XML"
+        )
+        entry &program_xml_name
+    )
+    open #1 &program_xml_name /read
+
+    local &file_sector_offset
+    local &filename
+    local &label
+    local &num_partition_sectors
+    local &physical_partition_number
+    local &size_in_KB
+    local &start_sector
+    local &lineread
+    local &filecount
+    local &partitioncount
+    local &write_count
+    
+    &write_count=0
+    
+    &filecount=0
+    &partitioncount=0
+
+    print ""
+    print ""
+    &lineread="dummy"
+    while "&lineread"!=""
+    (
+        read #1 %LINE &lineread
+        &flag=string.scan("&lineread", "<program ", 0)
+        if &flag!=-1.
+        (
+            &lineread=string.cut("&lineread", &flag+string.len("<program "))
+            
+            gosub ParseLine file_sector_offset 1 &lineread
+            entry &file_sector_offset
+            
+            if &file_sector_offset==-1
+            (
+                gosub ParseLine offset 1 &lineread
+                entry &file_sector_offset
+            )
+            
+            gosub ParseLine filename 0 &lineread
+            entry &filename
+            
+            gosub ParseLine label 0 &lineread
+            entry %LINE &label
+            
+            gosub ParseLine num_partition_sectors 1 &lineread
+            entry &num_partition_sectors
+            
+            if "&num_partition_sectors"=="-1"
+            (
+                gosub ParseLine num_sectors 1 &lineread
+                entry &num_partition_sectors
+            )
+            
+            gosub ParseLine physical_partition_number 1 &lineread
+            entry &physical_partition_number
+            if &physical_partition_number!=&CurrentHWPartitionNum||&CurrentPartitionInfoRead==0.
+            (
+                gosub SwitchPartition &physical_partition_number
+            )
+            
+            gosub ParseLine size_in_KB 1 &lineread
+            entry &size_in_KB
+            
+            gosub ParseLine start_sector 1 &lineread
+            entry &start_sector
+            
+            gosub EvalCardSectorsExpr &start_sector
+            entry &start_sector
+            
+            if "&filename"!=""
+            (
+                &filecount=&filecount+1.
+            )
+            else
+            (
+                &partitioncount=&partitioncount+1.
+            )
+            
+            if &operation==0.
+            (
+                if "&filename"!=""
+                (
+                    print "#&filecount '&filename' on partition &physical_partition_number '&label' at sector &start_sector"
+                )
+                else
+                (
+                    print "Partition # &partitioncount '&filename' on partition &physical_partition_number '&label' at sector &start_sector"
+                )
+                
+                ;;print "File &filename, Partition: &physical_partition_number '&label', Start Sector: &start_sector"
+            )
+		    if &operation==4.
+	        (
+		        if "&filename"!=""
+				(
+					print "#&filecount '&filename' on partition &physical_partition_number '&label' at sector &start_sector"
+				)
+		    )
+		    if &operation==5.
+			(
+			if "&filename"==""
+				(
+					print "#&partitioncount on partition &physical_partition_number '&label' at sector &start_sector (&num_partition_sectors sectors)"
+				)
+		    )
+            if &operation==1.
+            (
+                if &specific_number==&filecount
+                (
+                    gosub WriteFileAtSector &filename &file_sector_offset &num_partition_sectors &start_sector
+                    close #1
+                    return
+                )
+                ;;||"&specific_number"=="&filename"
+            )
+            if &operation==2.
+            (
+                if &specific_number==&partitioncount
+                (
+                    gosub EraseSector &physical_partition_number &num_partition_sectors &start_sector
+                    close #1
+                    return
+                )
+            )
+            if &operation==3.
+            (
+                if "&filename"!=""
+                (
+                    if "&specific_number"=="0"||"&specific_number"=="&filename"
+                    (
+                        &write_count=&write_count+1.
+                        &size_bytes = &size_in_KB * 1024.
+                        gosub WriteFileAtSector &filename &file_sector_offset &num_partition_sectors &start_sector
+                    )
+                )
+            )
+        )
+    )
+    close #1
+    
+    if &operation==3.&&&write_count==0
+    (
+        print "ERROR: The file &specific_number was not found in &program_xml_name."
+        &menu_error="ERROR: The file &specific_number was not found in &program_xml_name."
+    )
+    
+    if &operation==1.
+    (
+        print "ERROR: The file number was not found."
+        print "NOTE: This file number input is collected as an INTEGER!!!"
+        print "do not forget 0x or . to define radix"
+        print "Ex. To select 12 type 12. or 0xC ::"
+        &menu_error="The file number was not found. i.e. don't forget decimal, Ex. 13. (not 13)"
+    )
+    if &operation==2.
+    (
+        print "ERROR: The partition number was not found."
+        print "NOTE: This partition number input is collected as an INTEGER!!!"
+        print "do not forget 0x or . to define radix"
+        print "Ex. To select 12 type 12. or 0xC ::"
+        &menu_error="The partition number was not found. i.e. don't forget decimal, Ex. 13. (not 13)"
+    )
+    return &write_count
+
+ParseLine:
+    local &lineread
+    entry &field_name &numeric %LINE &lineread
+    local &CurrentCardSectors
+    &CurrentCardSectors=V.VALUE(current_mem_info_emmc.card_size_in_sectors)
+
+    &field_flag=string.scan("&lineread", "&field_name=""", 0)
+    if &field_flag!=-1.
+    (
+        &field_flag=&field_flag+string.len("&field_name=""")
+        &value_flag=string.scan("&lineread", """", &field_flag)
+        if &value_flag!=-1.
+        (
+            &value=string.mid("&lineread", &field_flag, &value_flag-&field_flag)
+            if &numeric==1
+            (
+                ;;if string.len("&value")>=string.len("NUM_DISK_SECTORS")
+                ;;(
+                ;;    gosub StringReplace &value NUM_DISK_SECTORS &CurrentCardSectors
+                ;;    entry &value
+                ;;    eval &value
+                ;;    &value=eval()
+                ;;    &hex_flag=string.scan("&value", "0x", 0)
+                ;;    &value=string.mid("&value", &hex_flag+string.len("0x"), string.len("&value")-2)
+                ;;    print "value is &value"
+                ;;    
+                ;;    return &value
+                ;;)
+                if string.scan("&value", ".", 0)==-1.
+                (
+                    &value=&value.
+                )
+            )
+            return &value
+        )
+        else
+        (
+            print "A value for &field_name was not found in &lineread"
+            enddo
+        )
+    )
+    else
+    (
+        print "&field_name was not found in &lineread"
+        return -1
+    )
+
+SwitchPartition:
+    entry &partitionNumber
+    local &temp
+    v.set jtag_prog_param.cmd_status=&SetHWPartitionCmd
+    v.set jtag_prog_param.addr=&partitionNumber
+    &CurrentCmd=&SetHWPartitionCmd
+    go
+
+    ; check status
+    &CheckStatusExit="yes"
+    gosub check_status
+    
+    if string.scan("&partitionNumber", ".", 0)==-1.
+    (
+        &partitionNumber=&partitionNumber.
+    )
+    &CurrentHWPartitionNum=&partitionNumber
+    if &partitionNumber==0
+    (
+        &CurrentHWPartition="User Partition"
+    )
+    else if &partitionNumber==1
+    (
+        &CurrentHWPartition="Boot Partition &partitionNumber"
+    )
+    else if &partitionNumber==2
+    (
+        &CurrentHWPartition="Boot Partition &partitionNumber"
+    )
+    else if &partitionNumber>=4&&&partitionNumber<=7
+    (
+        &temp=&partitionNumber-4.
+        &CurrentHWPartition="GPP&temp"
+    )
+    
+    gosub PrintFlashInfo
+    &CurrentPartitionInfoRead=1.
+    return
+
+StringReplace:
+    entry &haystack &needle &thorn
+    if string.len("&haystack")<string.len("&needle")
+    (
+        return &haystack
+    )
+    while string.scan("&haystack", "&needle", 0)!=-1.
+    (
+        &start_pos=string.scan("&haystack", "&needle", 0)
+        &haystack_start=string.mid("&haystack", 0, &start_pos)
+        &haystack_end=string.mid("&haystack", &start_pos+string.len("&needle"), string.len("&haystack")-&start_pos-string.len("&needle"))
+        &haystack="&haystack_start&thorn&haystack_end"
+    )
+    return &haystack
+
+EraseSector:
+    entry &physical_partition_number &num_partition_sectors &start_sector
+    
+    &Command="Erase Sector command."
+    v.set jtag_prog_param.cmd_status=&EraseGenericCmd
+    v.set jtag_prog_param.addr=&start_sector
+    v.set jtag_prog_param.data_length=&num_partition_sectors
+    &CurrentCmd=&EraseGenericCmd   
+
+    go
+    gosub check_status  ;; will not return if error 
+
+    if "&Verbose"=="yes"
+    (
+        print "Erase Sector completed."   
+    )
+    return
+    
+WriteFileAtSector:
+    local &filename &file_sector_offset &num_partition_sectors &start_sector
+    local &FileLength &DataLength
+    entry &filename &file_sector_offset &num_partition_sectors &start_sector
+    gosub LocateFile &filename
+    entry &filename
+
+    &FileLength=os.file.size(&filename)
+    &DataLength=&FileLength
+    if &FileLength==0
+    (
+        print "ERROR: Size of file &filename is 0"
+        &menu_error="Size of file &filename is 0"
+        return
+    )
+    
+    print "Writing file &filename"
+    
+    if (&file_sector_offset+&num_partition_sectors)*&SectorSize>&FileLength
+    (
+        &DataLength=&DataLength-(&file_sector_offset*&SectorSize)
+        &LengthRemainder=&FileLength%&SectorSize
+        if (&LengthRemainder!=0)
+        (
+            &DataLength=&DataLength+(&SectorSize-&LengthRemainder)
+        )
+    )
+    else
+    (
+        &DataLength=&num_partition_sectors*&SectorSize
+    )
+    &file_offset=&file_sector_offset*&SectorSize
+    
+    ; To handle last partition case where num_partition_sectors could be zero
+    if &DataLength==0.
+    (
+      &DataLength=&FileLength
+      &LengthRemainder=&FileLength%&SectorSize
+      if (&LengthRemainder!=0)
+      (
+          &DataLength=&DataLength+(&SectorSize-&LengthRemainder)
+      )
+    )
+
+    ;; Using the fast method of flash.program does not work for small writes
+    ;; it fails silently to write 1024 bytes, but can write 2048 successfully.
+    ;; To be extra sure, anything less than a 4096 will be flashed using the
+    ;; small file write.
+    if &DataLength<=0x1000
+    (
+        ;;print "Small file"
+        gosub WriteSmallFile &filename &file_offset &DataLength &start_sector
+    )
+    else
+    (  
+        var.set redirect_offset=&start_sector
+        var.set redirect_partition=&DataLength
+        var.set sector_writing=0x1
+        v.set jtag_prog_param.cmd_status=&ProgramCmd
+        flash.program all
+
+        &Command="Programming"
+        &CurrentCmd=&ProgramCmd
+        data.load.binary &filename /skip &file_offset /byte /nosymbol
+        &CheckStatusExit="yes"
+        gosub check_status
+        flash.program off
+        var.set sector_writing=0x0
+        return
+        
+        &DataRemaining=&DataLength
+        while &DataRemaining>0
+        (
+            &DataNext=0
+            if &DataRemaining<&ParamBufferSize
+            (
+                &DataNext=&DataRemaining
+            )
+            else
+            (
+                &DataNext=&ParamBufferSize
+            )
+            &num_partition_sectors=&DataNext/&SectorSize
+            if &num_partition_sectors==0
+            (
+                &num_partition_sectors=1.
+            )
+            gosub WriteSmallFile &filename &file_offset &DataNext &start_sector
+            &DataRemaining=&DataRemaining-&DataNext
+            &file_offset=&file_offset+&DataNext
+            &start_sector=&start_sector+&num_partition_sectors
+        )
+    )
+    return
+
+WriteSmallFile:
+    local &temp_w
+    entry &filename &file_offset &DataLength &start_sector
+    print "Debug: &filename, &file_offset, &DataLength, &start_sector"
+    &Command="Write Sector command."
+    v.set jtag_prog_param.cmd_status=&WriteSectorCmd
+    v.set jtag_prog_param.addr=&start_sector
+    &temp_w=&DataLength/&SectorSize*&SectorSize
+    if &DataLength%&SectorSize!=0
+    (
+        &temp_w=&temp_w+&SectorSize
+    )
+    data.set (&ParmData)--(&ParmData+&temp_w) 0x0
+    v.set jtag_prog_param.data_length=&DataLength/&SectorSize
+    data.load.binary &filename &ParmData++&ParamBufferSize /skip &file_offset /byte /nosymbol /noclear
+    &CurrentCmd=&WriteSectorCmd   
+
+    go
+    gosub check_status  ;; will not return if error 
+
+    if "&Verbose"=="yes"
+    (
+        print "Write Sector completed."   
+    )
+    return
+
+PrintMenuError:
+    if "&menu_error"!=""
+    (
+        print "================================"
+        print "Error in previous command:"
+        print "&menu_error"
+        print "================================"
+        &menu_error=""
+    )
+    return
+
+ReadBytes:
+    local &numbytes
+    local &sector
+    local &offset
+    gosub ParseArg numbytes 0 &ArgLine
+    entry &numbytes
+    print "numbytes=&numbytes"
+    gosub ParseArg sector 0 &ArgLine
+    entry &sector
+    print "sector=&sector"
+    gosub ParseArg offset 0 &ArgLine
+    entry &offset
+    print "offset=&offset"
+
+    if &numbytes==0
+    (
+        print "numbytes was zero, Setting it to 1"
+        &numbytes=1
+    )
+
+    &Command="Read Sector command."
+    v.set jtag_prog_param.cmd_status=&ReadSectorCmd
+    v.set jtag_prog_param.addr=&sector
+    v.set jtag_prog_param.data_length=1
+    &CurrentCmd=&ReadSectorCmd
+    go
+
+    gosub check_status  ;; will not return if error 
+    
+    gosub prettyPrintDataBuffer 1.
+    area.select JSDCC_OUT
+    print "Showing &numbytes HEX bytes from SECTOR:&sector OFFSET:&offset"
+    gosub prettyPrintOneSector &numbytes &offset
+    gosub prettyPrintAsciiOneSector &numbytes &offset
+
+    return
+
+Patch:
+    local &patch_file_name
+    
+    gosub ParseArg xml 0 &ArgLine
+    entry &patch_file_name
+    if "&patch_file_name"==""
+    (
+        gosub LocateFile "&patch_file_name" "Patch XML"
+    )
+    else
+    (
+        gosub LocateFile &patch_file_name "Patch XML"
+    )
+    entry &patch_file_name
+
+    open #1 &patch_file_name /read
+
+    local &byte_offset
+    local &filename
+    local &physical_partition_number
+    local &size_in_bytes
+    local &start_sector
+    local &value
+    local &what
+    local &crc_flag
+    local &crc_start
+    local &crc_len
+    local &write_count
+    local &lineread
+    
+    &write_count=0.
+
+    print ""
+    print ""
+    &lineread="dummy"
+    while "&lineread"!=""
+    (
+        read #1 %LINE &lineread
+        &flag=string.scan("&lineread", "<patch ", 0)
+        if &flag!=-1.
+        (
+            &lineread=string.cut("&lineread", &flag+string.len("<patch "))
+
+            gosub ParseLine byte_offset 1 &lineread
+            entry &byte_offset
+
+            gosub ParseLine filename 0 &lineread
+            entry &filename
+
+            gosub ParseLine physical_partition_number 0 &lineread
+            entry &physical_partition_number
+            if &physical_partition_number!=&CurrentHWPartitionNum||&CurrentPartitionInfoRead==0.
+            (
+                gosub SwitchPartition &physical_partition_number
+            )
+
+            gosub ParseLine size_in_bytes 1 &lineread
+            entry &size_in_bytes
+
+            gosub ParseLine start_sector 0 &lineread
+            entry &start_sector
+
+            gosub ParseLine value 0 &lineread
+            entry &value
+            
+            ;;gosub ParseLine what 0 &lineread
+            ;;entry &what
+            
+            if "&filename"=="DISK"
+            (
+                gosub EvalCardSectorsExpr &start_sector
+                entry &start_sector
+                
+                &crc_flag=string.scan("&value", "CRC32(", 0)
+                if &crc_flag==-1.
+                (
+                    gosub EvalCardSectorsExpr &value
+                    entry &value
+                    
+                    gosub PatchSector &start_sector &byte_offset &physical_partition_number &size_in_bytes &value
+                )
+                else
+                (
+                    &value=string.cut("&value", &crc_flag+string.len("CRC32("))
+                    &crc_flag=string.scan("&value", ",", 0)
+                    &crc_start=string.mid("&value", 0, &crc_flag)
+                    &value=string.cut("&value", &crc_flag+string.len(","))
+                    &crc_flag=string.scan("&value", ")", 0)
+                    &crc_len=string.mid("&value", 0, &crc_flag)
+                    gosub EvalCardSectorsExpr &crc_start
+                    entry &crc_start
+                    &crc_len=&crc_len.
+                    gosub ComputeCRC &crc_start &crc_len
+                    entry &value
+                    print "CRC value: &value"
+                    gosub PatchSector &start_sector &byte_offset &physical_partition_number &size_in_bytes &value
+                )
+                print "Sector: &start_sector, offset &byte_offset, partition &physical_partition_number, &value, &size_in_bytes"
+                &write_count=&write_count+1.
+            )
+        )
+    )
+    close #1
+    print "&write_count patch(es) applied successfully"
+
+    return
+
+PatchSector:
+    entry &start_sector &byte_offset &physical_partition_number &size_in_bytes &value
+    
+    &Command="Read Sector command."
+    v.set jtag_prog_param.cmd_status=&ReadSectorCmd
+    v.set jtag_prog_param.addr=&start_sector
+    v.set jtag_prog_param.data_length=1.
+    &CurrentCmd=&ReadSectorCmd  
+    go
+    gosub check_status  ;; will not return if error 
+    if "&Verbose"=="yes"
+    (
+        print "Read Sector completed."   
+    )
+    
+    if &size_in_bytes==4.
+    (
+        data.set (&ParmData+&byte_offset) %LONG &value
+    )
+    else if &size_in_bytes==8.
+    (
+        data.set (&ParmData+&byte_offset) %QUAD &value
+    )
+    else
+    (
+        print "Unsupported value for size_in_bytes."
+        return
+    )
+
+    &Command="Write Sector command."
+    v.set jtag_prog_param.cmd_status=&WriteSectorCmd
+    v.set jtag_prog_param.addr=&start_sector
+    v.set jtag_prog_param.data_length=1.
+    &CurrentCmd=&WriteSectorCmd   
+    go
+    gosub check_status  ;; will not return if error 
+    if "&Verbose"=="yes"
+    (
+        print "Write Sector completed."   
+    )
+    return
+
+ComputeCRC:
+    entry &crc_start &crc_len
+    local &crc_value
+    &Command="Compute CRC command."
+    v.set jtag_prog_param.cmd_status=&ComputeCRCCmd
+    v.set jtag_prog_param.addr=&crc_start
+    v.set jtag_prog_param.data_length=&crc_len
+    &CurrentCmd=&ComputeCRCCmd   
+
+    go
+    gosub check_status  ;; will not return if error 
+
+    if "&Verbose"=="yes"
+    (
+        print "CRC Compute completed."   
+    )
+    &crc_value=V.VALUE(jtag_prog_param.data_length)
+    return &crc_value
+
+;=====================================================
+; --- Use ZeroOut tags from rawprogram
+;=====================================================
+ZeroOut:
+    
+    if "&program_xml_name"==""
+    (
+        gosub ParseArg xml 0 &ArgLine
+        entry &program_xml_name
+        if "&program_xml_name"==""
+        (
+            gosub LocateFile "&program_xml_name" "Raw Program XML"
+        )
+        else
+        (
+            gosub LocateFile &program_xml_name "Raw Program XML"
+        )
+        entry &program_xml_name
+    )
+    open #1 &program_xml_name /read
+
+    local &label
+    local &num_partition_sectors
+    local &physical_partition_number
+    local &start_sector
+    local &lineread
+    local &operation_count
+    
+    &operation_count=0
+
+    print ""
+    print ""
+    &lineread="dummy"
+    while "&lineread"!=""
+    (
+        read #1 %LINE &lineread
+        &flag=string.scan("&lineread", "<zeroout ", 0)
+        if &flag!=-1.
+        (
+            &lineread=string.cut("&lineread", &flag+string.len("<zeroout "))
+
+            gosub ParseLine label 0 &lineread
+            entry %LINE &label
+            
+            gosub ParseLine physical_partition_number 1 &lineread
+            entry &physical_partition_number
+            if &physical_partition_number!=&CurrentHWPartitionNum||&CurrentPartitionInfoRead==0.
+            (
+                gosub SwitchPartition &physical_partition_number
+            )
+            
+            gosub ParseLine num_partition_sectors 1 &lineread
+            entry &num_partition_sectors
+            
+            if "&num_partition_sectors"=="-1"
+            (
+                gosub ParseLine num_sectors 1 &lineread
+                entry &num_partition_sectors
+            )
+            
+            gosub EvalCardSectorsExpr &num_partition_sectors
+            entry &num_partition_sectors
+            
+            gosub ParseLine start_sector 1 &lineread
+            entry &start_sector
+            
+            gosub EvalCardSectorsExpr &start_sector
+            entry &start_sector
+
+            gosub EraseSector &physical_partition_number &num_partition_sectors &start_sector
+            print "Sector: &start_sector, num sectors &num_partition_sectors, partition &physical_partition_number"
+            &operation_count=&operation_count+1.
+        )
+    )
+    close #1
+    print "&operation_count area(s) zeroed out successfully"
+    return &operation_count
+
+StringToNum:
+    entry &before
+    ;; TODO: recognize both 0X and 0x, i.e. make case insensitive
+    local &hex_flag
+    local &after
+    &hex_flag=string.scan("&before", "0x", 0)
+    if &hex_flag!=-1.
+    (
+        &after=string.mid("&before", &hex_flag+string.len("0x"), string.len("&before")-2)
+    )
+    else
+    (
+        &after=&before.
+    )
+    return &after
+
+EvalCardSectorsExpr:
+    local &before
+    entry &before
+
+    local &CurrentCardSectors
+    &CurrentCardSectors=V.VALUE(current_mem_info_emmc.card_size_in_sectors)
+
+    gosub StringReplace &before NUM_DISK_SECTORS &CurrentCardSectors
+    entry &after
+    if "&before"!="&after"
+    (
+        eval &after
+        &after=eval()
+    )
+    else
+    (
+      if string.scan("&after", ".", 0)==-1.
+      (
+        &after=&after.
+      )
+    )
+    ;;gosub StringToNum &after
+    ;;entry &after
+    return &after
+
+LocateFile:
+    entry &orig_filename &user_message
+    local &search_path
+    local &search_dir
+    local &filename
+    
+    if "&orig_filename"==""||"&orig_filename"==""""""
+    (
+        print "Please select &user_message"
+        dialog.file *.*
+        entry &filename
+        return &filename
+    )
+    gosub ParseArg searchpaths 0 &ArgLine
+    entry &search_path
+    Repeat
+    (
+        gosub SplitMultipleArgs &search_path
+        entry &search_dir
+        gosub RemoveArgDelimiter &search_dir &search_path
+        entry &search_path
+        &filename="&search_dir/&orig_filename"
+    )
+    while "&search_path"!=""&&!os.file(&filename)
+    if !os.file(&filename)
+    (
+        local &new_filename
+        print "Please select &orig_filename"
+        dialog.file *.*
+        entry &new_filename
+        if os.file.name(&new_filename)!=os.file.name(&orig_filename)
+        (
+            print "ERROR: A different file name from the original was picked"
+            &menu_error="A different file name from the original was picked"
+            return
+        )
+        &filename="&new_filename"
+    )
+    return &filename
+
+ParseArg:
+    local &lineread
+    entry &arg_name &numeric %LINE &lineread
+    local &arg_value
+    local &arg_flag
+    local &value_flag
+    
+    ;; Preceed ArgLine with a space so that every arg is preceeded by a space.
+    ;; This is to distinguish an arg called xml from an arg called loadxml
+    &lineread=" &lineread"
+    
+    &arg_value=""
+    &arg_flag=string.scan("&lineread", " &arg_name=", 0)
+    if &arg_flag!=-1.
+    (
+        &arg_flag=&arg_flag+string.len(" &arg_name=")
+        &value_flag=string.scan("&lineread", " ", &arg_flag)
+        if &value_flag!=-1.
+        (
+            &arg_value=string.mid("&lineread", &arg_flag, &value_flag-&arg_flag)
+            
+        )
+        else
+        (
+            &arg_value=string.cut("&lineread", &arg_flag)
+        )
+        if &numeric==1
+        (
+            if string.scan("&arg_value", ".", 0)==-1.
+            (
+                &arg_value=&arg_value.
+            )
+        )
+    )
+    if "&arg_value"==""
+    (
+        if "&arg_name"=="slot"
+        (
+            &arg_value=0.
+        )
+        else if "&arg_name"=="searchpaths"
+        (
+            &arg_value="partition_load_pt,."
+        )
+    )
+    else
+    (
+        if "&arg_name"=="searchpaths"
+        (
+            &arg_value="&arg_value,partition_load_pt,."
+        )
+    )
+    return &arg_value
+
+SplitMultipleArgs:
+    entry &multiple_args
+    local &arg_value
+    local &arg_flag
+    
+    &arg_value="&multiple_args"
+    &arg_flag=string.scan("&multiple_args", ",", 0)
+    if &arg_flag==0.
+    (
+        &multiple_args=string.cut("&multiple_args", 1)
+        &arg_flag=string.scan("&multiple_args", ",", 0)
+    )
+    if &arg_flag!=-1.
+    (
+        &arg_value=string.mid("&multiple_args", 0, &arg_flag)
+    )
+    return &arg_value
+
+RemoveArgDelimiter:
+    entry &search_dir &search_path
+    &search_path=string.cut("&search_path", string.len("&search_dir"))
+    if string.scan("&search_path", ",", 0)==0.
+    (
+        &search_path=string.cut("&search_path", 1)
+    )
+    return &search_path
+
+FixAutoCommand:
+    entry &auto_command
+    if string.scan("&auto_command", "=", 0)!=-1.
+    (
+        &ArgLine="&AutoCommand &ArgLine"
+        &AutoCommand=""
+    )
+    return
+;=====================================================
+; --- Function exit
+;=====================================================
+Exit:
+    ;--------------------------------------------------------
+    ; ok we're finished completely, clean up for exit
+    ;--------------------------------------------------------
+    ;;b.delete /all
+    
+    ; Generate a reset
+    sys.d
+    sys.u  
+         
+    term.close
+
+return
+
+;-------------------------------------------------------------------------------
+; Get name of file for saving trace records or use default
+;-------------------------------------------------------------------------------
+GetFilespec:
+
+    local &TempDir
+    local &FileSpec
+    local &InFileSpec
+
+    &TempDir=OS.ENV(TEMP) ; Get the temperory directory
+    &FileSpec="&TempDir/emmc_image.bin" ; default file to save to
+    print " "
+    print " "
+    print "  ++++ File Spec for data storage may be relative or absolute +++ "
+    print
+    print " Please enter filespec for storing dump >  "
+    print " default: [&FileSpec] >  "
+    enter &InFileSpec
+
+    if "&InFileSpec"!=""
+    (
+        &FileSpec="&InFileSpec"
+    )
+
+    print "  "
+    print "  "
+    print "  "
+
+    return &InFileSpec
+
+;-------------------------------------------------------------------------------
+; Tests for CMM script first and runs
+;-------------------------------------------------------------------------------
+RunExternalCMMScript:
+    entry &CMM_ScriptToRun
+   
+    if "&CMM_ScriptToRun"==""
+    (
+        print "ERROR: No CMM script name given - cannot execute external script!!"
+        return
+    )
+   
+    if OS.FILE(&CMM_ScriptToRun)
+    (
+        print "Running &CMM_ScriptToRun"
+        do &CMM_ScriptToRun
+    )
+    else
+    (
+        print "&CMM_ScriptToRun was not found"
+    )
+
+    return
+
+SetupTrace32Environment:
+    local &HW_ID_Val
+    
+    ;============================================================================
+    ; bit mask
+    ;============================================================================
+
+    ; set CLK_SEL bit and IMEM_CLK_BRANCH_ENA bit 
+    &HWIO_GRP_NS_REG_IMEM_CLK_BRANCH_ENA_BMSK=0x4200
+
+    ;============================================================================
+    ; Prepare system
+    ;============================================================================
+    B:
+
+    ;-------------------------------------------------------------------------------
+    ; Disassembler selection - Automatically selects correct one.
+    ;-------------------------------------------------------------------------------
+    sys.o.DisMode Auto
+
+    ;-------------------------------------------------------------------------------
+    ; restart CPU with debug mode
+    ;-------------------------------------------------------------------------------
+    ; Turbo mode of debug state accesses - CPU makes no checks of memory access in debug mode
+
+;    sys.o.TURBO off
+    sys.o.ResBreak on
+    sys.o.EnReset on
+    sys.o.TRST on
+    sys.o.CFLUSH on
+
+    ; Disassembler selection - Automatically selects correct one.
+    sys.o.DisMode Auto
+
+    ; restart CPU with debug mode
+    system.down
+    SYSTEM.POLLING SLOW
+    ;SYSTEM.OPTION RESBREAK OFF
+
+;    System.Option TURBO off
+;    SYSTEM.OPTION ENRESET OFF
+    system.up
+       
+    while (run())
+    (
+    )
+
+    winclear
+    ;;PER.S C15:0x1 %LONG 0xC55878 
+
+    area.create JSDCC_OUT 100. 1000.
+    winpos 50% 0 49% 100% 
+    area.view JSDCC_OUT
+    area.clear JSDCC_OUT
+    winpos 0% 0 49% 100% 
+    area.create JSDCC
+    area.view JSDCC
+    area.clear JSDCC
+
+    area.select JSDCC
+    wintop JSDCC
+    screen.display
+
+    return
+
+printOutputBuffer:
+    local &outputBufferLength
+    local &currentChar
+    local &i
+    &outputBufferLength=V.VALUE(output_buffer_length)
+
+    area.select JSDCC_OUT
+    print
+    &i=0.
+    while &i<&outputBufferLength
+    (
+        &currentChar=V.VALUE(output_buffer[&i])
+        if (&currentChar==0xA)
+        (
+            print
+        )
+        else
+        (
+            print %CONTINUE conv.char(&currentChar)
+        )
+        &i=&i+1.
+    )
+    print
+
+    area.select JSDCC
+    return
+
+
+
+prettyPrintOneSector:
+    entry &numBytes &offset
+
+    ; TODO: let's just assume that numBytes is a multiple of 16, for now
+    &SectorSize=V.VALUE(BLOCK_SIZE)
+    &sectorSize=512.
+	
+
+    local &currentChar
+    local &i
+    local &j
+    local &asciiChar
+    local &asciiString
+    &asciiString=""
+    &j=0.
+
+    area.select JSDCC_OUT
+    print
+    &i=0.
+    print "HEX representation"
+    print ""
+    while &i<&numBytes
+    (
+        &currentChar=V.VALUE(jtag_prog_param.data[&i+&offset])
+        print %CONTINUE FORMAT.HEX(2, &currentChar)
+        print %CONTINUE " "
+
+        if (&currentChar>=0x20&&&currentChar<=0x7E)
+        (
+            &asciiChar=conv.char(&currentChar)
+            &asciiChar="&asciiChar"
+            &asciiChar=string.cut("&asciiChar", 1)
+            &asciiChar=string.cut("&asciiChar", -1)
+        )
+        else
+        (
+            &asciiChar="."
+        )
+        &asciiString="&(asciiString)&(asciiChar)"
+        &j=&j+1.
+        &i=&i+1.
+
+        if &j==16.
+        (
+            print %CONTINUE " &asciiString"
+            print
+            &j=0.
+            &asciiString=""
+        )
+    )
+    print
+
+    area.select JSDCC
+    return
+
+prettyPrintAsciiOneSector:
+    entry &numBytes &offset
+
+    ; TODO: let's just assume that numBytes is a multiple of 16, for now
+    &sectorSize=&SectorSize
+
+    local &currentChar
+    local &i
+    local &j
+    local &asciiChar
+    local &asciiString
+    &asciiString=""
+    &j=0.
+
+    area.select JSDCC_OUT
+    print
+    &i=0.
+    print "ASCII representation"
+    while &i<&numBytes
+    (
+        &currentChar=V.VALUE(jtag_prog_param.data[&i+&offset])
+
+        if (&currentChar>=0x20&&&currentChar<=0x7E)
+        (
+            &asciiChar=conv.char(&currentChar)
+            &asciiChar="&asciiChar"
+            &asciiChar=string.cut("&asciiChar", 1)
+            &asciiChar=string.cut("&asciiChar", -1)
+        )
+        else
+        (
+            &asciiChar="."
+        )
+        &asciiString="&(asciiString)&(asciiChar)"
+        &j=&j+1.
+        &i=&i+1.
+
+    )
+    print "&asciiString"
+    print
+
+    area.select JSDCC
+    return
+
+
+prettyPrintDataBuffer:
+    local &numBytes
+    local &numSectors
+    entry &numSectors
+
+    ; TODO: let's just assume that numBytes is a multiple of 16, for now
+	
+    &SectorSize=V.VALUE(BLOCK_SIZE)
+		
+    &sectorSize=&SectorSize
+    &numBytes=&numSectors*&sectorSize
+
+    local &currentChar
+    local &i
+    local &j
+    local &asciiChar
+    local &asciiString
+    &asciiString=""
+    &j=0.
+
+    area.select JSDCC_OUT
+    print
+    &i=0.
+    while &i<&numBytes
+    (
+        &currentChar=V.VALUE(jtag_prog_param.data[&i])
+        print %CONTINUE FORMAT.HEX(2, &currentChar)
+        print %CONTINUE " "
+
+        if (&currentChar>=0x20&&&currentChar<=0x7E)
+        (
+            &asciiChar=conv.char(&currentChar)
+            &asciiChar="&asciiChar"
+            &asciiChar=string.cut("&asciiChar", 1)
+            &asciiChar=string.cut("&asciiChar", -1)
+        )
+        else
+        (
+            &asciiChar="."
+        )
+        &asciiString="&(asciiString)&(asciiChar)"
+        &j=&j+1.
+        &i=&i+1.
+
+        if &j==16.
+        (
+            print %CONTINUE " &asciiString"
+            print
+            &j=0.
+            &asciiString=""
+        )
+    )
+    print
+
+    area.select JSDCC
+    return
+
+
+;=====================================================
+
+ENDDO
+

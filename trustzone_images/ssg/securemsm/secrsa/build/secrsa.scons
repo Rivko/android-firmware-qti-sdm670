@@ -1,0 +1,115 @@
+#===============================================================================
+#
+# secrsa Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009-2014, 2017 by QUALCOMM Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: $
+#  $DateTime: $
+#  $Author: $
+#  $Change: $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 01/17/17    sm     Move to 'ssg' component.
+# 11/25/15    rp     Linked Winsecapp
+# 01/28/14    sa     Added HDCPSRM_IMAGE
+#
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+includes = [
+'${BUILD_ROOT}/ssg/securemsm/secrsa/shared/inc/',
+'${BUILD_ROOT}/ssg/securemsm/secmath/shared/inc/',
+'${BUILD_ROOT}/ssg/securemsm/secmath/env/sampleapp/inc/',
+'${BUILD_ROOT}/ssg/securemsm/secrsa/env/sampleapp/inc/',
+'${BUILD_ROOT}/ssg/securemsm/swcryptoselftest/inc/',
+]
+
+
+#-------------------------------------------------------------------------------
+# Internal and External Depends
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'SERVICES',
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API, area='core')
+
+SSG_API = [
+   'SECUREMSM',
+   'SWCRYPTOSELFTEST',
+   'SSGPLATFORM',
+]
+
+env.RequirePublicApi(SSG_API, area='ssg')
+env.RequireRestrictedApi(SSG_API)
+
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/ssg/securemsm/secrsa"
+
+#-------------------------------------------------------------------------------
+# Let Scons build the object files in $(BUILDPATH} and don't copy over files
+#-------------------------------------------------------------------------------
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+
+
+#-------------------------------------------------------------------------------
+# Compiler, object, and linker definitions
+#-------------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+SECRSA_SOURCES =[
+  '${BUILDPATH}/shared/src/secrsa_encryption.c',
+  '${BUILDPATH}/shared/src/secrsa_exptmod.c',
+  '${BUILDPATH}/shared/src/secrsa_math.c',
+  '${BUILDPATH}/shared/src/secrsa_signature.c',
+  '${BUILDPATH}/shared/src/secrsa_utils.c',
+  '${BUILDPATH}/shared/src/secrsa_mem.c',
+  '${BUILDPATH}/shared/src/secrsa_crt.c',
+  '${BUILDPATH}/shared/src/secrsa_math2.c',
+  '${BUILDPATH}/shared/src/secrsa_padding.c',
+  '${BUILDPATH}/shared/src/secpkcs8.c',
+  '${BUILDPATH}/shared/src/secasn1.c',
+  '${BUILDPATH}/shared/src/secrsa_keygen.c',
+]
+
+SECRSA_PRIV_HEADERS = env.GlobFiles('*.h', '${BUILDPATH}/shared/src/')
+
+SECRSA_CLEAN = [
+  '${BUILDPATH}/shared/src/secrsa_keygen.c',
+  '${BUILDPATH}/shared/src/secrsa_padding_dummy.c',
+]
+
+if env.has_key('CTZL_IMAGE') or env.has_key('CTZL64_IMAGE'):
+   sources = [x.replace('${BUILDPATH}','..') for x in SECRSA_SOURCES]
+   secrsa_lib = env.SecureAppLibBuilder(includes, sources, 'secrsa')
+   Return('secrsa_lib')
+
+env.Append(CCFLAGS = " -DTZ_APP_LEGACY")
+
+env.LoadSoftwareUnits()
+
+env.AddBinaryLibrary(['TZOS_IMAGE', 'TZTESTEXEC_IMAGE'], '${BUILDPATH}/secrsa', SECRSA_SOURCES)
+env.CleanPack(['TZOS_IMAGE', 'CTZL_IMAGE', 'CTZL64_IMAGE', 'TZTESTEXEC_IMAGE'], SECRSA_CLEAN)
+env.Deploy(env.Glob('../shared/inc/*') + env.Glob('../shared/src/*.h') + ['secrsa.scons'])
+

@@ -1,0 +1,60 @@
+;============================================================================
+; Name: t32_uefi_menu.cmm
+;
+; Description: Add UEFI specific menu item to trace 32 window
+;     
+; Copyright (c) 2013,2015-2016 Qualcomm Technologies, Inc.
+; All Rights Reserved. 
+; Qualcomm Technologies Proprietary and Confidential. 
+;
+;----------------------------------------------------------------------------
+
+;============================================================================
+;
+;                        EDIT HISTORY FOR MODULE
+;
+;
+;
+;  when         who     what, where, why
+;  ----------   ---     -----------------------------------------------------
+;  2016-06-28   vk      Change color, fix spacing
+;  2016-02-22   vk      Add buttons
+;  2015-10-15   bh      Update after PATH additions
+;  2013-11-22   vk      Initial version
+;============================================================================;
+
+; ---------------------------------------------------------
+; Script entry point
+; ---------------------------------------------------------
+
+global &UefiBase
+
+GLOBAL &MenuSetup
+ENTRY &TargetPkgPath
+  if ("&MenuSetup"=="1")
+  (
+    ENDDO
+  )
+  &CwDir=os.ppd()
+
+  ;Add button with L to display Serial Buffer
+  Menu.AddTool "UART Log" "L,R" "do &TargetPkgPath/log_save.cmm"
+  
+  ;Add menu to load up symbols
+  Menu.AddTool "Symbol Load" "S,R" "do &TargetPkgPath/symbol_load.cmm"
+
+  ;Add menu to load up symbols
+  Menu.AddTool "Display Area UEFI_Logs" "A,R" "area.view UEFI_Logs"
+
+  ;Check if T32 Awareness support is available
+  IF OS.FILE(~~/demo/arm64/bootloader/uefi/tiano/tiano.t32)==TRUE()
+  (
+    ;Enable the complete PA map for the awareness script
+    EXT.CONFIG ~~/demo/arm64/bootloader/uefi/tiano/tiano.t32 0x80000000 0x180000000
+    EXTension.Option BOOTFV &UefiBase 
+  )
+
+  MENU.ReProgram &CwDir/uefi.men
+  &MenuSetup="1"
+
+ENDDO

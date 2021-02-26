@@ -1,0 +1,79 @@
+#===============================================================================
+#
+# QDSCC (Qualcomm Debug Subsystem Control Service) QMI APIs
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2014 Qualcomm Technologies, Inc.  All Rights Reserved.
+# Qualcomm Technologies Proprietary and Confidential.
+#
+#-------------------------------------------------------------------------------
+#                      EDIT HISTORY FOR FILE
+#
+#  $Header: //components/rel/qmimsgs.adsp/2.6/qdssc/build/qmi_qdssc.scons#2 $
+#  $DateTime: 2015/05/20 13:24:00 $
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 02/11/14   pm      Baseline version
+#===============================================================================
+Import('env')
+env = env.Clone()
+from glob import glob
+from os.path import join, basename, exists
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "../src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+# ------------------------------------------------------------------------------
+# Include Paths
+#---------------------------------------------------------------------------------
+
+
+#-------------------------------------------------------------------------------
+# APIs needed to build the QDSCC APIs
+#-------------------------------------------------------------------------------
+
+# Should be first
+if exists(env.subst("${BUILD_ROOT}/interfaces")):
+   env.RequirePublicApi([
+     'QMI_COMMON',
+     'QMI_QDSSC',
+     ])
+else:
+   env.RequirePublicApi([
+     'COMMON',
+     'QDSSC',
+     ])
+
+env.RequirePublicApi([
+  'MPROC',
+  ], area='CORE')
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+# Construct the list of source files by looking for *.c
+QDSSC_C_SOURCES = ['${BUILDPATH}/' + basename(fname)
+                 for fname in glob(join(env.subst(SRCPATH), '*.c'))]
+
+# Add our library to the following build tags:
+#   QMIMSGS_MPSS and MODEM_MODEM(deprecated for QMI) for MPSS images
+#   QMIMSGS_APSS_TN and MODEM_APPS(deprecated for QMI) for APSS.TN images
+#   QMIMSGS_ADSP for ADSP / LPASS images
+env.AddLibrary (['QMIMSGS_MPSS','MODEM_MODEM',
+                 'QMIMSGS_APSS_TN','MODEM_APPS',
+                 'QMIMSGS_ADSP'], 
+                 '${BUILDPATH}/qmimsgs_qdssc', [QDSSC_C_SOURCES])
+
+# Load test units
+env.LoadSoftwareUnits()

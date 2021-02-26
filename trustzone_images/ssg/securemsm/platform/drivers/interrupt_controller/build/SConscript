@@ -1,0 +1,84 @@
+#===============================================================================
+#
+#                             Edit History
+# $Header: //components/rel/ssg.tz/1.0.2/securemsm/platform/drivers/interrupt_controller/build/SConscript#2 $
+#
+# when         who     what, where, why
+# ----------   ---     ---------------------------------------------------------
+# 2017/06/20   pdosi     Create initial version
+#
+#===============================================================================
+#                    Copyright (c) 2011, 2017 QUALCOMM Incorporated.
+#                           All Rights Reserved.
+#                         QUALCOMM Proprietary/GTDR
+#===============================================================================
+Import('env')
+env = env.Clone()
+import os
+
+env.LoadSoftwareUnits()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "../"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'KERNEL',
+]
+env.RequirePublicApi(CBSP_API, area='core')
+
+
+SSG_API = [
+   'QSEE',
+   'MINK',
+   'TZCHIPSET',
+   'MON_CALL',
+   'MONITOR_API',
+   'SSGPLATFORM',
+   'SSGPLATFORM_DRIVERS',
+   'TZKS',
+]
+env.RequirePublicApi(SSG_API, area = 'ssg')
+env.RequireRestrictedApi(SSG_API)
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+TZ_SOURCES = ['${BUILDPATH}/qgic/tz/qgic_cmn.c']
+if env['CHIPSET'] in ['sdx24']:
+   TZ_SOURCES += ['${BUILDPATH}/qgic/tz/qgic_v2.c']
+else:
+   TZ_SOURCES += ['${BUILDPATH}/qgic/tz/qgic_v3.c']
+
+HYP_SOURCES = ['${BUILDPATH}/qgic/hyp/qgic_cmn.c']
+
+if os.path.isfile(env.subst('${BUILD_ROOT}/ssg/securemsm/platform/drivers/interrupt_controller/cfg/ssgpfm_ic_${CHIPSET}.xml')):
+   CFG_XML = '${BUILD_ROOT}/ssg/securemsm/platform/drivers/interrupt_controller/cfg/ssgpfm_ic_${CHIPSET}.xml'
+else:
+   CFG_XML = '${BUILD_ROOT}/ssg/securemsm/platform/drivers/interrupt_controller/cfg/ssgpfm_ic_stub.xml'
+
+if 'USES_DEVCFG' in env:
+   DEVCFG_IMG = ['DAL_DEVCFG_IMG']
+   env.AddDevCfgInfo(DEVCFG_IMG,
+   {
+      'devcfg_xml' : CFG_XML
+   })
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+env.AddBinaryObject('TZOS_IMAGE', TZ_SOURCES)
+env.AddBinaryObject('HYPERVISOR_IMAGE', HYP_SOURCES)
+env.AddBinaryObject('QHEEBSP_IMAGE', HYP_SOURCES)
+
+env.Deploy("SConscript")

@@ -1,0 +1,67 @@
+/*====*====*====*====*====*====*====*====*====*====*====*====*====*====*====*
+  Copyright (c) 2013-2017 Qualcomm Technologies, Inc.
+  All Rights Reserved.
+  Confidential and Proprietary - Qualcomm Technologies, Inc.
+=============================================================================*/
+#ifndef __LBS_PROXY_H__
+#define __LBS_PROXY_H__
+#include <LBSProxyBase.h>
+#include <LocAdapterBase.h>
+#include <pthread.h>
+
+using namespace loc_core;
+
+namespace lbs_core {
+
+class LBSProxy : public LBSProxyBase {
+    static pthread_mutex_t mLock;
+    static UlpProxyBase* mUlp;
+    static LocAdapterBase* mAdapter;
+    static unsigned long mCapabilities;
+    static const char * COM_QUALCOMM_LOCATION_APK_FILE_PATH;
+    static const char * FFOS_LOCATION_EXTENDED_CLIENT;
+    static const bool mLocationExtendedClientExists;
+    static const bool mNativeXtraClientExists;
+public:
+    inline LBSProxy() : LBSProxyBase() {}
+    inline ~LBSProxy() {}
+    inline virtual void requestUlp(LocAdapterBase* adapter,
+                                   unsigned long capabilities) const {
+        locRequestUlp(adapter, capabilities);
+    }
+    static inline bool ulpExists() { return (mUlp != NULL); }
+    virtual LocApiBase* getLocApi(const MsgTask* msgTask,
+                                  LOC_API_ADAPTER_EVENT_MASK_T exMask,
+                                  ContextBase *context) const;
+    inline virtual bool hasAgpsExtendedCapabilities() const {
+        return mLocationExtendedClientExists;
+    }
+    inline virtual bool hasCPIExtendedCapabilities() const {
+        return mLocationExtendedClientExists;
+    }
+    inline virtual bool hasNativeXtraClient() const {
+        return mNativeXtraClientExists;
+    }
+    inline virtual void modemPowerVote(bool power) const;
+    static void locRequestUlp(LocAdapterBase* adapter,
+                              unsigned long capabilities);
+    static void ulpRequestLoc(UlpProxyBase* ulp);
+    static bool reportPositionToUlp(UlpLocation &location,
+                                    GpsLocationExtended &locationExtended,
+                                    void* locationExt,
+                                    enum loc_sess_status status,
+                                    LocPosTechMask techMask);
+    static bool reportBatchingSessionToUlp(const LocationOptions& options,
+                                           bool active);
+    static bool reportPositionsToUlp(const UlpLocation* ulpLocations,
+                                     const GpsLocationExtended* extendedLocations,
+                                     const uint32_t* techMasks,
+                                     const size_t count);
+    virtual void injectFeatureConfig(ContextBase* context) const;
+private:
+    inline static bool checkIfLocationExtendedClientExists();
+    inline static bool checkIfNativeXtraClientExists();
+};
+
+}  // namespace lbs_core
+#endif //__LBS_PROXY_H__

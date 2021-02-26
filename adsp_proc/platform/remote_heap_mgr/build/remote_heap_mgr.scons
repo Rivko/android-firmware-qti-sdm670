@@ -1,0 +1,69 @@
+#===============================================================================
+# Copyright (c) 2012 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===============================================================================
+Import('env')
+import os
+env = env.Clone()
+
+if 'USES_REMOTE_HEAP' in env:
+
+	platform_root = '${BUILD_ROOT}/platform'
+	env.Replace(ADSP_PLATFORM_ROOT = platform_root)
+
+	env.RequirePublicApi([
+		'PLATFORM_LIBS',
+		'A1STD',
+		'STDDEF',
+		'UTILS',
+		'HAPSDK',
+		'REMOTEHEAP'
+	])
+
+	env.RequireRestrictedApi([
+		'QLIST',
+		'REMOTE_HEAP_MGR',
+	])
+
+	core_public_apis = [
+		'KERNEL',
+		'SERVICES',
+		'SYSTEMDRIVERS',
+		'DAL',	
+	]
+
+	env.RequirePublicApi(core_public_apis, area='core')
+
+	#---------------------------------------------------------------------------
+	# Source PATH
+	#---------------------------------------------------------------------------
+	SRCPATH = "${ADSP_PLATFORM_ROOT}/remote_heap_mgr"
+	env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+	env.Append( CPPPATH=[
+		'${BUILD_ROOT}/platform/remote_heap_mgr/src'
+		] )
+
+	env.PLRegister("remote_heap_mgr",['AVS_ADSP_USER'])
+
+	REMOTE_HEAP_MGR_SOURCES =  [
+		'${BUILDPATH}/src/remote_heap_mgr.c',
+	]
+
+	#---------------------------------------------------------------------------
+	# Add Libraries to image
+	#---------------------------------------------------------------------------
+	remote_heap_mgr_lib = env.AddBinaryLibrary(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE',
+		'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+		'CBSP_QDSP6_SW_IMAGE','AVS_ADSP_USER'],'${BUILDPATH}/remote_heap_mgr', REMOTE_HEAP_MGR_SOURCES)
+
+	#---------------------------------------------------------------------------
+	# Load Subunits (sys)
+	#---------------------------------------------------------------------------
+	env.LoadSoftwareUnits()
+
+#Clean and pack rules
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.cpp', '*.h'], '${ADSP_PLATFORM_ROOT}/remote_heap_mgr/src'))
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.cpp', '*.h'], '${ADSP_PLATFORM_ROOT}/remote_heap_mgr/inc'))
+env.CleanPack(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE', 'CBSP_QDSP6_SW_IMAGE','AVS_ADSP_USER'], CLEAN_LIST)

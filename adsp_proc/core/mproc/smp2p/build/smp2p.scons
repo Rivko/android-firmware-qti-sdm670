@@ -1,0 +1,207 @@
+#===============================================================================
+#
+# SMP2P Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2012-2013, 2016 Qualcomm Technologies, Inc.
+#         All Rights Reserved.
+# Qualcomm Technologies, Inc. Confidential and Proprietary.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1/mproc/smp2p/build/smp2p.scons#2 $
+#  $DateTime: 2017/09/14 03:40:04 $
+#  $Author: pwbldsvc $
+#  $Change: 14371357 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 01/26/17   jlg     Moved settings to core/settings directory
+# 04/20/15   db      Modified 8996 dev config to generate correct xml
+# 08/22/14   bc      removing CORE_QDSP6_SENSOR_SW dependency
+# 08/06/14   db      Modifications in sensor processor support
+# 07/29/14   bc      Add sensor processor support
+# 07/22/14   bc      Add 8996 XML config
+# 10/30/13   bt      Add APQ/MPQ-specific XML config.
+# 10/18/13   bt      Add 8916-specific XML config.
+# 10/11/13   bt      Add 8994 XML config.
+# 05/10/13   bt      Fix bad Scons updates.
+# 05/07/13   bt      Support both multi-image and single-image DevConfig.
+# 05/01/13   bt      CleanPack SMP2P files.
+# 04/13/13   bt      Move smp2p_list.c to smem_list.c.
+# 03/06/13   bt      Deliver all source for TN Apps builds.
+# 02/20/13   bt      Add more DevConfig labels for new targets.
+# 01/22/13   bt      Add RCINIT function to Apps processors.
+# 10/25/12   pa      Initial revision for 8974/Badger.
+#
+#===============================================================================
+import os.path
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+UNITPATH = '${BUILD_ROOT}/core/mproc/smp2p'
+SRCPATH  = UNITPATH + "/src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Publish Private APIs
+#-------------------------------------------------------------------------------
+env.PublishPrivateApi('SMP2P_INC', [
+   "${INC_ROOT}/core/mproc/smp2p/inc",
+])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'DEBUGTOOLS',
+   'MPROC',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+
+   # needed for PRNG random numbers
+   'SECUREMSM',
+
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',   
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(['DAL', 'MPROC', 'MPROC_SMP2P_SETTINGS'])
+
+# SMP2P QDI support
+if env['MSM_ID'] in ['9x55', '9x65']:
+  SMP2P_QDI_SUPPORTED = False
+# Add SMP2P QDI Driver interface to MultiPD root image.
+elif 'USES_MULTI_PD' in env or 'USES_MPSS_MULTI_PD' in env:
+  SMP2P_QDI_SUPPORTED = True
+  env.Append(CPPDEFINES=['FEATURE_SMP2P_QDI_SUPPORTED'])
+else:
+  SMP2P_QDI_SUPPORTED = False
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+SMP2P_CORE = [
+   '${BUILDPATH}/smp2p.c',
+   '${BUILDPATH}/smp2p_internal.c',
+]
+
+SMP2P_REX_SOURCES = [
+   '${BUILDPATH}/smp2p_dal.c',
+   '${BUILDPATH}/smp2p_dal_loopback.c'
+]
+
+SMP2P_QURT_SOURCES = [
+   '${BUILDPATH}/smp2p_dal.c',
+   '${BUILDPATH}/smp2p_dal_loopback.c'
+]
+
+SMP2P_QDI_DRIVER_SOURCES = [
+   '${BUILDPATH}/smp2p_qdi_driver.c'
+]
+
+SMP2P_QDI_USER_SOURCES = [
+   '${BUILDPATH}/smp2p_qdi_user.c',
+]
+
+SMP2P_TZBSP_SOURCES = [
+   '${BUILDPATH}/smp2p_tzbsp.c',
+]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+ALL_IMAGES         = ['CORE_SLPI_ROOT', 'CORE_ADSP_ROOT', 'CORE_MPSS_ROOT', 
+                      'CORE_SLPI_ROOT', 'CORE_ADSP_SLPI_ROOT', 'CORE_CDSP_ROOT',
+                      'WCN_IMAGE', 'CORE_CDSP_ROOT', 'TZOS_IMAGE']
+
+Q6_QURT_ROOT_PD_IMAGES = ['CORE_SLPI_ROOT', 'CORE_ADSP_ROOT', 'CORE_MPSS_ROOT',
+                          'CORE_ADSP_SLPI_ROOT', 'CORE_CDSP_ROOT']
+                          
+Q6_QURT_USER_PD_IMAGES = ['CORE_SLPI_USER', 'CORE_SSC_SLPI_USER', 
+                          'CORE_ADSP_USER','CORE_CDSP_USER']
+
+ALL_USER_IMAGES = Q6_QURT_USER_PD_IMAGES + ['CORE_USER_PD']
+
+# Add Image-specific Libraries, whose sources should be packed out.
+env.AddBinaryLibrary(ALL_IMAGES, '${BUILDPATH}/smp2p_core', 
+                     [SMP2P_CORE])
+
+env.AddBinaryLibrary(['TZOS_IMAGE'], '${BUILDPATH}/smp2p_tzbsp', 
+                     [SMP2P_TZBSP_SOURCES])	
+
+env.AddBinaryLibrary(['WCN_IMAGE'], '${BUILDPATH}/smp2p_rex', 
+                     [SMP2P_REX_SOURCES])
+
+env.AddBinaryLibrary(Q6_QURT_ROOT_PD_IMAGES, '${BUILDPATH}/smp2p_qurt', 
+                     [SMP2P_QURT_SOURCES])
+
+env.AddBinaryLibrary(ALL_USER_IMAGES, '${BUILDPATH}/smp2p_qdi_user',
+                     [SMP2P_QDI_USER_SOURCES])                     
+                       
+# Add SMP2P QDI Driver interface to GuestOS images with QurtOS support only.
+if SMP2P_QDI_SUPPORTED:
+  env.AddBinaryLibrary(Q6_QURT_ROOT_PD_IMAGES, '${BUILDPATH}/smp2p_qdi_driver',
+                       [SMP2P_QDI_DRIVER_SOURCES])                                              
+                       
+#-------------------------------------------------------------------------------
+# Add Sources to image
+#-------------------------------------------------------------------------------
+# On TN Apps, all sources can be shipped.
+env.AddLibrary(['APPS_IMAGE', 'CBSP_APPS_IMAGE'], 
+               '${BUILDPATH}/smp2p_core', 
+               [SMP2P_CORE])
+
+env.AddLibrary(['APPS_IMAGE', 'CBSP_APPS_IMAGE'], 
+               '${BUILDPATH}/smp2p_rex', 
+               [SMP2P_REX_SOURCES])
+
+#-------------------------------------------------------------------------------
+# CleanPack (Remove) all remaining files for peripheral processors
+#-------------------------------------------------------------------------------
+PACK_OUT = env.FindFiles(['*.h', '*.c', '*.s'], SRCPATH)
+# Don't include RPM in this list, because it already does we want automatically.
+env.CleanPack(ALL_IMAGES, PACK_OUT)
+
+#-------------------------------------------------------------------------------
+# RCINIT Task and Init Fields and Initialization
+#-------------------------------------------------------------------------------
+RCINIT_INIT_SMP2P_INIT = {
+  'sequence_group'             : 'RCINIT_GROUP_0',             # required
+  'init_name'                  : 'smp2p',                      # required
+  'init_function'              : 'smp2p_init',                 # required
+  'dependencies'               : ['smem', 'time', 'timer_init']
+}
+
+if 'USES_RCINIT' in env:
+   RCINIT_IMG = ['CORE_SLPI_ROOT', 'CORE_ADSP_ROOT', 'CORE_MPSS_ROOT', 'WCN_IMAGE', 
+                 'CBSP_APPS_IMAGE', 'APPS_IMAGE', 'CORE_CDSP_ROOT', 'CORE_ADSP_SLPI_ROOT']
+   # SMP2P INIT
+   env.AddRCInitFunc( RCINIT_IMG, RCINIT_INIT_SMP2P_INIT )
+   if SMP2P_QDI_SUPPORTED:
+      env.AddRCInitFunc( Q6_QURT_ROOT_PD_IMAGES,
+        {
+          'sequence_group'      : 'RCINIT_GROUP_0',             # required
+          'init_name'           : 'smp2p_qdi_driver',           # required
+          'init_function'       : 'smp2p_qdi_driver_init',      # required
+          'dependencies'        : ['smp2p']
+        })
+   env.AddRCInitFunc( ALL_USER_IMAGES,
+     {
+       'sequence_group'      : 'RCINIT_GROUP_0',             # required
+       'init_name'           : 'smp2p_qdi_user',             # required
+       'init_function'       : 'smp2p_user_init',            # required
+       'dependencies'        : ['smp2p_qdi_driver_init']
+     })

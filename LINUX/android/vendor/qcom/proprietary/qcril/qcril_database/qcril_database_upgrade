@@ -1,0 +1,84 @@
+#!/bin/bash
+#
+# Copyright (c) 2016 Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+
+
+cleanup_orig=false
+src_path=$(dirname $0)
+SQLITE=${SQLITE:-"sqlite3"}
+
+if [ ! -d ${src_path} -o ! -r ${src_path} -o ! -f ${src_path}/${SQL_FILE_NAME:="qcril.sql"} ] ; then
+    src_path="${1:-.}"
+    if [ ! -d "${src_path}" -o ! -r "${src_path}" -o ! -f "${src_path}"/${SQL_FILE_NAME:="qcril.sql"} ] ; then
+        echo "Unable to find source for db." >&2
+        echo "Please run this script from within the qcril/qcril_database folder," >&2
+        echo "or provide the path to qcril_database as the first argument" >&2
+        exit -1
+    fi
+fi
+sqlfile="${src_path}/"${SQL_FILE_NAME:="qcril.sql"}
+src_path=$(dirname sqlfile)
+
+if [ -f "${src_path}/qcril.sql.orig" ] ; then
+    echo "File ${src_path}/qcril.sql.orig exists. Please remove before continuing"
+    exit -1
+fi
+
+ver_from_file=$(cat ${sqlfile} | grep -- '-- VERSION: ')
+ver_from_file=${ver_from_file#-- VERSION: }
+
+CURRENT_VERSION=${ver_from_file:=0}
+
+NEW_VERSION=$((CURRENT_VERSION + 1))
+echo "Found version ${CURRENT_VERSION}. New version: ${NEW_VERSION}"
+
+file=$(ls ${src_path}/upgrade/${NEW_VERSION}_*.sql)
+
+if [ ! -f "${file}" -o ! -r "${file}" ] ; then
+    echo "Unable to find upgrade sql script for version ${NEW_VERSION}" >&2
+    echo "Please create a file called ${NEW_VERSION}_<description>.sql in the upgrade folder" >&2
+    echo "to perform an upgrade" >&2
+    exit -1
+fi
+
+echo "Using file ${file}"
+
+TMPFILE=$(mktemp qcril_db_upgrade.XXXXXXXX.db)
+rmtmp() {
+    rm -f ${TMPFILE}
+    if $cleanup_orig ; then
+        rm -f "${src_path}/qcril.sql.orig"
+    fi
+}
+trap rmtmp EXIT
+
+cp "${src_path}/qcril.sql" "${src_path}/qcril.sql.orig"
+cleanup_orig=true
+cat "${src_path}/qcril.sql" | ${SQLITE} ${TMPFILE}
+rc=$?
+if [ $rc -ne 0 ] ; then
+    rm "${src_path}/qcril.sql.orig"
+    exit -1
+fi
+
+cat ${file} | ${SQLITE} ${TMPFILE}
+rc=$?
+
+if [ $rc -ne 0 ] ; then
+    rm "${src_path}/qcril.sql.orig"
+    exit -1
+fi
+(
+ echo "/*"
+ echo "  Copyright (c) 2016 Qualcomm Technologies, Inc."
+ echo "  All Rights Reserved."
+ echo "  Confidential and Proprietary - Qualcomm Technologies, Inc."
+ echo "*/"
+ echo ""
+ echo "-- VERSION: ${NEW_VERSION}"
+ echo ".dump" | ${SQLITE} ${TMPFILE}
+ ) > "${src_path}/qcril.sql"
+cleanup_orig=false

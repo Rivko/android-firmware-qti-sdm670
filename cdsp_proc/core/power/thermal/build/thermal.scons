@@ -1,0 +1,128 @@
+#===============================================================================
+#
+# Thermal Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2011-2017 by QUALCOMM Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1.c4/power/thermal/build/thermal.scons#1 $
+#  $DateTime: 2018/07/30 01:21:36 $
+#  $Author: pwbldsvc $
+#  $Change: 16759227 $
+#
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/power/thermal/src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#------------------------------------------------------------------------------
+# Add extension flags
+#------------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
+# External depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
+# External depends outside CoreBSP
+#-------------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   #'HAL',
+   'POWER',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'DEBUGTOOLS',
+   #'STORAGE',
+   'MPROC',
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+if env.IsTargetEnable(['CORE_APPS']):
+   env.RequirePublicApi(['TMD','COMMON'], area='API')
+else:
+   env.RequirePublicApi(['TMD'], area='QMIMSGS')
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+env.RequireProtectedApi(['CORE_API_KERNEL'])
+env.RequireProtectedApi(['POWER_UTILS'])
+
+env.PublishProtectedApi('THERMAL_INC', [
+	   "${INC_ROOT}/core/power/thermal/inc"
+	   ])
+
+RCINIT_IMG = ['CORE_ADSP_ROOT', 'CORE_SLPI_ROOT', 'CORE_CDSP_ROOT', 'CORE_QDSP6_SW', 'CBSP_QDSP6_SW_IMAGE']
+
+if ('USES_RCINIT' in env):
+        env.AddRCInitTask(
+           RCINIT_IMG,
+           {
+              'sequence_group'            : 'RCINIT_GROUP_1',
+              'thread_name'               : 'thermal',
+              'stack_size_bytes'          : '8192',
+              'priority_amss_order'       : 'THERMAL_PRI_ORDER',
+              'thread_entry'              : 'thermal_task',
+              'tcb_name'                  : 'thermal_tcb',
+              'thread_type'               : 'RCINIT_TASK_QURTTASK',
+           })
+
+#-------------------------------------------------------------------------------
+# Target-specific setup
+#-------------------------------------------------------------------------------
+THERMAL_DEFINES=[]
+
+if env['POWER_SUBSYSTEM'].lower() == 'slpi':
+  THERMAL_DEFINES += ['THERMAL_VCS_RES=\\\"/vdd/ssc_cx\\\"',
+                      'THERMAL_QMI_INSTANCE=0x53']
+	  
+elif env['POWER_SUBSYSTEM'].lower() == 'adsp':
+  THERMAL_DEFINES += ['THERMAL_QMI_INSTANCE=0x1']
+  if env['MSM_ID'] in ['670']:
+   	THERMAL_DEFINES += ['THERMAL_VCS_RES=\\\"/vcs/vdd_ssc_int\\\"']	
+  else:
+	THERMAL_DEFINES += ['THERMAL_VCS_RES=\\\"vcs/vdd_cx\\\"']				  
+
+elif env['POWER_SUBSYSTEM'].lower() == 'cdsp':
+  THERMAL_DEFINES += ['THERMAL_VCS_RES=\\\"/vcs/vdd_cx\\\"',
+                      'THERMAL_QMI_INSTANCE=0x43']
+else:
+  env.PrintError("Thermal unsupported subsystem")
+  exit (1)
+
+env.Append(CPPDEFINES = THERMAL_DEFINES)
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+THERMAL_DSP_SOURCES =  [
+        '${BUILDPATH}/common/therm_log.c',
+        '${BUILDPATH}/common/therm_mitigation_device_service.c',
+        '${BUILDPATH}/os/${PLAT}/therm_os.c',
+        '${BUILDPATH}/target/therm_npa_mitigate.c',
+        '${BUILDPATH}/target/therm_target.c',
+    ]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+env.AddLibrary(RCINIT_IMG,'${BUILDPATH}/thermal.lib', THERMAL_DSP_SOURCES)
+

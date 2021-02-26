@@ -1,0 +1,117 @@
+//============================================================================
+//  Name:                                                                     
+//    DAP_VPU.cmm
+//
+//  Description:                                                              
+//    Setup script for the RPM 
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who             what, where, why
+// --------   ---             ------------------------------------
+// 08/26/2017 Martham         Updated for sdm670
+// 04/04/2014 AJCheriyan    SWD support auto-detect
+// 11/21/2013 AJCheriyan    Update for Luxor
+// 10/01/2013 AJCheriyan    Ported for VPU on Gandalf
+// 04/13/2013 AJCheriyan    Support for QDSS Gen 2
+// 04/02/2013 AJCheriyan    Added SWD support
+// 02/11/2013 AJCheriyan    Added 8x26 support
+// 08/26/2012 AJCheriyan    Dropped JTAG clock down to 20 MHz
+// 08/25/2012 AJCheriyan    Boosted JTAG clock speed
+// 07/10/2012 AJCheriyan    Created for B-family
+
+
+// The script accepts two input arguments
+// ARG0 - Chipset name
+// ARG1 - Core number
+// Ideal case, the argument 'ARG0' would not have to be used
+// as the parameters for a sub-system should be the same
+// across the entire family of chipsets
+
+ENTRY &ARG0 &ARG1 &ARG2
+GLOBAL &VPU_HW_BLOCK_NAME &CURRENT_HW_BLOCK_NAME
+&VPU_HW_BLOCK_NAME="VPU-CORTEXA5"
+&CURRENT_HW_BLOCK_NAME="&VPU_HW_BLOCK_NAME"
+MAIN:
+    &ARG0=STR.UPR("&ARG0")
+    
+    IF (("&ARG0"=="SDM845")||("&ARG0"=="SDM670"))
+    (
+        SYStem.Reset
+        SYStem.CPU CORTEXA5
+        
+        IF "&RUMI"=="TRUE"
+        (
+            SYSTEM.JTAGCLOCK 500khz
+        )
+        ELSE
+        (
+            SYSTEM.JTAGCLOCK 5Mhz
+        )
+        SYStem.Option EnReset OFF
+        SYStem.Option TRST ON
+        SYStem.Option ResBreak OFF
+        SYStem.CONFIG SLAVE ON
+        SYStem.CONFIG COREBASE     DAP:0x86C10000
+
+        SYStem.CONFIG MEMORYACCESSPORT 0.
+        SYStem.CONFIG DEBUGACCESSPORT  1.
+        SYStem.CONFIG AHBACCESSPORT    3.
+        SYStem.CONFIG APBACCESSPORT    1.
+        SYStem.config AXIACCESSPORT    0.
+
+        SYStem.CONFIG DAPIRPOST 0.
+        SYStem.CONFIG DAPDRPOST 0.
+        SYStem.CONFIG DAPIRPOST 11.
+        SYStem.CONFIG DAPDRPOST 1.
+        SYStem.CONFIG MULTITAP NONE
+        SYStem.OPTION DCDIRTY ON
+        SYStem.OPTION CFLUSH ON
+        
+        IF "&RUMI"=="TRUE"
+        (
+            SYStem.CONFIG DAPIRPOST 0.
+            SYStem.CONFIG DAPDRPOST 0.
+        )
+        
+    )
+    IF (("&ARG0"=="APQ8084"))
+    (
+        SYSTEM.CPU CORTEXA5
+        SYSTEM.OPTION ENRESET ON
+        SYSTEM.JTAGCLOCK 10.0MHZ 
+        SYSTEM.OPTION RESBREAK OFF
+        SYSTEM.CONFIG SLAVE ON
+        SYSTEM.CONFIG MEMORYACCESSPORT 0.
+        SYSTEM.CONFIG DEBUGACCESSPORT 1.
+        SYSTEM.CONFIG AXIACCESSPORT 0.    
+        SYSTEM.CONFIG.DAPIRPOST 16.
+        SYSTEM.CONFIG.DAPDRPOST 2.
+        SYSTEM.CONFIG.DAPIRPRE 0.
+        SYSTEM.CONFIG.DAPDRPRE 0.
+        SYSTEM.MEMACCESS DAP
+
+    )
+    // Common settings for all chipsets
+    IF ((("&ARG2"=="SWD")||("&ARG2"=="swd"))&&(CABLE.TWOWIRE()))
+    (
+        SYSTEM.CONFIG SWDP ON 
+        SYSTEM.CONFIG DEBUGPORTTYPE SWD
+    )
+
+    // Launch startup scripts
+    IF (OS.ENV(STARTUPCMM)!="")
+    (
+        &STARTUPSCRIPT=OS.ENV(STARTUPCMM)
+        do &STARTUPSCRIPT
+    )
+    
+EXIT:
+    ENDDO

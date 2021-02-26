@@ -1,0 +1,74 @@
+#===============================================================================
+# Copyright (c) 2013 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===============================================================================
+Import('env')
+import os
+env = env.Clone()
+
+platform_root = '${BUILD_ROOT}/platform'
+env.Replace(ADSP_PLATFORM_ROOT = platform_root)
+
+env.RequirePublicApi([
+ 'STDDEF',
+ 'HAPSDK',
+ 'PLATFORM_LIBS',
+ 'RTLD',
+ 'A1STD',
+ 'SECURITY',
+ 'HAP_POOL',
+ 'PERF',
+])
+
+core_public_apis = [
+ 'DAL',
+ 'DEBUGTOOLS',
+ 'SERVICES',
+ 'MPROC',
+]
+
+env.RequirePublicApi(core_public_apis, area='core')
+
+sns_public_apis = [
+ 'SENSOR1',
+]
+
+env.RequirePublicApi(sns_public_apis, area='Sensors')
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${ADSP_PLATFORM_ROOT}/rtld_uimg_mem"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+env.PublishPrivateApi('RTLD_UIMG_MEM_PRIVATE', "${BUILD_ROOT}/platform/rtld_uimg_mem/src")
+env.RequirePrivateApi('RTLD_UIMG_MEM_PRIVATE')
+
+RTLD_UIMG_MEM_SOURCES =  [
+ '${BUILDPATH}/src/rtld_uimg_mem_rx.c',
+ '${BUILDPATH}/src/rtld_uimg_mem_rw.c',
+ '${BUILDPATH}/src/rtld_umman.c',
+ ]
+
+RTLD_UIMG_MEM_SHELL_SOURCES =  [
+ '${BUILDPATH}/src/rtld_uimg_mem_rx.c',
+ '${BUILDPATH}/src/rtld_uimg_mem_user_rw.c',
+ '${BUILDPATH}/src/rtld_umman.c',
+ ]
+
+env.Append(CPPDEFINES = 'ELFSIZE=32')
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+rtld_uimg_mem_lib = env.AddLibrary(['SSC_SLPI_USER',  'SSC_ADSP_USER', 'AVS_ADSP_USER'],'${BUILDPATH}/rtld_uimg_mem', RTLD_UIMG_MEM_SOURCES)
+
+rtld_uimg_mem_shell_lib = env.AddLibrary(['FASTRPC_SHELL_IMG'],'${BUILDPATH}/rtld_uimg_mem', RTLD_UIMG_MEM_SHELL_SOURCES)
+
+#-------------------------------------------------------------------------------
+# Load Subunits (sys)
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+

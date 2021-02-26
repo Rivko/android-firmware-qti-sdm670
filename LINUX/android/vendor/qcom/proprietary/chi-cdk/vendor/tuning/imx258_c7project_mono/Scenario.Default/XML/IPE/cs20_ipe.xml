@@ -1,0 +1,76 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+========================================================================
+   Copyright(c) 2018 Qualcomm Technologies, Inc.
+   All Rights Reserved.
+   Confidential and Proprietary - Qualcomm Technologies, Inc.
+========================================================================
+-->
+<cs20_ipe
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:noNamespaceSchemaLocation="..\..\..\..\..\..\cdk\chromatix\XSD\isp\cs_2_0_0.xsd">
+  <enable_section>
+    <chroma_suppression_enable>0</chroma_suppression_enable>
+  </enable_section>
+  <module_version major_revision="2" minor_revision="0" incr_revision="0"/>
+  <parameter_version>
+    <revision>0</revision>
+  </parameter_version>
+  <control_variables>
+    <control_var_type>control_drc_gain</control_var_type>
+    <control_var_type>control_aec_exp_sensitivity_ratio</control_var_type>
+    <control_var_type>control_lux_idx</control_var_type>
+  </control_variables>
+  <control_method>
+    <aec_exp_control>control_lux_idx</aec_exp_control>
+    <aec_hdr_control>control_aec_exp_sensitivity_ratio</aec_hdr_control>
+  </control_method>
+  <chromatix_cs20_reserve>
+    <luma_q description="Q factor to define constraints on knee_point_lut" range="[0,3]" bit_depth="2uQ0" length="1" conversion="no conversion needed" tuning_parameter_level="never_tune" additional_notes="knee_point_lut must satisfy (knee_point_lut[i+1] - knee_point_lut[i])>=2^(luma_q+1). By default, luma_q=1, so must have (knee_point_lut[i+1] - knee_point_lut[i])>=1.">1</luma_q>
+    <chroma_q description="Q factor to define constraints on c_thr1_lut and c_thr2_lut" range="[0,3]" bit_depth="2uQ0" length="1" conversion="no conversion needed" tuning_parameter_level="never_tune" additional_notes="must satisfy (c_th2_lut[i] - c_th1_lut[i])>=2^(chroma_q+1). By default, chroma_q=1, so must have (c_th2_lut[i] - c_th1_lut[i])>=1">1</chroma_q>
+  </chromatix_cs20_reserve>
+  <chromatix_cs20_core>
+    <mod_cs20_drc_gain_data>
+      <drc_gain_trigger>
+        <start>1</start>
+        <end>16</end>
+      </drc_gain_trigger>
+      <drc_gain_data>
+        <mod_cs20_hdr_aec_data>
+          <hdr_aec_trigger>
+            <exp_time_start>1</exp_time_start>
+            <exp_time_end>16</exp_time_end>
+            <aec_sensitivity_start>1</aec_sensitivity_start>
+            <aec_sensitivity_end>16</aec_sensitivity_end>
+            <exp_gain_start>1</exp_gain_start>
+            <exp_gain_end>64</exp_gain_end>
+          </hdr_aec_trigger>
+          <hdr_aec_data>
+            <mod_cs20_aec_data>
+              <aec_trigger>
+                <lux_idx_start>100</lux_idx_start>
+                <lux_idx_end>150</lux_idx_end>
+                <gain_start>1</gain_start>
+                <gain_end>4.533333</gain_end>
+              </aec_trigger>
+              <cs20_rgn_data>
+                <knee_point_lut_tab description="luma knee point LUT. Define the luma points users want to control" range="[0,256]" bit_depth="8uQ0" length="16" conversion="i. cs_luma_threshold1 to knee_point_lut[1]. ii. cs_luma_threshold2 to knee_point_lut[2]. iii. cs_luma_threshold3 to knee_point_lut[13]. iv. cs_luma_threshold4 to knee_point_lut[14]." tuning_parameter_level="often_tune" additional_notes="i. LUTs are always programmed in ascending order. ii. First LUT is always 0. iii. Last LUT is always Max. iv. No two entries for the LUT can be equal. v. must satisfy (knee_point_lut[i+1] - knee_point_lut[i])>=2^(luma_q+1). By default, luma_q=1, so must have (knee_point_lut[i+1] - knee_point_lut[i])>=1">
+                  <knee_point_lut>0 17 34 51 68 85 102 119 136 153 170 187 204 221 238 255</knee_point_lut>
+                </knee_point_lut_tab>
+                <y_weight_lut_tab description="define luma weight for chroma suppression at luma knee points. Higher value makes less suppression and lower value makes more suppression" range="[0.0,1.0]" bit_depth="11uQ10" length="16" conversion="i. y_weight_lut[0] = y_weight_lut[0] = 0.0f. ii. y_weight_lut[2 ... 13] = 1.0f.  iii. y_weight_lut[14] = y_weight_lut[15] = 0.0f." tuning_parameter_level="must_tune" additional_notes="none">
+                  <y_weight_lut>1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1</y_weight_lut>
+                </y_weight_lut_tab>
+                <c_thr1_lut_tab description="Define chroma threshold1. Chroma value smaller than this threshold will be suppressed with y_weight. Higher value makes more suppression and lower value makes less suppression" range="[0,128]" bit_depth="7uQ0" length="16" conversion="i. cs_chroma_threshold1 to c_thr1_lut[0 .. 15] all the same" tuning_parameter_level="must_tune" additional_notes="related with c_thr2_lut">
+                  <c_thr1_lut>0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0</c_thr1_lut>
+                </c_thr1_lut_tab>
+                <c_thr2_lut_tab description="Define chroma threshold2. Chroma value bigger than this threshold will not be suppressed. Higher value makes more suppression and lower value makes less suppression" range="[1,128]" bit_depth="7uQ0" length="16" conversion="i. cs_chroma_threshold2 to c_thr2_lut[0 .. 15] all the same" tuning_parameter_level="must_tune" additional_notes="i. This value must be bigger then c_thr1_lut. ii. must satisfy (c_th2_lut[i] - c_th1_lut[i])>=2^(chroma_q+1). By default, chroma_q=1, so must have (c_th2_lut[i] - c_th1_lut[i])>=1">
+                  <c_thr2_lut>2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2</c_thr2_lut>
+                </c_thr2_lut_tab>
+              </cs20_rgn_data>
+            </mod_cs20_aec_data>
+          </hdr_aec_data>
+        </mod_cs20_hdr_aec_data>
+      </drc_gain_data>
+    </mod_cs20_drc_gain_data>
+  </chromatix_cs20_core>
+</cs20_ipe>

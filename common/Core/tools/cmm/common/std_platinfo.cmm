@@ -1,0 +1,195 @@
+//============================================================================
+//  Name:    
+//    Title: std_platinfo
+//
+//   License: License
+//   Copyright 2012 Qualcomm Technologies Inc
+//
+//   Description:
+//   This script collects chip / PMIC version and related platform info
+//
+//   Input: None
+//
+//   Output: None, but globals defined
+//
+//   Usage: do std_platinfo
+//
+//   Team: CoreBSP Products 
+//
+//   Target: MSM8996
+//
+//   Location: Perforce Revision
+//   $Header: 
+//
+//   Edits :         Edits
+// 08/26/2016 JBILLING      8998 Added
+// 09/14/2015 JBILLING      Changes made for automation
+//   JB    :    Add 8996, remove canceled targs : 04/10/2015
+//   AJC   :    Make it stick.Add 8092          : 11/22/2013
+//   AJC   :    Rewritten using SOC_HW_VERSION  : 07/22/2013
+//   AJC   :    Added support for Pro            : 06/14/2013 
+//   AJC   :     Created for B-family            : 01/10/2013
+//
+
+GLOBAL &CHIPSET_NAME &CHIPSET_ID &CHIPSET_REVISION &CHIPSET_SPIN 
+GLOBAL &CHIPSET_FAMILY
+
+MAIN:
+LOCAL  &READVAL &READVAL1 &CHIPSET_MAJORSPIN &CHIPSET_MINORSPIN &LocalAccessMode
+
+    //If sys.mode is DOWN or NODEBUG, set NULL and exit
+    IF (SYSTEM.MODE()==0||SYSTEM.MODE()==2)
+    (
+
+        PRINT "Warning: std_platinfo: JTag not attached, cannot get chip revision"
+        GOSUB PLATINFO_ERROR
+    )
+    // We don't want to run this multiple times. So make it stick.
+    IF ("&CHIPSET_REVISION"=="")||("&CHIPSET_REVISION"=="NULL")
+    (
+        // Can't use std_utils macro here because that requires HWIO.
+        // JTAG_ID should not change across spins, we will have a problem here if that happens 
+        //PRINT %ERROR "Std_platinfo needs updating"
+        //&READVAL1=DATA.LONG(E&ACCESS:0xFC4BE0E0)
+        IF !Y.EXIST(HWIO_TCSR_SOC_HW_VERSION_ADDR)
+        (
+            IF (STRING.UPR("&CHIPSET")=="MSM8998")
+            (
+                IF SYSTEM.MODE()==0x4
+                    &LocalAccessMode="ZAXI"
+                ELSE
+                    &LocalAccessMode="ZAXI"
+                    //&LocalAccessMode="AZNC"
+                y.create HWIO_TCSR_SOC_HW_VERSION_ADDR A:0x1fc8000
+
+            )
+            ELSE IF (STRING.UPR("&CHIPSET")!="MSM8996")
+            (
+                &LocalAccessMode="&ACCESS"
+                Y.CREATE HWIO_TCSR_SOC_HW_VERSION_ADDR 0xFCD4A800
+                
+            )            
+            ELSE
+            (
+                IF SYSTEM.MODE()==0x4
+                    &LocalAccessMode="ZAXI"
+                ELSE
+                    &LocalAccessMode="ZAXI"
+                    //&LocalAccessMode="AZNC"
+                Y.CREATE HWIO_TCSR_SOC_HW_VERSION_ADDR 0x007A8000
+            )
+            Y.CREATE.DONE
+        )
+        
+        ON ERROR GOSUB
+        (
+            PRINT "Warning: Platinfo couldn't read chip revision. Cannot get chip revision"
+            GOSUB PLATINFO_ERROR
+        )
+        &READVAL=DATA.LONG(E&LocalAccessMode:HWIO_TCSR_SOC_HW_VERSION_ADDR)
+        ON ERROR DEFAULT
+
+        // This is the assignment for MSM8974
+        // The last nibble of the chipset id indicates the variant of the chip. So ignoring the last
+        // nibble
+        // Default values
+        &CHIPSET_REVISION="Unknown"
+
+        &CHIPSET_FAMILY=(&READVAL&0xF0000000)>>28.
+        &CHIPSET_ID=(&READVAL&0x0FFF0000)>>16.
+        //&CHIPSET_SPIN=(&READVAL1&0xF0000000)>>28.
+        &CHIPSET_MAJORSPIN=FORMAT.UDECIMAL(1, ((&READVAL&0x0000FF00)>>8.))
+        &CHIPSET_MINORSPIN=FORMAT.UDECIMAL(1, ((&READVAL&0x000000FF)))
+
+        // Tier 1
+        IF (&CHIPSET_FAMILY==0)
+        (
+            // Now check for the chipset
+            IF (&CHIPSET_ID==0x0)
+            (
+                &CHIPSET_NAME="MSM8974"
+            )
+            IF (&CHIPSET_ID==0x2)
+            (
+                &CHIPSET_NAME="MSM8626"
+            )
+            IF (&CHIPSET_ID==0x3)
+            (
+                &CHIPSET_NAME="APQ8084"
+            )
+            IF (&CHIPSET_ID==0x4)
+            (
+                &CHIPSET_NAME="MSM8926"
+            )
+
+            IF (&CHIPSET_ID==0x8)
+            (
+                &CHIPSET_NAME="MSM8974Pro"
+            )
+        )
+
+        // Tier 2
+        IF (&CHIPSET_FAMILY==1)
+        (
+            IF (&CHIPSET_ID==0x0)
+            (
+                &CHIPSET_NAME="MSM8612"
+            )
+        )
+        // Tier 3
+        IF (&CHIPSET_FAMILY==3)
+        (
+            IF (&CHIPSET_ID==0x0)
+            (
+                &CHIPSET_NAME="MSM8996"
+            )
+            ELSE IF (&CHIPSET_ID==0x4)
+            (
+                //8996v4 is labeled as a new rev
+                &CHIPSET_NAME="MSM8996"
+                &CHIPSET_MAJORSPIN=4.
+                
+            )
+            ELSE IF (&CHIPSET_ID==0x2)
+            (
+                &CHIPSET_NAME="MSM8998"   
+            )
+        )
+        // Assign the complete name based on the spin number
+        &CHIPSET_REVISION="V"+FORMAT.DECIMAL(1, &CHIPSET_MAJORSPIN)+".&CHIPSET_MINORSPIN"
+    )
+    
+    GOSUB EXIT SUCCESS
+    
+    
+PLATINFO_ERROR:
+        &CHIPSET_NAME="NULL"
+        &CHIPSET_ID="NULL"
+        &CHIPSET_REVISION="NULL"
+        &CHIPSET_SPIN="NULL"
+        GOSUB EXIT SUCCESS
+        
+//    Function: Exit
+//    Return with return values    
+EXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    ENDDO &rvalue
+    
+FATALEXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    IF STRING.SCAN("&FAILUREKEYWORD","FAILUREKEYWORD",0)==-1
+    (
+        GOSUB EXIT &FAILUREKEYWORD - &rvalue
+    )
+    ELSE
+    (
+        GOSUB EXIT &rvalue
+    )
+    
+//Should never get here
+    END
+
+
+

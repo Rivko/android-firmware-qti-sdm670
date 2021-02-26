@@ -1,0 +1,164 @@
+#===============================================================================
+#
+#                                 GPI Libs
+#
+#                           GENERAL DESCRIPTION
+#                          GPI Libs build script
+#
+#          Copyright (c) 2018 by Qualcomm Technologies, Incorporated
+#                          All Rights Reserved
+#                       QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1.c4/hwengines/gpi/build/gpi.scons#1 $
+#  $DateTime: 2018/07/30 01:21:36 $
+#  $Author: pwbldsvc $
+#  $Change: 16759227 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     -----------------------------------------------------------
+# 01/10/18   pc      Enabled micro ulog(by default) and GPI_SSC macro for SDM670
+# 10/06/17   ah      Enabled ulog and micro ulog by default.
+# 09/13/17   pc      Added support to enable top level qups and ssc qup from ADSP image
+# 07/25/17   pc      Updated macros enablement for SDM670(to support SSC QUP from ADSP image)
+# 05/18/17   ah      Added symbols to island whitelist.
+# 04/26/17   ah      Added island mode condition.
+# 03/09/17   ah      Added SDM830 to GPI_COMMON_SOURCES.
+# 03/08/17   ah      Moved settings to core/settings.
+# 11/23/16   ah      Additions to support ADSP and SLPI.
+# 03/22/16   ah      File created.
+#===============================================================================
+import os
+Import('env')
+env = env.Clone()
+
+env.RequirePublicApi('HWENGINES')
+env.RequireRestrictedApi('GPI_SETTINGS')
+
+env.PublishPrivateApi('HWENGINES_GPI_PRIVATE', [
+   "${INC_ROOT}/core/hwengines/gpi/inc",
+   ])
+
+# Publish chipset-specific include path.
+if os.path.exists(env.subst("${BUILD_ROOT}/core/hwengines/gpi/${CHIPSET}")):
+   env.PublishPrivateApi('HWENGINES_GPI_PRIVATE', [
+      "${INC_ROOT}/core/hwengines/gpi/${CHIPSET}",
+   ])
+else:
+   env.PrintWarning("GPI not implemented for ${CHIPSET}.  Using sdm845.")
+   env.PublishPrivateApi('HWENGINES_GPI_PRIVATE', [
+      "${INC_ROOT}/core/hwengines/gpi/sdm845",
+   ])
+
+#-------------------------------------------------------------------------------
+# Defines
+#-------------------------------------------------------------------------------
+if 'ADSP_PROC' in env:
+        env.Append(CPPDEFINES = ['GPI_LPASS'])
+        if env['MSM_ID'] in ['670']:
+           env.Append(CPPDEFINES = ['GPI_USES_PRAM'])
+           env.Append(CPPDEFINES = ['GPI_SSC_ADSP_COMBINED'])
+           env.Append(CPPDEFINES = ['GPI_SSC'])
+           env.Append(CPPDEFINES = ['ENABLE_GPI_MICRO_ULOG'])
+        else:
+           env.Append(CPPDEFINES = ['GPI_IRQ_MUXING'])
+elif 'SLPI_PROC' in env:
+        env.Append(CPPDEFINES = ['GPI_SENSORS'])
+        env.Append(CPPDEFINES = ['GPI_SSC'])
+env.Append(CPPDEFINES = ['GPI_DALSYS'])
+env.Append(CPPDEFINES= ['GPI_MT'])        # this is a multi-threaded environment
+env.Append(CPPDEFINES= ['GPI_QURT'])      # Q6 present
+env.Append(CPPDEFINES= ['GPI_MMU'])
+env.Append(CPPDEFINES= ['GPI_XML_PROPS'])
+env.Append(CPPDEFINES= ['GPI_DEBUGGING'])
+
+#-------------------------------------------------------------------------------
+# Build options
+#-------------------------------------------------------------------------------
+#Turn off optimizations
+#env.Append(CCFLAGS = ' -O0')
+
+#-------------------------------------------------------------------------------
+# Internal depends
+#-------------------------------------------------------------------------------
+GPI_PUBLIC_API = [
+   'HAL',
+   'HWENGINES',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'DAL',
+   'KERNEL',
+   'POWER',
+   'DEBUGTOOLS'
+]
+
+GPI_PRIVATE_API = [
+  'HWENGINES_GPI_PRIVATE',
+]
+
+env.RequirePublicApi(GPI_PUBLIC_API)
+env.RequirePrivateApi(GPI_PRIVATE_API)
+env.RequirePublicApi('PRODUCTS')
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/hwengines/gpi"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+# Select sources based on ${CHIPSET}.
+if os.path.exists(env.subst("${BUILD_ROOT}/core/hwengines/gpi/${CHIPSET}")):
+   GPI_UIMG_SOURCES =  [
+          '${BUILDPATH}/src/gpi.c',
+          '${BUILDPATH}/src/gpi_ee.c',
+          '${BUILDPATH}/src/gpi_i.c',
+          '${BUILDPATH}/src/gpi_isr.c',
+          '${BUILDPATH}/src/gpi_threads.c',
+          '${BUILDPATH}/src/gpi_utils.c',
+          '${BUILDPATH}/src/gpi_fwload.c'
+   ]
+   GPI_IMG_SOURCES = [
+             '${BUILDPATH}/src/gpi_init.c'
+   ]
+else:
+   env.PrintWarning("GPI not implemented for ${CHIPSET}.  Using stub.")
+   GPI_UIMG_SOURCES =  [
+       '${BUILDPATH}/stub/gpi_stub.c',
+    ]
+   GPI_IMG_SOURCES = []
+
+gpi_lib = env.AddLibrary(['CORE_ADSP_ROOT','CORE_SLPI_ROOT'],
+                '${BUILDPATH}/gpi_uimg', GPI_UIMG_SOURCES)
+
+env.AddLibrary(['CORE_ADSP_ROOT','CORE_SLPI_ROOT'],
+                '${BUILDPATH}/gpi_img', GPI_IMG_SOURCES)
+
+if 'USES_ISLAND' in env:
+   env.AddIslandLibrary(['CORE_ADSP_ROOT','CORE_SLPI_ROOT'], gpi_lib)
+   env.AddSymbolToIslandWhitelist('CORE_SLPI_ROOT', gpi_lib, ['qurt_lookup_physaddr',
+                                                            'gpi_init_all',
+                                                            'qurt_mem_cache_clean',
+                                                            'DAL_DeviceAttach',
+                                                            'pram_acquire_partition',
+                                                            'qurt_thread_create',
+                                                            'DAL_DeviceDetach'])
+
+if 'USES_RCINIT' in env:
+  RCINIT_IMG = ['CORE_ADSP_ROOT','CORE_SLPI_ROOT']
+  env.AddRCInitFunc(
+    RCINIT_IMG,
+    {
+      'sequence_group'             : 'RCINIT_GROUP_0',
+      'init_name'                  : 'gpi_drv',
+      'init_function'              : 'gpi_init',
+      'dependencies'               : ['clk_regime', 'qup_fw_init', 'pram_mgr']
+    })

@@ -1,0 +1,119 @@
+#===============================================================================
+# Copyright (c) 2012 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===============================================================================
+Import('env')
+
+env = env.Clone()
+
+platform_root = '${BUILD_ROOT}/platform'
+env.Replace(ADSP_PLATFORM_ROOT = platform_root)
+
+#-------------------------------------------------------------------------------
+# Include dirs
+#-------------------------------------------------------------------------------
+
+env.RequirePublicApi([
+  'HAPSDK',
+  'STDDEF',
+  'PLATFORM_LIBS',
+  'UTILS',
+  'A1STD',
+  'PLATFORM_QDI',
+  'QDI_PORTAL',
+  ])
+
+env.RequireRestrictedApi([
+  'HAP_UTILS',
+  'QLIST',
+  'ATOMIC',
+  ])
+
+core_public_apis = [
+   'SYSTEMDRIVERS',
+   'DAL',
+   'DEBUGTOOLS',
+   'SERVICES',
+   'KERNEL',
+   'MPROC',
+   ]
+
+env.RequirePublicApi(core_public_apis, area='core')
+env.RequirePublicApi(['AVS'], area='avs')
+
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${ADSP_PLATFORM_ROOT}/HAP_utils/src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+env.PLRegisterDefault("HAP_utils",0,['PLATFORM_LIBS', 'PLATFORM_ROOT_LIBS', 'SSC_SLPI_USER', 'SSC_ADSP_USER', 'FASTRPC_SHELL_IMG','AVS_ADSP_USER', 'SENSOR_IMG'])
+env.PLRegisterDefault("HAP_diag",1,['PLATFORM_LIBS', 'PLATFORM_ROOT_LIBS', 'SSC_SLPI_USER', 'SSC_ADSP_USER', 'FASTRPC_SHELL_IMG','AVS_ADSP_USER', 'SENSOR_IMG'])
+env.PLRegister("HAP_ps",['PLATFORM_LIBS', 'PLATFORM_ROOT_LIBS', 'SSC_SLPI_USER', 'SENSOR_IMG'])
+env.PLRegister("hap_uproc",['FASTRPC_SHELL_IMG'])
+
+HAP_UTILS_SOURCES =  [
+   '${BUILDPATH}/HAP_utils.c',
+   '${BUILDPATH}/HAP_diag.c',
+   '${BUILDPATH}/HAP_ps.c',
+   ]
+
+HAP_UTILS_SENSORS_SOURCES =  [
+   '${BUILDPATH}/HAP_utils.c',
+   '${BUILDPATH}/HAP_diag_user.c',
+   '${BUILDPATH}/HAP_ps.c',
+   ]
+
+HAP_UTILS_SENSORS_UIMAGE_SOURCES =  [
+   '${BUILDPATH}/HAP_utils_uimg.c',
+   ]
+
+if env['IMAGE_NAME'] == 'SENSOR_IMG':
+    env.Append(CPPDEFINES = 'SENSORS_BUILD')
+    env.RequirePublicApi(['SENSOR1'], area='Sensors')
+    env.RequirePublicApi(['AVS'], area='avs')
+
+HAP_UTILS_USER_SOURCES =  [
+   '${BUILDPATH}/HAP_utils.c',
+   '${BUILDPATH}/HAP_diag_user.c',
+   '${BUILDPATH}/HAP_uproc.c',
+   ]
+
+HAP_UTILS_SHELL_SOURCES =  [
+   '${BUILDPATH}/HAP_utils.c',
+   '${BUILDPATH}/HAP_diag_user.c',
+   '${BUILDPATH}/HAP_uproc.c',
+   ]
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+HAP_utils_lib = env.AddBinaryLibrary(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+  'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE'],'${BUILDPATH}/HAP_utils',
+  HAP_UTILS_SOURCES)
+
+HAP_utils_sensors_lib = env.AddBinaryLibrary(['CORE_QDSP6_SENSOR_SW', 'SSC_ADSP_USER'],'${BUILDPATH}/HAP_utils',
+  HAP_UTILS_SENSORS_SOURCES)
+
+#if 'USES_ISLAND' in env:
+#    HAP_utils_sensors_uimg_lib = env.AddBinaryLibrary(['CORE_QDSP6_SENSOR_SW'],
+#        '${BUILDPATH}/HAP_utils_uimg', HAP_UTILS_SENSORS_UIMAGE_SOURCES)
+#    env.AddIslandLibrary(['CORE_QDSP6_SENSOR_SW'], HAP_utils_sensors_uimg_lib)
+
+HAP_utils_user_lib = env.AddBinaryLibrary(['AVS_ADSP_USER'],'${BUILDPATH}/HAP_utils_user',
+  HAP_UTILS_USER_SOURCES)
+
+HAP_utils_shell_lib = env.AddBinaryLibrary(['FASTRPC_SHELL_IMG'],'${BUILDPATH}/HAP_utils_shell',
+  HAP_UTILS_SHELL_SOURCES)
+
+#-------------------------------------------------------------------------------
+# Load Subunits (sys)
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+#Clean and pack rules
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.cpp', '*.h', '*.txt'], '${ADSP_PLATFORM_ROOT}/HAP_utils'))
+env.CleanPack(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE','QDSP6_SW_IMAGE',
+    'CBSP_QDSP6_SW_IMAGE', 'FASTRPC_SHELL_IMG', 'AVS_ADSP_USER', 'SSC_ADSP_USER'], CLEAN_LIST)

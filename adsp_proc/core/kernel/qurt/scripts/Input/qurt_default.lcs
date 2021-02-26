@@ -1,0 +1,89 @@
+/*=============================================================================
+
+                                    qurt_default.lcs
+
+GENERAL DESCRIPTION
+
+EXTERNAL FUNCTIONS
+        None.
+
+INITIALIZATION AND SEQUENCING REQUIREMENTS
+        None.
+
+             Copyright (c) 2013  by Qualcomm Technologies, Inc.  All Rights Reserved.
+=============================================================================*/
+        SECTIONS {
+            /* QURT_START */
+                /* IF (island) */
+                    /* QURT_ISLAND_UKERNEL */
+                    .text.island: { /* ISLAND_TEXT */ }
+                    /* ISLAND_RO_SECTIONS */
+                    .rodata.island: { /* ISLAND_RODATA */ }
+                    . = MAX(., (ADDR(.rodata.island)+0xFFF) & (-0x1000));
+                    /* ISLAND_RW_SECTIONS */
+                    .data.island: { /* ISLAND_DATA */ }
+                    . = ALIGN(1M);
+                /* ENDIF (island) */
+            /* IF (rom) */
+            __ROM_start = .;
+            /* ENDIF (rom) */
+            /* START_SECTION */
+            /* IF (!rom) */
+            /* QURT_MAIN_UKERNEL */
+            /* ENDIF (!rom) */
+            .init : {
+                KEEP(*(.init))
+            } =0x00C0007F
+            .text : {
+                *(.text *.text.*)
+            }
+            .fini : {
+                KEEP(*(.fini))
+            } =0x00C0007F
+            .rodata : {
+                *(.rodata .rodata.*)
+            }
+            .eh_frame : {
+                KEEP(*(.eh_frame))
+            }
+            /* IF (!rom) */
+            . = MAX(., (ADDR(.rodata)+0xFFF) & (-0x1000));
+            /* ENDIF (!rom) */
+            /* IF (rom) */
+            __ROM_end = .;
+            . = ALIGN(0x40000);
+            /* ENDIF (rom) */
+            .ctors : {
+                KEEP(*(.ctors))
+            }
+            .dtors : {
+                KEEP(*(.dtors))
+            }
+            .data : {
+                *(.data .data.*)
+            }
+            .bss : {
+                /* Non-secure ZI data area */
+                __bss_start = .;
+                *(.bss .bss.*)
+                *(COMMON)
+               _end = .;
+            }
+            . = ALIGN(128);
+            _SDA_BASE_ = .;
+            .sdata : {
+                *(.sdata .sdata.*)
+                *(.sbss.4 .sbss.4.*)
+                *(.gnu.linkonce.l*)
+            }
+            __sbss_start = .;
+            .sbss : {
+                *(.sbss .sbss.*)
+                *(.scommon .scommon.*)
+            }
+            __sbss_end = .;
+            end = .;
+                /* IF (secure) */
+                    /* SECURE_KERNEL */
+                /* ENDIF (secure) */
+        }

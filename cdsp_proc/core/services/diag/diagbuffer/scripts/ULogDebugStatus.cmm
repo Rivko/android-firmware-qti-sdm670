@@ -1,0 +1,245 @@
+; ULogDebugStatus.cmm
+; ------------------------------------------------------------------
+;
+; Copyright (c) 2013,2016 Qualcomm Technologies, Inc.
+;       All Rights Reserved.
+; Qualcomm Technologies, Inc. Confidential and Proprietary.
+;
+; When to use this script 
+; -----------------------
+; This script will sumarize the ULogs on a system
+;
+; 
+; How to use this script
+; ----------------------
+; After breaking, generate the summary
+;
+; do ULogDebugStatus <OutputPath>
+;
+ENTRY &logPath 
+LOCAL &dump
+
+; Select the output area for messages
+AREA.SELECT A000
+AREA.VIEW
+
+; Ulog constants for logStatus as of header version 3 and up
+local &ULOG_VER3_STATUS_DEFINED &ULOG_VER3_STATUS_ENABLED &ULOG_VER3_STATUS_MPM_ACTIVE
+&ULOG_VER3_STATUS_DEFINED=1            ;// Set if the log is defined
+&ULOG_VER3_STATUS_ENABLED=2            ;// Set if the log is enabled
+&ULOG_VER3_STATUS_MPM_ACTIVE=4         ;// Set if the log is currently handling a
+
+IF ("&logPath"=="")||("&logPath"=="stdout")
+(
+  &logPath="stdout"
+  &dump="PRINT"
+)
+else 
+(
+  ; Trim trailing "\" if necessary
+  IF string.char("&(logPath)", string.len("&(logPath)")-1)=='\'
+  (
+    &logPath=string.cut("&(logPath)", -1)
+  )
+  &dump="WRITE #1"
+)
+
+// Will call DumpUlogs for each ulogContext in symbol space
+Y.FOREACH "GOSUB DumpStatus &logPath" ulogContext
+ENDDO
+
+DumpStatus:
+ENTRY &logPath &loggerContext
+LOCAL &logHead &imageName
+
+
+;The earlier Y.FOREACH has issues when this script is called without arguments.  Cleaning up the variables here. 
+IF "&logPath"=="ulogContext"
+(
+  &logPath=""
+)
+IF "&loggerContext"==""
+( 
+  &loggerContext="ulogContext"
+)
+
+
+IF "&logPath"!="stdout"
+(
+  if string.scan("&(loggerContext)","\Global\",0)==-1
+  (
+    // Only one ulogContext found so no need to append image to file name
+    // This will be reached on single-pd builds
+    &imageName=""
+  )
+  else
+  (
+    // Found the string \Global\, will find the name of the image to add to
+    // all filenames
+    &imageName=string.mid("&(loggerContext)",2,\
+              string.scan("&(loggerContext)","\Global\",0)-2)
+  )
+  OPEN #1 "&(logPath)\ULogStatusReport&(imageName).txt" /Create
+)
+  
+; Get the head of the logs
+&logHead=V.VALUE(&loggerContext.logHead)
+
+;If there are no logs, no need to continue
+IF (&logHead==0)
+(
+  &dump "---------------------------------------------------------------------"
+  &dump "No ULogs Found. ulogContext.loghead (the ULog linked list ptr) is NULL"
+  &dump "---------------------------------------------------------------------"
+  RETURN
+)
+
+LOCAL &currentLog &logVersion
+&currentLog=&logHead
+
+
+&logVersion=V.VALUE(((ULOG_TYPE *)&currentLog)->version)
+
+;if the logVersion reads as one of the old or different versions, we can't continue. 
+IF (&logVersion==3)||(&logVersion==2)||(&logVersion==0x1000)
+(
+  &dump "---------------------------------------------------------------------"
+  &dump "This version of ULogStatus.cmm is for version 4 (Originating May 2012)"
+  &dump "It appears your logs are version : " &logVersion
+  &dump "Please check your source code for the correct ULogDump.cmm script"
+  &dump "---------------------------------------------------------------------"
+  RETURN
+)
+
+;if the log version isn't 0 (no logs), and isn't an old version (2,3, or 0x1000),
+;and isn't the correct version (4), something else is wrong.  
+;Maybe the symbols aren't correct?
+IF (&logVersion!=4)
+(
+  &dump "---------------------------------------------------------------------"
+  &dump "This version of ULogDump.cmm is for version 4 (Originating May 2012)"
+  &dump "Your log version value returned : " &logVersion
+  &dump "Which doesn't match the ULog versions this script is familar with."
+  &dump "Maybe the address your T32 session is using for the ulogContext is invalid??"  
+  &dump "---------------------------------------------------------------------"
+  RETURN
+)
+
+&dump "Ulog Version: &(logVersion)"
+
+ 
+
+WHILE &currentLog!=0
+(
+  LOCAL &name &logName
+  &logName=DATA.STRING(D:V.VALUE(((ULOG_TYPE *)&currentLog)->name))
+
+  GOSUB DumpOneLogStatus &currentLog
+  
+  &currentLog=V.VALUE(((ULOG_TYPE *)&currentLog)->next)
+)
+
+  &dump "--------------------------------------------------------------------------------------------"
+
+IF "&logPath"!="stdout"
+(
+  CLOSE #1
+)
+
+PRINT "Completed &(imageName)..."
+
+RETURN
+
+
+
+
+DumpOneLogStatus:
+  ENTRY &log
+  LOCAL &buffer &logsize &mask &readWriter &write &value &readers_read  &bytes_in_log &usage_data &reset_count &buffer_end
+  
+  &dump "--------------------------------------------------------------------------------------------"
+  
+  &buffer=V.VALUE(((ULOG_TYPE *)&log)->buffer)
+  &logsize=V.VALUE(((ULOG_TYPE *)&log)->bufSize)
+  &mask=V.VALUE(((ULOG_TYPE *)&log)->bufSizeMask)
+  &readWriter=V.VALUE(((ULOG_TYPE *)&log)->writerCore->readWriter)
+  &readers_read=V.VALUE(((ULOG_TYPE *)&log)->readerCore->read)
+  &write=V.VALUE(((ULOG_TYPE *)&log)->writerCore->write)
+  &bytes_in_log=V.VALUE(&write-&readWriter)
+  &usage_data=V.VALUE(((ULOG_TYPE *)&log)->writerCore->usageData)
+  &reset_count=V.VALUE((unsigned char)((ULOG_TYPE *)&log)->resetCount)
+  &buffer_end=V.VALUE(&buffer+&logsize)
+  &locktype=V.VALUE(((ULOG_TYPE *)&log)->lockType)
+
+  ;check whether the log is enabled.
+  IF V.VALUE(((ULOG_TYPE *)&log)->sharedHeader->logStatus & &ULOG_VER3_STATUS_ENABLED)==0 
+  (
+    &dump "Name: &(logName)  [Not Enabled]  Address: &(log)"
+    &dump "Size: &(logsize)  Mask: &(mask)  Buffer start at: &(buffer)  Buffer ends at: &(buffer_end)"
+  ) 
+  ELSE
+  (
+    &dump "Name: &(logName)   [Enabled]  Address: &(log)"
+     
+    IF &bytes_in_log>&logsize
+    (
+      &dump ""
+      &dump ">>>> CALCULATED SIZE OF: &(bytes_in_log) IS BIGGER THAN THE [&(logName)] LOG SIZE: &(logsize)  <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"
+      &dump ">>>> The most common causes of this is memory corruption, which can be either caused by either HW or SW issues."
+      &dump ""
+    )
+     
+    &dump "Size: &(logsize)  Mask: &(mask)  Buffer start at: &(buffer)  Buffer ends at: &(buffer_end)"
+    &dump "Msg bytes in log: &(bytes_in_log)"
+    IF &locktype==0
+    (
+      &dump "Log does not use locking"
+    )
+    ELSE IF &locktype==1
+    (
+      &dump "Log uses normal ULog OS locking"
+    )
+    ELSE
+    (
+      &dump "Log uses other? lock type &(locktype)"
+    )
+
+    &value1=V.VALUE(&readWriter & &mask)
+    &value=V.VALUE(((uint32 *)(&buffer+(&readWriter & &mask))))
+    IF &bytes_in_log>0
+    (
+      &dump "readWriter: &(readWriter)   Reads start at index: &(value1) so the first msg to read would be at address: &(value)"
+    )
+    ELSE
+    (
+      &dump "readWriter: &(readWriter)"
+    )
+    &value1=V.VALUE(&write & &mask)
+    &value=V.VALUE(((uint32 *)(&buffer+(&write & &mask))))
+    &dump "write value: &(write)  New writes start at index: &(value1) so the next msg writen would be at address: &(value)"
+    
+    IF &readers_read==0
+    (
+      ; a zero pointer indicates that no software on the device has tried to read this log. 
+      &dump "Software read pointer=0  On target software has not tried to read this log."
+    )
+    ELSE
+    (
+      &dump "Software read pointer: &(readers_read)"       
+      &value=V.VALUE(&readers_read & &mask)
+      &dump "Device software would read next at index: &(value)"
+    )
+    
+    IF (&(usage_data)&0x8)==0x8
+    (
+       &dump ""
+       &dump ">>>> THIS [&(logName)] LOG HAS BEEN RESET AT SOME POINT. The reset count is &(reset_count)  <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<"
+       &dump ">>>> The most common causes of this is memory corruption, which can be either caused by either HW or SW issues."
+       &dump ""
+    )              
+
+    ; TODO: may want to add a message counter here. 
+    )
+  RETURN
+
+

@@ -1,0 +1,97 @@
+#===============================================================================
+#
+# HWIO helper for PDC driver
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+#   Copyright (c) 2016-2017 Qualcomm Technologies, Inc. (QTI).
+#   All Rights Reserved.
+#   Qualcomm Confidential and Proprietary.
+#   Export of this technology or software is regulated by the U.S. Government.
+#   Diversion contrary to U.S. law prohibited.
+#-------------------------------------------------------------------------------
+#  $Header: //components/rel/core.qdsp6/2.1/power/pdc/hwio/build/hwio.scons#2 $
+#  $DateTime: 2017/10/16 10:14:04 $
+#===============================================================================
+import os
+import stat
+import fnmatch
+import itertools
+import subprocess
+from os.path import join, basename, exists
+
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Target Build Options
+#-------------------------------------------------------------------------------
+#Turn off optimizations for easier debug
+#env.Append(CCFLAGS = ' -O0')
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+COMMON_SRCPATH = '..'
+env.VariantDir('${BUILDPATH}', COMMON_SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+  'DAL',
+  'HAL',
+  'DEBUGTOOLS',
+  'POWER',
+  'POWER_PDC',
+  'SERVICES',
+  'SYSTEMDRIVERS',
+  'KERNEL'
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+env.RequirePrivateApi(['POWER_PDC_CMN'])
+
+#-------------------------------------------------------------------------------
+# Global source settings
+#-------------------------------------------------------------------------------
+MAIN_IMG_TAG = ['CORE_Q6_ROOT']
+CORE_ISLAND_TAG = ['CORE_Q6_ROOT']
+
+#-------------------------------------------------------------------------------
+# Source files
+#-------------------------------------------------------------------------------
+sources = ['${BUILDPATH}/pdc_hwio.c']
+island_sources = ['${BUILDPATH}/pdc_hwio_cmn.c']
+
+#-------------------------------------------------------------------------------
+# Create libraries
+#-------------------------------------------------------------------------------
+pdc_hwio_lib = env.AddLibrary(MAIN_IMG_TAG,
+                              os.path.join('${BUILDPATH}', 'pdcHwio'),
+                              sources)
+                              
+isld_pdc_hwio_lib = env.AddLibrary(CORE_ISLAND_TAG,
+                                   os.path.join('${BUILDPATH}', 'pdcHwio_cmn'),
+                                   island_sources)                              
+
+#-------------------------------------------------------------------------------
+# Add library to island section
+#-------------------------------------------------------------------------------
+if 'USES_ISLAND' in env:
+  env.AddIslandLibrary(CORE_ISLAND_TAG, isld_pdc_hwio_lib)
+
+#-------------------------------------------------------------------------------
+# Add init function to RCINIT
+#-------------------------------------------------------------------------------
+RCINIT_PROPS = {
+  'sequence_group'             : 'RCINIT_GROUP_0',
+  'init_name'                  : 'PDCHWIO',
+  'init_function'              : 'pdcHwio_initialize',
+  'dependencies'               : [],
+}
+
+if 'USES_RCINIT' in env:
+  env.AddRCInitFunc(MAIN_IMG_TAG, RCINIT_PROPS)

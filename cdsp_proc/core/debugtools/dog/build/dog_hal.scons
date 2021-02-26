@@ -1,0 +1,233 @@
+# vi: tw=128 ts=3 sw=3 et
+# @file dog_hal.scons
+# @brief This file contains the API details for the Dog Services, API 2.0
+#===============================================================================
+# NOTE: The @brief description above does not appear in the PDF.
+# The tms_mainpage.dox file contains the group/module descriptions that
+# are displayed in the output PDF generated using Doxygen and LaTeX. To
+# edit or update any of the group/module text in the PDF, edit the
+# tms_mainpage.dox file or contact Tech Pubs.
+#===============================================================================
+#===============================================================================
+# Copyright (c) 2014-2017 Qualcomm Technologies Incorporated.
+# All Rights Reserved.
+# Qualcomm Confidential and Proprietary.
+#===============================================================================
+#===============================================================================
+# Edit History
+# $Header: //components/rel/core.qdsp6/2.1.c4/debugtools/dog/build/dog_hal.scons#1 $
+# $DateTime: 2018/07/30 01:21:36 $
+# $Change: 16759227 $
+# $Author: pwbldsvc $
+#===============================================================================
+
+Import('env')
+env = env.Clone()
+
+# BUILD_TAGS For Deliverable (Supported Build_Objects)
+
+BUILD_TAGS = [
+   'CORE_ROOT_PD', 
+   'CORE_QDSP6_SW', 
+   'CORE_Q6_ROOT',
+]
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+
+env.VariantDir('${BUILDPATH}', '../src', duplicate=0)
+
+#-------------------------------------------------------------------------------
+# External Dependency
+#-------------------------------------------------------------------------------
+
+#env.RequireExternalApi([
+#   'XYZ',
+#])
+
+#-------------------------------------------------------------------------------
+# Internal Dependency
+#-------------------------------------------------------------------------------
+
+env.RequirePublicApi([
+   'DAL',
+   'TMS',
+   'DEBUGTOOLS', # alias to TMS
+   'DEBUGTRACE',
+   'SERVICES',
+   'STORAGE',
+   'SYSTEMDRIVERS',
+   'KERNEL', # needs to be last (also contains wrong comdef.h)
+])
+
+env.RequireRestrictedApi([
+   'TMS_RESTRICTED',
+   'DEBUGTOOLS', # alias to TMS
+])
+
+island_section = ['.text.uDog','.data.uDog']
+
+#-------------------------------------------------------------------------------
+# Sources
+#-------------------------------------------------------------------------------
+
+# Associated Directly with Libraries
+
+#-------------------------------------------------------------------------------
+# Override Hardware Watchdog if desired.
+#-------------------------------------------------------------------------------
+if 'USES_DISABLE_HW_WATCHDOG' in env:
+  env.Append(CPPDEFINES=['FEATURE_DISABLE_HW_WATCHDOG'])
+  env.PrintWarning('OVERRIDE: Hardware Watchdog Disabled via USES_FLAGS.')
+
+#-------------------------------------------------------------------------------
+# Tuning for DOG_SCALING_FACTOR
+#-------------------------------------------------------------------------------
+
+#DOG TIMEOUTS SCALING FACTOR (BARK, BITE, NMI AND KICK)
+#CALCULATIONS FOR DOG TIMEOUTS ARE ACCORDING TO BELOW FORMULA:
+#KICK = (200 * SCALE) MS
+#BARK = (500 * SCALE) MS
+#NMI  = ((500 * SCALE) + 200)) MS
+#BITE = ((500 * SCALE) + 300)) MS
+
+#BELOW ARE EXAMPLES ONLY AND NOT LIMITING OPTIONS FOR TIMEOUTS:
+#A SCALE OF:
+#0: HW DOG DISABLED
+#1: KICK: 200 MS, BARK: 500 MS, NMI: 700 MS, BITE: 800 MS #DEFAULT
+#2: KICK: 400 MS, BARK: 1000 MS, NMI: 1200 MS, BITE: 1300 MS
+#3: KICK: 600 MS, BARK: 1500 MS, NMI: 1700 MS, BITE: 1800 MS
+#4: KICK: 800 MS, BARK: 2000 MS, NMI: 2200 MS, BITE: 2300 MS
+#5: KICK: 1000 MS, BARK: 2500 MS, NMI: 2700 MS, BITE: 2800 MS
+
+env.Append(CPPDEFINES=['DOG_SCALING_FACTOR = 1'])
+
+#-------------------------------------------------------------------------------
+# Libraries
+#-------------------------------------------------------------------------------
+
+DOG_TARGET    = '845'
+DOG_PROC      = ''
+DOG_PROC_HAL  = ''
+DOG_HAL_INFO  = ''
+
+MPSS_PROC     = 'mpss'
+ADSP_PROC     = 'adsp'
+SLPI_PROC     = 'slpi'
+CDSP_PROC     = 'cdsp'
+MPSS_IRQ      = '288'
+ADSP_IRQ      = '32'
+SLPI_IRQ      = '8'
+CDSP_IRQ      = '58'
+MPSS_PROC_HAL = 'MSS'
+ADSP_PROC_HAL = 'LPASS'
+SLPI_PROC_HAL = 'SSC'
+CDSP_PROC_HAL = 'TURING'
+   
+#Get DOG_PROC, DOG_IRQ and DOG_PROC_HAL
+if 'MODEM_PROC' in env:
+  DOG_PROC     = MPSS_PROC
+  DOG_IRQ      = MPSS_IRQ
+  DOG_PROC_HAL = MPSS_PROC_HAL
+elif 'ADSP_PROC' in env:
+  DOG_PROC     = ADSP_PROC
+  DOG_IRQ      = ADSP_IRQ
+  DOG_PROC_HAL = ADSP_PROC_HAL
+elif 'SLPI_PROC' in env:
+  DOG_PROC     = SLPI_PROC
+  DOG_IRQ      = SLPI_IRQ
+  DOG_PROC_HAL = SLPI_PROC_HAL
+elif 'CDSP_PROC' in env:
+  DOG_PROC     = CDSP_PROC
+  DOG_IRQ      = CDSP_IRQ
+  DOG_PROC_HAL = CDSP_PROC_HAL
+
+#Get DOG_TARGET and DOG_HAL_INFO
+#Override for chip specifics here
+if env['HAL_PLATFORM'] in ['845','830']:
+  DOG_TARGET = 'sdm845'
+  DOG_HAL_INFO = 'QDSP6V65SS_CSR'
+elif env['HAL_PLATFORM'] in ['855','1000']:
+  DOG_TARGET = 'sdm855'
+  DOG_HAL_INFO = 'QDSP6V66SS_CSR'
+elif env['HAL_PLATFORM'] in ['670']:
+  DOG_TARGET = 'sdm670'
+  DOG_HAL_INFO = 'QDSP6V65SS_CSR'
+  #OVERRIDE HACK: Due to usage of SLPI HAL in ADSP
+  if 'ADSP_PROC' in env:
+    #DOG_IRQ stays the same
+    DOG_PROC = SLPI_PROC
+    DOG_PROC_HAL = SLPI_PROC_HAL
+elif env['HAL_PLATFORM'] in ['9x65','50m']:
+  DOG_TARGET = 'sdx20m'
+  DOG_HAL_INFO = 'QDSP6V60SS_CSR'
+elif env['HAL_PLATFORM'] in ['24']:
+  DOG_TARGET = 'sdx24'
+  DOG_HAL_INFO = 'QDSP6V66SS_CSR'
+  
+#Define IRQ 
+env.Append(CPPDEFINES=['DOG_IRQ='+DOG_IRQ])
+
+#Generate DOG header name
+DOG_HAL_HEADER  = 'dog_hal_' + DOG_TARGET + '_' + DOG_PROC + '.h'
+
+#Define DOG_HAL_HEADER for SOURCES
+env.Append(CPPDEFINES=['DOG_HAL_HEADER=\\"hal/'+DOG_HAL_HEADER+'\\"'])
+
+#Generate DOG HWIO module name
+DOG_PROC_HAL    = DOG_PROC_HAL + '_' + DOG_HAL_INFO
+
+if env.has_key('HWIO_IMAGE'):
+  env.AddHWIOFile('HWIO', [
+  {
+    'filename': '${BUILD_ROOT}/core/debugtools/dog/src/hal/' + DOG_HAL_HEADER,
+    'modules': [
+      DOG_PROC_HAL,
+     ],
+    'module-filter-include': {
+      DOG_PROC_HAL : ['WDOG'],
+     },
+    'output-offsets': True,
+    'exclude-reserved': True,
+   },
+])
+
+#Generate DOG and uDOG hal source 
+
+DOG_HAL_SOURCE  = ['${BUILDPATH}/dog_hal_common.c',
+                   '${BUILDPATH}/dog_hal_' + DOG_PROC + '.c']
+
+UDOG_HAL_SOURCE = ['${BUILDPATH}/udog_hal_' + DOG_PROC + '.c']
+
+if 'MODEM_PROC' in env:
+   #MPSS specific - other subsystems define flag in top-level scons
+   if 'USES_ISLAND' in env:
+      #Required for island builds
+      env.Append(CCFLAGS = "-G0")
+      #We don't support island functions with '-fstack-protector'
+      if "-fstack-protector" in env['HEXAGON_STKPRO']:
+         env.Replace(HEXAGON_STKPRO = "")
+
+if 'USES_ISLAND_FEATURE' in env:
+   udog_hal_libs = env.AddLibrary(BUILD_TAGS,'${BUILDPATH}/udog_hal', UDOG_HAL_SOURCE)
+else:
+   DOG_HAL_SOURCE.append(UDOG_HAL_SOURCE);
+
+dog_hal_libs = env.AddLibrary(BUILD_TAGS, '${BUILDPATH}/dog_hal', DOG_HAL_SOURCE)
+
+if 'USES_ISLAND' in env:
+   env.AddIslandLibrary(BUILD_TAGS, udog_hal_libs)
+
+if 'USES_RCINIT' in env:
+
+   env.AddRCInitFunc(
+      BUILD_TAGS,
+      {
+         'sequence_group'             : 'RCINIT_GROUP_0',
+         'init_name'                  : 'dog_hal_root',
+         'init_function'              : 'HAL_dogInit',
+         'dependencies'               : [ 'dalsys', 'timer_client', 'sys_m_smsm_init' ],
+      })
+
+

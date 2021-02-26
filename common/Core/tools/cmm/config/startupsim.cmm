@@ -1,0 +1,226 @@
+//============================================================================
+//  Name:                                                                     
+//    startupsim.cmm 
+//
+//  Description:                                                              
+//    Common simulator startup script that calls the processor specific init scripts 
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who           what, where, why
+// --------   ---           ---------------------------------------------------------
+// 01/16/2016 JBILLING      Changed for 9645 automotive
+// 10/26/2015 JBILLING      Changed location of gen_buildflavor.cmm
+// 07/01/2014 AJCheriyan    Load asic product flavor information as well
+// 07/10/2012 AJCheriyan    Created for B-family
+//
+
+// Supports three input arguments 
+// ARG0 - T32 connection property (SIM)
+// ARG1 - Chipset Name 
+// ARG2 - Sub-system Name
+// ARG3 - Core number
+// ARG4 - Additional options
+// ARG5 - Fusion option
+LOCAL &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5
+ENTRY &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5
+
+IF STRING.SCAN("&STARTUP_RAN","STARTUP_RAN",0)==-1
+(
+    //If it's true it already ran
+    IF "&STARTUP_RAN"=="TRUE"
+    (
+        ENDDO
+    )
+)
+GLOBAL &STARTUP_RAN
+&STARTUP_RAN="TRUE"
+
+
+
+// Global variables for the args passed in
+GLOBAL &T32PROP &CHIPSET &SUBSYS &CORENUM
+LOCAL &Option &fusionoption
+// Save the arguments 
+&T32PROP=STR.LWR("&ARG0")
+&CHIPSET=STR.LWR("&ARG1")
+&SUBSYS=STR.LWR("&ARG2")
+&CORENUM=STR.LWR("&ARG3")
+&Option=STR.LWR("&ARG4")
+&fusionoption=STR.LWR("&ARG5")
+
+//////////////////////Fusion options////////////////////////
+GLOBAL &FUSION_PLATFORM &FUSION_TYPE
+
+IF STR.LWR("&ARG5")=="fusion2"
+(
+    //Fusion2 setup is two distinct boards but with one t32 instance opening them
+    //i.e., not really a fusion setup.
+    &FUSION_PLATFORM="FUSION_MDM"
+    &FUSION_TYPE="FUSION_MDM"
+
+)
+ELSE IF STR.LWR("&ARG5")=="fusion3"
+(
+    &FUSION_PLATFORM="TRUE"
+    &FUSION_TYPE="FUSION3"
+)
+ELSE IF STR.LWR("&ARG5")=="fusion"
+(
+    &FUSION_PLATFORM="TRUE"
+    &FUSION_TYPE="FUSION1"
+)
+ELSE
+(
+    &FUSION_PLATFORM="FALSE"
+    &FUSION_TYPE="NONE"
+)
+
+//////////////////Tools config script (paths etc.)/////////////////////////////
+// Now setup the scripts information first
+PRINT "Calling script: std_toolsconfig with args: &ARG1"
+LOCAL &currdir
+&currdir=OS.PWD()
+IF FILE.EXIST("&currdir/std_toolsconfig.cmm")
+(
+    do &currdir/std_toolsconfig &CHIPSET &SUBSYS
+)
+ELSE IF FILE.EXIST("&currdir/../std_toolsconfig.cmm")
+(
+    do &currdir/../std_toolsconfig &CHIPSET &SUBSYS
+)
+ELSE
+(
+    WINPOS 0. 0. 50. 5.
+    AREA
+    PRINT %ERROR "Error! Could not navigate to std_toolsconfig. Make sure to use 'cd.do' to run simulator script"
+    WINPOS 0. 6. 50. 10.
+    PLIST
+    PSTEP
+)
+
+
+
+
+
+/////////////////////////gen_buildflavor////////////////////////////
+// Now load the flavor information of this combination of builds
+// This is an assumption : asic is the default flavor.
+PRINT "Calling script: gen_buildflavor"
+GLOBAL &BUILD_FLAVOR_SCRIPT
+IF FILE.EXIST(&METASCRIPTSDIR/../../../build/app/gen_buildflavor.cmm)
+(
+    &BUILD_FLAVOR_SCRIPT="&METASCRIPTSDIR/../../../build/app/gen_buildflavor.cmm"
+)
+ELSE IF (FILE.EXIST(&METASCRIPTSDIR/gen/gen_buildflavor.cmm))
+(
+    &BUILD_FLAVOR_SCRIPT="&METASCRIPTSDIR/gen/gen_buildflavor.cmm"
+)
+ELSE
+(
+            WINPOS 0. 0. 50. 10.
+            area.create gen_buildflavor
+            AREA.SELECT gen_buildflavor
+            area.view gen_buildflavor
+            PRINT %ERROR "   Warning! gen_buildflavor.cmm not found!" 
+            PRINT " "
+            PRINT %ERROR "   Metabuild binary paths, "
+            PRINT %ERROR "   ELF file paths and build "
+            PRINT %ERROR "   flavors will be missing."
+            PRINT " "
+            PRINT " "
+            PRINT " "
+            area.select A000
+            wait.2s
+    
+            &BUILD_FLAVOR_SCRIPT="NULL"
+            //Fix me - try to run gen_buildflavor script from T32 if not present?
+)
+
+IF "&BUILD_FLAVOR_SCRIPT"!="NULL"
+(
+        GLOBAL &HLOS
+        // This means there is just one product flavor
+        do &BUILD_FLAVOR_SCRIPT asic
+        IF ("&HLOS_TYPE"=="")
+        (
+            do &BUILD_FLAVOR_SCRIPT None
+        )
+        IF ("&FUSION_TYPE"=="FUSION3")
+        (
+            // Allow target team to specify hlos if not LA.
+            IF ("&HLOS_TYPE"=="LA")
+            (
+			    IF ("&CHIPSET"=="sdx50")||("&CHIPSET"=="SDX50")
+				(
+                &HLOS_TYPE="TN"
+				)
+				ELSE
+				(
+				&HLOS_TYPE="MN"
+				)
+            )
+        )
+        &HLOS="&HLOS_TYPE"
+)
+
+
+////////////////////////////HOST OS Variables//////////////////////////////////
+//Get host os type
+GLOBAL &TEMPDIR &HOSTOS &TEMP
+IF (VERSION.BUILD()<65625.)
+(
+    &HOSTOS="Windows"
+)
+ELSE
+(
+    &HOSTOS=OS.NAME()
+)
+IF ("&HOSTOS"=="Windows")
+(
+    &TEMPDIR=OS.ENV(TEMP)
+)
+ELSE
+(
+    &TEMPDIR="~~~"
+)
+PRINT "Calling script: gen_buildinfo"
+IF FILE.EXIST("&TEMPDIR/gen_buildinfo.cmm")
+(
+    GLOBAL &BUILDINFOHASRUN
+    &BUILDINFOHASRUN="TRUE"
+    do &TEMPDIR/gen_buildinfo.cmm
+)
+ELSE
+(
+    PRINT "Warning - Could not access gen_buildinfo.cmm at &TEMPDIR"
+)
+
+&TEMP="&TEMPDIR"
+IF ((STRING.SCAN("&APPS_BUILDROOT","APPS_BUILDROOT",0)!=-1)&&(STRING.SCAN("&APSS_BUILDROOT","APSS_BUILDROOT",0)==-1))
+(
+    GLOBAL &APPS_BUILDROOT
+    &APPS_BUILDROOT="&APSS_BUILDROOT"
+)
+
+// Locals used
+//LOCAL &SESSIONSCRIPT
+//PRINT "Calling script: std_sessioncfg with args: &SUBSYS"
+//&SESSIONSCRIPT="std_sessioncfg_"+STR.LWR("&SUBSYS")
+//do &SESSIONSCRIPT INIT &CHIPSET &SUBSYS
+
+// Now perform the debug session specific setup
+IF ("&Option"!="nogui")
+(
+    PRINT "Calling script to load logs: std_loadsim.cmm"
+    do std_loadsim
+)
+
+ENDDO

@@ -1,0 +1,64 @@
+; writen by Waleed Eshmawy
+entry &loc
+ON ERROR JUMPTO pgt1_end
+; moved to up layer because of the 
+; printer.file &loc\DSP_pgt.txt
+; printer.filetype ASCII 
+; printer.size 0xfa, 0xfa
+; wp.task.pgt
+open #1 &loc\DSP_pgt.txt
+read #1 %line &linelst
+read #1 %line &linelst
+read #1 %line &linelst
+mmu.reset
+start:
+read #1 %line &linelst 
+&vpage=string.mid("&linelst", 0, 7)
+if "&vpage"=="B::task"
+(
+goto start
+)
+if "&vpage"=="Pagetab"
+(
+goto start
+)
+if "&vpage"=="       "
+(
+goto done_reading
+)
+if "&vpage"==""
+(
+goto done_reading
+)
+&ppage=string.mid("&linelst",0xb, 7)
+if "&ppage"==""
+(
+goto done_reading
+)
+&size=string.mid("&linelst", 0x16, 8)
+if "&size"==""
+(
+goto done_reading
+)
+; print "&vpage"+" "+"&ppage"+" "+"&size"
+&vpage=&vpage<<0xc
+&ppage=&ppage<<0xc
+&vend=&vpage+&size
+&pend=&ppage+&size
+mmu.create &vpage--&vend &ppage--&pend
+goto start
+done_reading:
+close #1
+mmu.format QURT QURTK_pagetables
+mmu.on
+mmu.autoscan on
+mmu.tablewalk on
+enddo
+
+
+
+enddo
+
+pgt1_end:
+do &CurrentDirectory\cmm_error.cmm "DSP_load_pagetables.cmm"
+enddo

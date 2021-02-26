@@ -1,0 +1,465 @@
+#===============================================================================
+#
+# uSleep build script
+#
+# GENERAL DESCRIPTION
+#    Builds the sleep libraries for all target.
+#
+#    Copyright (c) 2016-2018 Qualcomm Technologies, Inc. (QTI).
+#    All Rights Reserved.
+#    Qualcomm Confidential and Proprietary.
+#    Export of this technology or software is regulated by the U.S. Government.
+#    Diversion contrary to U.S. law prohibited.
+#-------------------------------------------------------------------------------
+#  $Header: //components/rel/core.qdsp6/2.1/power/uSleep/build/usleep.scons#5 $
+#  $DateTime: 2019/10/17 07:34:44 $
+#  $Author: pwbldsvc $
+#===============================================================================
+import os
+import stat
+import fnmatch
+import itertools
+import subprocess
+
+from os.path import join, basename, exists
+
+Import('env')
+env = env.Clone()
+
+#Do not compile uSleep if target does not support island mode
+if 'USES_ISLAND' not in env and 'USES_ISLAND_FEATURE' not in env:
+  env.PrintWarning('uSleep is not available for this target.')
+  Return()
+
+#-------------------------------------------------------------------------------
+# Build options
+#-------------------------------------------------------------------------------
+#Turn off optimizations for easier debug
+#env.Append(CCFLAGS = ' -O0')
+
+#-------------------------------------------------------------------------------
+# Target Checks
+#-------------------------------------------------------------------------------
+#Start with an empty list of target specific definitions
+USLEEP_DEFINES=[]
+
+# Set HWIO target based dir path
+HWIO_TARGET = env['MSM_ID']
+HWIO_DIR_ROOT = os.path.join(env['BUILD_ROOT'], 'core/power/uSleep/src/hwio')
+
+# Check if HWIO target directory exists, if not use default target
+if not os.path.exists(os.path.join(HWIO_DIR_ROOT, HWIO_TARGET)):
+  env.PrintWarning('uSleep HWIO target ' + HWIO_TARGET + ' not found, using default')
+  HWIO_TARGET = env['PWR_TARGET_DFLT']
+
+env.PrintInfo("uSleep using HWIO target: " + HWIO_TARGET)
+
+# Determining correct Q6 version based on target for HWIO file and low power
+# mode configuration file.
+Q6_VER = 'v65'
+USLEEP_DEFINES += ['USLEEP_Q6_VER=65']
+
+# Target based defintions
+if env['POWER_SUBSYSTEM'].lower() == 'slpi':
+  USLEEP_DEFINES += ['USLEEP_HWIO_PREFIX=SSC_QDSP6SS',       # Main HWIO prefix
+                     'USLEEP_RPMH_DRV_MAP=RSC_DRV_SENSORS',  # Enum DRV mapping for RPMh driver calls
+                     'USLEEP_RPMH_DRV_NAME=\\\"sensors\\\"', # String DRV name for PDC driver calls
+                     'USLEEP_IMAGE_SLPI']                    # Image being compiled used in sleep logic
+
+  USLEEP_DEFINES += ['USLEEP_HWIO_ISLD_GCC_CLK=SSC_SSC_GCC_TO_SSC_CLKS_OFF']
+
+elif env['POWER_SUBSYSTEM'].lower() == 'adsp':
+  USLEEP_DEFINES += ['USLEEP_HWIO_PREFIX=SSC_QDSP6SS',
+                     'USLEEP_RPMH_DRV_MAP=RSC_DRV_AUDIO',
+                     'USLEEP_RPMH_DRV_NAME=\\\"lpass\\\"',
+                     'USLEEP_IMAGE_SLPI']
+
+  USLEEP_DEFINES += ['USLEEP_HWIO_ISLD_GCC_CLK=SCC_SSC_GCC_TO_SSC_CLKS_OFF']
+
+elif env['POWER_SUBSYSTEM'].lower() == 'wlan':
+  USLEEP_DEFINES += ['USLEEP_HWIO_PREFIX=WCSS_Q6SS',
+                     'USLEEP_IMAGE_WLAN']
+
+elif env['POWER_SUBSYSTEM'].lower() == 'mss':
+  USLEEP_DEFINES += ['USLEEP_HWIO_PREFIX=MSS_QDSP6SS',
+                     'USLEEP_RPMH_DRV_MAP=RSC_DRV_MODEM_SW',
+                     'USLEEP_RPMH_DRV_NAME=\\\"modem\\\"',
+                     'USLEEP_IMAGE_MSS']
+
+  #Required for mss island builds
+  env.Append(CCFLAGS = ' -G0')
+
+else:
+  env.PrintError("uSleep unsupported subsystem")
+  exit (1)
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = os.path.join("..", "src")
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Option to disable usleep for Bring up or testing purpose.
+#-------------------------------------------------------------------------------
+if 'USES_DISABLE_USLEEP_MODES' in env:
+  USLEEP_DEFINES += ['FEATURE_DISABLE_USLEEP_MODES']
+  env.PrintWarning('OVERRIDE: uSleep Modes Disabled via USES_FLAGS.')
+
+if env['MSM_ID'] in ['670']:
+  USLEEP_DEFINES += ['FEATURE_DISABLE_USLEEP_CLOCKGATE_LPM']
+  env.PrintWarning('OVERRIDE: uSleep Clock gate LPR Mode Disabled via Scons.')  
+  
+#-------------------------------------------------------------------------------
+# Target options
+#-------------------------------------------------------------------------------
+#Feature option to support user PDs
+if HWIO_TARGET not in [] and env['POWER_SUBSYSTEM'].lower() not in ['mss']:
+  MULTIPD=1
+else:
+  MULTIPD=0
+
+if env['POWER_SUBSYSTEM'].lower() == 'slpi':
+  USLEEP_DEFINES += ['USLEEP_SUPPORTED_USER_PDS=3']
+else:
+  USLEEP_DEFINES += ['USLEEP_SUPPORTED_USER_PDS=1']
+
+#Feature option to support normal <-> island transitions
+USLEEP_DEFINES += ['USLEEP_SUPPORT_TRANSITIONS']
+
+#-------------------------------------------------------------------------------
+# Debug & feature flags
+#-------------------------------------------------------------------------------
+#Allows adding code to respond to the PMI interrupt
+#Since all APCR modes are cacheable, it is not currently needed but added for debug
+USLEEP_DEFINES += ['USLEEP_SUPPORT_UNCACHED_APCR']
+
+#Enable ability for callbacks in the LPR enter/exit functions
+#Note that dynamic callbacks are not currently supported in any cacheable modes
+#USLEEP_DEFINES += ['DYNAMIC_LPR_CALLBACKS']
+
+#If defined, it allows the creation of uSleep test clients that can control
+#island entry.  Note that this does not actually create the clients; they are
+#controlled via global variables.  This is only valid & meaningful if transitions are supported.
+USLEEP_DEFINES += ['USLEEP_CREATE_TEST_NODE']
+
+#Enable uLogs
+USLEEP_DEFINES += ['USLEEP_ENABLE_ULOGS']
+
+#Enable uNPA support in uSleep
+if 'UNPA_SUPPORT' in env:
+  USLEEP_DEFINES += ['UNPA_SUPPORT']
+
+#-------------------------------------------------------------------------------
+# Source directory roots
+#-------------------------------------------------------------------------------
+# Source directories relative to SRCPATH (../src/)
+
+# User PD source
+uSleep_user_source_dirs = [
+  'client_user',
+]
+
+# Main uSleep directories
+uSleep_source_dirs = [
+  'client',
+  'log',
+  'os',
+  'solver',
+  'target',
+  'uATS',
+  'util',
+  'lpr',
+]
+
+#Add direcories based on feature flag settings
+if 'USLEEP_SUPPORT_TRANSITIONS' in USLEEP_DEFINES:
+  uSleep_source_dirs += ['transition', 'lpi']
+
+if 'UNPA_SUPPORT' in USLEEP_DEFINES:
+  uSleep_source_dirs += ['unpa_nodes']
+
+# Normal operational mode common directories
+normal_mode_source_dirs = [
+  'ddr',
+]
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+  'DAL',
+  'DEBUGTOOLS',
+  'DEBUGTRACE',
+  'POWER',
+  'SERVICES',
+  'SYSTEMDRIVERS',
+  'PMIC',
+  'POWER_PDC',
+  'KERNEL', #needs to be last also contains wrong comdef.h
+]
+
+if 'USLEEP_SUPPORT_TRANSITIONS' in USLEEP_DEFINES:
+  CBSP_API += ['ISLAND_MGR']
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+env.RequireProtectedApi(['POWER_UTILS', 'POWER_SLEEP', 'UIMAGE_RPM', 'POWER_RPM'])
+
+PRIVATE_API_PATHS = [
+  '${BUILD_ROOT}/core/power/uSleep/inc',
+  '${BUILD_ROOT}/core/power/uSleep/src',
+  '${BUILD_ROOT}/core/power/uSleep/src/client',
+  '${BUILD_ROOT}/core/power/uSleep/src/log',
+  '${BUILD_ROOT}/core/power/uSleep/src/lpr',
+  '${BUILD_ROOT}/core/power/uSleep/src/target',
+  '${BUILD_ROOT}/core/power/uSleep/src/util',
+  '${BUILD_ROOT}/core/power/uSleep/src/solver',
+  '${BUILD_ROOT}/core/power/uSleep/src/uATS',
+  HWIO_DIR_ROOT,
+  HWIO_DIR_ROOT + '/' + HWIO_TARGET,
+  ]
+
+if MULTIPD == 1:
+  PRIVATE_API_PATHS += ['${BUILD_ROOT}/core/power/uSleep/src/client_user',]
+
+if 'USLEEP_SUPPORT_TRANSITIONS' in USLEEP_DEFINES:
+  PRIVATE_API_PATHS += ['${BUILD_ROOT}/core/power/uSleep/src/transition']
+
+if 'UNPA_SUPPORT' in USLEEP_DEFINES:
+  PRIVATE_API_PATHS += ['${BUILD_ROOT}/core/power/uSleep/src/unpa_nodes']
+
+env.PublishPrivateApi('USLEEP', PRIVATE_API_PATHS)
+
+#-------------------------------------------------------------------------------
+# Add target specific defines to build options
+#-------------------------------------------------------------------------------
+env.Append(CPPDEFINES = USLEEP_DEFINES)
+
+#-------------------------------------------------------------------------------
+# uSleep QDSS Strings and Number of Arguments Per String
+#-------------------------------------------------------------------------------
+USLEEP_ENTER_STR = 'Begin uSleep Transition'
+USLEEP_ENTER_NUM_ARGS = '0'
+
+USLEEP_EXIT_START_STR = 'Begin uSleep exit (Last int: %u)'
+USLEEP_EXIT_START_NUM_ARGS = '1'
+
+USLEEP_EXIT_STR = 'uSleep exit complete'
+USLEEP_EXIT_NUM_ARGS = '0'
+
+USLEEP_MASTER_WAKEUP_STR = 'Master wakeup (Last int: %u) (Wakeup req: 0x%llx) (STM exit: 0x%llx)' 
+USLEEP_MASTER_WAKEUP_NUM_ARGS = '5'
+
+USLEEP_LPR_ENTER_STR = 'Enter LPM (Mode: %s)'
+USLEEP_LPR_ENTER_NUM_ARGS = '1'
+
+USLEEP_LPR_EXIT_STR = 'Exit LPM'
+USLEEP_LPR_EXIT_NUM_ARGS = '0'
+
+USLEEP_RPM_WAKE_REASON_STR = 'RPM stats (Reason: %s) (shtdn_req: 0x%llx) (brnup_ack: 0x%llx) (SST: %d) (AST: %d) (Err: %d)'
+USLEEP_RPM_WAKE_REASON_NUM_ARGS = '8'
+
+USLEEP_CRIT_ERR_STR = 'CRITICAL ERROR UNABLE TO CONTINUE (state: %d)'
+USLEEP_CRIT_ERR_NUM_ARGS = '1'
+
+
+env.Append( CPPDEFINES = [('USLEEP_EXIT_START_STR = \\\"' + USLEEP_EXIT_START_STR + '\\\"' ),
+                          ('USLEEP_EXIT_START_NUM_ARGS = ' + USLEEP_EXIT_START_NUM_ARGS ), 
+
+                          ('USLEEP_EXIT_STR = \\\"' + USLEEP_EXIT_STR + '\\\"' ),
+                          ('USLEEP_EXIT_NUM_ARGS = ' + USLEEP_EXIT_NUM_ARGS ), 
+
+                          ('USLEEP_ENTER_STR = \\\"' + USLEEP_ENTER_STR + '\\\"' ),
+                          ('USLEEP_ENTER_NUM_ARGS = ' + USLEEP_ENTER_NUM_ARGS ), 
+
+                          ('USLEEP_LPR_ENTER_STR = \\\"' + USLEEP_LPR_ENTER_STR + '\\\"' ), 
+                          ('USLEEP_LPR_ENTER_NUM_ARGS = ' + USLEEP_LPR_ENTER_NUM_ARGS ), 
+
+                          ('USLEEP_LPR_EXIT_STR = \\\"' + USLEEP_LPR_EXIT_STR + '\\\"' ), 
+                          ('USLEEP_LPR_EXIT_NUM_ARGS = ' + USLEEP_LPR_EXIT_NUM_ARGS ),
+
+                          ('USLEEP_RPM_WAKE_REASON_STR = \\\"' + USLEEP_RPM_WAKE_REASON_STR + '\\\"' ), 
+                          ('USLEEP_RPM_WAKE_REASON_NUM_ARGS = ' + USLEEP_RPM_WAKE_REASON_NUM_ARGS ),
+
+                          ('USLEEP_MASTER_WAKEUP_STR = \\\"' + USLEEP_MASTER_WAKEUP_STR + '\\\"' ),
+                          ('USLEEP_MASTER_WAKEUP_NUM_ARGS = ' + USLEEP_MASTER_WAKEUP_NUM_ARGS ), 
+
+                          ('USLEEP_CRIT_ERR_STR = \\\"' + USLEEP_CRIT_ERR_STR + '\\\"' ), 
+                          ('USLEEP_CRIT_ERR_NUM_ARGS = ' + USLEEP_CRIT_ERR_NUM_ARGS ),
+                          ] )
+
+#-------------------------------------------------------------------------------
+# uSleep QDSS Events
+#-------------------------------------------------------------------------------
+if 'USES_QDSS_SWE' in env:
+# island QDSS is not supported yet, uncomment when it's available
+#  env.Append(CPPDEFINES=['USLEEP_ENABLE_QDSS'])
+
+  QDSS_IMG = ['QDSS_EN_IMG']
+
+  events = [ ['USLEEP_EXIT_START', USLEEP_EXIT_START_STR],
+             ['USLEEP_EXIT', USLEEP_EXIT_STR],
+             ['USLEEP_ENTER', USLEEP_ENTER_STR],
+             ['USLEEP_LPR_ENTER', USLEEP_LPR_ENTER_STR],
+             ['USLEEP_LPR_EXIT', USLEEP_LPR_EXIT_STR],
+             ['USLEEP_RPM_WAKE_REASON', USLEEP_RPM_WAKE_REASON_STR],
+             ['USLEEP_MASTER_WAKEUP', USLEEP_MASTER_WAKEUP_STR],
+             ['USLEEP_CRIT_ERR', USLEEP_CRIT_ERR_STR],
+           ]
+
+  env.AddSWEInfo(QDSS_IMG, events)
+else:
+  env.Append( CPPDEFINES = [ ('USLEEP_EXIT_START      = 0'),
+                             ('USLEEP_EXIT            = 0'),
+                             ('USLEEP_ENTER           = 0'),
+                             ('USLEEP_LPR_ENTER       = 0'),
+                             ('USLEEP_LPR_EXIT        = 0'),
+                             ('USLEEP_RPM_WAKE_REASON = 0'),
+                             ('USLEEP_MASTER_WAKEUP   = 0'),
+                             ('USLEEP_CRIT_ERR        = 0'),
+                           ] )
+
+if 'QDSS_TRACER_SWE' in env:
+    env.SWEBuilder(['${BUILDPATH}/uSleep_tracer_event_ids.h'],None)
+    env.Append(CPPPATH = ['${BUILD_ROOT}/core/power/uSleep/build/$BUILDPATH'])
+
+#-------------------------------------------------------------------------------
+# Global source settings
+#-------------------------------------------------------------------------------
+MAIN_IMG_TAG    = ['CORE_Q6_ROOT']
+CORE_ISLAND_TAG = ['CORE_Q6_ROOT']
+
+USER_IMG_TAG    = ['CORE_SLPI_USER']
+USER_ISLAND_TAG = ['CORE_SLPI_USER']
+
+SOURCE_PATTERN = ['*.c']
+
+usleep_sources = []
+user_sources = []
+usleep_island_sources = []
+user_island_sources = []
+
+#-------------------------------------------------------------------------------
+# uSleep normal mode sources
+#-------------------------------------------------------------------------------
+for src_path_root in uSleep_source_dirs:
+  for root, dir, files in os.walk(os.path.join(SRCPATH, src_path_root)):
+    if os.path.basename(root) in normal_mode_source_dirs:
+      for sub, subdir, subfile in os.walk(root):
+        matches = itertools.chain(*[fnmatch.filter(subfile, pattern) for pattern in SOURCE_PATTERN])
+        matches = [os.path.join(root, filename) for filename in matches]
+        matches = [matched_path.replace(SRCPATH,'${BUILDPATH}',1) for matched_path in matches]
+        usleep_sources.extend(matches)
+
+if MULTIPD == 1:
+  for src_path_root in uSleep_user_source_dirs:
+    for root, dir, files in os.walk(os.path.join(SRCPATH, src_path_root)):
+      if os.path.basename(root) in normal_mode_source_dirs: 
+        for sub, subdir, subfile in os.walk(root):
+          matches = itertools.chain(*[fnmatch.filter(subfile, pattern) for pattern in SOURCE_PATTERN])
+          matches = [os.path.join(root, filename) for filename in matches]
+          matches = [matched_path.replace(SRCPATH,'${BUILDPATH}',1) for matched_path in matches]
+          user_sources.extend(matches)
+
+#-------------------------------------------------------------------------------
+# uSleep island sources
+#-------------------------------------------------------------------------------
+for src_path_root in uSleep_source_dirs:
+  for root, dir, files in os.walk(os.path.join(SRCPATH, src_path_root)):
+    dir[:] = [d for d in dir if d not in normal_mode_source_dirs]
+    island_matches = itertools.chain(*[fnmatch.filter(files, pattern) for pattern in SOURCE_PATTERN])
+    island_matches = [os.path.join(root, filename) for filename in island_matches]
+    island_matches = [matched_path.replace(SRCPATH,'${BUILDPATH}',1) for matched_path in island_matches]
+    usleep_island_sources.extend(island_matches)
+
+if MULTIPD == 1:
+  for src_path_root in uSleep_user_source_dirs:
+    for root, dir, files in os.walk(os.path.join(SRCPATH, src_path_root)):
+      dir[:] = [d for d in dir if d not in normal_mode_source_dirs]
+      island_matches = itertools.chain(*[fnmatch.filter(files, pattern) for pattern in SOURCE_PATTERN])
+      island_matches = [os.path.join(root, filename) for filename in island_matches]
+      island_matches = [matched_path.replace(SRCPATH,'${BUILDPATH}',1) for matched_path in island_matches]
+      user_island_sources.extend(island_matches)
+
+#-------------------------------------------------------------------------------
+# Compile sources and create libraries
+#-------------------------------------------------------------------------------
+usleep_lib = env.AddLibrary(MAIN_IMG_TAG, os.path.join('${BUILDPATH}', 'uSleep_normal'), usleep_sources)
+usleep_island_lib = env.AddLibrary(MAIN_IMG_TAG, os.path.join('${BUILDPATH}', 'uSleep_island'), usleep_island_sources)
+
+#Add user code to each PD
+if MULTIPD == 1:
+  user_lib = env.AddLibrary(USER_IMG_TAG, os.path.join('${BUILDPATH}', 'uSleep_user_normal'), user_sources)
+  user_island_lib = env.AddLibrary(USER_ISLAND_TAG, os.path.join('${BUILDPATH}', 'uSleep_user_island'), user_island_sources)
+
+#-------------------------------------------------------------------------------
+# Whitelist for island sections
+#-------------------------------------------------------------------------------
+WHITELIST = []
+
+#-------------------------------------------------------------------------------
+# Add library to island section
+#-------------------------------------------------------------------------------
+if 'USES_ISLAND' in env:
+  env.AddIslandLibrary(CORE_ISLAND_TAG, usleep_island_lib)
+#  env.AddSymbolToIslandWhitelist(CORE_ISLAND_TAG, usleep_island_lib, WHITELIST)
+
+  if MULTIPD == 1:
+    env.AddIslandLibrary(USER_ISLAND_TAG, user_island_lib)
+
+#-------------------------------------------------------------------------------
+# LPI definition
+#-------------------------------------------------------------------------------
+if 'USLEEP_SUPPORT_TRANSITIONS' in USLEEP_DEFINES:
+  if 'USES_CORESLEEP_TOOL' in env:
+    xml_file = env['BUILD_ROOT'] + '/core/power/uSleep/src/lpi/default/'
+    env.AddCoreSleepLPR('CORE_QDSP6_SW', {'sleep_lpr_xml' : [xml_file]})
+
+#-------------------------------------------------------------------------------
+# Root RCINIT
+#-------------------------------------------------------------------------------
+if 'UNPA_SUPPORT' in USLEEP_DEFINES:
+  USLEEP_RCINIT_FUNC = {
+    'sequence_group'      : 'RCINIT_GROUP_0',           # required
+    'init_name'           : 'uSleep',                   # required
+    'init_function'       : 'uSleepOS_initialize',      # required
+    'dependencies'        : ['sleep', 'npa', 'uNPA', 'utimer_client'], 
+  }
+else:
+  USLEEP_RCINIT_FUNC = {
+    'sequence_group'      : 'RCINIT_GROUP_0',           # required
+    'init_name'           : 'uSleep',                   # required
+    'init_function'       : 'uSleepOS_initialize',      # required
+    'dependencies'        : ['sleep', 'npa', 'utimer_client'], 
+  }
+
+#-------------------------------------------------------------------------------
+# User RCINIT
+#-------------------------------------------------------------------------------
+USLEEP_USER_RCINIT_FUNC = {
+    'sequence_group'         : 'RCINIT_GROUP_0',          # required
+    'init_name'              : 'uSleep_client',           # required
+    'init_function'          : 'uSleep_ClientQDIInit',    # required
+    'dependencies'           : ['sleep']
+  }
+
+#-------------------------------------------------------------------------------
+# RCINIT additions
+#-------------------------------------------------------------------------------
+if 'USES_RCINIT' in env:
+  env.AddRCInitFunc(MAIN_IMG_TAG, USLEEP_RCINIT_FUNC)
+
+  if MULTIPD == 1:
+    env.AddRCInitFunc(USER_IMG_TAG, USLEEP_USER_RCINIT_FUNC)
+
+#-------------------------------------------------------------------------------
+# Scripts
+#-------------------------------------------------------------------------------
+SRCPATHSCRIPTS = env['BUILD_ROOT'] + '/core/power/uSleep/scripts'
+
+try:
+  env.AddCMMScripts ('QDSP6', [SRCPATHSCRIPTS], { 'uSleepDump.cmm' : 'uSleep Dump'}, 'Power')
+except:
+  pass
+

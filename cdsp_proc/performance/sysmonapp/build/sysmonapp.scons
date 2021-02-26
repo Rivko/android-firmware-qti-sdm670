@@ -1,0 +1,231 @@
+#===============================================================================
+#
+# sysmon dynamic builder scons
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2015 by QUALCOMM Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+
+Import('env')
+import os
+
+if 'SYSMON_APP' in env:
+    #-------------------------------------------------------------------------------
+    # Setup env Flags
+    #-------------------------------------------------------------------------------
+    env.Replace(ASM_DFLAGS = '-D__V_DYNAMIC__')
+    env.Replace(CC_DFLAGS = '-D__V_DYNAMIC__')
+    env.Replace(HEXAGONCC_OPT = ' -O2')    
+    env.Replace(HEXAGONCC_WARN = '-Wall -Wpointer-arith -Wno-missing-braces -Wno-strict-aliasing -Wstrict-prototypes -Wnested-externs')
+
+    env.Replace(HEXAGON_UNDEF = ' ')
+    env.Replace(HEXAGON_LANIND = '-fno-exceptions -fno-strict-aliasing -fno-zero-initialized-in-bss -fdata-sections')    
+    if os.environ.get('COMPILER') == 'llvm':
+        env.Replace(CFLAGS = ' -G0 ')
+        env.Append(SHLINKFLAGS = '-G0 -Bsymbolic --wrap=malloc --wrap=calloc --wrap=free --wrap=realloc --wrap=memalign --wrap=__stack_chk_fail ')
+    else:
+        env.Replace(CFLAGS = ' -G0 -mqdsp6-compat -std=gnu99')
+        env.Append(SHLINKFLAGS = '-G0 -fpic -Bsymbolic --wrap=malloc --wrap=calloc --wrap=free --wrap=realloc --wrap=memalign --wrap=__stack_chk_fail ')
+    if env.get('IMAGE') == 'cdsp':
+        env.Append(CFLAGS = ' -mhvx-double ')  #for enabling FFT intrinsic compilation in 128B HVX mode
+    #-------------------------------------------------------------------------------
+    # Get the required Include directories
+    #-------------------------------------------------------------------------------
+    core_public_apis = [
+       'KERNEL',
+       'SERVICES',
+       'DEBUGTOOLS',
+       'ADSPPM',
+       'POWER',
+       'MPROC',
+       'SYSTEMDRIVERS',
+       'DEBUGTRACE',
+       'DAL',
+       'DIAG',
+       'BUSES',
+    ]
+
+    platform_public_apis = [
+       'PLATFORM_LIBS',
+       'MOD_TABLE',
+       'QAIC',
+       'STDDEF',
+       'REMOTE',
+       'HAPSDK',
+    ]    
+    env.PublishPrivateApi('SYSMON_APP',[
+        '../inc/hexagon/benchmark',
+        '../inc/hexagon',
+        '../inc',
+       ])
+
+    env.RequirePublicApi(platform_public_apis, area='platform')
+    env.RequirePublicApi(core_public_apis, area='core')
+    env.RequirePublicApi('ADSP_SYSMON', area='performance')
+    env.RequirePrivateApi('SYSMON_APP')
+
+    #-------------------------------------------------------------------------------
+    # Setup source PATH
+    #-------------------------------------------------------------------------------
+    SRCPATH = "${BUILD_ROOT}/performance/sysmonapp/src/hexagon" 
+    SRCASMPATH = "${BUILD_ROOT}/performance/sysmonapp/src/asm_src" 
+    IDL_DIR = "${BUILD_ROOT}/performance/sysmonapp/inc/hexagon" 
+    LIBNAME = 'libsysmon_skel'
+    LIBNAME_DOMAIN = 'libsysmondomain_skel'
+    LIBNAME_STABILITY = 'libstabilitydomain_skel'
+    LIBNAME_BENCHMARK = 'libbenchmark_skel'
+    LIBNAME_SYSMONHVXTHROTTLE = 'libsysmonhvxthrottle_skel'
+    env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+    sysmon_dynamic_src = [
+                            '${BUILDPATH}/profiler_adsp.c',
+                            '${BUILDPATH}/settings.c',
+                            '${BUILDPATH}/stress_test.c',
+                            '${BUILDPATH}/sysmon_dsat.c',
+                            '${BUILDPATH}/dspcache_asm.S',
+                            '${BUILDPATH}/sysmonapp_init.c',
+                         ]
+
+    if env.IsBuildInternal():
+        sysmon_dynamic_src += [
+                            env.QaicSkelFromIdl("sysmon"),
+                            env.QaicStubFromIdl("sysmonapps"),
+                         ]
+
+    sysmondomain_dynamic_src = [
+                            '${BUILDPATH}/profiler_adsp.c',
+                            '${BUILDPATH}/settings.c',
+                            '${BUILDPATH}/stress_test.c',
+                            '${BUILDPATH}/sysmon_dsat.c',
+                            '${BUILDPATH}/sysmon_domain.c',
+                            '${BUILDPATH}/q6_domain.c',
+                            '${BUILDPATH}/dspcache_asm.S',
+                            '${BUILDPATH}/sysmonapp_init.c',
+                         ]
+    
+    if env.IsBuildInternal():
+        sysmondomain_dynamic_src += [
+                            env.QaicSkelFromIdl("sysmon"),
+                            env.QaicSkelFromIdl("sysmondomain"),
+                            env.QaicStubFromIdl("sysmonapps"),
+                         ]                                                  
+                                               
+    stabilitydomain_dynamic_src = [
+                            '${BUILDPATH}/stability_test.c',
+                            '${BUILDPATH}/sysmonapp_init.c',
+                            '${BUILDPATH}/q6_domain.c',
+                            ]
+                         
+    if env.IsBuildInternal():
+        stabilitydomain_dynamic_src += [env.QaicSkelFromIdl("stabilitydomain")]
+                         
+    if env.get('IMAGE') == 'cdsp':
+        env.Append(CPPDEFINES='SYSMONAPP_CDSP')
+        sysmon_dynamic_src += ['${BUILDPATH}/hvx_asm.S']
+        sysmondomain_dynamic_src += ['${BUILDPATH}/hvx_asm.S']
+        
+    if env['CHIPSET'] in ['sdm845', 'sdm670', 'sdm855'] and env.get('IMAGE')=='cdsp':
+        env.Append(CPPDEFINES='SYSMONAPP_DMA_TEST')
+        sysmon_dynamic_src += [
+                                '${BUILDPATH}/module_tests.c',
+                                '${BUILDPATH}/DMA_test.c'
+                              ]
+        sysmondomain_dynamic_src += [
+                                      '${BUILDPATH}/module_tests.c',
+                                      '${BUILDPATH}/DMA_test.c'
+                                    ]
+    else:
+        sysmon_dynamic_src += ['${BUILDPATH}/module_tests_stub.c']
+        sysmondomain_dynamic_src += ['${BUILDPATH}/module_tests_stub.c']
+    
+    benchmark_dynamic_src = [
+                            '${BUILDPATH}/benchmark/benchmark_imp.c',
+                            '${BUILDPATH}/benchmark/bilateral.S',
+                            '${BUILDPATH}/benchmark/bilateral_imp.c',
+                            '${BUILDPATH}/benchmark/bilateral_v60_imp.c',
+                            '${BUILDPATH}/benchmark/bilateral_v65.S',
+                            '${BUILDPATH}/benchmark/conv3x3a32_asm.S',
+                            '${BUILDPATH}/benchmark/conv3x3a32_imp.c',
+                            '${BUILDPATH}/benchmark/crash10_imp.c',
+                            '${BUILDPATH}/benchmark/dilate3x3_asm.S',
+                            '${BUILDPATH}/benchmark/dilate3x3_imp.c',
+                            '${BUILDPATH}/benchmark/dilate5x5_asm.S',
+                            '${BUILDPATH}/benchmark/dilate5x5_imp.c',
+                            '${BUILDPATH}/benchmark/epsilon.S',
+                            '${BUILDPATH}/benchmark/epsilon_imp.c',
+                            '${BUILDPATH}/benchmark/fast9_coarse.S',
+                            '${BUILDPATH}/benchmark/fast9_fine.S',
+                            '${BUILDPATH}/benchmark/fast9_imp.c',
+                            '${BUILDPATH}/benchmark/gaussian7x7_asm.S',
+                            '${BUILDPATH}/benchmark/gaussian7x7_imp.c',
+                            '${BUILDPATH}/benchmark/integrate_asm.S',
+                            '${BUILDPATH}/benchmark/integrate_imp.c',
+                            '${BUILDPATH}/benchmark/multithread_scheduler.c',
+                            '${BUILDPATH}/benchmark/sobel3x3_C_intrinsics.c',
+                            '${BUILDPATH}/benchmark/sobel3x3_imp.c',
+                            '${BUILDPATH}/benchmark/fft_imp.c',
+                            '${BUILDPATH}/benchmark/fft_imp_v65.c',
+                            '${BUILDPATH}/benchmark/gemm_imp.c',
+                            '${BUILDPATH}/benchmark/gemm_lib.c',
+                            '${BUILDPATH}/benchmark/l2pref.S',
+                            '${BUILDPATH}/benchmark/gemacca_h.S',
+                            '${BUILDPATH}/benchmark/gemaccb_h.S',
+                            '${BUILDPATH}/benchmark/gemaddscale_h.S',
+                            '${BUILDPATH}/benchmark/gemaddvvm_h.S',
+                            '${BUILDPATH}/benchmark/gemmacbbw_h.S',
+                            '${BUILDPATH}/benchmark/gemmpybbw_h.S',
+                            '${BUILDPATH}/benchmark/gemscale_h.S',
+                            '${BUILDPATH}/benchmark/gemsuma_h.S',
+                            '${BUILDPATH}/benchmark/gemsumb_h.S',
+                            ]
+
+    if env.IsBuildInternal():
+        benchmark_dynamic_src += [env.QaicSkelFromIdl("benchmark")] 
+
+    sysmonhvxthrottle_dynamic_src = [
+                                    '${BUILDPATH}/sysmon_hvxthrottle_thermal_client.c',
+                                    '${BUILDPATH}/sysmon_hvxthrottle_npuapps_client.c',
+                                    ]                                           
+
+    if env.IsBuildInternal():                                
+        sysmonhvxthrottle_dynamic_src += [env.QaicSkelFromIdl("sysmonhvxthrottle")]
+        
+    #-------------------------------------------------------------------------------
+    # Call the build command
+    #-------------------------------------------------------------------------------
+    env_1 = env.Clone()
+    env_2 = env.Clone()
+    env_3 = env.Clone()
+    env_4 = env.Clone()
+    if env['CHIPSET'] in ['sdm845'] and env.get('IMAGE') == 'slpi':
+        env.AddBinarySharedLibrary(['ADSP_SHARED_LIBS'], '${BUILDPATH}/'+LIBNAME, sysmon_dynamic_src)
+        env_1.AddBinarySharedLibrary(['ADSP_SHARED_LIBS'], '${BUILDPATH}/'+LIBNAME_DOMAIN, sysmondomain_dynamic_src)
+        env_2.AddBinarySharedLibrary(['ADSP_SHARED_LIBS'], '${BUILDPATH}/'+LIBNAME_STABILITY, stabilitydomain_dynamic_src)
+    else:
+        env.AddMySharedLibrary(['ADSP_SHARED_LIBS'], '${BUILDPATH}/'+LIBNAME, sysmon_dynamic_src)
+        env_1.AddMySharedLibrary(['ADSP_SHARED_LIBS'], '${BUILDPATH}/'+LIBNAME_DOMAIN, sysmondomain_dynamic_src)
+        env_2.AddMySharedLibrary(['ADSP_SHARED_LIBS'], '${BUILDPATH}/'+LIBNAME_STABILITY, stabilitydomain_dynamic_src)
+
+    if env.get('IMAGE') == 'cdsp':
+        env_3.AddMySharedLibrary(['ADSP_SHARED_LIBS'], '${BUILDPATH}/'+LIBNAME_BENCHMARK, benchmark_dynamic_src)
+        
+    if env['CHIPSET'] in ['sdm670'] and env.get('IMAGE') == 'cdsp':    
+        env_4.AddMySharedLibrary(['ADSP_SHARED_LIBS'], '${BUILDPATH}/'+LIBNAME_SYSMONHVXTHROTTLE, sysmonhvxthrottle_dynamic_src)        
+
+CLEAN_LIST=['${BUILD_ROOT}/performance/sysmonapp/android.min',
+            '${BUILD_ROOT}/performance/sysmonapp/hexagon.min',
+            '${BUILD_ROOT}/performance/sysmonapp/Makefile',
+            '${BUILD_ROOT}/performance/sysmonapp/exports.lst',]
+CLEAN_LIST.extend(env.FindFiles(['*.h', '*.c', '*.map','*.os'], '${BUILDPATH}'))
+CLEAN_LIST.extend(env.FindFiles(['*.h'], '${BUILD_ROOT}/performance/sysmonapp/build'))     
+CLEAN_LIST.extend(env.FindFiles(['*'], '${BUILD_ROOT}/performance/sysmonapp/glue'))     
+CLEAN_LIST.extend(env.FindFiles(['*'], '${BUILD_ROOT}/performance/sysmonapp/inc'))         
+CLEAN_LIST.extend(env.FindFiles(['*'], '${BUILD_ROOT}/performance/sysmonapp/src'))  
+CLEAN_LIST.extend(env.FindFiles(['*.pl'], '${BUILD_ROOT}/performance/tools')) 
+env.CleanPack(['ADSP_SHARED_LIBS', 'SYSMON_SW_IMAGE'], CLEAN_LIST)
+    

@@ -1,0 +1,71 @@
+#===============================================================================
+#
+# AVS AU
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2009-2009 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+
+
+
+SRCPATH = '..'
+LIBNAME = 'dummy_ecns_lib'
+
+core_public_apis = [
+   'DEBUGTOOLS',
+   'KERNEL',
+   'SERVICES',
+   ]
+
+env.RequirePublicApi(core_public_apis, area='core')
+env.RequireRestrictedApi(['SHARED_LIBRARY_INC_PATHS'])
+env.RequireProtectedApi(['VOICE_CAPI_V2_SAMPLE_SLIP'])
+
+platform_public_apis = [
+  'STDDEF', # AEEDef
+  'HAPSDK', # HAP_debug, farf etc
+    ]
+
+env.PublishPrivateApi('DUMMY_ECNS',[
+   '../inc',
+   ])
+
+# This has to be the last include command, so that the Elite_CAPI.h and Elite_APPI.h are not overridden
+env.RequirePublicApi(platform_public_apis, area='platform')
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+# Genate proprietary source file list
+avs_prop_sources = []
+
+# Generate stub source file list
+avs_stub_sources = env.GlobSourceFiles(['/src_stub/*.cpp', '/src_stub/*.c'], SRCPATH,posix=True)
+
+# Generate regular source file list
+avs_reg_sources = env.GlobSourceFiles(['/src/*.cpp', '/src/*.c'], SRCPATH,posix=True)
+
+bucket = ['HAP_AVS_ADSP']
+
+env.AddLibrary(bucket, '${BUILDPATH}/'+LIBNAME, [avs_reg_sources, avs_stub_sources, avs_prop_sources]) 
+#env.AddBinaryLibrary(bucket, '${BUILDPATH}/'+LIBNAME, [avs_reg_sources, avs_stub_sources, avs_prop_sources]) 
+

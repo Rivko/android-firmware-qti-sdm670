@@ -1,0 +1,66 @@
+#===========================================================================
+#  Copyright (c) 2014-2017 QUALCOMM Incorporated.
+#  All Rights Reserved.
+#  Qualcomm Confidential and Proprietary
+#===========================================================================
+#
+# Secure Indicator
+#
+# GENERAL DESCRIPTION
+#    build script
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains schedulerents describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#===============================================================================
+Import('env')
+
+includes = [
+  "${BUILD_ROOT}/core/api/services",
+  "${BUILD_ROOT}/ssg/api/securemsm/trustzone/qsee",
+  "${BUILD_ROOT}/ssg/securemsm/trustzone/qsapps/libs/services/src",
+  "${BUILD_ROOT}/apps/securemsm/trustzone/qsapps/secureindicator/inc",
+  "${BUILD_ROOT}/ssg/securemsm/sse/qsee/SecureDisplay/libpng/include",
+  "${BUILD_ROOT}/ssg/securemsm/sse/qsee/SecureDisplay/zlib/include",
+  "${BUILD_ROOT}/core/api/kernel/libstd/stringl",
+]
+
+#----------------------------------------------------------------------------
+# App core Objects
+#----------------------------------------------------------------------------
+sources = [
+  'si_main.c',
+  'si.c',
+  '../oem/src/si_oem.c'
+]
+
+libs = [
+  env.SConscript('${BUILD_ROOT}/ssg/securemsm/sse/qsee/SecureDisplay/libpng/build/SConscript', exports='env'),
+  env.SConscript('${BUILD_ROOT}/ssg/securemsm/sse/qsee/SecureDisplay/zlib/build/SConscript', exports='env'),
+]
+
+env.Append(CCFLAGS = " -DPNG_SEQUENTIAL_READ_SUPPORTED")
+
+#-------------------------------------------------------------------------------
+# Add metadata to image
+#-------------------------------------------------------------------------------
+md = {
+    'appName':    'secureindicator',
+    'privileges': ['default'],
+    'heapSize':   0x106000,
+}
+
+app_units = env.SecureAppBuilder(
+  sources = sources,
+  includes = includes,
+  metadata = md,
+  image = 'secureindicator',
+  deploy_sources = ['SConscript', '../oem/src/si_oem.c'],
+  deploy_objects = ['si_main.c', 'si.c'],
+  deploy_variants = env.GetDefaultPublicVariants(),
+  user_libs=libs
+)
+
+op = env.Alias('secureindicator', app_units)
+env.CleanPack('secureindicator', Glob('*.c') + Glob('../inc/*'))
+Return('app_units')

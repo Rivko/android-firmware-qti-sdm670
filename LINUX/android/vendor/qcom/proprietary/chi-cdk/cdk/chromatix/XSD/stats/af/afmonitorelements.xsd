@@ -1,0 +1,581 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--========================================================================-->
+<!-- Copyright (c) 2016-2017 Qualcomm Technologies, Inc.                    -->
+<!-- All Rights Reserved.                                                   -->
+<!-- Confidential and Proprietary - Qualcomm Technologies, Inc.             -->
+<!--========================================================================-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema" elementFormDefault="qualified" attributeFormDefault="unqualified">
+	<xs:include schemaLocation="afglobalelements.xsd"/>
+	<xs:element name="chromatixAFMONITOR" type="chromatixAFMONITORType"/>
+	<xs:complexType name="chromatixAFMONITORType">
+		<xs:sequence>
+			<xs:element name="module_version">
+				<xs:complexType>
+					<xs:attribute name="major_revision" type="xs:int" default="3"/>
+					<xs:attribute name="minor_revision" type="xs:int" default="4"/>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="parameter_version">
+				<xs:complexType>
+					<xs:attribute name="major_revision" type="xs:int" default="0"/>
+					<xs:attribute name="minor_revision" type="xs:int" default="0"/>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="monitorAlgoConfig" type="chromatixMonitorAlgoConfigType"/>
+			<xs:element name="valueMonitorBank" type="chromatixValueMonitorBankType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixMonitorAlgoConfigType">
+		<xs:sequence>
+			<xs:element name="topoCAF" type="chromatixTopoCAFType"/>
+			<xs:element name="topoPDAF" type="chromatixTopoPDAFType"/>
+			<xs:element name="topoTOF" type="chromatixTopoTOFType"/>
+			<xs:element name="topoDCIAF" type="chromatixTopoDCIAFType"/>
+			<xs:element name="topoDefaultMixer" type="chromatixTopoDefaultMixerType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixValueMonitorBankType">
+		<xs:sequence>
+			<xs:element name="valueMonitor" type="chromatixValueMonitorType" maxOccurs="36"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixValueMonitorType">
+		<xs:sequence>
+			<xs:element name="VMSetType" type="chromatixVMSetTypeEnum"/>
+			<xs:element name="detectionType" type="chromatixDetectorTypeEnum"/>
+			<xs:element name="absoluteModeCfg" type="chromatixAbsoluteModeCfgType"/>
+			<xs:element name="sensProfileLow" type="chromatixSensProfileType"/>
+			<xs:element name="sensProfileMed" type="chromatixSensProfileType"/>
+			<xs:element name="sensProfileHigh" type="chromatixSensProfileType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixAbsoluteModeCfgType">
+		<xs:sequence>
+			<xs:element name="enable">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="While absolute mode is enabled, i.e., enable=1, value monitor will use the the baseline value as a reference baseline. While absolute is disabled, i.e., enable=0, value monitor will adaptively update reference baseline according to the metafilter output (referring to frame2armed)"/>
+							<xs:attribute name="range" type="xs:string" default="[0,1]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="baseline">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="This parameter is utilized as absolute mode is enabled. While absolute mode is enabled, value monitor will use this parameter as reference baseline."/>
+							<xs:attribute name="range" type="xs:string" default="[unbounded,unbounded]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixSensProfileType">
+		<xs:sequence>
+			<xs:element name="triggerThreshold">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Threshold for the value monitor detection. The threshold is defined as the absolute difference between metafilter output and reference baseline."/>
+							<xs:attribute name="range" type="xs:string" default="[0,unbounded]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="consecutiveCountThreshold">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Counting threshold for the residue is constantly above/below the trigger_threshold. While VM_DETECTOR_UNSTABLE is chosen, the counting threshold means the number of counts that residual(absolute difference between signal and baseline) is above the threshold. While VM_DETECTOR_STABLE is chosen, the counting threshold means the number of counts that residual (absolute difference between signal and baseline) is below the threshold."/>
+							<xs:attribute name="range" type="xs:string" default="[0,unbounded]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="frameToArmed">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Number of frames for starting the scene change detection."/>
+							<xs:attribute name="range" type="xs:string" default="[0,unbounded]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="medianFltrCfg" type="chromatixMedianFltrCfgType"/>
+			<xs:element name="mvavgFltrCfg" type="chromatixMvavgFltrCfgType"/>
+			<xs:element name="IIRFltrCfg" type="chromatixIirFltrCfgType"/>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixMedianFltrCfgType">
+		<xs:sequence>
+			<xs:element name="enable">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Flag to enable median filter or not."/>
+							<xs:attribute name="range" type="xs:string" default="[0, 1]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="numOfSamples">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Length of the median filter."/>
+							<xs:attribute name="range" type="xs:string" default="[0, 10]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixMvavgFltrCfgType">
+		<xs:sequence>
+			<xs:element name="enable">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Flag to enable moving average filter or not."/>
+							<xs:attribute name="range" type="xs:string" default="[0, 1]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="numOfSamples">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Length of the moving average filter."/>
+							<xs:attribute name="range" type="xs:string" default="[0, 10]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixIirFltrCfgType">
+		<xs:sequence>
+			<xs:element name="enable">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Flag to enable IIR filter or not."/>
+							<xs:attribute name="range" type="xs:string" default="[0, 1]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="numOfSamples">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Length of the IIR filter"/>
+							<xs:attribute name="range" type="xs:string" default="[2,2]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="coeffNumerator">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="IIR filter coefficient in numerator. An first order IIR filter is designed, the coefficients in numerator and denominator are typically required. This parameter defines the coefficient in the numerator."/>
+							<xs:attribute name="range" type="xs:string" default="[unbounded,unbounded]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="coeffDenominator">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="IIR filter coefficient in denominator. An first order IIR filter is designed, the coefficients in numerator and denominator are typically required. This parameter defines the coefficient in the denominator."/>
+							<xs:attribute name="range" type="xs:string" default="[unbounded,unbounded]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixTopoCAFType">
+		<xs:sequence>
+			<xs:element name="profileIndex" type="chromatixTopoCAFEnum"/>
+			<xs:element name="SADR">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Sensitivity value for SADR value monitor."/>
+							<xs:attribute name="range" type="xs:string" default="[0, 100]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="gyro">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Sensitivity value for gyro value monitor."/>
+							<xs:attribute name="range" type="xs:string" default="[0, 100]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="gyroPanning">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Sensitivity value for gyroPanning value monitor."/>
+							<xs:attribute name="range" type="xs:string" default="[0, 100]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="SADPanning">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Sensitivity value for SADPanning value monitor."/>
+							<xs:attribute name="range" type="xs:string" default="[0, 100]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="FV">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Sensitivity value for FV value monitor."/>
+							<xs:attribute name="range" type="xs:string" default="[0, 100]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="faceTriggerHold">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Sensitivity value for faceTriggerHold value monitor"/>
+							<xs:attribute name="range" type="xs:string" default="[0, 100]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="CAFSceneChangeHold">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Sensitivity value for CAFSceneChangeHold value monitor"/>
+							<xs:attribute name="range" type="xs:string" default="[0, 100]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixTopoPDAFType">
+		<xs:sequence>
+			<xs:element name="profileIndex" type="chromatixTopoPDAFEnum"/>
+			<xs:element name="defocusLow">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Sensitivity value for defocusLow value monitor."/>
+							<xs:attribute name="range" type="xs:string" default="[0, 100]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="defocusHigh">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Sensitivity value for defocusHigh value monitor."/>
+							<xs:attribute name="range" type="xs:string" default="[0, 100]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="PDAFconfidence">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Sensitivity value for PDAFconfidence value monitor."/>
+							<xs:attribute name="range" type="xs:string" default="[0, 100]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="SADPanning">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Sensitivity value for SAD panning value monitor."/>
+							<xs:attribute name="range" type="xs:string" default="[0, 100]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="gyroPanning">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Sensitivity value for gyro panning value monitor."/>
+							<xs:attribute name="range" type="xs:string" default="[0, 100]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixTopoTOFType">
+		<xs:sequence>
+			<xs:element name="profileIndex" type="chromatixTopoTOFEnum"/>
+			<xs:element name="distance">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Sensitivity value for distance value monitor."/>
+							<xs:attribute name="range" type="xs:string" default="[0, 100]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="TOFconfidenceHigh">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Sensitivity value for TOFconfidenceHigh value monitor."/>
+							<xs:attribute name="range" type="xs:string" default="[0, 100]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="TOFconfidenceMedium">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Sensitivity value for TOFconfidenceMedium value monitor."/>
+							<xs:attribute name="range" type="xs:string" default="[0, 100]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="SADPanning">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Sensitivity value for SAD panning value monitor."/>
+							<xs:attribute name="range" type="xs:string" default="[0, 100]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="gyroPanning">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Sensitivity value for gyro panning value monitor."/>
+							<xs:attribute name="range" type="xs:string" default="[0, 100]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixTopoDCIAFType">
+		<xs:sequence>
+			<xs:element name="profileIndex" type="chromatixTopoDCIAFEnum"/>
+			<xs:element name="distance">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Sensitivity value for DCIAF distance value monitor."/>
+							<xs:attribute name="range" type="xs:string" default="[0, 100]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="confidence">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Sensitivity value for DCIAF confidence value monitor."/>
+							<xs:attribute name="range" type="xs:string" default="[0, 100]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="SADR">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Sensitivity value for SADR value monitor."/>
+							<xs:attribute name="range" type="xs:string" default="[0, 100]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="gyro">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Sensitivity value for gyro value monitor."/>
+							<xs:attribute name="range" type="xs:string" default="[0, 100]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="SADPanning">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Sensitivity value for SAD panning value monitor."/>
+							<xs:attribute name="range" type="xs:string" default="[0, 100]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="gyroPanning">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Sensitivity value for gyro panning value monitor."/>
+							<xs:attribute name="range" type="xs:string" default="[0, 100]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:complexType name="chromatixTopoDefaultMixerType">
+		<xs:sequence>
+			<xs:element name="secondarySceneChangeCntThres">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Value for the CAF scene change count threshold."/>
+							<xs:attribute name="range" type="xs:string" default="[0,10000]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="secondaryUnstableCntThres">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Value for the CAF unstable count threshold."/>
+							<xs:attribute name="range" type="xs:string" default="[0,10000]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="gyroEnable">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="enable_flag_type">
+							<xs:attribute name="description" type="xs:string" default="Flag to enable gyro or not."/>
+							<xs:attribute name="range" type="xs:string" default="[0, 1]"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+	</xs:complexType>
+	<xs:simpleType name="chromatixTopoCAFEnum">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="CAFTopoProfileSimple"/>
+			<xs:enumeration value="CAFTopoProfileAdvanced"/>
+			<xs:enumeration value="CAFTopoProfileMax"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="chromatixTopoPDAFEnum">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="PDAFTopoProfileSparse"/>
+			<xs:enumeration value="PDAFTopoProfile2PD"/>
+			<xs:enumeration value="PDAFTopoProfileSparseAdvanced"/>
+			<xs:enumeration value="PDAFTopoProfile2PDAdvanced"/>
+			<xs:enumeration value="PDAFTopoProfileAdvanced"/>
+			<xs:enumeration value="PDAFTOPOProfileMAX"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="chromatixTopoTOFEnum">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="TOFTopoProfileSimple"/>
+			<xs:enumeration value="TOFTopoProfileAdvanced"/>
+			<xs:enumeration value="TOFTopoProfileMax"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="chromatixTopoDCIAFEnum">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="DCIAFTopoProfileSimple"/>
+			<xs:enumeration value="DCIAFTopoProfileAdvanced"/>
+			<xs:enumeration value="DCIAFTopoProfileMax"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="chromatixDetectorTypeEnum">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="VMDetectorStable"/>
+			<xs:enumeration value="VMDetectorUnstable"/>
+		</xs:restriction>
+	</xs:simpleType>
+	<xs:simpleType name="chromatixVMSetTypeEnum">
+		<xs:restriction base="xs:string">
+			<xs:enumeration value="VmSetTypeSADR"/>
+			<xs:enumeration value="VmSetTypeSADPanning"/>
+			<xs:enumeration value="VmSetTypeGyro"/>
+			<xs:enumeration value="VmSetTypeGyroPanning"/>
+			<xs:enumeration value="VmSetTypeDefocusLow"/>
+			<xs:enumeration value="VmSetTypeDefocusHigh"/>
+			<xs:enumeration value="VmSetTypeTOFConfidenceHigh"/>
+			<xs:enumeration value="VmSetTypePDAFConfidence"/>
+			<xs:enumeration value="VmSetTypeDistance"/>
+			<xs:enumeration value="VmSetTypeFV"/>
+			<xs:enumeration value="VmSetTypeTOFConfidenceMedium"/>
+			<xs:enumeration value="VmSetTypeFaceTriggerHold"/>
+			<xs:enumeration value="VmSetTypeCAFSceneChangeHold"/>
+		</xs:restriction>
+	</xs:simpleType>
+</xs:schema>

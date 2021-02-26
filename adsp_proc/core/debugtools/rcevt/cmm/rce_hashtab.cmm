@@ -1,0 +1,168 @@
+;============================================================================
+;  Name:
+;    RCE_HASHTAB.CMM
+;
+;  Description:
+;    This script is used to help with the development 
+;     and debugging of RCE HASHTAB NODES
+;
+;   Procedure:
+;       1) Load the ELF file into T32 Simulator
+;       2) Load the Jtag log or ram dumps (if working with Jtag log)
+;       3) In the T32 Cmd Line : "do rce_hashtab.cmm"
+;
+; Copyright (c) 2017 QUALCOMM Technologies Incorporated.  
+; All Rights Reserved.
+; Qualcomm Confidential and Proprietary
+;----------------------------------------------------------------------------
+;============================================================================
+;
+;                        EDIT HISTORY FOR MODULE
+;
+; when        who       what, where, why
+; ----------  --------  -----------------------------------------------------
+;
+;============================================================================;
+
+GLOBAL &iter
+GLOBAL &node
+GLOBAL &name
+GLOBAL &expiry
+GLOBAL &threshold
+GLOBAL &statecurr
+GLOBAL &stateprev
+GLOBAL &notifyhead
+
+;============================================================================
+; Get the arguments passed in.
+;============================================================================
+ENTRY &RceHash
+
+WE.AREA.RESet
+WE.WINPOS 0. 0. 70% 100%
+WE.AREA.Create RCE_HASHTAB
+AREA RCE_HASHTAB
+
+  
+; Setup vars to use hex, strings, symbols & index 
+  SETUP.VAR %H %S %Y %I
+
+; setup the scrip variables to use hex symbols
+  radix HEX
+
+&iter=0
+&hashtabSize=0x1F ;RCEVT_HASHTABLE_BUCKETS = 0x1F is the max BINs count
+PRINT " "
+PRINT %COLOR.BLUE  "########################################################################################################################"
+PRINT " "
+PRINT %COLOR.BLUE  "                                               RCE_HASHTAB SCRIPT                                                       "
+PRINT " "
+PRINT %COLOR.BLUE  "########################################################################################################################"
+PRINT " "
+
+if ("&RceHash"=="")
+(
+    print %COLOR.RED "Enter the rce hash variable to be parsed:"
+    enter &RceHash
+)
+
+
+PRINT "  "
+PRINT %COLOR.BLUE "======================================================================================================================================================================================"
+PRINT %COLOR.BLUE "   Index   |     Node    |   Expiry   |  Threshold | Current State | Previous State | NotifyHead |    Next    |                              Name                                     "
+PRINT %COLOR.BLUE "======================================================================================================================================================================================"
+
+while (&iter<&hashtabSize) 
+(
+	&node=v.value(&RceHash[&iter])
+	if (&node!=0x0)
+	(
+		&name=V.STRING(((rce_nde_p)&node)->name)
+		&expiry=V.VALUE(((rce_nde_p)&node)->expiry)
+		&threshold=V.VALUE(((rce_nde_p)&node)->threshold)
+		&statecurr=V.VALUE(((rce_nde_p)&node)->state_curr)
+		&stateprev=V.VALUE(((rce_nde_p)&node)->state_prev)
+		&notifyhead=V.VALUE(((rce_nde_p)&node)->notify_head)
+		&next_node=V.VALUE(((rce_nde_p)&node)->next)
+
+		GOSUB PRINT_HELPER
+
+		while (&next_node!=0x0)
+		(
+			&name=V.STRING(((rce_nde_p)&next_node)->name)
+			&expiry=V.VALUE(((rce_nde_p)&next_node)->expiry)
+			&threshold=V.VALUE(((rce_nde_p)&next_node)->threshold)
+			&statecurr=V.VALUE(((rce_nde_p)&next_node)->state_curr)
+			&stateprev=V.VALUE(((rce_nde_p)&next_node)->state_prev)
+			&notifyhead=V.VALUE(((rce_nde_p)&next_node)->notify_head)
+			&next_node=V.VALUE(((rce_nde_p)&next_node)->next)
+
+			GOSUB PRINT_HELPER
+		)
+	)
+	else
+	(
+		&name=0x0
+		&expiry=0x0
+		&threshold=0x0
+		&statecurr=0x0
+		&stateprev=0x0
+		&notifyhead=0x0
+		&next_node=0x0
+		GOSUB PRINT_HELPER
+	)
+	if ((&hashtabSize-1)!=&iter)
+	(
+		PRINT  "           |             |            |            |               |                |            |            |                                                                   "
+	)
+	&iter=&iter+1
+)
+
+
+ENDDO
+
+;============================================================================
+; PRINT_HELPER SUBROUTINE
+;============================================================================
+PRINT_HELPER:
+	if (((CONVert.HEXTOINT(&iter))%2)==0)
+	(
+		PRINT %COLOR.GREEN FORMAT.DecimalU(6., &iter)
+		PRINT %COLOR.GREEN %Continue "     | "
+		PRINT %COLOR.GREEN %Continue "0x"+FORMAT.HEX(8.,&node)
+		PRINT %COLOR.GREEN %Continue "  | "
+		PRINT %COLOR.GREEN %Continue "0x"+FORMAT.HEX(8.,&expiry)
+		PRINT %COLOR.GREEN %Continue " | "
+		PRINT %COLOR.GREEN %Continue "0x"+FORMAT.HEX(8.,&threshold)
+		PRINT %COLOR.GREEN %Continue " | "
+		PRINT %COLOR.GREEN %Continue "0x"+FORMAT.HEX(8.,&statecurr)
+		PRINT %COLOR.GREEN %Continue "    | "
+		PRINT %COLOR.GREEN %Continue "0x"+FORMAT.HEX(8.,&stateprev)
+		PRINT %COLOR.GREEN %Continue "     | "
+		PRINT %COLOR.GREEN %Continue "0x"+FORMAT.HEX(8.,&notifyhead)
+		PRINT %COLOR.GREEN %Continue " | "
+		PRINT %COLOR.GREEN %Continue "0x"+FORMAT.HEX(8.,&next_node)
+		PRINT %COLOR.GREEN %Continue " | "
+		PRINT %COLOR.GREEN %Continue "&name"
+	)
+	else
+	(
+		PRINT %COLOR.BLUE FORMAT.DecimalU(6., &iter)
+		PRINT %COLOR.BLUE %Continue "     | "
+		PRINT %COLOR.BLUE %Continue "0x"+FORMAT.HEX(8.,&node)
+		PRINT %COLOR.BLUE %Continue "  | "
+		PRINT %COLOR.BLUE %Continue "0x"+FORMAT.HEX(8.,&expiry)
+		PRINT %COLOR.BLUE %Continue " | "
+		PRINT %COLOR.BLUE %Continue "0x"+FORMAT.HEX(8.,&threshold)
+		PRINT %COLOR.BLUE %Continue " | "
+		PRINT %COLOR.BLUE %Continue "0x"+FORMAT.HEX(8.,&statecurr)
+		PRINT %COLOR.BLUE %Continue "    | "
+		PRINT %COLOR.BLUE %Continue "0x"+FORMAT.HEX(8.,&stateprev)
+		PRINT %COLOR.BLUE %Continue "     | "
+		PRINT %COLOR.BLUE %Continue "0x"+FORMAT.HEX(8.,&notifyhead)
+		PRINT %COLOR.BLUE %Continue " | "
+		PRINT %COLOR.BLUE %Continue "0x"+FORMAT.HEX(8.,&next_node)
+		PRINT %COLOR.BLUE %Continue " | "
+		PRINT %COLOR.BLUE %Continue "&name"
+	)
+RETURN

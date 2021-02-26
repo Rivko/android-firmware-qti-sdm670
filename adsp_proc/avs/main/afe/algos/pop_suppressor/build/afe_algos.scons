@@ -1,0 +1,77 @@
+#===============================================================================
+#
+# AVS AU
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2009-2009 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/avs.adsp/2.8.5/afe/algos/pop_suppressor/build/afe_algos.scons#1 $
+#  $DateTime: 2017/11/07 23:00:25 $
+#  $Author: pwbldsvc $
+#  $Change: 14795016 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+
+CBSP_API = [
+   'BOOT',
+   'DAL',
+   'DEBUGTOOLS',
+   'HAL',
+   'MPROC',
+   'POWER',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',   
+]
+
+env.RequirePublicApi(CBSP_API,area='core')
+env.RequireRestrictedApi('AVS')
+env.RequireProtectedApi('AVS')
+
+env.PublishPrivateApi('AVS',[
+   '${AVS_ROOT}/afe/algos/pop_suppressor/inc',
+   '${AVS_ROOT}/api/avcs/inc',
+   ])
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = ".."
+
+LIBNAME = 'pop_suppressor'
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+avs_reg_sources = ['${BUILDPATH}/src/AFEPopSuppressor.cpp']
+
+avs_stub_sources = env.GlobSourceFiles(['stub_src/*.cpp', 'stub_src/*.c'], SRCPATH,posix=True) 
+
+# Genate proprietary source file list
+avs_prop_sources = env.GlobSourceFiles(['src/*.cpp', 'src/*.c'], SRCPATH,posix=True)
+
+try:
+   avs_prop_sources.remove('${BUILDPATH}/src/AFEPopSuppressor.cpp')
+except ValueError:
+   pass # do nothing!
+
+#import pdb; pdb.set_trace()
+if 'USES_AVS_LIBRARY_BUILDER' in env:
+   env.AddAvsLibrary(['AVS_ADSP','AVS_ADSP_USER'], '${BUILDPATH}/'+LIBNAME,
+      [avs_reg_sources, avs_stub_sources, avs_prop_sources])
+
+

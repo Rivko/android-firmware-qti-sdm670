@@ -1,0 +1,167 @@
+#===============================================================================
+# Copyright (c) 2012 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===============================================================================
+
+Import('env')
+env = env.Clone()
+
+exports_root = str(env.get('BUILD_ROOT', None)) + '/platform/exports'
+build_folder = str(env.RealPath('${BUILDPATH}'))
+extern_list =[]
+excluded_images = []
+
+if env.subst('$CHIPSET') in ['sdm670', 'sdm710']:
+    excluded_images = [
+        'DEVCFG_IMG',
+    ]
+else:
+    excluded_images = [
+        'DEVCFG_IMG',
+        'SENSOR_IMG',
+    ]
+
+if env['IMAGE_NAME'] not in excluded_images:
+    # Example of exposing a single symbol
+    #env.DLExpose("__stack_chk_guard")
+
+    # Example of exposing multiple symbols as a comma separated list
+    # env.DLExpose("dlw_Open, dlw_Sym, dlw_Error, dlw_Close")
+
+    # Exposing symbols via a file
+    if 'USES_FASTRPC_SHELL_IMG' in env:
+        excludefile = exports_root + '/shell_exclude_symbols.lst'
+        target = env.PLDLExposeFile(exports_root + '/dl_base_symbols.lst', excludefile)
+        extern_list.append(str(target))
+        target = env.PLDLExposeFile(exports_root + '/dl_hap_symbols.lst', excludefile)
+        extern_list.append(str(target))
+    else:
+        if 'USES_NO_PLATFORM_BASE_SYMS' not in env:
+            env.DLExposeFile(exports_root + '/dl_base_symbols.lst')
+        if 'USES_NO_PLATFORM_HAP_SYMS' not in env:
+            env.DLExposeFile(exports_root + '/dl_hap_symbols.lst')
+        if 'USES_NO_PLATFORM_SLPI_SYMS' not in env:
+            if (env['PLATFORM_SUBSYSTEM'] in ['slpi']):
+                env.DLExposeFile(exports_root + '/dl_slpi_symbols.lst')
+
+platform_root = '${BUILD_ROOT}/platform'
+env.Replace(ADSP_PLATFORM_ROOT = platform_root)
+
+env.RequirePublicApi([
+  'PLATFORM_QDI',
+  'HAPSDK',
+  'QDI_PORTAL',
+  'PLATFORM_LIBS',
+  'FASTRPC_HEAP',
+  'STDDEF',
+  'UTILS',
+  'SECURITY',
+  'REMOTE',
+  'A1STD',
+  ])
+
+env.RequireRestrictedApi([
+  'FASTRPC_POWER',
+  'QDI_PORTAL',
+  'FASTRPC_THREAD_QUEUE',
+  'FASTRPC_LOADER',
+  'FASTRPC_PROCESS',
+  'FASTRPC_HEAP',
+  'FASTRPC_PORT',
+  'ATOMIC',
+  'QLIST',
+  ])
+
+core_public_apis = [
+   'SYSTEMDRIVERS',
+   'KERNEL',
+   'DAL',
+   'SERVICES',
+   'POWER',
+   ]
+
+env.RequirePublicApi(core_public_apis, area='core')
+
+avs_public_apis = [
+   'AVS',
+   ]
+
+env.RequirePublicApi(avs_public_apis, area='avs')
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${ADSP_PLATFORM_ROOT}/exports/src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+# Register the qdi driver
+if ('USES_ENABLE_GUESTOS_AUDIOPD_SUPPORT' in env):
+   env.PLRegister("platform_qdi",['PLATFORM_LIBS', 'PLATFORM_ROOT_LIBS', 'FASTRPC_SHELL_IMG', 'SSC_ADSP_USER'])
+else:
+   env.PLRegister("platform_qdi",['PLATFORM_LIBS', 'PLATFORM_ROOT_LIBS', 'FASTRPC_SHELL_IMG','AVS_ADSP_USER', 'SSC_ADSP_USER'])
+
+EXPORTS_SOURCES =  [
+   '${BUILDPATH}/platform_qdi_driver.c',
+   '${BUILDPATH}/stubs.c',
+   ]
+
+SHELL_STUB_SOURCES = [
+  '${BUILDPATH}/platform_qdi_stub.c',
+  env.PLCreateExternList(extern_list),
+  ]
+  
+SHELL_STUB_SOURCES_AVS = [
+  '${BUILDPATH}/platform_qdi_nonfastrpc_stub.c',
+  ]
+  
+STUB_SOURCES = [
+   '${BUILDPATH}/platform_qdi_nonfastrpc_guestos_stub.c',
+   '${BUILDPATH}/stubs.c',
+   ]
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+exports_lib = env.AddBinaryLibrary(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+    'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE'],'${BUILDPATH}/exports', EXPORTS_SOURCES)
+
+exports_qdi_stub_lib = env.AddBinaryLibrary(['FASTRPC_SHELL_IMG'],'${BUILDPATH}/exports', SHELL_STUB_SOURCES)
+
+if ('USES_ENABLE_GUESTOS_AUDIOPD_SUPPORT' in env):
+   exports_stub_lib = env.AddBinaryLibrary(['CORE_QDSP6_SENSOR_SW', 'SSC_SLPI_USER', 'SSC_ADSP_USER', 'AVS_ADSP_USER'],'${BUILDPATH}/exports', STUB_SOURCES) 
+   env.AddBinaryLibrary(['AVS_ADSP_USER'],'${BUILDPATH}/exports', STUB_SOURCES)
+else:
+   exports_stub_lib = env.AddBinaryLibrary(['CORE_QDSP6_SENSOR_SW', 'SSC_SLPI_USER', 'SSC_ADSP_USER'],'${BUILDPATH}/exports', STUB_SOURCES)
+   env.AddBinaryLibrary(['AVS_ADSP_USER'],'${BUILDPATH}/exports', SHELL_STUB_SOURCES_AVS)
+
+if 'USES_DEVCFG' in env:
+    DEVCFG_IMG = ['DAL_DEVCFG_IMG']
+    if 'USES_DEVCFG_STRICT_XML' in env:
+        # DevCfg is expecting XML-compliance for Napali onwards; USES_DEVCFG_STRICT_XML variable tells
+        # whether the new DevCfg is in this build or not.
+        env.AddDevCfgInfo(DEVCFG_IMG,
+        {
+            '845_xml' : ['${BUILD_ROOT}/platform/exports/config/sdm845/exports_devcfg_strict_xml.xml'],
+            '670_xml' : ['${BUILD_ROOT}/platform/exports/config/sdm670/exports_devcfg_strict_xml.xml'],
+        })
+    else:
+        env.AddDevCfgInfo(DEVCFG_IMG,
+        {
+            '8996_xml' : ['${BUILD_ROOT}/platform/exports/config/msm8996/exports_devcfg.xml'],
+            '8998_xml' : ['${BUILD_ROOT}/platform/exports/config/msm8998/exports_devcfg.xml'],
+            '660_xml' : ['${BUILD_ROOT}/platform/exports/config/sdm660/exports_devcfg.xml'],
+            '845_xml' : ['${BUILD_ROOT}/platform/exports/config/sdm845/exports_devcfg.xml'],
+            '670_xml' : ['${BUILD_ROOT}/platform/exports/config/sdm670/exports_devcfg.xml'],
+        })
+
+#-------------------------------------------------------------------------------
+# Load Subunits (sys)
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+# Clean / pack rules
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.cpp', '*.S', '*.h'], '${ADSP_PLATFORM_ROOT}/exports/src'))
+
+env.CleanPack(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+     'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE','CORE_QDSP6_SENSOR_SW','AVS_ADSP_USER', 'SSC_SLPI_USER', 'FASTRPC_SHELL_IMG', 'SSC_ADSP_USER'], CLEAN_LIST)

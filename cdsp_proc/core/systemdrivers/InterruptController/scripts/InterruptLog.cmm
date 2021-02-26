@@ -1,0 +1,278 @@
+; InterruptState.cmm
+;******************************************************************************
+;
+;             I N T E R R U P T   L O G   S C R I P T
+;
+;******************************************************************************
+;               Copyright (c) 2011 Qualcomm Technologies Incorporated.
+;                         All Rights Reserved.
+;                      QUALCOMM Proprietary/GTDR
+;******************************************************************************
+;
+;                      EDIT HISTORY FOR FILE
+;
+;This section contains comments describing changes made to this file.
+;Notice that changes are listed in reverse chronological order.
+;
+;when         who     what, where, why
+;----------   ------  ----------------------------------------------------------
+;09/26/2011   aratin  First draft created. 
+;******************************************************************************
+;
+; This script should be used to dump the interrupt controller components from T32. 
+; The script first checks if a file path is provided. If yes, it will by default
+; dump all the user queries onto this file.
+; 
+; How to use this script
+; ----------------------
+; After after breaking, retrieve  state by running
+;
+; do InterruptLog.cmm <IntrFilePath>
+;
+; If <IntrFilePath> is given, a "InterruptLog.txt" file will be created in 
+; the given directory.
+; If <IntrFilePath> is not given, the output will be dumped to the screen,
+; If <IntrQuery> is not given then the script dumps Interrupt state and 
+; Interrupt log on the std output window.
+
+
+ENTRY &IntrFilePath
+GLOBAL &Event &SPACE &numspace &IntrEvent &Interrupt &pIsr &IntrName &IntrTriggerName 
+;******************************************************************************
+; If there is a file path given then the data is just dumped onto the file.
+; This process is slow hence just displaying it on T32 window by not writing
+; to a file will give both the Interrupt Table and the Interrupt Log very quickly.
+;******************************************************************************
+if "&IntrFilePath"==""
+(
+  &IntrFilePath="stdout"
+)
+SETUP.Var %Index.on
+
+if "&IntrFilePath"!="stdout"
+(
+
+  ; Check the IntrFilePath string for ending \ and remove it so the default file 
+  ; name can be added.
+
+  IF string.char("&(IntrFilePath)", string.len("&(IntrFilePath)")-1)=='\'
+  (
+    &IntrFilePath=string.cut("&(IntrFilePath)", -1)
+  )
+
+  ; If a specific file path is given just dump the contents onto this file by 
+  ; creating it.
+
+  OPEN #1 "&(IntrFilePath)\InterruptLog.txt" /Create
+  OPEN #1 "&(IntrFilePath)\InterruptLog.txt" /Write
+  OPEN #2 "&(IntrFilePath)\InterruptTable.txt" /Create
+  OPEN #2 "&(IntrFilePath)\InterruptTable.txt" /Write
+)
+
+
+
+
+
+if ("&IntrFilePath"=="stdout")
+(
+  y.fe "GOSUB DumpInterruptData" pInterruptData
+  GOTO ProgramEnd
+)
+
+
+PRINT "Printing out the Interrupt registration table and Interrupt Log" 
+&nCount=0x0
+WRITE #2 " "
+WRITE #2 " "
+WRITE #2 "**********************************************************************"
+WRITE #2 "*                    Interrupt Data Table                            *"
+WRITE #2 "**********************************************************************"
+WRITE #2 " "
+WRITE #2 " "
+setup.var.%HEX %SYMBOL
+WHILE (&nCount<&MaxIntr)
+(
+  &IntrTrigger=V.VALUE((InterruptDataType *)pInterruptData->pInterruptState[&nCount].nTrigger)
+  &IntrName1=V.VALUE((InterruptDataType *)pInterruptData->pInterruptState[&nCount].pInterruptName)
+  if (&IntrTrigger!=0x0)&&(&IntrName1!=0x0)
+    &IntrName=DATA.STRING(D:V.VALUE((InterruptDataType *)pInterruptData->pInterruptState[&nCount].pInterruptName))
+  ELSE 
+    &IntrName=" "
+  WRITE #2 "Interrupt &nCount : &IntrName"
+  v.WRITE #2 pInterruptData->pInterruptState[&nCount]
+  WRITE #2 " "
+  &nCount=&nCount+1
+  Step
+)
+CLOSE #2
+&nCount=&nIdx
+WRITE #1 " "
+WRITE #1 " "
+WRITE #1 "*********************************************************************************************************************"
+WRITE #1 "*                                                     Interrupt log                                                 *"
+WRITE #1 "*********************************************************************************************************************"
+WRITE #1 " "
+WRITE #1 " "
+WHILE (&nCount<&InterruptLogSize)
+(
+  &IntrEvent=V.VALUE(pInterruptData->pLog.pEntries[&nCount].eEvent)
+  &Interrupt=V.VALUE(pInterruptData->pLog.pEntries[&nCount].nInterruptVector)
+  &IntrName1=V.VALUE((InterruptDataType *)pInterruptData->pInterruptState[&Interrupt].pInterruptName)
+  if (&IntrName1!=0x0)
+  (
+  &IntrName=DATA.STRING(D:V.VALUE((InterruptDataType *)pInterruptData->pInterruptState[&Interrupt].pInterruptName))
+  &TimeStamp=V.VALUE(pInterruptData->pLog.pEntries[&nCount].nTimeStamp)
+  gosub FormatIntrLogDisplay
+  WRITE #1 "Interrupt Event : &Event &SPACE Interrupt Fired : &Interrupt Name: &IntrName &numspace Time Stamp : &TimeStamp"
+  )
+  &nCount=V.VALUE(&nCount+1)
+  step
+)
+&nCount=0
+WHILE (&nCount<&nIdx)
+(
+  &IntrEvent=V.VALUE(pInterruptData->pLog.pEntries[&nCount].eEvent)
+  &Interrupt=V.VALUE(pInterruptData->pLog.pEntries[&nCount].nInterruptVector)
+  &IntrName1=V.VALUE((InterruptDataType *)pInterruptData->pInterruptState[&Interrupt].pInterruptName)
+  if (&IntrName1!=0x0)
+  (
+  &IntrName=DATA.STRING(D:V.VALUE((InterruptDataType *)pInterruptData->pInterruptState[&Interrupt].pInterruptName))
+  &TimeStamp=V.VALUE(pInterruptData->pLog.pEntries[&nCount].nTimeStamp)
+  gosub FormatIntrLogDisplay
+  WRITE #1 "Interrupt Event : &Event &SPACE Interrupt Fired : &Interrupt Name: &IntrName &numspace Time Stamp : &TimeStamp"
+  )
+  &nCount=V.VALUE(&nCount+1) 
+  step
+)
+CLOSE #1
+PRINT "Interrupt log Complete"
+ProgramEnd:
+ENDDO
+
+DumpInterruptData:
+  ENTRY &Intdatasym
+  &InterruptDataPtr=V.VALUE(&Intdatasym)
+  if (&InterruptDataPtr==0)
+  ( 
+    RETURN
+  )
+  &InterruptLogIndex=V.VALUE(((InterruptDataType *)&InterruptDataPtr)->pLog.nIdx)
+  &InterruptLogEntries=V.VALUE(((InterruptDataType *)&InterruptDataPtr)->pLog.pEntries)
+  &InterruptTable=V.VALUE(((InterruptDataType *)&InterruptDataPtr)->pInterruptState)
+  &InterruptLogSize=V.VALUE(((InterruptDataType *)&InterruptDataPtr)->pLog.nLogSize)
+  &nIdx=V.VALUE(((InterruptDataType *)&InterruptDataPtr)->pLog.nIdx)
+  &MaxIntr=V.VALUE(((InterruptDataType *)&InterruptDataPtr)->pPlatformConfig->nMaxIRQ)
+  v.v (InterruptStateType [&MaxIntr])&InterruptTable
+  v.v (((InterruptDataType *)&InterruptDataPtr)->pLog.nIdx)
+  v.v (InterruptLogEntryType [&InterruptLogSize])&InterruptLogEntries
+
+RETURN
+
+
+FormatIntrLogDisplay:
+    if &Interrupt<10
+    (  
+      &numspace="         "
+    )
+    ELSE if &Interrupt<100
+    (
+      &numspace="        "
+    ) 
+    ELSE 
+    (
+      &numspace="       "
+    )  
+    if &IntrEvent==0
+    (
+      &Event="INTERRUPT_LOG_EVENT_NULL"
+      &SPACE="          "
+    ) 
+    ELSE if &IntrEvent==1
+    (
+      &Event="INTERRUPT_LOG_EVENT_ISR_START"
+      &SPACE="     "
+
+    )   
+    ELSE if &IntrEvent==2
+    (
+      &Event="INTERRUPT_LOG_EVENT_ISR_FINISH"
+      &SPACE="    "
+    )   
+    ELSE if &IntrEvent==3
+    (
+      &Event="INTERRUPT_LOG_EVENT_SUBISR_START"
+      &SPACE="  "
+
+    )   
+    ELSE if &IntrEvent==4
+    (
+      &Event="INTERRUPT_LOG_EVENT_SUBISR_FINISH"
+       &SPACE=" "
+
+    )   
+    ELSE if &IntrEvent==5
+    (
+      &Event="INTERRUPT_LOG_EVENT_TRIGGERED"
+      &SPACE="     "
+
+    )   
+    ELSE if &IntrEvent==6
+    (
+      &Event="INTERRUPT_LOG_EVENT_SENT"
+      &SPACE="          "
+
+    )   
+    ELSE if &IntrEvent==7
+    (
+      &Event="INTERRUPT_LOG_EVENT_UNHANDLED"
+      &SPACE="     "
+    )   
+    ELSE if &IntrEvent==8
+    (
+      &Event="INTERRUPT_LOG_EVENT_SUSPENDED"
+      &SPACE="     "
+    )   
+    ELSE if &IntrEvent==9
+    (
+      &Event="INTERRUPT_LOG_EVENT_UNSUPPORTED"
+      &SPACE="   "
+
+    )   
+    ELSE if &IntrEvent==10
+    (
+      &Event="INTERRUPT_LOG_EVENT_SLEEP"
+      &SPACE="          "
+    )   
+    ELSE if &IntrEvent==11
+    (
+      &Event="INTERRUPT_LOG_EVENT_WAKEUP"
+      &SPACE="        "
+
+    )   
+    ELSE if &IntrEvent==12
+    (
+      &Event="INTERRUPT_LOG_EVENT_SHUTDOWN"
+      &SPACE="      "
+    ) 
+ 
+RETURN
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,159 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<!--
+  CPU VDD Sleep Low Power Resource/Mode definitions
+
+  Copyright (c) 2016-2017 Qualcomm Technologies, Inc. (QTI).
+  All Rights Reserved.
+  Qualcomm Confidential and Proprietary.
+  Export of this technology or software is regulated by the U.S. Government.
+  Diversion contrary to U.S. law prohibited.
+-->
+
+<!--
+Format of Enter/Exit/Backoff latency fields:
+"<Fixed>,<Scaled>"
+Fixed - Unscaled value that is always added to each frequency table entry
+Scaled - Value that will be scaled at 1:1 ratio according to frequency table entries
+         and the initial base profile frequency given via ProfileFreq
+
+Bitwise attribute values (see sleep_mode_attribute enum for full description):
+  0x01 - Unused
+  0x02 - Multiple Entry
+  0x04 - Unused
+  0x08 - Unused
+  0x10 - LPRM is cacheable
+
+Order of LPRMs within the LPR should match any assumptions about order
+     in the node corresponding to the LPR
+-->
+
+<LPRDefinition>
+  <LPR Name="cpu_config" CoreMask="0xFFFFFFFF" InitFn="powerConfigLPR_initialize">
+    <!-- Full PC - Uses same "APCR long sequence" 
+         Mode is always rpmh assisted and is full cache flush & non-retention -->
+    <Mode Name="full_pc"
+          Dependency="cpu_vdd.full_pc + l2.noret + rpmh"
+          PowerSavings="-150, 750"
+          EnterLat="450"
+          ExitLat="25"
+          Backoff="25"
+          EnterFn="powerConfigLPR_fullPCEnter"
+          Attributes="0x10"
+          Supported="TRUE"
+          >
+    </Mode>
+ 
+     <!-- APCR PLL low power mode WITH sleep set entry - AKA "APCR long sequence"
+          Mode is always rpmh assisted -->
+    <Mode Name="apcr_pll_lpm_ss"
+          Dependency="cpu_vdd.apcr_pll_lpm_ss + !l2 + rpmh"
+          PowerSavings="-75, 320"
+          EnterLat="450"
+          ExitLat="25"
+          Backoff="25"
+          EnterFn="powerConfigLPR_apcrLongSleepSetEnter"
+          Attributes="0x10"
+          Supported="TRUE"
+          >
+    </Mode>
+    
+    <!-- APCR PLL low power mode WITHOUT sleep set entry - AKA "APCR long sequence"  
+         Mode is never RPMh assisted (it's only standalone) -->
+    <Mode Name="apcr_pll_lpm"
+          Dependency="cpu_vdd.apcr_pll_lpm + !l2 + !rpmh"
+          PowerSavings="-50, 100"
+          EnterLat="450"
+          ExitLat="25"
+          Backoff="25"
+          EnterFn="powerConfigLPR_apcrLongEnter"
+          Attributes="0x10"
+          Supported="TRUE"
+          >
+    </Mode>
+
+<!-- APCR PLL on low power mode - AKA "APCR short sequence " with no wakeup timer
+         Mode is never RPMh assisted (it's only standalone) -->
+    <Mode Name="apcr"
+          Dependency="cpu_vdd.apcr + !rpmh + !l2"
+          PowerSavings="0, 50"
+          EnterLat="50"
+          ExitLat="50"
+          Backoff="50"
+          EnterFn="powerConfigLPR_apcrNoTimerEnter"
+          Attributes="0x10"
+          Supported="TRUE"
+          >
+    </Mode>
+
+</LPR>
+
+  <!-- CPU VDD LPRM -->
+
+  <LPR Name="cpu_vdd" CoreMask="0xFFFFFFFF">
+    <Mode Name="full_pc" 
+          Dependency="cpu_config + wakeup.qtimer_ss"
+          Order="LAST"
+          PowerSavings="0,20"
+          EnterLat="7500"
+          ExitLat="12000"
+          Backoff="12000"
+          EnterFn="cpuVddLPR_fullPCEnter"
+          ExitFn="cpuVddLPR_exit"
+          ProfileExitFn="cpuVddLPR_fullPCProfileExit"
+          ProfileEnterFn="cpuVddLPR_profileEnter"
+          Attributes="0x00"
+          Supported="TRUE"
+          >
+    </Mode>
+
+    <Mode Name="apcr_pll_lpm_ss"
+          Dependency="cpu_config + wakeup.qtimer_ss"
+          Order="LAST"
+          PowerSavings="0,10"
+          EnterLat="600"
+          ExitLat="5000"
+          Backoff="5000"
+          EnterFn="cpuVddLPR_apcrEnter"
+          ExitFn="cpuVddLPR_exit"
+          ProfileExitFn="cpuVddLPR_apcrProfileExit"
+          ProfileEnterFn="cpuVddLPR_profileEnter"
+          Attributes="0x10"
+          Supported="TRUE"
+          >
+    </Mode>
+
+    <!-- APCR PLL low power mode WITHOUT sleep set entry - AKA "APCR long sequence"  
+         mode is uncached to set Q6 PLL override appropriately" while going to sleep -->
+    <Mode Name="apcr_pll_lpm"
+          Dependency="cpu_config + wakeup.qtimer"
+          Order="LAST"
+          PowerSavings="0,4"
+          EnterLat="300"
+          ExitLat="3000"
+          Backoff="3000"
+          EnterFn="cpuVddLPR_apcrEnter"
+          ExitFn="cpuVddLPR_exit"
+          ProfileExitFn="cpuVddLPR_apcrProfileExit"
+          ProfileEnterFn="cpuVddLPR_profileEnter"
+          Attributes="0x00"
+          Supported="TRUE"
+          >
+    </Mode>
+
+<!-- APCR PLL on low power mode - AKA "APCR short sequence " with no wakeup timer-->
+    <Mode Name="apcr"
+          Dependency="cpu_config + !wakeup.qtimer"
+          Order="LAST"
+          PowerSavings="-15,-15"
+          EnterLat="20"
+          ExitLat="384"
+          Backoff="384"
+          EnterFn="cpuVddLPR_apcrNoTimerEnter"
+          ExitFn="cpuVddLPR_apcrNoTimerExit"
+          Attributes="0x10"
+          Supported="TRUE"
+          >
+    </Mode>
+  </LPR>
+</LPRDefinition>
+

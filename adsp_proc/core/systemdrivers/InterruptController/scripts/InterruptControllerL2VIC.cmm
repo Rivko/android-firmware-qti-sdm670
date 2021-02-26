@@ -1,0 +1,759 @@
+;============================================================================
+;  Name:
+;    INTERRUPTCONTROLLERL2VIC.CMM
+;
+;  Description:
+;    This script lets the user configure interrupts on the main interrupt 
+;    controller. 
+;  USAGE :
+;    Please Run InterruptController.cmm . The InterruptControllerL2VIC.cmm 
+;    is an internal script which is not meant to  be run independently.
+;  NOTE :
+;    To force trigger an level triggered interrupt please first change the
+;    interrupt trigger to an edge triggered configuration and then choose 
+;    option 7 to trigger the interrupt.The trigger has to be restored back 
+;    to its original configuration once the interrupt is triggered.
+;
+; Copyright (c) 2011 Qualcomm Technologies, Incorporated.  
+; All Rights Reserved.
+; Qualcomm Confidential and Proprietary
+;----------------------------------------------------------------------------
+;============================================================================
+;
+;                        EDIT HISTORY FOR MODULE
+;
+; when       who     what, where, why
+; -------    ---     --------------------------------------------------------
+; 10/2/2011  an      Created for querying L2VIC InterruptController data.
+;============================================================================
+
+
+
+;============================================================================
+; Set up some defaults for some variables
+;============================================================================
+GLOBAL &nTResult &nPResult &MaxIRQ &INTRSET &nIdx &IntCnt &Prod &IntGrp
+GLOBAL &nMask &nResult &IntGrpMax
+;GLOBAL &L2VICBASE
+;&L2VICBASE=0x8990000
+;&Presult=0
+;&PlatformSet=1
+&IntGrpMin=0
+&IntGrp=0
+&Interrupt=0
+&MaxIRQ=0x140
+&INTRSET=0
+&PrnRes=0
+
+;============================================================================
+; Get the arguments passed in.
+;============================================================================
+ENTRY
+DISPLAYMENU:
+AREA.RESet
+WINPOS 0. 0. 100% 100%
+AREA.Create INTRMENU
+AREA.view INTRMENU
+
+
+on error gosub
+(
+  print "An Error has Occured"
+  enddo (1==0)
+)
+
+
+AREA.CLEAR INTRMENU
+AREA.view INTRMENU
+AREA.Select INTRMENU
+;============================================================================
+; don't proceed without user confirmation
+;============================================================================
+      
+print "      "
+print "***************************************************************************"
+print " "     
+print "  T H E   L 2 V I C   I N T E R R U P T C O N T R O L L E R     S C R I P T"
+print " "      
+print "***************************************************************************"      
+if &Presult!=0
+(
+print " "
+  GOSUB ERRORHNDLRMAIN &PlatformNum
+)
+&Presult=0
+if &PrnRes!=0
+(
+print " "
+  GOSUB PRNHNDLER &PrnRes
+)
+&PrnRes=0
+print " "
+print "  PLEASE CHOOSE FROM THE FOLLOWING OPTIONS "
+print " "
+print "***************************************************************************" 
+print " "
+print " Please first select option 1 to select the interrupt number. "
+print " "
+print " "
+print " "
+print " 0.  Exit the script."
+print " 1.  Select the interrupt number."
+print " 2.  Check if the interrupt is enabled."
+print " 3.  Check if the interrupt is set."
+print " 4.  Check if the interrupt is pending."
+print " 5.  Get the interrupt trigger."
+print " 6.  Set the interrupt trigger."
+print " 7.  Trigger the Edge configured interrupt."
+print " 8.  Clear Interrupt."
+print " 9.  Disable interrupt."
+print " 10. Enable interrupt."
+print " 11. Get a list of pending interrupts."
+print " 12. Get a list of interrupts that are set or fired."
+print "     (This is the raw interrupt status they may not be enabled.)"
+
+
+print "************************************************************************"    
+print
+print
+print
+print
+&t32_cmm_stopped=1
+enter &Choice
+&t32_cmm_stopped=0
+print
+print
+&Choice=&Choice.
+if &Choice>0xC
+( 
+  &PrnRes=0xFF
+  GOTO DISPLAYMENU
+) 
+else if &Choice==1 
+(  
+  
+  print
+  print
+  AREA.view INTRMENU
+  AREA.Select INTRMENU
+
+  print "You entered choice 1."
+  print "Please select the interrupt number."
+  &t32_cmm_stopped=1
+  enter &Interrupt
+  &t32_cmm_stopped=0
+  &INTRSET=0
+  &Interrupt=&Interrupt.
+  if (&Interrupt>V.VALUE(&MaxIRQ))
+  (
+    &PrnRes=0x1A
+    GOTO DISPLAYMENU
+  )
+  if (&PlatformSet==0)
+  (
+    &PrnRes=0x1B
+    GOTO DISPLAYMENU
+  )
+  &PrnRes=0x1C
+  &INTRSET=1
+  GOSUB INTDATASET &Interrupt
+  AREA.view INTRMENU
+  AREA.Select INTRMENU
+  GOTO DISPLAYMENU
+
+)
+else if &Choice==2 
+(
+;******************************************************************************
+;  CHECK IF INTERRUPT IS ENABLED.
+;******************************************************************************
+  if (&INTRSET==0)
+  (
+    &PrnRes=0x1A
+    GOTO DISPLAYMENU
+  )
+  
+  &IsEnableReg=&L2VICBASE+(0x00000100+(4*(&IntGrp)))
+  &EnableVal=data.long(a:&IsEnableReg)
+  &nResult=(&EnableVal)&(&nMask)
+  if (&nResult==0)
+  (
+    &PrnRes=0x2A
+  )
+  else
+  (
+    &PrnRes=0x2B
+  )
+  GOTO DISPLAYMENU
+)
+else if &Choice==3
+(
+;******************************************************************************
+;  CHECK IF INTERRUPT IS SET.
+;******************************************************************************
+  if (&INTRSET==0)
+  (
+    &PrnRes=0x1A
+    GOTO DISPLAYMENU
+  )
+  
+  &IsPendReg=&L2VICBASE+(0x00000500+(4*(&IntGrp)))
+  &PendVal=data.long(a:&IsPendReg)
+  &nResult=(&PendVal)&(&nMask)
+  if (&nResult==0)
+  (
+    &PrnRes=0x3A
+  )
+  else
+  (
+    &PrnRes=0x3B
+  )
+  GOTO DISPLAYMENU
+)
+else if &Choice==4
+(
+;******************************************************************************
+;  CHECK IF INTERRUPT IS PENDING.
+;******************************************************************************
+  if (&INTRSET==0)
+  (
+    &PrnRes=0x1A
+    GOTO DISPLAYMENU
+  )
+  
+  &IsPendReg=&L2VICBASE+0x00000500+(4*(&IntGrp))
+  &IsEnableReg=&L2VICBASE+(0x00000100+(4*(&IntGrp)))
+  &IsEnableVal=data.long(a:&IsEnableReg)
+  &PendVal=data.long(a:&IsPendReg)
+
+  &nResult=(((&PendVal)&(&nMask))&((&IsEnableVal)&(&nMask)))
+  if (&nResult==0)
+  (
+    &PrnRes=0x4A
+  )
+  else
+  (
+    &PrnRes=0x4B
+  )
+  GOTO DISPLAYMENU
+)
+else if &Choice==5
+(
+;******************************************************************************
+;  GET INTERRUPT TRIGGER
+;******************************************************************************
+  if (&INTRSET==0)
+  (
+    &PrnRes=0x1A
+    GOTO DISPLAYMENU
+  )
+
+  &nTypeReg=&L2VICBASE+0x00000280+(4*(&IntGrp))
+  &nTypeVal=data.long(a:&nTypeReg)
+
+  &nTResult=(&nTypeVal)&(&nMask)
+
+
+  if (&nTResult==0)
+  (
+    &PrnRes=0x5A
+  )
+  if (&nTResult!=0)
+  (
+    &PrnRes=0x5B
+  )
+ 
+  GOTO DISPLAYMENU
+)
+else if &Choice==6
+( 
+;******************************************************************************
+;  SET INTERRUPT TRIGGER
+;******************************************************************************
+  if (&INTRSET==0)
+  (
+    &PrnRes=0x1A
+    GOTO DISPLAYMENU
+  )
+  
+  Area.clear INTRMENU
+  print
+  print "****************************************************************************************"
+  print
+  print "you entered choice 6"
+  print "Please choose one of the below trigger options you want to set for interrupt &Interrupt."
+  print "Please choose 0 for going back to the main menu."
+  print "Please choose 1 for level high trigger."
+  print "Please choose 2 for rising edge trigger."
+  print
+  print "****************************************************************************************"
+  print
+  print
+  &t32_cmm_stopped=1
+  enter &IntrTrigger
+  &t32_cmm_stopped=0
+
+  &nTypeReg=&L2VICBASE+0x00000280+(4*(&IntGrp))
+  &nTypeVal=data.long(a:&nTypeReg)
+
+  
+  if "&IntrTrigger"=="1"
+  (
+    &nTResult=(&nTypeVal)&(~(&nMask))
+    data.set a:&nTypeReg %LONG &nTResult
+    &PrnRes=0x6A
+  )
+  if "&IntrTrigger"=="2"
+  (
+    &nTResult=(&nTypeVal)|(&nMask)
+    data.set a:&nTypeReg %LONG &nTResult
+    &PrnRes=0x6B
+  )
+  if "&IntrTrigger"=="0"
+  (
+    &PrnRes=0x1C
+  )
+  GOTO DISPLAYMENU
+)
+else if &Choice==7
+(
+;******************************************************************************
+;  TRIGGER INTERRUPT
+;******************************************************************************
+  if (&INTRSET==0)
+  (
+    &PrnRes=0x1A
+    GOTO DISPLAYMENU
+  )
+ 
+  &nSoftPendReg=&L2VICBASE+0x00000480+(4*(&IntGrp))
+  &nSoftPendVal=data.long(a:&nSoftPendReg)
+  &nResult=&nSoftPendVal|(&nMask)
+  data.set a:&nSoftPendReg %LONG &nResult
+  &PrnRes=0x7
+  GOTO DISPLAYMENU
+)
+else if &Choice==8
+(
+;******************************************************************************
+;  CLEAR INTERRUPT
+;******************************************************************************
+  if (&INTRSET==0)
+  (
+    &PrnRes=0x1A
+    GOTO DISPLAYMENU
+  )
+  
+  &nClearReg=&L2VICBASE+0x00000400+(4*(&IntGrp))
+  &nClearVal=data.long(a:&nClearReg)
+  &nResult=&nClearVal|(&nMask)
+  data.set a:&nClearReg %LONG &nResult
+  &PrnRes=0x8
+  GOTO DISPLAYMENU
+)
+else if &Choice==9
+(
+;******************************************************************************
+;  DISABLE INTERRUPT
+;******************************************************************************
+  if (&INTRSET==0)
+  (
+    &PrnRes=0x1A
+    GOTO DISPLAYMENU
+  )
+  &nDisableReg=&L2VICBASE+0x00000180+(4*(&IntGrp))
+  &nDisableVal=data.long(a:&nDisableReg)
+  &nResult=&nDisableVal|(&nMask)
+  data.set a:&nDisableReg %LONG &nResult
+  &PrnRes=0x9
+  GOTO DISPLAYMENU
+)
+else if &Choice==0xA
+(
+;******************************************************************************
+;  ENABLE INTERRUPT
+;******************************************************************************
+  if (&INTRSET==0)
+  (
+    &PrnRes=0x1A
+    GOTO DISPLAYMENU
+  )
+  &nEnableReg=&L2VICBASE+0x00000100+(4*(&IntGrp))
+  &nEnableVal=data.long(a:&nEnableReg)
+  &nResult=&nEnableVal|(&nMask)
+  data.set a:&nEnableReg %LONG &nResult
+  &PrnRes=0xA
+  GOTO DISPLAYMENU
+)
+else if &Choice==0xB
+(
+;******************************************************************************
+;  LIST OF PENDING INTERUPTS
+;******************************************************************************
+  &IntCnt=0
+  AREA.RESet 
+  AREA.Create INTRLIST 3000. 10000. ; change size to something that can display all data
+  AREA.Select INTRLIST
+  WINPOS 0. 0. 100% 100%
+  AREA.view INTRLIST
+  print
+  print "****************************************************************************************"
+  print
+  print "you entered choice 11. The following is a list of Pending Interrupts."
+  print
+  print "****************************************************************************************"
+  print
+  print
+  &NoInit=0x1
+  while ((&IntCnt)<(&MaxIRQ))
+  (  
+    GOSUB INTDATASET &IntCnt
+    &IsPendReg=&L2VICBASE+0x00000500+(4*(&IntGrp))
+    &IsEnableReg=&L2VICBASE+(0x00000100+(4*(&IntGrp)))
+    &IsEnableVal=data.long(a:&IsEnableReg)
+    &PendVal=data.long(a:&IsPendReg)
+    &nResult=(((&PendVal)&(&nMask))&((&IsEnableVal)&(&nMask)))
+    if (&nResult==0)
+    (
+      &PrnRes=0xBA
+    )
+    else
+    (
+      &NoInit=0x0
+      &PrnRes=0xBB
+      GOSUB PRNHNDLER &PrnRes
+    )
+    
+    &IntCnt=&IntCnt+1
+  )
+  &PrnRes=0
+  if &NoInit==0x1
+  (
+    print
+    print
+    print " There are no pending Interrupts."
+    print
+    print
+  )
+  print
+  print "****************************************************************************************"
+  print
+  print "Please Enter 1 to Go back to the main menu or 0 to exit this script"
+  print
+  print "****************************************************************************************"
+  print
+  print
+  &t32_cmm_stopped=1
+  enter &WhereTo
+  &t32_cmm_stopped=0
+  if "&WhereTo"=="1"
+  (
+    GOTO DISPLAYMENU
+  )
+  else if "&WhereTo"=="0"
+  (
+    winclear
+    enddo (0==0)	
+  )
+)
+if &Choice==0xC
+(
+;******************************************************************************
+;  LIST OF SET/FIRED INTERUPTS
+;******************************************************************************
+  &IntCnt=0
+  AREA.RESet 
+  AREA.Create INTRLIST 3000. 10000. ; change size to something that can display all data
+  AREA.Select INTRLIST
+  WINPOS 0. 0. 100% 100%
+  AREA.view INTRLIST
+  print
+  print "****************************************************************************************"
+  print
+  print "you entered choice 12. The following is a list of Pending Interrupts."
+  print
+  print "****************************************************************************************"
+  print
+  print
+  &NoInit=0x1
+  while &IntCnt<&MaxIRQ
+  (  
+    GOSUB INTDATASET &IntCnt
+    &IsPendReg=&L2VICBASE+0x00000500+(4*(&IntGrp))
+    &PendVal=data.long(a:&IsPendReg)
+    &nResult=(&PendVal)&(&nMask)
+    if (&nResult==0)
+    (
+      &PrnRes=0xCA
+    )
+    else
+    (
+      &NoInit=0x0
+      &PrnRes=0xCB
+      GOSUB PRNHNDLER &PrnRes
+    )
+    &IntCnt=&IntCnt+1
+  )
+  if &NoInit==0x1
+  (
+    print
+    print
+    print " There are no pending Interrupts."
+    print
+    print
+  )
+  &PrnRes=0
+  print
+  print "****************************************************************************************"
+  print
+  print "Please Enter 1 to Go back to the main menu or 0 to exit this script"
+  print
+  print "****************************************************************************************"
+  print
+  print
+  &t32_cmm_stopped=1
+  enter &WhereTo
+  &t32_cmm_stopped=0
+  if "&WhereTo"=="1"
+  (
+    GOTO DISPLAYMENU
+  )
+  else if "&WhereTo"=="0"
+  (
+    winclear
+    enddo (0==0)	
+  )
+)
+else if &Choice==0x0
+( 
+  winclear
+  enddo (0==0)
+)	 
+
+term.close 
+
+enddo (0==0)
+
+PRNHNDLER: 
+  ENTRY &PrnEntry
+  if &PrnEntry==0xFF
+  (
+    print "  !! DATA ENTRY ERROR !!"
+    print "  Menu option chosen is invalid."
+  )
+  else if &PrnEntry==0x1A
+  (
+    print "  !! DATA ENTRY ERROR !!"
+    print "  Interrupt number is invalid."
+    print "  Please choose option 1 to select a valid interrupt number from 0 to 320."
+  )
+  else if &PrnEntry==0x1B
+  (
+    print "  !! PLATFORM IS NOT SET !!"
+    print "  Please run the InterruptController.cmm to set the platform."
+  )
+  else if &PrnEntry==0x1C
+  (
+    print "  You chose Interrupt &Interrupt" 
+    print
+    &IsEnableReg=&L2VICBASE+(0x00000100+(4*(&IntGrp)))
+    &EnableVal=data.long(a:&IsEnableReg)
+    &nResult=(&EnableVal)&(&nMask)
+    if (&nResult==0)
+    (
+      print "  It is currently disabled."
+      print
+    )
+    else
+    (
+      print "  It is currently enabled."
+      print
+    )
+    &nTypeReg=&L2VICBASE+0x00000280+(4*(&IntGrp))
+    &nTypeVal=data.long(a:&nTypeReg)
+    &nTResult=(&nTypeVal)&(&nMask)
+   
+    if (&nTResult==0)
+    (
+      print "  It has a LEVEL HIGH trigger."
+      print
+    )
+    if (&nTResult!=0)
+    (
+      print "  It has a RISING EDGE trigger."
+      print
+    )
+    &IsPendReg=&L2VICBASE+(0x00000500+(4*(&IntGrp)))
+    &PendVal=data.long(a:&IsPendReg)
+    &nResult=(&PendVal)&(&nMask)
+    if (&nResult==0)
+    (
+      print "  The Interrupt is not currently set (fired)."
+      print
+    )
+    else
+    (
+      print "  The Interrupt is set (fired in hw)."
+      print
+    )
+  )
+  else if &PrnEntry==0x2A
+  (
+    print "  You entered choice 2."
+    print "  The Interrupt &Interrupt is disabled."
+  )
+  else if &PrnEntry==0x2B
+  (
+    print "  You entered choice 2."
+    print "  The Interrupt &Interrupt is enabled."
+  )
+  else if &PrnEntry==0x3A
+  (
+    print "  You entered choice 3."
+    print "  The Interrupt &Interrupt is not set."
+  )
+  else if &PrnEntry==0x3B
+  (
+    print "  You entered choice 3."
+    print "  The Interrupt &Interrupt is set."
+  )
+  else if &PrnEntry==0x4A
+  (
+    print "  You entered choice 4."
+    print "  The interrupt &Interrupt is currently not pending."
+  )
+  else if &PrnEntry==0x4B
+  (
+    print "  You entered choice 4."
+    print "  The interrupt &Interrupt is currently pending."
+  )
+  else if &PrnEntry==0x5A
+  (
+    print "  You entered choice 5."
+    print "  Interrupt &Interrupt has a LEVEL HIGH trigger."
+  )
+  else if &PrnEntry==0x5B
+  (
+    print "  You entered choice 5."
+    print "  Interrupt &Interrupt has a RISING trigger."
+  )
+  else if &PrnEntry==0x6A
+  (
+    print "  You entered choice 6 to configure Interrupt &Interrupt to Level High."
+    print "  The trigger has been configured."
+  )
+  else if &PrnEntry==0x6B
+  (
+    print "  You entered choice 6 to configure Interrupt &Interrupt to Rising Edge."
+    print "  The trigger has been configured."
+  )
+  else if &PrnEntry==0x7
+  (
+    print "  You entered choice 7."
+    print "  The Interrupt &Interrupt has been triggered."
+  )
+  else if &PrnEntry==0x8
+  (
+    print "  You entered choice 8."
+    print "  The Interrupt &Interrupt has been cleared"
+  )
+  else if &PrnEntry==0x9
+  (
+    print "  You entered choice 9."
+    print "  The interrupt &Interrupt has been disabled."
+  )
+  else if &PrnEntry==0xA
+  (
+    print "  You entered choice 10."
+    print "  The interrupt &Interrupt has been enabled."
+  )
+  else if &PrnEntry==0xBA
+  ( 
+    print "  The interrupt "
+    print %CONTinue %Decimal &IntCnt
+    print %CONTinue " is currently not pending."
+  )
+  else if &PrnEntry==0xBB
+  (
+    print "  The interrupt "
+    print %CONTinue %Decimal &IntCnt
+    print %CONTinue " is currently pending."
+  )
+  else if &PrnEntry==0xCA
+  ( 
+    print "  The interrupt "
+    print %CONTinue %Decimal &IntCnt
+    print %CONTinue " is currently not set."
+  )
+  else if &PrnEntry==0xCB
+  (
+    print "  The interrupt "
+    print %CONTinue %Decimal &IntCnt
+    print %CONTinue " is currently set."
+  )
+ 
+RETURN
+
+INTDATASET:
+  ENTRY &IntEntry
+  if &IntEntry<=0x1F
+  (
+    &IntGrpMax=0x0
+    &IntGrp=0x0
+    &nMask=1<<(&IntEntry)
+  )
+  else if (&IntEntry>=0x20)&&(&IntEntry<=0x3F)
+  (
+    &IntGrpMax=0x3F
+    &IntGrp=0x1
+    &nMask=1<<(&IntEntry-0x20)
+  )
+  else if (&IntEntry>=0x40)&&(&IntEntry<=0x5F)
+  (
+    &IntGrpMax=0x5F
+    &IntGrp=0x2
+    &nMask=1<<(&IntEntry-0x40)
+  )
+  else if (&IntEntry>=0x60)&&(&IntEntry<=0x7F)
+  (
+    &IntGrpMax=0x7F
+    &IntGrp=0x3
+    &nMask=1<<(&IntEntry-0x60)
+  )
+  else if (&IntEntry>=0x80)&&(&IntEntry<=0x9F)
+  (
+    &IntGrpMin=0x9F
+    &IntGrp=0x4
+    &nMask=1<<(&IntEntry-0x80)
+  )
+  else if (&IntEntry>=0xA0)&&(&IntEntry<=0xBF)
+  (
+    &IntGrpMax=0xBF
+    &IntGrp=0x5
+    &nMask=1<<(&IntEntry-0xA0)
+  )
+  else if (&IntEntry>=0xC0)&&(&IntEntry<=0xDF)
+  (
+    &IntGrpMax=0xDF
+    &IntGrp=0x6
+    &nMask=1<<(&IntEntry-0xC0)
+  )
+  else if (&IntEntry>=0xE0)&&(&IntEntry<=0xFF)
+  (
+    &IntGrpMax=0xFF
+    &IntGrp=0x7
+    &nMask=1<<(&IntEntry-0xE0)
+  )
+  else if (&IntEntry>=0x100)&&(&IntEntry<=0x11F)
+  (
+    &IntGrpMax=0x11F
+    &IntGrp=0x8
+    &nMask=1<<(&IntEntry-0x100)
+  )
+  else if (&IntEntry>=0x120)&&(&IntEntry<=0x13F)
+  (
+    &IntGrpMax=0x13F
+    &IntGrp=0x9
+    &nMask=1<<(&IntEntry-0x120)
+  )
+RETURN

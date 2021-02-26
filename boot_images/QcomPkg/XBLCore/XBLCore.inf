@@ -1,0 +1,180 @@
+#/** @file XBLCore.inf
+#  Reset vector code that jumps to and loads DXE core
+#
+#
+#  Copyright (c) 2010-2017 Qualcomm Technologies, Inc.  All Rights Reserved.
+#  Qualcomm Technologies Proprietary and Confidential.
+#
+#  Portions copyright (c) 2008, Apple Inc. All rights reserved.
+#
+#  This program and the accompanying materials
+#  are licensed and made available under the terms and conditions of the BSD License
+#  which accompanies this distribution.  The full text of the license may be found at
+#  http://opensource.org/licenses/bsd-license.php
+#
+#  THE PROGRAM IS DISTRIBUTED UNDER THE BSD LICENSE ON AN "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR REPRESENTATIONS OF ANY KIND, EITHER EXPRESS OR IMPLIED.
+#**/
+
+#==============================================================================
+#                              EDIT HISTORY
+#
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 05/05/17   sj      Removed the FBPT dependency
+# 01/27/17   ai      Fix use of retail
+# 12/09/16   bh      Add lib for ASLR
+# 09/26/16   vk      Add DBIDumpLib
+# 07/26/16   vk      Add AllocPagePool Lib
+# 06/29/16   bh      Add separate source files for FV file I/O
+# 03/03/16   bh      Enable Print shared lib
+# 02/18/16   bh      Remove unused PCDs
+# 11/15/15   vk      Add UefiPrePiHeapMemBase
+# 09/30/15   bh      Update firmware version
+# 08/13/15   vk      Remove offline crashdumplib
+# 07/28/15   bh      Add PcdHaltOnRetail
+# 07/13/15   sk      Added Prodmode HOB
+# 04/23/15   vk      Print boot device
+# 04/17/15   vk      Remove unused PCD
+# 03/10/15   jb      Add PCD to control which EL to start in
+# 01/22/15   jb      Add IMEM cookie PCDs
+# 11/13/14   jb      Support skipping early cache init
+# 10/30/14   vk      Support RAMPArtitionTableLib
+# 10/10/14   vk      Fix EmbeddedFdBaseAddress
+# 10/18/14   jb      Single region resource memory support
+# 04/22/14   aus     Added PCD for ImemCookiesBase
+# 04/10/14   niting  Enable warning as error
+# 04/04/14   vk      Disable warning as error
+# 04/01/14   cpaulo  Removed dependency on QcomTimerLibB
+# 10/23/13   niting  Updated location of UefiInfoBlock
+# 10/22/13   vk      Add ARM BuildOptions
+# 10/22/13   vk      Add AARCH64
+# 04/03/13   niting  Added offline crash dump support
+# 03/19/13   vk      Add gEfiInfoBlkHobGuid
+# 03/12/13   vk      Add Pccd for virtio support, if SMEM not ready
+# 01/29/13   vk      Branch from 8974 for target independent sec
+#
+#==============================================================================
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = Sec
+  FILE_GUID                      = 8AF09F13-44C5-96EC-1437-DD899CB5EE5D
+  MODULE_TYPE                    = SEC
+  VERSION_STRING                 = 1.0
+
+[Sources.common]
+  Sec.c
+  Cache.c
+  UefiPlatCfg.c
+  UefiInfoBlk.c
+  FwVersion.c
+  PrePiFvFileIo.c
+
+[Sources.Arm]
+  ReleaseInfo.asm | RVCT
+  ModuleEntryPoint.asm | RVCT
+
+[Sources.AARCH64]
+  ReleaseInfo.S | GCC
+  ReleaseInfo.S | RVCT
+  ModuleEntryPoint.S | GCC
+  ModuleEntryPoint.S | RVCT
+  ModuleEntryPoint.masm | MSFT
+
+[BuildOptions.AARCH64]
+  GCC:*_*_*_CC_FLAGS = -O0 -fno-inline
+
+#  MSFT:*_*_*_CC_FLAGS = -O0
+MSFT: *_VS2015x86_*_PLATFORM_FLAGS == /wd4312 /wd4245 /wd4018 /wd4244 /wd4146 /wd4308 /wd4706 /wd4389 /wd4152 /wd4459 /wd4204 /wd4311 /wd4090 /wd4701 /wd4457 /wd4295 /wd4703 /wd4133 /wd4047 /wd4221 /wd4020 /wd4057 /wd4334 /wd4113 /wd4267
+
+[BuildOptions.ARM]
+  RVCT:*_*_*_CC_FLAGS = --diag_error=warning
+  RVCT:*_*_*_DLINK_FLAGS = "--first=Sec.lib(ReleaseInfo)"
+
+[Packages]
+  MdePkg/MdePkg.dec
+  MdeModulePkg/MdeModulePkg.dec
+  EmbeddedPkg/EmbeddedPkg.dec
+  ArmPkg/ArmPkg.dec
+  QcomPkg/QcomPkg.dec
+
+[LibraryClasses]
+  BaseLib
+  DebugLib
+  ArmLib
+  IoLib
+  ExtractGuidedSectionLib
+  LzmaDecompressLib
+  ZlibDecompressLib
+  PeCoffGetEntryPointLib
+  DebugAgentLib
+  SerialPortLib
+  QcomBaseLib
+  ProcLib
+  PrePiMemoryAllocationLib
+  ParserLib
+  ShLib
+  UefiCfgLib
+  PerformanceLib
+  TargetInitLib
+  RamPartitionTableLib
+  BootConfigLib
+  HobLib
+  ImageVersionLib
+  PrintHostLib
+  CpuExceptionHandlerLib
+  AllocPagePoolLib
+  DbiDumpLib
+  AslrLib
+  PcdLib
+  SplitBootLib
+  SecFuseLib
+
+[FeaturePcd]
+  gEmbeddedTokenSpaceGuid.PcdCacheEnable
+  gEmbeddedTokenSpaceGuid.PcdPrePiProduceMemoryTypeInformationHob
+  gQcomTokenSpaceGuid.PcdSingleDDRSystemResource
+
+[FixedPcd]
+  gEfiMdePkgTokenSpaceGuid.PcdUartDefaultBaudRate
+  gEmbeddedTokenSpaceGuid.PcdFlashFvMainBase
+  gEmbeddedTokenSpaceGuid.PcdFlashFvMainSize
+  gQcomTokenSpaceGuid.PcdUefiPrePiHeapMemBase
+  gQcomTokenSpaceGuid.PcdPreAllocatedMemorySize
+  gQcomTokenSpaceGuid.PcdUefiMemPoolBaseOffset
+  gQcomTokenSpaceGuid.PcdUefiMemPoolSize
+  gQcomTokenSpaceGuid.PcdMaxMemRegions
+  gQcomTokenSpaceGuid.PcdHLOSCrashCookieAddr
+  gQcomTokenSpaceGuid.PcdAppsProcFrequencyMhz
+  gQcomTokenSpaceGuid.PcdHLOSMemoryBaseOffset
+  gQcomTokenSpaceGuid.PcdHLOSMemorySize
+  gQcomTokenSpaceGuid.PcdEmbeddedFdBaseAddress
+  gQcomTokenSpaceGuid.PcdIMemCookiesBase
+  gQcomTokenSpaceGuid.PcdSkipEarlyCacheMaint
+  gQcomTokenSpaceGuid.PcdTimeTickClkAddress
+
+  gEmbeddedTokenSpaceGuid.PcdPrePiCpuMemorySize
+  gEmbeddedTokenSpaceGuid.PcdPrePiCpuIoSize
+  gQcomTokenSpaceGuid.PcdUefiDebugCookieOffset
+  gQcomTokenSpaceGuid.PcdUefiDebugCookie
+  gQcomTokenSpaceGuid.PcdSwitchToEL1
+  gArmTokenSpaceGuid.PcdArmArchTimerFreqInHz
+  gArmTokenSpaceGuid.PcdCpuVectorBaseAddress
+  gQcomTokenSpaceGuid.PcdHaltOnRetail
+  gEfiMdeModulePkgTokenSpaceGuid.PcdFirmwareVersionString
+
+[Guids]
+  gQcomMemoryCaptureGuid
+  gEfiInfoBlkHobGuid
+  gQcomMemoryCaptureValueGuid
+  gQcomAbnormalResetOccurredValueGuid
+  gQcomProdmodeInfoGuid
+  gQcomFwVersionStringGuid
+  gQcomFwVersionHexGuid
+  gQcomRelDateStringGuid
+  gEfiStartTimeHobGuid
+  gEfiFirmwarePerformanceGuid
+  gZlibDecompressGuid                    ## CONSUMES
+

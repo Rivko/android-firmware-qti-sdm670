@@ -1,0 +1,79 @@
+#===============================================================================
+#
+# HAP AU
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2015 by Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/opendsp.adsp/3.0/oem/audio/capi_v2_decimate/build/capi_v2_decimate.scons#1 $
+#  $DateTime: 2017/08/31 23:46:43 $
+#  $Author: pwbldsvc $
+#  $Change: 14245673 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+core_public_apis = [
+   'DEBUGTOOLS',
+   'SERVICES',
+   'KERNEL',
+   ]
+
+env.RequirePublicApi(core_public_apis, area='core')
+env.RequireRestrictedApi('HAP')
+env.RequirePublicApi('HAP_AVS')
+env.RequirePublicApi('HAP')
+
+env.PublishPrivateApi('HAP',[
+   '../inc',
+   '../src',
+   ])
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = '..'
+LIBNAME = 'capi_v2_decimate'
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+# Generate regular source file list
+avs_reg_sources = env.GlobSourceFiles(['src/*.cpp', 'src/*.c'], SRCPATH,posix=True)
+
+# Generate stub source file list
+avs_stub_sources = env.GlobSourceFiles(['/stub_src/*.cpp', '/stub_src/*.c', '/stub_src/*.S'], SRCPATH,posix=True)
+
+# Generate proprietary source file list
+avs_prop_sources = []
+
+#This flag will be set if shared libraries generation is needed.
+#Use this flag for shared library generation. 
+#Comment it for static library generation.
+#env.Replace(USES_AVS_CUSTOM_SHARED_LIBS = 'yes')
+
+#import pdb; pdb.set_trace()
+
+bucket = ['HAP_AVS_ADSP'] 
+
+if 'USES_AVS_SHARED_LIBS' in env:
+## for shared library
+   if 'USES_AVS_CUSTOM_SHARED_LIBS' in env:
+       env.AddAvsSharedLibrary(bucket,'${BUILDPATH}/'+LIBNAME, [avs_reg_sources, avs_stub_sources, avs_prop_sources])    
+else:
+## for static library
+   if not 'USES_AVS_CUSTOM_SHARED_LIBS' in env:
+       env.AddLibrary(bucket, '${BUILDPATH}/'+LIBNAME, [avs_reg_sources, avs_stub_sources, avs_prop_sources])
+       #env.AddBinaryLibrary(bucket, '${BUILDPATH}/'+LIBNAME, [avs_reg_sources, avs_stub_sources, avs_prop_sources])
+

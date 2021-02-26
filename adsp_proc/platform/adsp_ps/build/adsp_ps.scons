@@ -1,0 +1,68 @@
+#===============================================================================
+# Copyright (c) 2012 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+platform_root = '${BUILD_ROOT}/platform'
+env.Replace(ADSP_PLATFORM_ROOT = platform_root)
+
+core_public_apis = [
+   'KERNEL',
+   ]
+
+env.RequireRestrictedApi([
+  'ADSP_PS',
+  'ATOMIC'
+  ])
+
+env.RequirePublicApi([
+    'HAPSDK',
+    'PLATFORM_LIBS',
+    'STDDEF',
+    'REMOTE',
+    'QAIC',
+    'A1STD',
+    'UTILS',
+    'APPS_STD',
+    'MOD_TABLE',
+    'SBUF',
+  ])
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${ADSP_PLATFORM_ROOT}/adsp_ps/src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+if ('USES_ENABLE_GUESTOS_AUDIOPD_SUPPORT' in env):
+   images_for_headergen = ['FASTRPC_SHELL_IMG']
+else:
+   images_for_headergen = ['FASTRPC_SHELL_IMG','AVS_ADSP_USER']
+ADSP_PS_SOURCES =  [
+   '${BUILDPATH}/adsp_ps_hexagon.c',
+   env.QaicSkelFromIdl("adsp_ps"),
+   ]
+
+if ('USES_ENABLE_GUESTOS_AUDIOPD_SUPPORT' in env):
+   env.PLRegister("adsp_ps",['FASTRPC_SHELL_IMG'])
+else:
+   env.PLRegister("adsp_ps",['FASTRPC_SHELL_IMG','AVS_ADSP_USER'])
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+if ('USES_ENABLE_GUESTOS_AUDIOPD_SUPPORT' in env):
+   adsp_ps_lib = env.AddBinaryLibrary(['FASTRPC_SHELL_IMG'],'${BUILDPATH}/adsp_ps', ADSP_PS_SOURCES)
+else:
+   adsp_ps_lib = env.AddBinaryLibrary(['FASTRPC_SHELL_IMG','AVS_ADSP_USER'],'${BUILDPATH}/adsp_ps', ADSP_PS_SOURCES)
+
+#-------------------------------------------------------------------------------
+# Load Subunits (sys)
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.cpp', '*.S', '*.h'], '${ADSP_PLATFORM_ROOT}/adsp_ps/src'))
+env.CleanPack(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+     'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'CORE_QDSP6_SENSOR_SW', 'FASTRPC_SHELL_IMG','AVS_ADSP_USER'], CLEAN_LIST)

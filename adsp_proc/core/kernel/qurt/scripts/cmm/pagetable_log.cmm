@@ -1,0 +1,356 @@
+;=============================================================================
+;
+;                                    pagetable_log.cmm
+;
+; GENERAL DESCRIPTION
+;
+; EXTERNAL FUNCTIONS
+;        None.
+;
+; INITIALIZATION AND SEQUENCING REQUIREMENTS
+;        None.
+;
+;             Copyright (c) 2013  by Qualcomm Technologies, Inc.  All Rights Reserved.
+;=============================================================================
+; 6/30/2015
+
+; Script to decode PTLOG.
+
+; The log is a circular buffer of size .end-.start,
+
+; the next entry will be written at .head,
+
+; once the .end reached, the .head rolls over to the .start,
+
+; most recent event recorded at .head. 
+
+ 
+
+Area.Create IO 1000. 5000.
+
+Area.Select IO
+
+Area IO
+
+
+
+;#if CONFIG_PT_LOGGING
+
+;   {
+
+;      struct ptlogentry *p;
+
+
+
+;     __asm__ volatile("tlblock":::"memory");
+
+;      p = PTLOG.head;
+
+;      p->data[0] = 1; //2,3
+
+;      p->data[1] = pageno_virt;
+
+;      p->data[2] = pageno_phys;
+
+;      p->data[3] = page_count;
+
+;      p->data[4] = tlb_lo;
+
+;      p->data[5] = tlb_hi;
+
+;      if (++p == PTLOG.end)
+
+;         p = PTLOG.start;
+
+;      PTLOG.head = p;
+
+;      __asm__ volatile("tlbunlock":::"memory");
+
+;   }
+
+; types:
+
+; 1: pgt change_mapping
+
+; 	map in pgt if data[5] has valid bit set
+
+;	unmap in pgt if data[5]=0 or valid bit not set
+
+; 	format: 			pageno_virt--pageno_phys--page_count--tlblo--tlbhi 
+
+; 2: tlbflush
+
+; 	format:				idx--tlblo--tlbhi--na--na
+
+; 3: tlbfill(bring in from pgt)
+
+; 	format:				idx--tlblo--tlbhi--na--na
+
+;#endif
+
+
+
+;order display: most recent first down to earliest last
+
+local &type
+
+local &data_1
+
+local &data_2
+
+local &data_3
+
+local &data_4
+
+local &data_4
+
+
+
+local &entry_size
+
+local &end
+
+local &start
+
+local &next
+
+local &next_to_display
+
+local &tail
+
+local &head
+
+local &max_count
+
+local &iter
+
+
+
+local &v_range1
+
+local &v_range2
+
+local &p_range1
+
+local &p_range2
+
+local &size
+
+
+
+;&entry_size=32. ;8 words per log entry, 32 bytes
+
+&entry_size=0x20
+
+; do error check
+
+
+
+&end=v.value(PTLOG.end)
+
+&start=v.value(PTLOG.start)
+
+&head=v.value(PTLOG.head)
+
+&tail=v.value(PTLOG.tail)
+
+
+
+&max_count=(&end-&start)>>5.
+
+&next=v.value(PTLOG.head)-0x20
+
+&count=((&head-&tail)>>5)-1.
+
+&iter=0.
+
+
+
+
+
+if !(y.exist(PTLOG))
+
+(
+
+   print "PTLOG not defined... "
+
+   goto endloop
+
+)
+
+
+
+print "TLB/Pagetable Log"
+
+print "============================================================================================================================================="
+
+repeat
+
+(
+
+  if &count==-1
+
+  (
+
+      &count=&max_count-1.
+
+      &next=v.value(PTLOG.end)-&entry_size
+
+  )
+
+
+
+  &type=v.value(PTLOG.ring[&count].data[0])
+
+  if &type==0
+
+  (
+
+     goto endloop
+
+  )
+
+ 
+
+  &data_1=v.value(PTLOG.ring[&count].data[1])
+
+
+
+  &data_2=v.value(PTLOG.ring[&count].data[2])
+
+  
+
+  &data_3=v.value(PTLOG.ring[&count].data[3])
+
+
+
+  &data_4=v.value(PTLOG.ring[&count].data[4])
+
+  
+
+  &data_5=v.value(PTLOG.ring[&count].data[5])
+
+  
+
+  &next_to_display=&next-&entry_size
+
+
+
+  &data_1=FORMAT.hex(8.,&data_1)
+
+     
+
+  &data_2=FORMAT.hex(8.,&data_2)
+
+     
+
+  &data_3=FORMAT.hex(8.,&data_3)
+
+  
+
+  ;&next=FORMAT.hex(8.,&next)
+
+
+
+  ;&next_to_display=FORMAT.hex(8.,&next_to_display)
+
+  
+
+  ;&iter=FORMAT.decimal(4.,&iter)  
+
+
+
+  if &type==1
+
+  (
+
+	 &size=(&data_3)<<12. 
+
+         &v_range1=(&data_1)<<12.
+
+	 &v_range2=&v_range1+&size-1
+
+         &p_range1=(&data_2)<<12.
+
+         &p_range2=&p_range1+&size-1
+
+         
+
+         &size=(&size)>>10.
+
+         &size=FORMAT.decimal(4.,&size)
+
+         
+
+         if &data_5!=0
+
+         (
+
+              print "[&next]   pgt map............vrange: &v_range1--&v_range2 ..... prange: &p_range1--&p_range2......... size: &size K .......... prev: &next_to_display"
+
+         )
+
+         else
+
+         (
+
+              print "[&next]   pgt unmap..........vrange: &v_range1--&v_range2 ..... prange: &p_range1--&p_range2......... size: &size K ......... prev: &next_to_display"
+
+         )
+
+
+
+  )
+
+  else if &type==2
+
+  (
+
+     print "[&next]   tlb flush..........idx: 0x&data_1 ..... tlblo: &data_2 ..... tlbhi: &data_3 .......... prev: &next_to_display"
+
+  )
+
+  else if &type==3
+
+  (
+
+     print "[&next]   tlb fill ..........idx: 0x&data_1 ..... tlblo: &data_2 ..... tlbhi: &data_3 .......... prev: &next_to_display"  
+
+  )
+
+
+
+  &count=&count-1
+
+  if (&next)==(&head)
+
+  (
+
+     goto endloop
+
+  )
+
+  &next=&next-&entry_size
+
+  &iter=&iter+1
+
+)
+
+endloop: 
+
+&iter=&iter+1
+
+
+
+print " "
+
+&num=FORMAT.decimal(4.,&iter)
+
+print "Total log entries: &num"
+
+
+
+SETUP.SOUND ON
+
+BEEP 3.
+

@@ -1,0 +1,51 @@
+entry &OutputPath
+
+Area.Create DSP 200. 1000.       ;create an AREA window              
+WINPOS 50% 0. 50% 103% 0. 0. DSP
+Area.Select DSP                  ;select the AREA window as PRACTICE 
+                                ;input/output window                
+Area DSP                         ;display the AREA window   
+
+if OS.DIR(&OutputPath\temp)
+(
+    ;print "temp diretory already exists"
+)
+else 
+(
+    mkdir &OutputPath\temp
+)
+
+
+printer.file "&OutputPath\temp\SymbolList.txt
+printer.filetype ascii
+printer.size 0xfa,0xfa
+wp.sYmbol.List.SECtion
+
+print "Extracting ELF Sections from ELF File...It takes more than 2mins...Please Wait...."
+&tem="Process"
+&cmd="python DDR_compare.py &OutputPath &tem"
+Os.Hidden &cmd
+
+if OS.FILE("&OutputPath\temp\ddrsave.cmm")
+(
+    print "Extracting ELF Sections from RamDump..Please Wait..."
+    do &OutputPath\temp\ddrsave.cmm
+)
+
+&tem="Compare"
+&cmd="python DDR_compare.py &OutputPath &tem"
+Os.Hidden &cmd
+
+LOCAL &headerline
+OPEN #1 "&OutputPath\DDR\Result.txt" /READ
+READ #1 %line &headerline
+PRINT "&headerline"
+RePeaT 
+(
+    READ #1 %line &headerline
+    IF EOF()
+    GOTO endloop
+    PRINT "&headerline"
+)
+endloop: CLOSE #1
+

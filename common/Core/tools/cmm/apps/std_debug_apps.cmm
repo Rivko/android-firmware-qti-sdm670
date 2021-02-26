@@ -1,0 +1,592 @@
+//============================================================================
+//  Name:                                                                     
+//    std_debug_apps.cmm 
+//
+//  Description:                                                              
+//    APPS debug script
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who             what, where, why
+// --------   ---             ---------------------------------------------------------
+// 06/26/2017 MARTHAM          Fixed cluster view trace issue.
+// 06/18/2015 JBILLING         Enable TPIU and fix bugs 
+// 02/06/2015 JBILLING         Major update to use _cmds instead of breakpoints, std_apps
+// 08/19/2014 JBILLING         Added Tracing functionality
+// 08/11/2014 JBILLING         Minor logic updates
+// 06/24/2014 JBILLING          Added Trace GUI
+// 05/22/2014 JBILLING        created for 8994 and beyond
+//####################Declarations#######################
+
+LOCAL &ArgumentLine
+LOCAL &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+LOCAL &targetprocessor &string_length
+
+//###################Arguments passed #####################
+ENTRY %LINE &ArgumentLine
+ENTRY &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+
+//##################Defaults##########################
+&targetprocessor="apps0"
+LOCAL &success &failure &Session1 &Session2
+&success=1
+&failure=0
+&Session1="APPS0"
+&Session2="APPSC0"
+
+//#####################Select Subroutine###################
+// Name of the utility we are calling
+LOCAL &SUBROUTINE
+// Any subroutine specific options
+// Default exists for each subroutine
+LOCAL &OPTION
+
+// Input Argument 0 is the name of the utility
+&SUBROUTINE="&UTILITY"
+IF !(("&SUBROUTINE"=="TRACEGUI"))
+(
+    &SUBROUTINE="MAIN"
+)
+
+    // This should be created by some top level script. The setupenv for each proc would
+    // set this up
+    AREA.SELECT
+    // Call the required utility
+    GOSUB &SUBROUTINE &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+    ENTRY &PASS &RVAL0 &RVAL1 &RVAL2
+
+    GOTO EXIT
+
+
+////////////////////////////////////////
+//
+//          TRACEGUI
+//
+//          Main TRACEGUI logic
+//
+/////////////////////////////////////////  
+TRACEGUI:
+
+        ///////////////Variables/////////////////////
+        
+        
+        ///////////////////Set Defaults///////////////
+        LOCAL &image 
+        &image="appsboot"
+        
+        //setup intercoms
+        do std_intercom_init NEWSESSION
+        
+        //from GETDEBUGDEFAULTS
+        LOCAL &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+        
+        //Trace Variables//
+        LOCAL &tracesource &tracesink &tpiusink &cycleaccurate &traceconfiguration &portsize &cycleaccuratecommand &portsizecommand 
+        
+        /////////////Addtional Variables////////////////
+        LOCAL &user_defined_cmds
+        &user_defined_cmds=""
+        LOCAL &PORTSIZE_SIZES
+        
+        
+        &PORTSIZE_SIZES="4bit,8bit,16bit"
+        
+
+        
+        ///////////get target specific debug defaults////////////////
+        do std_debug_&CHIPSET GETDEBUGDEFAULTS NONE &image &lpm_option &cti_enable &alternateelf &extraoption
+            ENTRY &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+    
+        
+        ////////////get target specific trace defaults////////////////
+        &tracesource="&targetprocessor"
+        &tracescript="std_trace_apps_"+"&CHIPSET"
+        
+        do &tracescript GETTRACEDEFAULTS &tracesource &tracesink &tpiusink &cycleaccurate &traceconfiguration &portsize 
+            ENTRY &tracesource &tracesink &tpiusink &portsize &cycleaccuratecommand &traceconfiguration &portsizecommand 
+
+            
+
+        LOCAL &Rvalue
+        do std_intercom_init CHECKSESSION 1 &bootprocessor
+            ENTRY &Rvalue
+        //Special case for apps window - can have apps0 or cluster
+        IF (&Rvalue!=1.)&&("&bootprocessor"=="APPS0")
+        (
+            do std_intercom_init CHECKSESSION 1 APPSC0
+            ENTRY &Rvalue
+        )
+        IF (&Rvalue!=1.)
+        (
+            PRINT %ERROR "&bootprocessor T32 window not open. Please open and try again"
+            GOTO FATALEXIT
+        )
+
+        GOSUB CREATEDIALOG //&image &targetprocessor &user_defined_bkpts &lpm_option &cti_enable &multi_elf_option &tracesink &tpiusink &portsize &cycleaccuratecommand &portsizecommand    
+
+
+        STOP
+        
+        DIALOG.END
+
+        RETURN
+        
+
+
+
+// Sub-routine to create the dialog
+CREATEDIALOG:
+
+    //LOCAL &image &targetprocessor &user_defined_bkpts &lpm_option &cti_enable &multi_elf_option &tracesink &tpiusink &portsize &cycleaccuratecommand &portsizecommand    
+    //ENTRY &image &targetprocessor &user_defined_bkpts &lpm_option &cti_enable &multi_elf_option &tracesink &tpiusink &portsize &cycleaccuratecommand &portsizecommand    
+
+    // Check if the window exists
+    //WINTOP BUILDOPTIONS
+    //IF FOUND()
+    //   RETURN 
+    WINPOS 0. 0. 60. 30. 
+
+    DIALOG
+    (&
+        HEADER "Apps Attach Options"
+
+        
+        POS 0. 0. 59. 28.
+        BOX "Hot Attach Options"
+
+        POS 1. 1. 54. 1.
+        TEXT "These options will run on all open Apps T32 windows,"
+        POS 1. 2. 54. 1.
+        TEXT "And without halting the processors"
+
+
+
+
+        ///////////////////////////////////////////
+        ////////////MULI-APP COMMAND SECTION/////////////
+        ///////////////////////////////////////////   
+        POS 1. 4. 44. 7.
+        BOX "Multi-Window Commands"
+        POS 4. 6. 38. 1.
+        TEXT "Commands entered here will apply to all open Apps windows"
+        
+        POS 4. 7. 35. 1.
+        COMMANDEDIT: EDIT "&user_defined_cmd" "GOSUB SETUSERCOMMAND"
+        //Defined below so that <Enter> from keyboard applies command
+        //POS 22. 8. 17. 1.
+        //APPLYCMDS: DEFBUTTON "Apply Commands"
+        //(
+        //    GOSUB APPLYCOMMANDS
+        //)
+        
+        
+        ///////////////////////////////////////////
+        ////////////ELF SECTION/////////////
+        ///////////////////////////////////////////      
+        POS 46. 5. 12. 1.
+        ELFBUTTON: DEFBUTTON "Load XBL Elf" "GOSUB LOADELF XBL"
+        POS 46. 6. 12. 1.
+        ELFBUTTON: DEFBUTTON "Load TZ Elf" "GOSUB LOADELF TZ"        
+        POS 46. 7. 12. 1.
+        ELFBUTTON: DEFBUTTON "Load Apps Elf" "GOSUB LOADELF appsboot"
+        POS 46. 9. 12. 1.
+        ELFBUTTON: DEFBUTTON "Clear Symbols" "DO std_apps SYMBOL.RESET"
+        ///////////////////////////////////////////
+        ////////////TRACE SECTION//////////////////
+        ///////////////////////////////////////////        
+        POS 1. 11. 44. 7.
+        BOX "Trace Options"
+        POS 2. 12. 18. 1.
+        TRACE.TRACE_DISABLE: CHOOSEBOX "Trace Disabled" "GOSUB TRACE_OPTIONS"
+        TRACE.TRACE_ENABLE_ETB: CHOOSEBOX "ETB Tracing" "GOSUB TRACE_OPTIONS"
+        TRACE.TRACE_ENABLE_TPIU: CHOOSEBOX "TPIU Tracing" "GOSUB TRACE_OPTIONS"
+
+        POS 24. 13. 19. 1.
+        CYCLEACCURATE_CHECKBOX: CHECKBOX "Enable CycleAccurate Tracing" "GOSUB TRACE_SET_CYCLEACCURATE"
+
+        POS 4. 15. 8. 1.
+        TPIU_PORT.TPIU_A: CHOOSEBOX "TPIU A" "GOSUB TPIU_SELECT"
+        POS 13. 15. 8. 1.
+        TPIU_PORT.TPIU_B: CHOOSEBOX "TPIU B" "GOSUB TPIU_SELECT"
+
+        POS 24. 14. 12. 1.
+        TEXT "Trace Pin Width"
+        POS 24. 15. 10. 1.
+        PORTSIZE_DROPDOWN: DYNPULLDOWN "&PORTSIZE_SIZES" "GOSUB SETPORTSIZE"
+        
+        
+        ///////////////////////////////////////////
+        ////////////CTI SECTION////////////////////
+        ///////////////////////////////////////////                
+        POS 1. 18. 35. 7.
+        BOX "CTI - Synchronous Halt and Resume"
+        
+        POS 2. 19. 16. 2.
+        CTI_ENABLE: DEFBUTTON "Setup Sync Apps" "do std_cti_apps SETUPSYNCHALT"
+        POS 19. 19. 15. 2.
+        CTI_DISABLE: DEFBUTTON "Clear CTI network" "do std_cti_apps CLEARCTI"
+        POS 2. 21. 16. 2.
+        CTI_FORCE_HALT: DEFBUTTON "Force Halt on Apps" "do std_cti_apps SENDCTIBREAKTOALLCORES"
+        POS 19. 21. 15. 2.
+        CTI_RESUME_APPS: DEFBUTTON "Resume Apps from sync halt" "do std_cti_apps SENDCTIGOTOALLCORES"
+        
+        POS 23. 23. 10. 1.
+        HELPBUTTON: DEFBUTTON "Help: CTI"
+        (
+            DIALOG.OK "Enabling CTI halt will halt other processors when a breakpoint hits."
+        )        
+        
+        
+        POS 15. 25. 25. 2.
+        GOBUTTON: DEFBUTTON "Go" "GOSUB RUN_HOTATTACH_COMMANDS"
+        
+        POS 48. 26. 10. 1.
+        GOBUTTON: DEFBUTTON "End Dialog" "GOSUB ENDDIALOG"
+        
+        ///////////////////////////////////////////
+        ////////////BIG HALT BUTTON////////////////
+        ///////////////////////////////////////////        
+        //POS 15. 27. 25. 2.
+        //HALTBUTTON: DEFBUTTON "Attach and Halt" "GOSUB WAKEANDHALT"
+        
+        POS 22. 8. 17. 1.
+        APPLYCMDS: DEFBUTTON "Apply Commands"
+        (
+            GOSUB APPLYCOMMANDS
+        )
+        
+
+    )
+    
+    
+    // Set the default options here
+    //DIALOG.DISABLE TRACE.TRACE_ENABLE_TPIU
+    //Things not functioning yet:
+    //DIALOG.DISABLE CTI_RESUME_APPS
+    DIALOG.DISABLE CTI_ENABLE
+    
+    //////////////////////////////////////////////////////
+    ////////////////Set Power Defaults////////////////////
+    ///////////////Disabled for now. will be enabled//////
+    ///////////////for future rev/////////////////////////
+    //  IF ("&lpm_option"=="lpm_disable")
+    //    (
+    //        DIALOG.SET LOAD.LPM_DISABLE
+    //    )
+    //    ELSE
+    //    (
+    //        DIALOG.SET LOAD.LPM_ENABLE
+    //    )
+    
+    
+    
+    //////////////////////////////////////////////////////
+    ////////////////Set Trace Defaults////////////////////
+    //////////////////////////////////////////////////////
+    DIALOG.SET PORTSIZE_DROPDOWN "&portsize"
+    
+    IF ("&tpiusink"=="tpiub")
+    (
+        DIALOG.SET TPIU_PORT.TPIU_B
+    )
+    ELSE
+    (
+        DIALOG.SET TPIU_PORT.TPIU_A
+    )
+    
+    IF ("&tracesink"=="none")
+    (
+        DIALOG.DISABLE TPIU_PORT.TPIU_A
+        DIALOG.DISABLE TPIU_PORT.TPIU_B
+        DIALOG.DISABLE PORTSIZE_DROPDOWN
+        DIALOG.SET TRACE.TRACE_DISABLE
+    )
+    
+    IF ("&cycleaccuratecommand"=="off")
+    (
+        DIALOG.DISABLE CYCLEACCURATE_CHECKBOX
+    )
+    
+    //Enable for cluster view for now
+    IF (STRING.SCAN("&LOCALNAME","APPSC",0)!=-1)
+    (
+        DIALOG.ENABLE TRACE.TRACE_ENABLE_ETB
+        DIALOG.DISABLE TRACE.TRACE_ENABLE_TPIU
+    
+    )
+    //Disable as Apps trace is not yet functional
+    //DIALOG.DISABLE TRACE.TRACE_ENABLE_ETB
+    //DIALOG.DISABLE TRACE.TRACE_ENABLE_TPIU
+    
+    
+    //////////////////////////////////////////////////////
+    ////////////////Set CTI Defaults////////////////////
+    //////////////////////////////////////////////////////
+    
+    DIALOG.SET COMMANDEDIT ""
+    
+    RETURN
+
+
+
+APPLYCOMMANDS:
+        
+        IF ("&user_defined_cmds"!="")
+        (
+        
+            &user_defined_cmds=DIALOG.STRING(COMMANDEDIT)
+            //do std_apps do std_utils ATTACHPROC
+            //need to use ' ' instead of ',' since std_intercom_cmds uses ',' for parsing commands
+            &user_defined_cmds=STRING.REPLACE("&user_defined_cmds",","," ",0)
+            do std_apps &user_defined_cmds
+            DIALOG.SET COMMANDEDIT ""
+        )
+        ELSE
+        (
+            PRINT "Apps Trace Menu: No Command specified. No action taken"
+        )
+        
+RETURN
+        
+SETUSERCOMMAND:
+    
+    &user_defined_cmds=DIALOG.STRING(COMMANDEDIT)
+
+    RETURN
+
+LOADELF:
+
+    LOCAL &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+    ENTRY &image
+    
+    do std_debug_&CHIPSET GETDEBUGDEFAULTS NONE &image
+        ENTRY &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+    
+    do &symbolloadscript NULL remotely notliveattach loadsecondelf &alternateelf NULL
+    
+  RETURN
+    
+    
+TRACE_OPTIONS:
+
+    //Verify that needed apps windows are open
+    LOCAL &APPS_WINDOWS_PRESENT
+    //GOSUB CHECK_APPS_WINDOWS
+        //ENTRY &APPS_WINDOWS_PRESENT
+
+
+    //IF (DIALOG.BOOLEAN(TRACE.TRACE_DISABLE)||(&APPS_WINDOWS_PRESENT!=0x1))
+    IF DIALOG.BOOLEAN(TRACE.TRACE_DISABLE)
+    (
+        &tracesink="none"
+        DIALOG.SET TRACE.TRACE_DISABLE
+        DIALOG.DISABLE CYCLEACCURATE_CHECKBOX
+        DIALOG.DISABLE PORTSIZE_DROPDOWN
+        DIALOG.DISABLE TPIU_PORT.TPIU_A
+        DIALOG.DISABLE TPIU_PORT.TPIU_B
+    )
+    ELSE
+    (
+        IF DIALOG.BOOLEAN(TRACE.TRACE_ENABLE_ETB)
+        (
+            &tracesink="etb"
+            DIALOG.ENABLE CYCLEACCURATE_CHECKBOX
+            DIALOG.ENABLE CYCLEACCURATE_CHECKBOX
+            DIALOG.DISABLE TPIU_PORT.TPIU_A
+            DIALOG.DISABLE TPIU_PORT.TPIU_B
+
+        )
+        IF DIALOG.BOOLEAN(TRACE.TRACE_ENABLE_TPIU)
+        (
+            &tracesink="tpiu"
+            DIALOG.ENABLE CYCLEACCURATE_CHECKBOX
+            DIALOG.ENABLE PORTSIZE_DROPDOWN    
+            DIALOG.ENABLE TPIU_PORT.TPIU_A
+            DIALOG.ENABLE TPIU_PORT.TPIU_B
+            
+        )
+    )
+    RETURN
+
+    
+TPIU_SELECT:
+    IF DIALOG.BOOLEAN(TPIU_PORT.TPIU_A)
+    (
+        &tpiusink="tpiua"
+    )
+    IF DIALOG.BOOLEAN(TPIU_PORT.TPIU_B)
+    (
+        &tpiusink="tpiub"    
+    )
+    RETURN
+
+SETPORTSIZE:
+        &portsize=DIALOG.STRING(PORTSIZE_DROPDOWN)
+        
+        RETURN
+        
+TRACE_SET_CYCLEACCURATE:
+    
+    IF DIALOG.BOOLEAN(CYCLEACCURATE_CHECKBOX)
+    (
+        &cycleaccuratecommand="on"
+    )
+    ELSE
+    (
+        &cycleaccuratecommand="off"
+    )
+
+    RETURN
+//kept for future revisions which will have power options
+POWEROPTIONS:
+
+
+    IF DIALOG.BOOLEAN(LOAD.LPM_ENABLE)
+    (
+        &lpm_option="lpm_enable"
+    )
+    IF DIALOG.BOOLEAN(LOAD.LPM_DISABLE)
+    (
+        &lpm_option="lpm_disable"    
+    )
+    
+    RETURN
+
+CHECK_APPS_WINDOWS:
+
+    // There should be at least one session defined. So no need to check for that
+    do std_intercom_init CHECKSESSION 1 &Session1
+    ENTRY &Rvalue
+    IF (&Rvalue!=1.)
+    (
+        PRINT %ERROR "&Session1 T32 window not open. Please open and try again"
+        RETURN &failure
+    )
+
+    RETURN &success
+    
+    
+//macro to verify no spaces given with breakpoints
+VERIFYBREAKPOINTS:
+
+    &user_defined_bkpts=DIALOG.STRING(COMMANDEDIT)
+    IF STRING.FIND("&user_defined_bkpts"," ")==TRUE()
+    (
+        DIALOG.SET COMMANDEDIT "Invalid Breakpoint list. Please remove spaces"
+        DIALOG.DISABLE GOBUTTON
+        &user_defined_bkpts=""
+    )
+    ELSE
+    (
+        
+        DIALOG.SET COMMANDEDIT "&user_defined_bkpts"
+        DIALOG.ENABLE GOBUTTON
+    )
+
+    RETURN
+
+
+RUN_HOTATTACH_COMMANDS:
+
+        GOSUB MAKE_SURE_BOOT_PROCESSOR_ATTACHED
+        
+        print "Setting Trace options"
+        if (("&tracesink"=="etb")||("&tracesink"=="tpiu"))
+        (
+            if ("&tracesink"=="etb")
+            (
+                do std_apps do std_trace_apps_&CHIPSET STARTTRACING NULL &image &tracesink &cycleaccuratecommand hotattach &portsizecommand
+            )
+            else if ("&tracesink"=="tpiu")
+            (
+            
+                do std_intercom_do &bootprocessorport std_trace_&CHIPSET SETUPGPIOS NULL &tpiusink
+            
+                do std_apps do std_trace_apps_&CHIPSET STARTTRACING NULL &image &tpiusink &cycleaccuratecommand hotattach &portsizecommand
+            )
+            else
+            (
+                PRINT %error "Error: Unknown trace configuration specified: tracesink: &tracesink, TPIU Sink: &tpiusink"
+                GOTO EXIT
+            )
+        )
+        
+        
+        GOSUB APPLYCOMMANDS
+ 
+        RETURN
+        
+ENDDIALOG:
+    DIALOG.END
+
+        GOTO EXIT
+
+////////////////////////////////////////
+//
+//          MAKE_SURE_BOOT_PROCESSOR_ATTACHED
+//          
+//          Makes sure boot processor is attached
+//          Otherwise attaching on subsystem processor not possible
+//
+///////////////////////////////////////// 
+MAKE_SURE_BOOT_PROCESSOR_ATTACHED:
+
+
+
+    LOCAL &Rvalue
+    do std_intercom_init CHECKSESSION 1 &bootprocessor
+        ENTRY &Rvalue
+    IF (&Rvalue!=1.)
+    (
+        PRINT %ERROR "&bootprocessor T32 window not open. Please open and try again"
+        GOTO FATALEXIT
+    )
+
+
+
+        do std_intercom_do &bootprocessorport hwio
+        
+
+    
+    //if boot processor t32 not attached, attach.
+    INTERCOM.EVALUATE &bootprocessorport SYSTEM.MODE()
+        &BOOT_PROCESSOR_STATE=EVAL()
+    IF ("&BOOT_PROCESSOR_STATE"!="0x0B")
+    (
+        INTERCOM.EXECUTE &bootprocessorport sys.m.a
+    )
+    INTERCOM.EVALUATE &bootprocessorport SYSTEM.MODE()
+        &BOOT_PROCESSOR_STATE=EVAL()
+    IF ("&BOOT_PROCESSOR_STATE"!="0x0B")
+    (
+            winclear
+            WINPOS 0. 0. 60. 15. 0. 0. 
+            area.reset
+            area
+            PRINT %ERROR " std_cti_&image - &bootprocessor not able to attach"
+            PRINT %ERROR " Please ensure the following:"    
+            PRINT %ERROR "     JTAG is physically attached"
+            PRINT %ERROR "     T32 installation is up to date."
+            PRINT %ERROR "     Device is booted."
+            PRINT %ERROR " "
+            
+            ENDDO &FAILURE
+    )
+    
+    RETURN        
+        
+EXIT:
+    ENDDO
+
+FATALEXIT:
+    END
+
+
+        

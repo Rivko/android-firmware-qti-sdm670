@@ -1,0 +1,86 @@
+#===============================================================================
+#
+# I2C settings 
+#
+# GENERAL DESCRIPTION
+#    Public build script for I2C settings.
+#
+# Copyright (c) 2016-2017 Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Qualcomm Technologies, Inc. Confidential and Proprietary.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1/settings/buses/i2c/build/i2c.scons#4 $
+#  $DateTime: 2017/11/02 01:09:41 $
+#  $Author: pwbldsvc $
+#  $Change: 14754448 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#  
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 05/19/17    VG     Added support for SDM670    
+# 03/12/17   UNR     Initial release
+#
+#===============================================================================
+
+import os
+Import('env')
+env = env.Clone()
+
+#-----------------------------------------------------------------------------
+# Define any features or compiler flags
+#-----------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
+# Images
+#------------------------------------------------------------------------------
+I2C_CFG_IMAGES = ['DAL_DEVCFG_IMG']
+
+#-------------------------------------------------------------------------------
+# Source PATH:  
+#-------------------------------------------------------------------------------
+SRCPATH = "../config"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+I2C_SETTINGS_API = [
+   'DAL',
+   'BUSES',
+   'I2C_SETTINGS',
+   'SYSTEMDRIVERS',
+   'SERVICES',
+   'HWENGINES',
+]
+
+env.RequirePublicApi(I2C_SETTINGS_API)
+env.RequireRestrictedApi(I2C_SETTINGS_API)
+
+if 'USES_POLL_MODE_BUS_DRIVERS' in env:
+   env.Append(CFLAGS = '-DPOLL_MODE_BUS_DRIVERS')
+
+#-------------------------------------------------------------------------------
+# Define sources
+#-------------------------------------------------------------------------------
+if env['IMAGE'] == 'cdsp':
+    Return()
+
+if   env['MSM_ID'] in ['845']:
+    I2C_CFG_SOURCES = [ '${BUILDPATH}/${CHIPSET}/${IMAGE}/i2c_devcfg.c' ]
+elif env['MSM_ID'] in ['670']:
+    I2C_CFG_SOURCES = [ '${BUILDPATH}/${CHIPSET}/i2c_devcfg.c' ]
+else:
+    I2C_CFG_SOURCES = [ '${BUILDPATH}/stubs/${IMAGE}/i2c_devcfg.c' ]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+I2cConfig_lib = env.AddLibrary(I2C_CFG_IMAGES, '${BUILDPATH}/I2cConfig', I2C_CFG_SOURCES)
+
+if 'USES_ISLAND' in env:
+    env.AddIslandLibrary(I2C_CFG_IMAGES, I2cConfig_lib)

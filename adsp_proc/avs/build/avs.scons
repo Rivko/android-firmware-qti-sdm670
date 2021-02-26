@@ -1,0 +1,262 @@
+#===============================================================================
+#
+# AVS AU
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2009 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Technologies Proprietary.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: $
+#  $DateTime: $
+#  $Author:  $
+#  $Change:  $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+import os
+import sys
+#import pdb;pdb.set_trace()
+
+if env.PathExists("${BUILD_ROOT}/audio_avs"):
+   env.Replace(AVS_AU_NAME ='audio_avs')
+   env.AddUsesFlags('MDSPMODE',  True)
+   env.Append(CFLAGS='-DMDSPMODE ')
+   env.Append(CFLAGS='-Dassert=ASSERT')
+   if 'USES_CUST_1' in env:
+      env.AddUsesFlags('USES_MDM_VOCODER_ONLY',  True)
+      env.AddUsesFlags('USES_AVSYNC_STUB',  True)
+      env.AddUsesFlags('USES_COMPRESSED_STUB',  True)
+else:
+   env.Replace(AVS_AU_NAME ='avs')
+   env.AddUsesFlags('ADSPMODE',  True)
+   env.Append(CFLAGS='-DADSPMODE ')
+
+if 'USES_MPSS_MULTI_PD' in env:
+   env.Append(CFLAGS='-DUSES_MPSS_MULTI_PD')
+   env.Append(CPPFLAGS='-DUSES_MPSS_MULTI_PD')
+   
+if 'USES_AUDIO_IN_ROOTPD' in env:
+   env.Append(CFLAGS=' -DUSES_AUDIO_IN_ROOTPD')
+   env.Append(CPPFLAGS=' -DUSES_AUDIO_IN_ROOTPD')
+ 
+#----------------------------------------------------------------------------#
+# Determine if this is an "Internal" or "External" MPSS build.
+# If it is an internal build, then define "AUDIO_INTERNAL_FLAG"
+#----------------------------------------------------------------------------#
+if 'USES_INTERNAL_BUILD' in env:
+    env.Append(CFLAGS = "-DAUDIO_INTERNAL_FLAG")
+    print "AUDIO_INTERNAL_FLAG is enabled"
+else:
+    print "AUDIO_INTERNAL_FLAG is not enabled"
+	
+env.Replace(AVS_FOLDER_ROOT = '${INC_ROOT}/${AVS_AU_NAME}')
+env.Replace(AVS_ROOT = '${AVS_FOLDER_ROOT}/main')
+env.Replace(AVS_ROOT_MAIN = '${AVS_FOLDER_ROOT}/main')
+env.Replace(AVS_THIRD_PARTY_ALOGS_ROOT = '${AVS_FOLDER_ROOT}/tpa')
+
+build_root = env.subst('${BUILD_ROOT}')
+avs_mode = build_root.split('/')[-1]
+env.Replace(AVS_MODE = avs_mode)
+
+
+ 
+#Remove audio_avs folder
+if 'USES_NO_AUDIO_ON_Q6' in env or 'USES_NO_AUDIO' in env:
+   env.PrintInfo("Entered to no audio mode...")
+   if 'CLEANPACK_TARGET' in env:
+      if env.get('CHIPSET') != "mdm9607":
+          env.PrintInfo("Removing audio_avs folder")
+          CLEAN_FILES= env.FindFiles(['*'], "${BUILD_ROOT}/${AVS_AU_NAME}")
+          env.CleanPack(['CLEANPACK_TARGET'], CLEAN_FILES)
+          Return()
+   else: #if cleanpack is not defined and USES_NO_AUDIO_ON_Q6 is defined, then return
+      env.PrintInfo("Returning from audio_avs")
+      Return()
+
+#Flag to be used for threadx optimizations
+#This flag is passed from modem build system
+if "USES_FEATURE_AUDIO_TX_MEM_OPT" in env:
+    env.AddUsesFlags('FEATURE_AUDIO_TX_MEM_OPT',  True)
+    #import pdb;pdb.set_trace()
+	
+# If OEM_ROOT is set from command prompt, then the following are done :-
+# Set OEM_ROOT in 'env'
+# Import Public API Paths from HAP component required for compilation of Audio Decoder Services and Audio Processing Services
+# Append OEM_ROOT flag in the list of existing flags
+if os.environ.get('OEM_ROOT')!=None:
+    env['OEM_ROOT'] = os.environ['OEM_ROOT']
+    env.RequirePublicApi('HAP_AVS',area='hap')
+    env.Append(CFLAGS = '-DOEM_ROOT')
+env = env.Clone()
+
+#import pdb; pdb.set_trace()
+#load the avs_library_builder
+env.Tool('avs_library_builder', toolpath = ['${AVS_ROOT}/../build'])
+
+# Load cleanpack script:
+if os.path.exists(env.subst('${AVS_ROOT}/pack/avs_cleanpack.py')) and env.GetOption('cleanpack'):
+   env.LoadToolScript('${AVS_ROOT}/pack/avs_cleanpack.py')
+
+#import pdb; pdb.set_trace()
+
+if env.get('CHECKSIMBOOT') == True:  
+   env.Append(CFLAGS = '-DSIMBOOT=1')
+   
+if 'USES_AVS_TEST' in env:
+    env.Replace(AVS_TEST = True)
+    env.Append(CFLAGS='-Wno-error=format -Wno-format')
+
+if 'USES_DBG_MEM_LEAK' in env:
+    env.Append(CFLAGS='-DDBG_MEM_LEAK')
+
+if 'USES_MALLOC_WRAPPER' in env:
+    env.Append(CFLAGS='-DMALLOC_WRAPPER')
+
+if 'USES_DBG_BUFFER_ADDRESSES' in env:
+    env.Append(CFLAGS='-DDBG_BUFFER_ADDRESSES')
+
+# Function section macro
+if 'USES_ENABLE_FUNCTION_SECTIONS' not in env:
+   env.Replace(USES_ENABLE_FUNCTION_SECTIONS = True)
+
+#use -O2 opz.Default is -Os. O2 is found to be better than -Os based on the profiling data.
+#Use -Os when compiling for DINO256
+if env.get('DINO256MB'):
+   print "Compiling flag is set to", env.subst('${HEXAGONCC_OPT}')
+elif env.get('CHIPSET') != "msm8909":
+   env.Replace(HEXAGONCC_OPT = "${HEXAGON_OPT_2}")
+else:
+   print "hexagon opt defaulted"   
+#use -O2 opz.Default is -Os. O2 is found to be better than -Os based on the profiling data.
+#Use -Os for 8909 chipset
+if env.get('CHIPSET') == "msm8909":
+   print "Compiling flag is set to", env.subst('${HEXAGONCC_OPT}')
+   env.Append(CFLAGS='-hexagon-predef-argset=modem-sw')
+  
+get_inc_root=str(env['INC_ROOT'])
+AVS_AU_NAME=env['AVS_AU_NAME']
+join_path="".join([get_inc_root,'/',AVS_AU_NAME,'/build/'])
+path_to_insert=os.path.join(env.RealPath(join_path),'%s') %env['CHIPSET']
+sys.path.insert(0, path_to_insert) 
+
+#with avs_libs_config_parser.py no need to call build_config.
+import_build_config = 'from build_config_'+env.get('CHIPSET')+' '+'import chipset_specific_build_config'
+exec(import_build_config)
+chipset_specific_build_config(env)
+
+#Parser for the environment.
+from avs_libs_config_parser import avs_libs_config_parser
+avs_libs_config_parser(env)
+
+#Disable -Werror for SIM   
+if 'USES_AVS_TEST' not in env and os.environ.get('HEXAGON_RTOS_RELEASE').startswith('5'):
+   env.Append(CFLAGS='-Werror -Wno-error=format -Wno-format -Wa,--fatal-warnings')
+   print "Werror enabled"
+   
+if os.environ.get('HEXAGON_RTOS_RELEASE').startswith('5'):
+   env.Append(CFLAGS='-mqdsp6-compat')
+   print "Passing mqdsp6-compat flag"
+   
+if 'USES_AVS_TEST' not in env:
+   env.Append(CFLAGS = ' -Werror ')
+   env.Append(CPPFLAGS = ' -Werror ')
+   env.Append(ASMFLAGS = ' -Werror ')
+   
+#env.Append(CFLAGS = '-Wno-error=conversion-null -Wno-error=pointer-arith')   
+
+if os.environ.get('HEXAGON_RTOS_RELEASE').startswith('8.3'):
+    env.Append(HEXAGON_WARN = ' -Wno-c++11-narrowing -Wno-deprecated-register')
+    env.Append(HEXAGONCC_WARN = ' -Wno-c++11-narrowing -Wno-deprecated-register')
+
+Q6_MEMORY_DEFN_PATH = env.get('CHIPSET')
+
+env.PublishProtectedApi('AVS',[
+   '${AVS_ROOT}/avcs/inc',
+   '${AVS_ROOT}/voice/algos/sample_slip/inc',
+   '${AVS_ROOT}/voice/algos/tty/tty_enc_lib/inc',
+   '${AVS_ROOT}/voice/algos/tty/tty_dec_lib/inc',
+   '${AVS_ROOT}/voice/algos/vocoder_capi/inc',
+   '${AVS_ROOT}/voice/algos/vocoder_evrc/evrc_lib/inc',
+   '${AVS_ROOT}/voice/algos/vocoder_fourgv/fourgv_lib/inc',
+   '${AVS_ROOT}/voice/algos/vocoder_fr/fr_lib/inc',
+   '${AVS_ROOT}/voice/algos/vocoder_v13k/v13k_lib/inc',
+   '${INC_ROOT}/build/chipset/'+Q6_MEMORY_DEFN_PATH,
+   '${QDSP6_RELEASE_DIR}/qc/lib/common',
+   ])
+
+#Set the libqdsp based on the tools version
+tool_version=int(os.environ.get('HEXAGON_RTOS_RELEASE').split()[0][0])
+#import pdb;pdb.set_trace();
+print tool_version
+if tool_version > 6:
+   if "MDSPMODE" in env:
+       pass
+   else:
+       env.AddOEMLibrary(['AVS_ADSP','AVS_ADSP_USER', 'CORE_QDSP6_SENSOR_SW'], env.get('QDSP6_RELEASE_DIR')+'/Tools/target/hexagon/lib/'+env.get('Q6VERSION')+'/libhexagon.a')
+
+else:
+   if "MDSPMODE" in env:
+       pass
+   else:
+       env.AddOEMLibrary(['AVS_ADSP','AVS_ADSP_USER', 'CORE_QDSP6_SENSOR_SW'], env.get('QDSP6_RELEASE_DIR')+'/qc/lib/'+env.get('Q6VERSION')+'/libqdsp.a')
+if tool_version >= 8 and env.get('CHIPSET') in ['sdm845','sdm670','sdm855','sdx24','sdm1000','sdx55']:
+   env.Append(CFLAGS = ' -D__QDSP6_ARCH__=__HEXAGON_ARCH__ ')
+if 'USES_AVS_TEST' in env:
+   if "MDSPMODE" not in env:
+      env.AddOEMLibrary(['AVS_ADSP','AVS_ADSP_USER', 'CORE_QDSP6_SENSOR_SW'], env.get('QDSP6_RELEASE_DIR')+'/Tools/target/hexagon/lib/'+env.get('Q6VERSION')+'/libhexagon.a')
+   else:
+      env.AddOEMLibrary(['AVS_ADSP','AVS_ADSP_USER', 'CORE_QDSP6_SENSOR_SW'], env.get('QDSP6_RELEASE_DIR')+'/gnu/hexagon/lib'+'/libhexagon.a')
+   
+qdsp6_public_apis = [
+   'QDSP6'
+   ]
+env.RequirePublicApi(qdsp6_public_apis, area='qdsp6')
+env.RequirePublicApi('APR', area='apr')
+
+#Gets enabled for the shared library build
+if 'USES_AVS_SHARED_LIBS' in env:
+   SRCPATH='..'
+   env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+   avs_sources = env.GlobSourceFiles(['autogenerated/*.cpp'], SRCPATH,posix=True)
+   env.AvsSoGenerator('AVS_SHARED_LIBS',avs_sources)
+
+if 'USES_DEVCFG' in env:
+    if 'AUDIO_IN_USERPD' in env:
+       DEVCFG_IMG = ['DEVCFG_CORE_QDSP6_AUDIO_SW']
+    else:
+       DEVCFG_IMG = ['DAL_DEVCFG_IMG']
+       
+    if 'USES_DEVCFG_STRICT_XML' in env:
+        env.AddDevCfgInfo(DEVCFG_IMG, 
+        {
+          'soc_xml'    : ['${AVS_FOLDER_ROOT}/build/config/dynamic_libraries_strict_xml.xml']
+        })
+    else:
+        env.AddDevCfgInfo(DEVCFG_IMG, 
+        {
+          'soc_xml'    : ['${AVS_FOLDER_ROOT}/build/config/dynamic_libraries.xml']
+        })    
+
+#Generation of h2xml files is done by this function call
+env.H2xmlFileGenerate(env.subst('${AVS_FOLDER_ROOT}/build/h2xml'))
+env.Autogenelite( env.subst('${AVS_ROOT}/elite/build'), str(env.subst('${AVS_FOLDER_ROOT}/elite/build')),"*.linker")
+env.Autogenelite( env.subst('${AVS_ROOT}/pack'), str(env.subst('${AVS_FOLDER_ROOT}/pack')),"*.*")
+
+#Add Shared objects specific linker inputs here
+if 'USES_AVS_SHARED_LIBS' in env:
+    env.Append(SHLINK_FLAG = ' --gc-sections ')
+    
+if 'USES_AUDIO_HAP' in env or (not env.GetOption('cleanpack')):
+    env.LoadSoftwareUnits()

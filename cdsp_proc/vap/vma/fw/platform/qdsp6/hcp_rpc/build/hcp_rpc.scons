@@ -1,0 +1,100 @@
+
+
+Import('env')
+env = env.Clone()
+
+if not env.IsTargetEnable(['ADSP_SHARED_LIBS']):
+    Return()
+#Load the Builder
+env.Tool('hcp_library_builder', toolpath = ['${BUILD_ROOT}/vap/vma/fw/platform/qdsp6/hcp_rpc/build'])
+
+
+core_public_apis = [
+   'DEBUGTOOLS',
+   'SERVICES',
+   'KERNEL',
+   'POWER',
+   'DAL',
+   ]
+
+platform_public_apis = [
+   'A1STD',
+   'A1ENV',
+   'QI',
+   'STDDEF',
+   'REMOTE',
+   'MOD_TABLE',
+   'PLATFORM_LIBS',
+   'UTILS',
+   'HAPSDK',
+   'QAIC',
+   ]
+   
+env.RequirePublicApi(platform_public_apis, area='platform') 
+env.RequirePublicApi(core_public_apis, area='core')
+
+###if you want to add  a dependant library append the below flags to link flags(commented for now)
+## eg: env.Append(SHLINKFLAGS = ' -dy -L${BUILD_ROOT}/jpeg/depso -lSAPlusCmnModule ')
+
+#-------------------------------------------------------------------------------
+# Get the required Include directories
+#-------------------------------------------------------------------------------
+env.PublishPrivateApi('HCP_RPC',[
+    '${BUILD_ROOT}/core/api/kernel/qurt',
+    '${BUILD_ROOT}/core/api/kernel/posix',
+    '../../../common/inc',
+    '../inc',
+    '../src',
+    '../../guestos/inc',
+	'${BUILD_ROOT}/vap/vma/fw/platform/qdsp6/hcp_rpc/build/${SHORT_BUILDPATH}',
+   ])
+
+env.RequirePrivateApi('HCP_RPC')
+env.RequirePublicApi('HCP_RPC', area='hcp_rpc') 
+idl_header = '${SHORT_BUILDPATH}/hcp_rpc.h'
+        
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/vap/vma/fw/platform/qdsp6/hcp_rpc"
+# IDL_DIR = "${BUILD_ROOT}/vap/vma/fw/platform/qdsp6/hcp_rpc/inc" 
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+skel_c = env.QaicSkelFromIdl('hcp_rpc')
+stub_c = env.QaicStubFromIdl('hcp_rpc')
+
+HCP_SKEL_SOURCES = [skel_c,
+                    '${BUILDPATH}/src/hcp_rpc_imp.c',
+                    ]    
+env.Depends(skel_c,idl_header)    
+env.Depends(stub_c,idl_header)                
+
+IDL_SRC = "${BUILD_ROOT}/vap/vma/fw/platform/qdsp6/hcp_rpc/inc/hcp_rpc.idl"
+LIBNAME = 'libhcp_rpc_skel'
+                   
+
+#wdt_sources = env.GlobSourceFiles(HCP_SKEL_SOURCES, SRCPATH,posix=True)
+
+#-------------------------------------------------------------------------------
+# Setup env Flags
+#-------------------------------------------------------------------------------
+env.Append(SHLINKFLAGS = ' -Bdynamic --wrap=malloc --wrap=calloc --wrap=free --wrap=realloc --wrap=memalign --wrap=__stack_chk_fail --gc-sections --print-gc-sections -soname=libhcp_rpc_skel.so ')
+hcp_cppflags = ' -DDVP_OPT_HQV_FW_RUMI -DHCP_USRSPC -DLOGGING_EN -DBUILDING_SO -ffunction-sections -fvisibility=hidden   \"-D__QAIC_HEADER_EXPORT=__attribute__((__visibility__(\\\"default\\\")))\"  \"-D__QAIC_SKEL_EXPORT=__attribute__((__visibility__(\\\"default\\\")))\"  '
+env.Append(CPPFLAGS = hcp_cppflags)
+
+
+#-------------------------------------------------------------------------------
+# Call the build command
+#-------------------------------------------------------------------------------
+#env.AddMySharedLibrary(['ADSP_SHARED_LIBS'], '${BUILDPATH}/'+LIBNAME, HCP_SKEL_SOURCES, IDL_SRC)
+node=env.AddHcpSharedLibrary(['ADSP_SHARED_LIBS'], '${BUILDPATH}/'+LIBNAME, HCP_SKEL_SOURCES, [])
+env.Depends(node,idl_header)                    
+
+#-------------------------------------------------------------------------------
+# Load Subunits (sys)
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+
+

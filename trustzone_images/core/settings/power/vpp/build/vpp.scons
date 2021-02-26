@@ -1,0 +1,63 @@
+#===============================================================================
+#
+# VPP Settings
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2018 by Qualcomm Technologies, Inc.  All Rights Reserved.
+# Qualcomm Technologies, Inc. Confidential and Proprietary.
+#
+#-------------------------------------------------------------------------------
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 09/18/18   vravipat    Initial version. Starting Device Configuration settings for VPP in core/settings/
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Python library imports
+#-------------------------------------------------------------------------------
+import os
+
+#-------------------------------------------------------------------------------
+# Dependencies
+#-------------------------------------------------------------------------------
+CBSP_APIS = [
+  'POWER',
+  'KERNEL',
+  'SERVICES',
+]
+env.RequirePublicApi(CBSP_APIS)
+env.RequireRestrictedApi(CBSP_APIS)
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
+# Device Configuration File Registrations
+#-------------------------------------------------------------------------------
+deploy_items = ["vpp.scons", "vpp.api"]
+if os.path.exists(env.subst('../config/${MSM_ID}')):
+   env.Replace(VPP_MSM_ID = env['MSM_ID'])
+else:
+   env.Replace(VPP_MSM_ID = 'stubs')
+   env.PrintWarning("VPP devcfg not implemented...")
+   
+if 'USES_DEVCFG' in env:
+   DEVCFG_IMG_OEM = ['DAL_DEVCFG_OEM_QSEE_IMG']
+   env.AddDevCfgInfo(DEVCFG_IMG_OEM, 
+   {
+       'devcfg_xml' : '${BUILD_ROOT}/core/settings/power/vpp/config/${VPP_MSM_ID}/vpp.xml'
+   })
+
+if "USES_DEPLOY_BUILDER" in env:
+   env.Deploy(deploy_items)
+

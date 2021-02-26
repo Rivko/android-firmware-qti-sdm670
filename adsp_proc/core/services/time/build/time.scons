@@ -1,0 +1,249 @@
+#===============================================================================
+#
+# Time Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009-2013 by QUALCOMM Technologies Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //source/qcom/qct/core/bsp/config/mdm9x00/main/latest/services/time/build/SConscript#5 $
+#  $DateTime: 2010/01/07 18:48:44 $
+#  $Author: nthompso $
+#  $Change: 1130987 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 2016-12-02 sm      Removed SDM845 hack modifier, change signed off by ravisoni.
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/services/time/src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# External depends within CoreBSP
+#-------------------------------------------------------------------------------
+env.RequireExternalApi([
+   'CS',
+   'DSM',
+   'MODEM_1X',
+   'ONEX',
+   'MODEM_DATA',
+   'MODEM_FTM',
+   'MODEM_HDR',
+   'MODEM_PMIC',
+   'MODEM_RF',
+   'MODEM_SERVICES',    
+
+])
+
+MODEM_API = [
+   'HDR',
+   'ONEX',
+]
+env.RequirePublicApi(MODEM_API, 'modem')
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'BOOT',
+   'DAL',
+   'DEBUGTOOLS',
+   'HWENGINES',
+   'MPROC',
+   'POWER',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'WIREDCONNECTIVITY',
+   'STORAGE',
+
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Feature Definitions
+#-------------------------------------------------------------------------------
+ 	
+#env.Append(CPPDEFINES=["FEATURE_TIME_SINGLE_MULTI_SERVER_PROC"])
+env.Append(CPPDEFINES=["FEATURE_TIME_QDSP6"])
+env.Append(CPPDEFINES=["FEATURE_BLAST"])
+env.Append(CPPDEFINES=["FEATURE_TIMER_QURT"])
+#env.Append(CPPDEFINES=["FEATURE_CDMA1X"])
+env.Append(CPPDEFINES=["FEATURE_CMI"])
+env.Append(CPPDEFINES=["FEATURE_GENOFF_STANDALONE"])
+env.Append(CPPDEFINES=["FEATURE_GSM"])
+#env.Append(CPPDEFINES=["FEATURE_HDR"])
+env.Append(CPPDEFINES=["FEATURE_NO_DB"])
+env.Append(CPPDEFINES=["FEATURE_RCINIT"])
+env.Append(CPPDEFINES=["FEATURE_TIME_NO_RPC"])
+#env.Append(CPPDEFINES=["FEATURE_TIMER_SLAVE1"])
+#env.Append(CPPDEFINES=["FEATURE_TIMER_SLAVE2"])
+#env.Append(CPPDEFINES=["FEATURE_TIMER_SLAVE3"])
+env.Append(CPPDEFINES=["FEATURE_BADGER"])
+env.Append(CPPDEFINES=["FEATURE_BU_WITHOUT_PMIC"])
+env.Append(CPPDEFINES=["TIMER_ERROR_FATAL_THRESHOLD_ZEROED_OUT"])
+
+# Enable the below feature flag for using bins in timer operations.
+# env.Append(CPPDEFINES=["FEATURE_USE_TIMER_BIN"])
+
+# Debug feature flags for timers
+env.Append(CPPDEFINES=["FEATURE_TIMER_TRACE"])
+env.Append(CPPDEFINES=["FEATURE_ENABLE_TIMER_DEBUG_VARIABLES"])
+
+# We do not want to mainline FEATURE_TIMER_LIST_DEBUG
+# env.Append(CPPDEFINES=["FEATURE_TIMER_LIST_DEBUG"])
+
+# Define MACRO to differentiate between different peripherals for ATS Timers versioning
+if env.IsTargetEnable(['CORE_MODEM','MODEM_IMAGE','CBSP_MODEM_IMAGE','MCFG_SW']):
+   env.Append(CPPDEFINES=["FEATURE_ATS_PROC_ID_MPSS"])       # Peripheral is MPSS
+elif env.IsTargetEnable(['CORE_ADSP','CORE_CDSP_ROOT']):
+   env.Append(CPPDEFINES=["FEATURE_ATS_PROC_ID_ADSP"])       # Peripheral is ADSP
+elif env.IsTargetEnable(['WCN_IMAGE','CBSP_WCN_IMAGE']):
+   env.Append(CPPDEFINES=["FEATURE_ATS_PROC_ID_WCNSS"])    # Peripheral is WCNSS
+else:
+   env.Append(CPPDEFINES=["FEATURE_ATS_PROC_ID_TN"])           # Peripheral is TN
+
+#-------------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+TIME_QDSP6_SOURCES = [
+   '${BUILDPATH}/timer.c', 
+   '${BUILDPATH}/time_timetick.c',
+   #'${BUILDPATH}/timer_slaves.c',
+   '${BUILDPATH}/timer_v.c',
+   #'${BUILDPATH}/time_lpass_diag.c',
+   '${BUILDPATH}/timer_qdi.c',
+   #'${BUILDPATH}/ats_timer_test.c',
+]
+
+time_qdsp6 = env.Library('${BUILDPATH}/time_qdsp6', TIME_QDSP6_SOURCES)
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+env.AddLibsToImage(['QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE'], [time_qdsp6])
+
+#-------------------------------------------------------------------------------
+
+
+#-------------------------------------------------------------------------------
+
+#if 'USES_RCINIT' in env:
+#   RCINIT_IMG = ['CORE_MODEM', 'CORE_QDSP6_SW']
+#   env.AddRCInitTask(           # STUB FOR DATA STRUCTURES; NEEDS CREATED EARLY
+#    RCINIT_IMG,                 # define TMC_RCINIT_INIT_TIMER_TASK_INIT
+#    {
+#      'sequence_group'             : 'RCINIT_GROUP_3',                  # required
+#      'thread_name'                : 'qurtTmrTest',                     # required
+#      'thread_entry'               : 'qurt_timer_test_task',            # NOT AVAILABLE
+#      'thread_type'                : 'RCINIT_TASK_QURTTASK',
+#      'stack_size_bytes'           : '4096',
+#      'priority_amss_order'        : 'TIMER_TEST_PRI_ORDER',
+#    })
+
+
+#-------------------------------------------------------------------------------
+
+
+#if 'USES_RCINIT' in env:
+#   RCINIT_IMG = ['CORE_MODEM', 'CORE_QDSP6_SW']
+#   env.AddRCInitTask(           # STUB FOR DATA STRUCTURES; NEEDS CREATED EARLY
+#    RCINIT_IMG,                 # define TMC_RCINIT_INIT_TIMER_TASK_INIT
+#    {
+#      'sequence_group'             : 'RCINIT_GROUP_3',                  # required
+#      'thread_name'                : 'AtsTmrTest',                      # required
+#      'thread_entry'               : 'ats_timer_test_task',             # NOT AVAILABLE
+#      'thread_type'                : 'RCINIT_TASK_QURTTASK',
+#      'stack_size_bytes'           : '4096',
+#      'priority_amss_order'        : 'TIMER_TEST_PRI_ORDER',
+#    })
+
+#-------------------------------------------------------------------------------
+
+if 'USES_RCINIT' in env:
+   RCINIT_IMG = ['CORE_MODEM', 'CORE_QDSP6_SW']
+   env.AddRCInitFunc(           # Code Fragment in TMC: YES
+    RCINIT_IMG,                 # define TMC_RCINIT_INIT_TIMER_TASK_INIT
+    {
+     'sequence_group'             : 'RCINIT_GROUP_0',                   # required
+     'init_name'                  : 'timer_task',                       # required
+     'init_function'              : 'timer_task_init',                  # required
+     'dependencies'               : ['clk_regime','timer_slave1_task','timer_slave2_task','timer_slave3_task',]
+    })
+    
+#-------------------------------------------------------------------------------
+    
+if 'USES_RCINIT' in env:
+   RCINIT_IMG = ['CORE_MODEM', 'CORE_QDSP6_SW']
+   env.AddRCInitFunc(           # Code Fragment in TMC: YES
+    RCINIT_IMG,                 # define TMC_RCINIT_INIT_TIMER_TASK_INIT
+    {
+     'sequence_group'             : 'RCINIT_GROUP_0',                   # required
+     'init_name'                  : 'timer_qdi',                        # required
+     'init_function'              : 'timer_qdi_init',             # required
+     'dependencies'               : ['timer_task',]
+    })
+
+#-------------------------------------------------------------------------------
+
+if 'USES_RCINIT' in env:
+   RCINIT_IMG = ['CORE_MODEM', 'CORE_QDSP6_SW']
+   env.AddRCInitTask(           # STUB FOR DATA STRUCTURES; NEEDS CREATED EARLY
+    RCINIT_IMG,                 # define TMC_RCINIT_INIT_TIMER_TASK_INIT
+    {
+      'sequence_group'             : 'RCINIT_GROUP_0',                  # required
+      'thread_name'                : 'timer',                           # required
+      'thread_entry'               : 'RCINIT_NULL',                     # NOT AVAILABLE
+	  'thread_type'                : 'RCINIT_TASK_QURTTASK',
+      'stack_size_bytes'           : '4096',
+      'priority_amss_order'        : 'TIMER_PRI_ORDER',
+    })
+
+
+#-------------------------------------------------------------------------------
+
+
+#-------------------------------------------------------------------------------
+
+
+#-------------------------------------------------------------------------------
+
+
+#-------------------------------------------------------------------------------
+
+if 'USES_RCINIT' in env:
+   RCINIT_IMG = ['CORE_MODEM', 'CORE_QDSP6_SW']
+   env.AddRCInitTask(           # STUB FOR DATA STRUCTURES; NEEDS CREATED EARLY
+    RCINIT_IMG,                 # define TMC_RCINIT_INIT_TIMER_TASK_INIT
+    {
+      'sequence_group'             : 'RCINIT_GROUP_0',                  # required
+      'thread_name'                : 'tmr_debug',                      # required
+      'thread_entry'               : 'RCINIT_NULL',                     # NOT AVAILABLE
+	  'thread_type'                : 'RCINIT_TASK_QURTTASK',
+      'stack_size_bytes'           : '4096',
+      'priority_amss_order'        : 'TIMER_SLAVE3_PRI_ORDER',
+    })
+

@@ -1,0 +1,566 @@
+entry &show_all &stack_top_addr &stack_bottom_addr
+
+;&win_name="StackDump"
+;AREA.CREATE &win_name 550. 600.
+AREA.VIEW A000
+AREA.SELECT A000
+
+if "&show_all"==""
+    &show_all=0.
+
+&init_done=true()
+
+gosub find_stack_index "RPM_STACK"
+entry &stack_index
+
+&sp=register(R13)
+&stack_bottom=0
+&stack_top=0
+&stack_hard_limit=v.value((unsigned)rpm_image_section_array[&stack_index].section_base)
+if "&stack_top_addr"==""
+    &stack_top=&stack_hard_limit
+else
+    &stack_top=&stack_top_addr
+
+if "&stack_bottom_addr"==""
+    &stack_bottom=v.value((unsigned)rpm_image_section_array[&stack_index].section_end)
+else
+    &stack_bottom=&stack_bottom_addr
+
+;gosub create_py_script
+&temp_file="c:\Temp\stack_dump.txt"
+open #1 &temp_file /create
+
+gosub dump_stack_bottom_to_top &stack_top &stack_bottom
+
+if (&sp!=0x0)&&(&sp<v.value((unsigned)rpm_image_section_array[&stack_index].section_base))
+(
+    write #1 %string "%error %attr 0x85,STACK OVERFLOW"
+    if &stack_top>&sp
+        gosub dump_stack &sp v.value((unsigned)rpm_image_section_array[&stack_index].section_base)
+)
+
+close #1
+
+if file.exist(c:\Temp\rpm_dump_stack_lock)
+    rm c:\Temp\rpm_dump_stack_lock
+
+open #1 c:\Temp\rpm_dump_stack_lock /create
+close #1
+
+; reverse the order using Python
+os.hidden python -c "f=open(r'c:\Temp\stack_dump.txt');lines=f.readlines();f.close();lines.reverse();f=open(r'c:\Temp\stack_dump.txt','w');f.write(''.join(lines));f.close();import os; os.remove(r'c:\Temp\rpm_dump_stack_lock')"
+
+while file.exist(c:\Temp\rpm_dump_stack_lock)
+(
+    wait 0.1s
+)
+
+open #1 "c:\Temp\stack_dump.txt" /read
+&lines=""
+while !file.eof(1)
+(
+    read #1 %line &line
+    &attr=string.mid("&line",0,string.scan("&line",",",0))
+    &data=string.cut("&line",string.scan("&line",",",0)+1)
+    print &attr "&data"
+)
+close #1
+
+rm c:\Temp\stack_dump.txt
+enddo
+
+
+;===============================================================================
+find_stack_index:
+    entry &index
+    &i=0
+    while string.scan(v.string((rpm_image_section_name)&i),"RPM_IMAGE_SECTIONS_COUNT",0)!=0
+    (
+        &s=v.string((rpm_image_section_name)&i)
+        if string.scan("&s",&index,0)==0
+        (
+            &index=&i
+            goto exit
+        )
+        &i=&i+1
+    )
+    print %error "&index not found"
+    enddo
+exit:
+    return &i
+
+;===============================================================================
+dump_stack_bottom_to_top:
+    entry &top_addr &bottom_addr
+    local &instr
+    local &num_pushed_registers
+    local &pushed_registers
+
+    &has_reclaim_pool=1
+
+    &code_ram_reclaim_pool_base=0
+    &code_ram_reclaim_pool_limit=0
+    &data_ram_reclaim_pool_base=0
+    &data_ram_reclaim_pool_limit=0
+    if y.exist(Image$$CODE_RAM_RECLAIM_POOL$$Base)
+    (
+        &code_ram_reclaim_pool_base=v.value((unsigned)Image$$CODE_RAM_RECLAIM_POOL$$Base)
+        &code_ram_reclaim_pool_limit=v.value((unsigned)Image$$CODE_RAM_RECLAIM_POOL$$Limit)
+        &data_ram_reclaim_pool_base=v.value((unsigned)Image$$DATA_RAM_RECLAIM_POOL$$Base)
+        &data_ram_reclaim_pool_limit=v.value((unsigned)Image$$DATA_RAM_RECLAIM_POOL$$Limit)
+    )
+    else
+    (
+        &has_reclaim_pool=0
+    )
+
+    &prev_func_addr=&bottom_addr
+    &bl_func=""
+    &next_func=""
+    &is_return_address=0
+    &output=""
+    &num_pushed_registers=0
+    &pushed_registers=""
+    &is_pushed_reg=false()
+    &end_of_stack=false()
+
+    write #1 %string ",Start of Stack"
+    write #1 %string ",--------------------------------------------------------------------------------"
+
+    while &bottom_addr>=&top_addr
+    (
+        if &bottom_addr==&sp
+        (
+            &output="sp -> "
+        )
+        else
+        (
+            &output="      "
+        )
+
+        &val=v.value(*(unsigned*)&bottom_addr)
+
+        &output="&output"+"0x"+FORMAT.HEX(8,&bottom_addr)+": "+"0x"+FORMAT.HEX(8,&val)
+
+        &is_return_address=0
+
+        &func=""
+        if (!&init_done)||(&has_reclaim_pool==0)||(&val<&code_ram_reclaim_pool_base)
+        (
+            gosub get_function_name &val
+            entry &func
+        )
+
+        if &num_pushed_registers>0
+        (
+            &is_pushed_reg=true()
+            gosub pop_register &pushed_registers &num_pushed_registers
+            entry &pushed_registers &num_pushed_registers &reg
+            &output="&output - "+format.string("&reg",3,' ')
+        )
+        else
+        (
+            &is_pushed_reg=false()
+        )
+
+        if "&func"!=""
+        (
+            if !&is_pushed_reg
+            (
+                eval "&next_func"==""
+                &ret=eval()
+
+                if &ret==0
+                (
+                    eval "&func"=="&next_func"
+                    &ret=eval()
+                    if &ret==0
+                    (
+                        gosub search_function &next_func &func
+                        entry &ret
+                    )
+                )
+                if &ret==1
+                (
+                    gosub get_branch_instruction &val
+                    entry &bl_instr &bl_addr
+
+                    if "&bl_instr"!=""
+                    (
+                        if string.scan("&bl_addr","0x",0)>=0
+                        (
+                            &bl_func=y.function(d:&bl_addr)
+
+                            if string.scan("&bl_func","rpm_target_init",0)>0
+                                &init_done=false()
+
+                            if "&bl_func"!=""
+                            (
+                                &instr=disassemble.address(d:(&bl_addr&0xfffffffe))
+                                &output="&output - r14 - &func ---> &bl_func (&instr)"
+
+                                while string.scan("&instr","b ",0)==0
+                                (
+                                    &bl_addr=string.cut("&instr", string.scan("&instr","0x",0))
+                                    &bl_func=y.function(d:&bl_addr)
+                                    &instr=disassemble.address(d:&bl_addr)
+                                    &output="&output ---> &bl_func (&instr)"
+                                )
+
+                                gosub get_pushed_registers &bl_addr
+                                entry &pushed_registers &num_pushed_registers
+
+                                gosub pop_register &pushed_registers &num_pushed_registers
+                                entry &pushed_registers &num_pushed_registers &reg
+
+                                &is_return_address=1
+                            )
+                        )
+                        else if "&bl_instr"=="blx"&&string.scan("&bl_addr","r",0)>=0
+                        (
+                            ;
+                            ; indirect function call
+                            ;
+                            &output="&output - r14 - &func ---> &bl_addr"
+                            gosub find_indirect_call_function &bottom_addr-4 &bl_addr
+                            entry &found &ret &regs &num_regs
+                            if &found
+                            (
+                                &bl_func="&ret"
+                                &pushed_registers="&regs"
+                                &num_pushed_registers=&num_regs
+                                &instr=disassemble.address(&bl_func)
+                                &output="&output ---> &bl_func (&instr)"
+
+                                gosub pop_register &pushed_registers &num_pushed_registers
+                                entry &pushed_registers &num_pushed_registers &reg
+                            )
+                            else
+                            (
+                                &bl_func=""
+                            )
+                            &is_return_address=1
+                        )
+                    )
+                )
+            )
+
+            if &is_return_address==1
+            (
+                if (&show_all==0)&&(&prev_func_addr!=0)
+                (
+                    &diff=&prev_func_addr-&bottom_addr
+                    write #1 %string "%attr 4,      ("+format.decimal(3,&diff)+" bytes)"
+                )
+
+                if &show_all>=1
+                (
+                    write #1 %string "%error %attr 2,&output"
+                )
+                else
+                (
+                    if string.scan("&func","abort",0)>=0
+                        write #1 %string "%error,&output"
+                    else
+                        write #1 %string ",&output"
+                )
+                &prev_func_addr=&bottom_addr
+                &next_func="&bl_func"
+            )
+            else if &show_all>=1
+            (
+                write #1 %string "%error,&output - &func"
+            )
+        )
+        else
+        (
+            if &show_all>=1.
+            (
+                if (!&init_done)||(&has_reclaim_pool==0)||((&val<&code_ram_reclaim_pool_base)||(&val>=&code_ram_reclaim_pool_limit))&&((&val<&data_ram_reclaim_pool_base)||(&val>=&data_ram_reclaim_pool_limit))
+                (
+                    &func=y.name(d:&val)
+                )
+
+                if "&func"!=""
+                (
+                    &output="&output - &func"
+                )
+
+                write #1 %string ",&output"
+            )
+        )
+
+        if &bottom_addr==&stack_hard_limit
+        (
+            write #1 %string ",--------------------------------------------------------------------------------"
+            write #1 %string ",End of Stack"
+            &end_of_stack=true()
+        )
+
+        &bottom_addr=&bottom_addr-0x4
+    )
+
+    if !&end_of_stack
+    (
+        write #1 %string ",--------------------------------------------------------------------------------"
+        write #1 %string ",End of Stack"
+    )
+
+    return
+
+;===============================================================================
+get_function_name:
+    entry &addr
+    local &func_name
+
+    &func_name=y.function(d:&addr)
+
+    if "&func_name"==""
+    (
+        &func_name=y.function(d:(&addr-1))
+        if "&func_name"==""
+            &func_name=y.function(d:(&addr-2))
+    )
+
+    return &func_name
+
+;===============================================================================
+is_isr:
+    entry &func_name
+    local &ret
+    &ret=(string.scan(string.upper(string.cut("&func_name", string.length("&func_name")-3)),"ISR",0)>=0)
+    return &ret
+
+;===============================================================================
+get_branch_instruction:
+    entry &addr
+    local &instr
+    local &bl_addr
+
+    &instr=""
+    if (&addr&1)==0
+    (
+        &instr=disassemble.address(d:(&addr-2))
+        if string.scan("&instr","b",0)!=0
+        (
+            &instr=disassemble.address(d:(&addr-4))
+            if string.scan("&instr","b",0)!=0
+                &instr=""
+        )
+    )
+    else
+    (
+        &instr=disassemble.address(d:(&addr-3))
+        if string.scan("&instr","b",0)!=0
+        (
+            &instr=disassemble.address(d:(&addr-5))
+            if string.scan("&instr","b",0)!=0
+                &instr=""
+        )
+    )
+
+    if "&instr"!=""
+    (
+        &idx=string.scan("&instr"," ",0)
+        if &idx>=0
+        (
+            &bl_addr=string.trim(string.cut("&instr",&idx))
+            &instr=string.trim(string.mid("&instr",0,&idx))
+        )
+        return &instr &bl_addr
+    )
+    else
+    (
+        return "" ""
+    )
+
+
+;===============================================================================
+find_indirect_call_function:
+    entry &stack_addr &reg
+    local &val
+    local &func_name
+    local &pushed_registers
+    local &num_pushed_registers
+
+    &num_regs=13.
+    while &num_regs>0
+    (
+        &val=v.value(*(unsigned*)(&stack_addr))
+
+        if (!&init_done)||(&has_reclaim_pool==0)||(&val<&code_ram_reclaim_pool_base)
+        (
+            gosub get_function_name &val
+            entry &func_name
+
+            if "&func_name"!=""
+            (
+                gosub get_pushed_registers &val
+                entry &pushed_registers &num_pushed_registers
+
+                if string.scan("&pushed_registers","&reg",0)>=0
+                (
+                    return true() &func_name &pushed_registers &num_pushed_registers
+                )
+            )
+        )
+
+        &num_regs=&num_regs-1
+        &stack_addr=&stack_addr-4
+    )
+    return false() "" "" 0
+
+;===============================================================================
+get_pushed_registers:
+    entry &func_addr
+    local &pushed_registers
+    local &num_pushed_registers
+    local &idx
+
+    &pushed_registers=""
+    &num_pushed_registers=0
+    &instr=disassemble.address(d:(&func_addr&0xfffffffe))
+    if string.scan("&instr","push",0)>=0
+    (
+        &instr=string.cut("&instr",string.scan("&instr","{",0)+1)
+        &instr=string.mid("&instr",0,string.scan("&instr","}",0))
+        repeat
+        (
+            &idx=string.scan("&instr",",",0)
+            if &idx>=0
+            (
+                &range=string.mid("&instr",0,&idx)
+                &instr=string.cut("&instr",&idx+1)
+                gosub get_registers_in_range "&range"
+            )
+            else
+            (
+                gosub get_registers_in_range "&instr"
+                &instr=""
+            )
+            entry &registers &num_registers
+
+            if "&pushed_registers"==""
+            (
+                &pushed_registers="&registers"
+            )
+            else
+            (
+                &pushed_registers="&registers,&pushed_registers"
+            )
+
+            &num_pushed_registers=&num_pushed_registers+&num_registers
+        )
+        while "&instr"!=""
+        return &pushed_registers &num_pushed_registers
+    )
+    else
+    (
+        return "" 0
+    )
+
+;===============================================================================
+get_registers_in_range:
+    entry &range
+    local &registers
+    local &idx
+    local &num_registers
+
+    &registers=""
+    &num_registers=0
+    &idx=string.scan(&range,"-",0)
+    if &idx>=0
+    (
+        &start=string.mid(&range,1,&idx-1)+"."
+        &end=string.cut(&range,&idx+2)+"."
+        &num_registers=&end-&start+1
+        while &start<=&end
+        (
+            if "&registers"==""
+            (
+                &registers="r"+format.decimal(0,&start)
+            )
+            else
+            (
+                &registers="r"+format.decimal(0,&start)+",&registers"
+            )
+            &start=&start+1
+        )
+    )
+    else
+    (
+        &registers=&range
+        &num_registers=1
+    )
+
+    return &registers &num_registers
+
+;===============================================================================
+pop_register:
+    entry &register_list &num_registers
+    local &idx
+    local &reg
+
+    if &num_registers>0
+    (
+        &num_registers=&num_registers-1
+        &idx=string.scan("&register_list",",",0)
+
+        if &idx>=0
+        (
+            &reg=string.mid("&register_list",0,&idx)
+            &register_list=string.cut("&register_list",&idx+1)
+            return &register_list &num_registers &reg
+        )
+        else
+        (
+            &reg="&register_list"
+            return "" &num_registers &reg
+        )
+    )
+    return "" 0 ""
+
+;===============================================================================
+search_function:
+    entry &search_func &target_func
+    local &instr
+    local &bl_addr
+    local &start
+    local &end
+    local &has_indirect_call
+    local &has_direct_call
+    local &func
+
+    &has_direct_call=false()
+    &has_indirect_call=false()
+    &start=address.offset(y.begin(&search_func))
+    &end=address.offset(y.end(&search_func))
+    &end=&end+address.instr.len(d:&end)
+    while &start<&end
+    (
+        &instr=disassemble.address(d:&start)
+
+        if string.scan("&instr","b ",0)==0||string.scan("&instr","bl ",0)==0
+        (
+            &bl_addr=string.cut("&instr",string.scan("&instr","0x",0))
+            gosub get_function_name &bl_addr
+            entry &func
+            if "&func"=="&target_func"
+                return 1
+            else if string.scan("&func","abort",0)<0
+                &has_direct_call=true()
+        )
+        else if string.scan("&instr","bx ",0)==0||string.scan("&instr","blx ",0)==0
+        (
+            &has_indirect_call=true()
+        )
+
+        &start=&start+address.instr.len(d:&start)
+    )
+
+    if &has_indirect_call&&!&has_direct_call
+        return 1
+    else
+        return 0
+

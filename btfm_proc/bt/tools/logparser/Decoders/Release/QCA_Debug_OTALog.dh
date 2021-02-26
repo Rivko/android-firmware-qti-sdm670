@@ -1,0 +1,83 @@
+/************************************************
+ * File: QCA_Debug_OTALog.dh
+ * QCA Bluetooth Firmware Logging Parser.  
+ * 
+ * Copyright (c) 2015 Qualcomm Atheros, Inc.
+ * All Rights Reserved. 
+ * Qualcomm Atheros Confidential and Proprietary.
+************************************************/
+
+TABLE tQca_OTALogID APPENDS_ONLY tQca_EnhLogID
+    {0x0300 "OTA LMP RX PDU"        "OTA LMP RX PDU"            0 gQca_OTA_LMPRxPDU}
+    {0x0301 "OTA LMP TX PDU"        "OTA LMP TX PDU"            0 gQca_OTA_LMPTxPDU}
+    {0x0302 "OTA LE CTRL RX PDU"    "OTA LE CTRL RX PDU"        0 gQca_OTA_LECtrlRxPDU}
+    {0x0303 "OTA LE CTRL TX PDU"    "OTA LE CTRL TX PDU"        0 gQca_OTA_LECtrlTxPDU}
+ENDTABLE
+
+GROUP gQca_OTA_LMPTxPDU "LMP Tx PDU Info"
+{
+
+    FIELD fQca_OTA_Handle               (Fixed 1 Byte)      (Decimal)           "Handle"
+    FIELD fQca_OTA_LMPTxAck             (Fixed 1 Bit)       (Decimal)           "TxACK Req"
+    FIELD fQca_OTA_LMPPduLen            (Fixed 7 Bits)      (Decimal)           "PDU Length"
+    
+    FIELD fQca_OTA_LMPPDU_Type          (Fixed 0) RETRIEVE(StoreInteger 0) (Decimal) SUPPRESS_DETAIL	STORE sQca_PduType
+    FIELD fQca_SetTraversalOverride     (Fixed 0) RETRIEVE(StoreInteger 1) (HEX) SUPPRESS_DETAIL Store sQca_TraversalOverride
+
+}
+
+GROUP gQca_OTA_LMPRxPDU "LMP Rx PDU Info"
+{
+    FIELD fQca_OTA_Handle;
+    FIELD fQca_OTA_LMPTxAck;
+    FIELD fQca_OTA_LMPPduLen;
+    
+    FIELD fQca_OTA_LMPPDU_Type;
+    FIELD fQca_SetTraversalOverride;
+}
+
+GROUP gQca_OTA_LECtrlRxPDU "LE Ctrl Rx PDU Info"
+{
+    FIELD fQca_OTA_Handle;
+    RESERVED                            (Fixed 2 Bytes)
+    FIELD fQca_OTA_LETxAck              (Fixed 1 Bit)       (Decimal)                   "TxACK Req"
+    FIELD fQca_OTA_LEPduLen             (Fixed 7 Bits)      (Decimal)                   "PDU Length"
+    
+    FIELD fQca_OTA_LEPDU_Type           (Fixed 0) RETRIEVE(StoreInteger 1) (Decimal) SUPPRESS_DETAIL	STORE sQca_PduType
+    FIELD fQca_SetTraversalOverride;
+    FIELD fQca_OTA_LERxPDU_Side         (Fixed 0) RETRIEVE(StoreInteger 2) ALSO (StoreIntraframeField side) (Hex)   SUPPRESS_DETAIL
+}
+
+GROUP gQca_OTA_LECtrlTxPDU "LE Ctrl Tx PDU Info"
+{
+    FIELD fQca_OTA_Handle;
+    RESERVED                            (Fixed 2 Bytes)
+    FIELD fQca_OTA_LETxAck;
+    FIELD fQca_OTA_LEPduLen;
+    
+    FIELD fQca_OTA_LEPDU_Type;
+    FIELD fQca_SetTraversalOverride;
+    FIELD fQca_OTA_LETxPDU_Side         (Fixed 0) RETRIEVE(StoreInteger 1) ALSO (StoreIntraframeField side) (Hex)   SUPPRESS_DETAIL    
+}
+
+GROUP gQca_ChangeTraversal  if(FieldIs Equalto 1 sQca_TraversalOverride) 
+{
+	GROUP gQca_TraverseToLMP IF (FieldIs EqualTo 0 sQca_PduType)
+	{
+		FIELD fQca_LMPTraverse  (Fixed 0) RETRIEVE(StoreInteger 0xf1)   (hex)   SUPPRESS_DETAIL Store sQca_Traversal
+	}
+	GROUP gQca_TraverseToLLCtrl IF (FieldIs EqualTo 1 sQca_PduType)
+	{
+		FIELD fQca_LLCtrlTraverse  (Fixed 0) RETRIEVE(StoreInteger 0xf2)   (hex)   SUPPRESS_DETAIL Store sQca_Traversal
+	}
+	
+	// We are traversing to LMP and it expects to see the values below.  Put something there to suppress errors.
+    FIELD SatisfyClock 			(fixed 0) RETRIEVE(StoreInteger 0) ALSO (StoreIntraframeField clock) (hex)  SUPPRESS_DETAIL 
+    FIELD SatisfyAddress		(Fixed 0) RETRIEVE(StoreInteger 0) ALSO (StoreIntraframeField Static_ConnHandle)  (Decimal) SUPPRESS_DETAIL
+	
+    //LE LL 
+    FIELD SatisfyAccessAddr     (Fixed 0) RETRIEVE(StoreInteger 0) ALSO (StoreIntraframeField AccessAddr)   (Hex)			SUPPRESS_DETAIL 	 
+    FIELD SatisfyEventCtr       (Fixed 0) RETRIEVE(StoreInteger 0) ALSO (StoreIntraframeField EventCtr)     (Hex)			SUPPRESS_DETAIL
+    FIELD SatisfyEncrInfo       (Fixed 0) RETRIEVE(StoreInteger 0) ALSO (StoreIntraframeField EncrInfo)     (Hex)			SUPPRESS_DETAIL
+    //FIELD SatisfySide           (Fixed 0) RETRIEVE(StoreInteger 0) ALSO (StoreIntraframeField side)         (Hex)			SUPPRESS_DETAIL 	     
+}

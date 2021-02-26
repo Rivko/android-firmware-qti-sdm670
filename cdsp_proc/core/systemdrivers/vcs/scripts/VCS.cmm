@@ -1,0 +1,137 @@
+;=============================================================================
+;
+; VCS_context.cmm 
+;  
+; Script to parse out information from the VCS Component.
+;
+; ============================================================================
+;
+; Copyright (c) 2017 Qualcomm Technologies Incorporated.  All Rights Reserved.  
+; QUALCOMM Proprietary and Confidential. 
+;
+; ============================================================================
+; $Header: //components/rel/core.qdsp6/2.1.c4/systemdrivers/vcs/scripts/VCS.cmm#1 $
+; $DateTime: 2018/07/30 01:21:36 $
+; $Author: pwbldsvc $
+; ============================================================================
+
+local &VCS_CORNER_NUM_OF_CORNERS
+
+;-----------------------------------------------------------------------------
+; Print welcome
+;-----------------------------------------------------------------------------
+
+
+AREA.RESet
+WINPOS 0. 0. 100% 100%
+AREA.Create VCS
+AREA.view VCS
+
+AREA.Select VCS
+AREA.Clear VCS
+
+&VCS_CORNER_NUM_OF_CORNERS=6.
+
+print ""
+print ""
+print "[----------------------------------------------- VCS CONTEXT TOOL -----------------------------------------------]"
+print ""
+
+Help:
+
+print "1: List rail status"
+print "2: Display rails as table"
+print "3: Display Driver Context"
+print "x: Exit"
+print ""
+
+;-----------------------------------------------------------------------------
+; Main Menu
+;-----------------------------------------------------------------------------
+
+MainMenu:
+
+local &choice
+
+print "Enter option (? for help):"
+enter &choice
+print "&choice"
+
+if "&choice"=="?"
+(
+  goto Help
+)
+else if "&choice"=="x"
+(
+  AREA.CLEAR CLOCK
+  AREA.RESET
+  WINCLEAR
+  term.close 
+  
+  enddo (0==0)
+)
+else if "&choice"=="1"
+(
+  gosub ListRailStatus
+)
+else if "&choice"=="2"
+(
+  gosub DisplayRailTable
+)
+else if "&choice"=="3"
+(
+  gosub DisplayDriverContext
+)
+
+goto MainMenu
+
+
+;-----------------------------------------------------------------------------
+; ListRailStatus
+;-----------------------------------------------------------------------------
+
+ListRailStatus:
+
+  local &count
+  local &idx
+  local &field
+  local &dvs
+  local &cpr
+  
+  print "[--- Rail Status ---]"
+  &idx=0.
+  &count=v.value(VCS_DriverCtxt.DrvCtxt.pBSP->nNumRails)
+  while &idx<&count
+  (
+    var.print "(&idx)  " %string VCS_DriverCtxt.DrvCtxt.pBSP->pRails[&idx].mNode.name
+    var.print "   Corner: " VCS_DriverCtxt.DrvCtxt.pBSP->pRails[&idx].eCorner
+    var.print "      Min: " VCS_DriverCtxt.DrvCtxt.pBSP->pRails[&idx].pActiveConfig->eCornerMin
+    var.print "      Max: " VCS_DriverCtxt.DrvCtxt.pBSP->pRails[&idx].pActiveConfig->eCornerMax
+    
+    &idx=&idx+1.
+  )
+  
+  print ""
+  return
+  
+
+;-----------------------------------------------------------------------------
+; DisplayRailTable
+;-----------------------------------------------------------------------------
+
+DisplayRailTable:
+  &rails=v.value(VCS_DriverCtxt.DrvCtxt.pBSP->nNumRails)-1
+  var.tab %string VCS_DriverCtxt.DrvCtxt.pBSP->pRails[0..&rails]
+  return
+
+
+;-----------------------------------------------------------------------------
+; DisplayDriverContext
+;-----------------------------------------------------------------------------
+
+DisplayDriverContext:
+  var.watch VCS_DriverCtxt.DrvCtxt
+  var.addwatch (VCSImageCtxtType *)VCS_DriverCtxt.DrvCtxt.pImageCtxt
+  
+  return
+

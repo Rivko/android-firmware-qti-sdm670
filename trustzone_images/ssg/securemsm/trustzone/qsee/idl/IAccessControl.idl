@@ -1,0 +1,134 @@
+// Copyright (c) 2018 Qualcomm Technologies, Inc.  All Rights Reserved.
+// Qualcomm Technologies Proprietary and Confidential.
+
+/**
+ * @addtogroup IAccessControl
+ * @{
+ */
+
+/** @cond */
+interface IACLockedRegion {
+/** @endcond */
+};
+
+/** @cond */
+struct IAccessControl_vmidPermission {
+  uint32 vmid;
+  /**< VM ID value from IAccessControl_VM_* */
+
+  uint32 perm;
+  /**< Permission type from IAccessControl_PERM_TYPE_* */
+};
+/** @endcond */
+
+/** @cond */
+interface IAccessControl {
+/** @endcond */
+
+  /** @cond */
+  /**
+    VM IDs
+   */
+  const uint32 VM_NONE              = 0;
+  const uint32 VM_TZ                = 1;
+  const uint32 VM_HLOS              = 3;
+  const uint32 VM_HYP               = 4;
+  const uint32 VM_ADSP_Q6_ELF       = 6;
+  const uint32 VM_CP_TOUCH          = 8;
+  const uint32 VM_CP_BITSTREAM      = 9;
+  const uint32 VM_CP_PIXEL          = 10;
+  const uint32 VM_CP_NON_PIXEL      = 11;
+  const uint32 VM_CP_CAMERA         = 13;
+  const uint32 VM_MSS_MSA           = 15;
+  const uint32 VM_CP_SECDISP        = 17;
+  const uint32 VM_CP_APP            = 18;
+  const uint32 VM_ALL               = 23;
+  const uint32 VM_SPSS_SP           = 26;
+  const uint32 VM_SPSS_NONSP        = 27;
+  const uint32 VM_CP_CAMERA_PREVIEW = 29;
+  const uint32 VM_CDSP_Q6_ELF       = 30;
+  const uint32 VM_ADSP_SHARED       = 33;
+  const uint32 VM_SPSS_SP_SHARED    = 34;
+  const uint32 VM_KERNEL_PROTECTION = 35;
+  const uint32 VM_SPSS_HLOS_SHARED  = 36;
+  const uint32 VM_CP_NPU            = 41;
+  const uint32 VM_CP_CDSP           = 42;
+  const uint32 VM_MAX               = 0x7FFFFFFF;
+
+  /**
+   * VM Access Permissions
+   */
+  const uint32 PERM_TYPE_RO          =  1; /* Read only */
+  const uint32 PERM_TYPE_R_WDC       =  2; /* Read permission and Write don't care */
+  const uint32 PERM_TYPE_RW          =  3; /* Read and Write */
+
+  /**
+    ** VM permission type explained **
+    1. perm = PERM_TYPE_RO;
+        - expects the region to have Read only permission for the corresponding VM
+        - lock fails otherwise
+        - permission change of any kind is blocked until the region is unlocked.
+
+    2. perm = PERM_TYPE_R_WDC;
+        - expects the region to have either Read-only or RW permission for the corresponding VM
+        - lock fails otherwise
+        - permission change to R or RW is allowed even after locked.
+        - permission change of any other kind is blocked until the region is unlocked.
+
+    3. perm = PERM_TYPE_R_WDC;
+        - expects the region to have RW permission for the corresponding VM
+        - lock fails otherwise
+        - permission change of any kind is blocked until the region is unlocked.
+   */
+
+  /**
+   * Validation types for lockRegion()
+   */
+  const uint32 ValidationType_ALL_Exclusive     =  0;
+  const uint32 ValidationType_ANY_Exclusive     =  1;
+  const uint32 ValidationType_ALL_NonExclusive  =  2;
+  const uint32 ValidationType_ANY_NonExclusive  =  3;
+
+  /** @endcond */
+
+  /**
+    API to lock a given memory region if the vmidPermissions match with the existing permissions
+    of the region based on the validationType.
+    Once a region (addr, size) is locked for the given vmidPermissions and validationType combination,
+    it is guaranteed to hold the permission if the region remains locked.
+
+    validationType - ValidationType_ALL_Exclusive
+        - The region should be exclusive to all the VMs in vmidPermissions list.
+        - Once locked, permission change on the region is allowed according to the perm type if it remains exclusive to the vmidPermissions list.
+
+    validationType - ValidationType_ANY_Exclusive
+        - The region should be exclusive to one or more of the VMs in vmidPermissions list.
+        - If region spans across multiple pages, all the pages are expected to be exclusive to the same set of VMs as the starting page in the region.
+        - Once locked, permission change is allowed according to the perm type if the region remains exclusive to the same set of exclusive VMs at lock.
+
+    validationType - ValidationType_ALL_NonExclusive
+        - The region should have matching permission for all the VMs in vmidPermissions list.
+        - The region can have permissions for VMs outside of the vmidPermissions list.
+        - Once locked, permission change on any of the VMs within the vmidPermissions is allowed according to the perm type.
+        - Permission change on any VM outside of the vmidPermissions is allowed even when the region is locked.
+
+    validationType - ValidationType_ANY_NonExclusive
+        - The region should have matching permission matching one or more of the VMs in vmidPermissions list.
+        - If region spans across multiple pages, all the pages are expected to match the same set of VMs as the starting page in the region.
+        - Once locked, permission change on the same set of locked VMs is allowed according to the perm type.
+        - Permission change on any VM outside of the locked set of VMs is allowed even when region is locked.
+
+    @param[in]  vmidPermissions     List of IAccessControl_vmidPermission for validation.
+    @param[in]  addr                Start address of the memory region that needs to be locked.
+    @param[in]  size                Size of the memory region that needs to be locked.
+    @param[in]  validationType      One of the ValidationType_* values, see above for explanation.
+    @param[out] lockedRegionOut     Handle to the locked region.
+
+    @return
+    Object_OK indicates success.
+    Object_ERROR indicates failure.
+  */
+  method lockRegion(in IAccessControl_vmidPermission[] vmidPermissions, in uint64 addr, in uint64 size, in uint32 validationType, out interface lockedRegionOut);
+
+  /* @} */ /* end_addtogroup IAccessControl */
+};

@@ -1,0 +1,262 @@
+;=============================================================================
+;
+; xoVoters.cmm 
+;  
+; Script to list Power Collapse voters.
+;
+; ============================================================================
+;
+
+
+local &idx
+local &choice
+local &subscript
+
+
+;-----------------------------------------------------------------------------
+; Print welcome
+;-----------------------------------------------------------------------------
+&subscript=0
+
+ENTRY &Option 
+
+Area.Create DSP 200. 1000.       ;create an AREA window              
+WINPOS 50% 0. 50% 103% 0. 0. DSP
+Area.Select DSP                  ;select the AREA window as PRACTICE 
+                                    ;input/output window                
+Area DSP                         ;display the AREA window            
+
+ON ERROR JUMPTO end_of_xovoters
+
+
+if ("&Option"=="1")
+(
+		gosub DisplayXOVoters
+		enddo
+)
+
+if ("&Option"=="2")
+(
+		gosub DisplayLatencyVoters
+		enddo
+)
+
+print ""
+print ""
+print "[----------- ADSPPM Sleep Voters ------------]"
+print ""
+
+;-----------------------------------------------------------------------------
+; Main Menu
+;-----------------------------------------------------------------------------
+
+MainMenu:
+
+print "1: Show xo voters"
+print "2: Show latency voters"
+print "x: Exit"
+print ""
+
+print "Enter option:"
+enter &choice
+print "&choice"
+
+if "&choice"=="x"
+(
+  
+    AREA.CLEAR 
+    AREA.RESET
+    WINCLEAR
+    term.close 
+    enddo (0==0)
+)
+else if "&choice"=="1"
+(
+  gosub DisplayXOVoters
+)
+else if "&choice"=="2"
+(
+  gosub DisplayLatencyVoters
+)
+
+
+goto MainMenu
+
+
+;-----------------------------------------------------------------------------
+; DisplayXOVoters
+;-----------------------------------------------------------------------------
+
+DisplayXOVoters:
+  print "[--- XO Voters ---]"
+  print "Clocks:"
+  &idx=0.
+  &clks=v.value(Clock_DriverCtxt.DrvCtxt.nNumClocks)
+  while &idx<&clks
+  (
+    &voter=0
+    &ref=v.value(Clock_DriverCtxt.DrvCtxt.aClocks[&idx].nReferenceCount)
+    if &ref>0
+    (
+      &domain=v.value(Clock_DriverCtxt.DrvCtxt.aClocks[&idx].pDomain)
+      if &domain!=0
+      (
+        &cflags=v.value(Clock_DriverCtxt.DrvCtxt.aClocks[&idx].nFlags)
+        &dflags=v.value(Clock_DriverCtxt.DrvCtxt.aClocks[&idx].pDomain->nFlags)
+        &src=v.value(Clock_DriverCtxt.DrvCtxt.aClocks[&idx].pDomain->pSource)
+        if (&src!=0)&&((&dflags&(0x200))==0)&&((&cflags&(0x200))==0)
+        (
+          &voter=1
+        )
+      )
+    )
+
+    if &voter==1
+    (
+      var.print "(&idx)  " %string Clock_DriverCtxt.DrvCtxt.aClocks[&idx].szName
+    )
+    &idx=&idx+1.
+  )
+  
+  print ""
+  return
+
+;-----------------------------------------------------------------------------
+; DisplayLatencyVoters
+;-----------------------------------------------------------------------------
+
+DisplayLatencyVoters:
+
+;-comments-----
+; Y.EXIST(findReqMgrHandle) check is to decide if it is latest or older gAdsppmCoreCtx structure.
+; findReqMgrHandle() input type is RMHandleType which is not present in older adsppm code.  
+;---------------
+
+if Y.EXIST(gAdsppmClientManager)
+(
+	PRINT ""
+	PRINT "[--- Latency Voters ---] "
+	PRINT ""
+	&clientNodeMain=V.VALUE(gAdsppmClientManager.clients.link.pNext)
+	&reqNode=V.VALUE(gAdsppmCoreCtx.rscReqQ[2].link.pNext)
+	&numClients=V.VALUE(gAdsppmCoreCtx.rscReqQ[2].nCnt)
+	&numClientsPrint=FORMAT.DECIMAL(0,&numClients)
+
+	&index=1
+	&indexPrint=FORMAT.DECIMAL(0,&index)
+	WHILE &index<=&numClients
+	(
+		&clientNode=&clientNodeMain+8
+		&reqData=V.VALUE(((RMHandleType *)&reqNode)->pRequestData)
+		&clientId=FORMAT.DECIMAL(0,V.VALUE(((RMHandleType *)&reqNode)->clientId))
+		&validFlag=FORMAT.DECIMAL(0,V.VALUE(((RMHandleType *)&reqNode)->validFlag))
+		&validFlagE=FORMAT.DECIMAL(0,V.VALUE(((RMHandleType *)&reqNode)->validFlag_Ext))
+		IF &validFlag==1
+		(
+			PRINT "  clientId       = &clientId"
+			&clientIdtemp=FORMAT.DECIMAL(0,V.VALUE(((AdsppmClientType *)&clientNode)->clientId))
+			IF &clientIdtemp==&clientId
+			(
+				&clientName=DATA.STRING(D:V.VALUE(((AdsppmClientType *)&clientNode)->clientName))
+				PRINT "  clientName     = &clientName"
+			)
+			&latencyVote=FORMAT.DECIMAL(0,V.VALUE(*((uint32 *)(&reqData))))
+			PRINT "  latency (us)   = &latencyVote"
+			print ""
+		)
+		
+		&reqNode=V.VALUE(((coreUtils_Q_LinkType *)&reqNode)->pNext)
+		&index=&index+1
+		&indexPrint=FORMAT.DECIMAL(0,&index)
+		&clientNodeMain=V.VALUE(((coreUtils_Q_LinkType *)&clientNodeMain)->pNext)	
+	)
+)
+else
+(
+	if Y.EXIST(findReqMgrHandle)
+	(
+
+	  PRINT ""
+		PRINT "[--- Latency Voters ---] "
+		PRINT ""
+		&clientNode=V.VALUE(gAdsppmCoreCtx.adsppmHandleQ.link.pNext)
+
+		&reqNode=V.VALUE(gAdsppmCoreCtx.rscReqQ[2].link.pNext)
+		&numClients=V.VALUE(gAdsppmCoreCtx.rscReqQ[2].nCnt)
+		&numClientsPrint=FORMAT.DECIMAL(0,&numClients)
+
+		&index=1
+		&indexPrint=FORMAT.DECIMAL(0,&index)
+		WHILE &index<=&numClients
+		(
+			&reqData=V.VALUE(((RMHandleType *)&reqNode)->pRequestData)
+			&clientId=FORMAT.DECIMAL(0,V.VALUE(((RMHandleType *)&reqNode)->clientId))
+			&validFlag=FORMAT.DECIMAL(0,V.VALUE(((RMHandleType *)&reqNode)->validFlag))
+			&validFlagE=FORMAT.DECIMAL(0,V.VALUE(((RMHandleType *)&reqNode)->validFlag_Ext))
+			IF &validFlag==1
+			(
+				PRINT "  clientId       = &clientId"
+				&clientIdtemp=FORMAT.DECIMAL(0,V.VALUE(((AdsppmHandleType *)&clientNode)->clientId))
+				IF &clientIdtemp==&clientId
+				(
+					&clientName=DATA.STRING(D:V.VALUE(((AdsppmHandleType *)&clientNode)->clientName))
+					PRINT "  clientName     = &clientName"
+				)
+				&latencyVote=FORMAT.DECIMAL(0,V.VALUE(*((uint32 *)(&reqData))))
+				PRINT "  latency (us)   = &latencyVote"
+				print ""
+			)
+			
+			&reqNode=V.VALUE(((coreUtils_Q_LinkType *)&reqNode)->pNext)
+			&index=&index+1
+			&indexPrint=FORMAT.DECIMAL(0,&index)
+			&clientNode=V.VALUE(((coreUtils_Q_LinkType *)&clientNode)->pNext)	
+		)
+	)	
+	else
+	(
+	  PRINT ""
+		PRINT "[--- Latency Voters ---] "
+		PRINT ""
+		&clientNode=V.VALUE(gAdsppmCoreCtx.AdsppmHandleQ.link.pNext)
+
+		&reqNode=V.VALUE(gAdsppmCoreCtx.AdsppmReqQArray[2].link.pNext)
+		&numClients=V.VALUE(gAdsppmCoreCtx.AdsppmReqQArray[2].nCnt)
+		&numClientsPrint=FORMAT.DECIMAL(0,&numClients)
+
+		&index=1
+		&indexPrint=FORMAT.DECIMAL(0,&index)
+		WHILE &index<=&numClients
+		(
+			&reqData=V.VALUE(((RMCtxType *)&reqNode)->pRequestData)
+			&clientId=FORMAT.DECIMAL(0,V.VALUE(((RMCtxType *)&reqNode)->clientId))
+			&validFlag=FORMAT.DECIMAL(0,V.VALUE(((RMCtxType *)&reqNode)->validFlag))
+			&validFlagE=FORMAT.DECIMAL(0,V.VALUE(((RMCtxType *)&reqNode)->validFlag_Ext))
+			IF &validFlag==1
+			(
+				PRINT "  clientId       = &clientId"
+				&clientIdtemp=FORMAT.DECIMAL(0,V.VALUE(((AdsppmHandleType *)&clientNode)->clientId))
+				IF &clientIdtemp==&clientId
+				(
+					&clientName=DATA.STRING(D:V.VALUE(((AdsppmHandleType *)&clientNode)->clientName))
+					PRINT "  clientName     = &clientName"
+				)
+				&latencyVote=FORMAT.DECIMAL(0,V.VALUE(*((uint32 *)(&reqData))))
+				PRINT "  latency (us)   = &latencyVote"
+				print ""
+			)
+			
+			&reqNode=V.VALUE(((coreUtils_Q_LinkType *)&reqNode)->pNext)
+			&index=&index+1
+			&indexPrint=FORMAT.DECIMAL(0,&index)
+			&clientNode=V.VALUE(((coreUtils_Q_LinkType *)&clientNode)->pNext)	
+		)
+	)	
+)
+
+return
+
+enddo
+end_of_xovoters:
+do &CurrentDirectory\cmm_error.cmm "xoVoters.cmm"
+enddo

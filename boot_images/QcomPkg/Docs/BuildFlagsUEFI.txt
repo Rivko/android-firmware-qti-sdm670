@@ -1,0 +1,94 @@
+/** @file BuildFlagsUEFI.txt
+   
+  DSC build flags documentation
+
+  Copyright (c) 2016, Qualcomm Technologies Inc. All rights reserved. 
+  
+**/
+
+/*=============================================================================
+                              EDIT HISTORY
+
+
+ when       who     what, where, why
+ --------   ---     -----------------------------------------------------------
+ 05/09/16   et      Initial version
+=============================================================================*/
+
+Creating a merged elf
+---------------------
+After individual modules are compiled/generated, buildit.py will parse through dsc files and generate a merged elf files based on information parsed. Once the tags are added, there is no additional invocation required to perform merges.
+
+What can be merged?
+-------------------
+Currently, merging can be done with generated .dll and .fv files.
+
+How to specify merges
+---------------------
+[Components.common]
+  This section is a list of modules needed by the platform. Tags can be added in each module block to denote that this module (.dll) should be merged.
+  
+  Example:
+  [Components.common]
+    QcomPkg/SDM845Pkg/Library/XBLRamDumpLib/XBLRamDumpLib.inf {
+    # MERGE xbl.elf
+    # SIGN sbl1
+    # XBL_SEC QcomPkg/SDM845Pkg/Library/XBL_SEC/xbl_sec.mbn
+    ...
+  }
+
+    
+[UserExtensions.Buildit.BuildInfo]
+  This section is used when .fv files (generated from an fdf file) need to be merged into an elf.
+  
+  Example:
+  [Defines]
+      FLASH_DEFINITION               = QcomPkg/QcomTestPkg/QcomTestPkg.fdf
+  ...
+  [UserExtensions.Buildit.BuildInfo]
+    COMPILER_ARCH = AARCH64
+    OUTPUT_NAME   = uefi.elf
+    SIGN_FD       = uefi
+    MERGE         = xbl.elf
+    SIGN          = sbl1
+
+----------------------------
+|Tags for Components.common|
+----------------------------
+Note: Tags in this section must be prepended by '#'.
+
+# BUILD.MERGE value
+  Modules that share the same value for MERGE or MERGE_BASE will be merged together. There is no guaranteed order in which images will appear inside the merged elf.
+
+# BUILD.MERGE_BASE value
+  Same as MERGE except that this image will be the first image in the elf. If multiple MERGE_BASE tags exist with the same value, this will be treated as an error.
+  
+# BUILD.SIGN value
+  Sign type used to sign the final merged elf. If omitted, sign type defined by another section will be used if defined, otherwise signing will be skipped.
+  
+# BUILD.XBL_SEC value
+  If specifed, this file will be inserted (bit for bit) as a program section into the merged elf and a corresponding program header will be added.
+  
+-------------------------------------------
+|Tags for UserExtensions.Buildit.BuildInfo|
+-------------------------------------------
+Note: Tags are NOT prepended by '#'.
+
+  COMPILER_ARCH = value
+    Architecture that should be used to compile dsc.
+  
+  OUTPUT_NAME = value
+    This will determine the name of the .fv once converted to .elf format.
+  
+  SIGN_FD = value
+    Sign type to be used when signing the resulting .elf. If omitted, the .elf will not be signed.
+  
+  MERGE = value
+    Modules that share the same value for MERGE or MERGE_BASE will be merged together. There is no guaranteed order in which images will appear inside the merged elf.
+  
+  SIGN = value
+     Sign type used to sign the final merged elf. If omitted, sign type defined by another section will be used if defined, otherwise signing will be skipped.
+  
+  XBL_SEC = value
+    If specifed, this file will be inserted (bit for bit) as a program section into the merged elf and a corresponding program header will be added.
+  

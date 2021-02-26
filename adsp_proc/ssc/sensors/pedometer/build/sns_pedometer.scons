@@ -1,0 +1,49 @@
+#===============================================================================
+#
+# Pedometer sensor
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2016-2018 by Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Id: //components/rel/ssc.slpi/3.2/sensors/pedometer/build/sns_pedometer.scons#2 $
+#  $DateTime: 2018/02/09 08:02:36 $
+#  $Change: 15433114 $
+#
+#===============================================================================
+Import('env')
+import inspect
+
+if "SNS_ISLAND_INCLUDE_PEDOMETER" in env:
+  island_cfg = True
+else:
+  island_cfg = False
+
+if 'SENSORS_DD_DEV_FLAG' not in env:
+  pedometer_clean_pack_list = ['*.c','*.h','*.json','*_log.proto']
+else:
+  pedometer_clean_pack_list = ['*.c','*.h','*.json','*.proto']
+
+if 'USES_SSC_STATIC_LIB_BUILDER' in env:
+  env.AddSSCSU(inspect.getfile(inspect.currentframe()),
+               clean_pack_list = pedometer_clean_pack_list,
+               ssc_protected_api = ['SNS_MATH_UTIL','SNS_INTERNAL_INCLUDES'],
+               register_func_name = "sns_pedometer_register",
+               binary_lib = True,
+               cflags = ['-Wno-sign-compare'],
+               add_island_files = island_cfg,
+               diag_ssid = "MSG_SSID_SNS_SENSOR_INT")
+
+if 'USES_QDSS_SWE' in env:
+  QDSS_IMG = ['QDSS_EN_IMG']
+  events = [
+            ['SNS_PEDO_INST_NOTIFY_START', '', 'F'],
+            ['SNS_PEDO_INST_NOTIFY_END', '', 'F'],
+            ['SNS_PEDO_REPORT_STEP', 'step cnt: %d', 'F'],
+           ]
+  env.AddSWEInfo(QDSS_IMG, events)

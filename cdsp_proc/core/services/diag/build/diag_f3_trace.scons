@@ -1,0 +1,180 @@
+#===============================================================================
+#
+# F3 Trace Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009-2014,2016-2017 by QUALCOMM Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header$
+#  $DateTime$
+#  $Author$
+#  $Change$
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#06/08/17    gn      Added support for diag services to uImage
+#06/05/17    nk      Added debug support for uimage in root PD
+#01/26/17    jlg     Move settings to core/settings directory
+#10/24/16    gn      Changes to support common PW for ADSP, CDSP and SLPI
+#05/12/16    ph      SMD references removal and code clean up.
+#05/16/14    sm      Added TISE image support.  Note that 'USES_MSVC' and
+#                    'USES_TISE' are used to specify a subset of files from this
+#                    driver to compile for the Windows (MSVC) compiler.  Please
+#                    do not remove these definitions from this file.
+#10/21/13    ph      OSAL APIs updated use ATS timers.
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+env.PrintInfo("diag_f3_trace.scons") 
+
+# This is to remove any -Werror declarations in the environmnent for the MSVC
+# compiler.
+if 'USES_MSVC' in env:
+    env.Replace(CFLAGS="")
+
+#-------------------------------------------------------------------------------
+# SUPPORTED IMAGES
+#-------------------------------------------------------------------------------
+
+# CORE_QDSP6_SW represents root PD, we generate separate diag_f3_trace.lib only for root PD (which can be ADSP/CDSP/SLPI)
+DIAG_F3_TRACE_IMAGES = [
+    'CORE_QDSP6_SW', 'CORE_QDSP6_SENSOR_SW', 'CORE_QDSP6_AUDIO_SW'
+]
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+
+SRCPATH = "${BUILD_ROOT}/core/services/diag/f3_trace/src"
+
+env.VariantDir('${BUILDPATH}/f3_trace/src', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Features and Definitions
+#-------------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
+# External depends outside CoreBSP
+#-------------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'MPROC',
+   'DEBUGTOOLS',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Defines for ADSP...
+# We need to determine which are relevant because modem just inherits the
+# important ones -- rhalstea
+#-------------------------------------------------------------------------------
+
+env.Append(CPPDEFINES=['FEATURE_SAVE_TRACE_ON_BY_DEFAULT'])
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+#++++++++++++++++++++++++++++++
+# F3 TRACE CORE
+#++++++++++++++++++++++++++++++
+
+DIAG_F3_TRACE_SOURCES =  [
+   '${BUILDPATH}/f3_trace/src/diag_f3_trace_cmd.c',
+]
+DIAG_F3_TRACE_MICRO_SHARED_SOURCES =  [
+   '${BUILDPATH}/micro_diagbuffer/src/diag_f3_trace.c',
+]
+
+if 'USES_ISLAND' in env:
+  env.AddLibrary(DIAG_F3_TRACE_IMAGES, '${BUILDPATH}/diag_f3_trace', DIAG_F3_TRACE_SOURCES)
+  diag_f3_uimage_lib = env.AddLibrary(DIAG_F3_TRACE_IMAGES, '${BUILDPATH}/udiag_f3_trace', DIAG_F3_TRACE_MICRO_SHARED_SOURCES)
+  env.AddIslandLibrary(DIAG_F3_TRACE_IMAGES, diag_f3_uimage_lib)
+  env.AddSymbolToIslandWhitelist(DIAG_F3_TRACE_IMAGES, diag_f3_uimage_lib, ['msg_v3_ss_num_table_entries','qw_lo','strnlen',
+                                 'qsr_4_0_msg_aligned_start_address','qsr_4_0_msg_unaligned_start_address','qsr_4_0_msg_end_address',
+                                 'msg_v4_ss_num_aligned_entries','msg_v4_ss_num_unaligned_entries','msg_v4_ss_num_table_entries',
+                                 'msg_v4_ss_aam_table','msg_v4_ss_uam_table','msg_v4_ss_table','qsr_v4_get_address_table_index',
+                                 'qw_equ','msg_get_time','diag_f3_trace_cmd_reg','err_Fatal_internal0_pcrelR0','msg_v3_ss_table',
+                                 'qw_hi'])
+else:
+  env.AddLibrary(DIAG_F3_TRACE_IMAGES, '${BUILDPATH}/diag_f3_trace', DIAG_F3_TRACE_SOURCES+DIAG_F3_TRACE_MICRO_SHARED_SOURCES)
+
+if 'USES_RCINIT' in env:
+    env.AddRCInitFunc(
+       DIAG_F3_TRACE_IMAGES,
+       {
+        'sequence_group'     : 'RCINIT_GROUP_1',
+        'init_name'          : 'diag_f3_trace',
+        'init_function'      : 'diag_f3_trace_init',
+        'dependencies'       : ['diag_f3_trace_nvcfg','diag_f3_trace_devcfg'] #must run after configs
+       })
+
+if 'USES_ISLAND' in env:
+  env.Append(CPPDEFINES=["DIAG_UIMAGE_MODE"])
+  #Move data from sbss/scommon to bss/data segments
+  env.Append(CCFLAGS = "-G0")
+  #We don't support island functions with '-fstack-protector'
+  if "-fstack-protector" in env['HEXAGON_STKPRO']:
+    env.Replace(HEXAGON_STKPRO = "")
+
+#++++++++++++++++++++++++++++++
+# DAL DEVICE CONFIG SUPPORT
+#++++++++++++++++++++++++++++++
+
+if 'USES_DEVCFG' in env:
+    DIAG_F3_TRACE_DEVCFG_SOURCES =  [
+       '${BUILDPATH}/f3_trace/src/diag_f3_trace_devcfg.c',
+    ]
+    env.AddLibrary(DIAG_F3_TRACE_IMAGES,'${BUILDPATH}/diag_f3_trace_devcfg',DIAG_F3_TRACE_DEVCFG_SOURCES)
+
+    if 'USES_RCINIT' in env:
+      env.AddRCInitFunc(
+       DIAG_F3_TRACE_IMAGES,
+       {
+        'sequence_group'     : 'RCINIT_GROUP_1',
+        'init_name'          : 'diag_f3_trace_devcfg',
+        'init_function'      : 'diag_f3_trace_devcfg_init',
+        'dependencies'       : ['dalsys',]
+       })
+
+#++++++++++++++++++++++++++++++
+#    NV CONFIG SUPPORT
+#++++++++++++++++++++++++++++++
+
+if 'USES_NV' in env:
+    DIAG_F3_TRACE_NVCFG_SOURCES =  [
+       '${BUILDPATH}/f3_trace/src/diag_f3_trace_nvcfg.c',
+    ]
+    env.AddLibrary(DIAG_F3_TRACE_IMAGES,'${BUILDPATH}/diag_f3_trace_nvcfg',DIAG_F3_TRACE_NVCFG_SOURCES)
+
+    if 'USES_RCINIT' in env:
+      env.AddRCInitFunc(
+       DIAG_F3_TRACE_IMAGES,
+       {
+        'sequence_group'     : 'RCINIT_GROUP_1',
+        'init_name'          : 'diag_f3_trace_nvcfg',
+        'init_function'      : 'diag_f3_trace_nvcfg_init',
+        'dependencies'       : ['diag_f3_trace_devcfg']     #nv config can overwrite devcfg
+       })

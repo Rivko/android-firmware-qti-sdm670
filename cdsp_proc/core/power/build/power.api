@@ -1,0 +1,120 @@
+#===============================================================================
+# Power INC PATHs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+#    Copyright (c) 2016-2017 Qualcomm Technologies, Inc. (QTI).
+#    All Rights Reserved.
+#    Qualcomm Confidential and Proprietary.
+#    Export of this technology or software is regulated by the U.S. Government.
+#    Diversion contrary to U.S. law prohibited.
+#-------------------------------------------------------------------------------
+#  $Header: $
+#  $DateTime: $
+#===============================================================================
+import os
+Import('env')
+
+#-------------------------------------------------------------------------------
+# Set the subsytem target that is being built
+#-------------------------------------------------------------------------------
+
+# Create a variable with the correct image being built
+if 'SLPI_PROC' in env:
+  env.Replace(POWER_SUBSYSTEM = 'slpi')
+  env.Replace(PWR_TARGET_DFLT = '845')
+  #SLPI will support uNPA for island
+  env.Replace(UNPA_SUPPORT = 'true')
+
+elif 'ADSP_PROC' in env:
+  env.Replace(POWER_SUBSYSTEM = 'adsp')
+  env.Replace(PWR_TARGET_DFLT = '845')
+  #SDM670 ADSP will support uNPA for island
+  env.Replace(UNPA_SUPPORT = 'true')
+
+  if env.IsTargetEnable('CORE_SLPI_ADSP_ROOT'):
+    # These need to be set on targets/processors that use the HWSOLVER
+    env.Replace(USES_HWSOLVER = 'true')
+    env.Append(CPPDEFINES=['USES_HWSOLVER'])
+
+elif 'CDSP_PROC' in env:
+  env.Replace(POWER_SUBSYSTEM = 'cdsp')
+  env.Replace(PWR_TARGET_DFLT = '845')
+
+else:
+  env.Replace(POWER_SUBSYSTEM = 'mss')
+  env.Replace(PWR_TARGET_DFLT = '845')
+
+env.PrintInfo("Core power building for: " + env['POWER_SUBSYSTEM'])
+
+#-------------------------------------------------------------------------------
+# Publish Public APIs
+# these are accessible internal or external to CoreBSP
+#-------------------------------------------------------------------------------
+power_public_apis = [
+  "${INC_ROOT}/core/api/power",
+  "${INC_ROOT}/core/api/power/sleep2.0",
+  "${INC_ROOT}/core/api/power/uSleep",
+]
+
+if env['POWER_SUBSYSTEM'] == 'mss':
+  power_public_apis+=["${INC_ROOT}/core/api/power/cpr/mpss",
+                     ]
+
+#Add uSleep include target specific directory
+rootPathCheck = 'core/api/power/uSleep'
+
+if os.path.exists(os.path.join(env['INC_ROOT'], rootPathCheck, env['MSM_ID'])):
+  power_public_apis += [os.path.join('${INC_ROOT}', rootPathCheck, env['MSM_ID'], env['POWER_SUBSYSTEM'])]
+else:
+  power_public_apis += [os.path.join('${INC_ROOT}',rootPathCheck, env['PWR_TARGET_DFLT'], env['POWER_SUBSYSTEM'])]
+
+#Add main power include specific directory
+rootPathCheck = 'core/api/power'
+
+if os.path.exists(os.path.join(env['INC_ROOT'], rootPathCheck, env['MSM_ID'])):
+  power_public_apis += [os.path.join('${INC_ROOT}',rootPathCheck, env['MSM_ID']),
+                        os.path.join('${INC_ROOT}',rootPathCheck, env['MSM_ID'], env['POWER_SUBSYSTEM'])]
+else:
+  power_public_apis += [os.path.join('${INC_ROOT}',rootPathCheck, env['PWR_TARGET_DFLT']),
+                        os.path.join('${INC_ROOT}',rootPathCheck, env['PWR_TARGET_DFLT'], env['POWER_SUBSYSTEM'])]
+
+if 'UNPA_SUPPORT' in env:
+  power_public_apis += ["${INC_ROOT}/core/api/power/unpa"]
+
+env.PublishPublicApi('POWER', power_public_apis)
+
+#-------------------------------------------------------------------------------
+# Publish Restricted APIs
+# these are accecible only within CoreBSP
+#-------------------------------------------------------------------------------
+power_restricted_apis = [
+  "${INC_ROOT}/core/power/pdc/interrupt/inc",
+  '${INC_ROOT}/core/power/pdc/seq/inc',
+  "${INC_ROOT}/core/power/rsc/inc",
+  "${INC_ROOT}/core/power/rsc/hal/inc",
+  "${INC_ROOT}/core/power/sleepctl/inc",
+  "${INC_ROOT}/core/power/dcvs/inc",
+  "${INC_ROOT}/core/power/dem/inc",
+  "${INC_ROOT}/core/power/utils/inc",
+  "${INC_ROOT}/core/api/rapi/power/inc",
+  "${INC_ROOT}/core/power/thermal/inc",
+  "${INC_ROOT}/core/power/system_db/inc",
+  "${INC_ROOT}/core/power/sleep2.0/inc",
+  "${INC_ROOT}/core/power/uSleep/inc",
+  "${INC_ROOT}/core/power/rpmh/inc",
+  "${INC_ROOT}/core/power/urpmh/inc",
+  "${INC_ROOT}/core/power/cmd_db/inc", 
+]
+
+if env['POWER_SUBSYSTEM'] == 'mss':
+  power_restricted_apis+=["${INC_ROOT}/core/power/clm/inc",
+                         ]
+
+env.PublishRestrictedApi('POWER', power_restricted_apis)
+
+#-------------------------------------------------------------------------------
+# Continue loading API units
+#-------------------------------------------------------------------------------
+env.LoadAPIUnits()

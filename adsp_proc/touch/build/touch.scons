@@ -1,0 +1,1019 @@
+#===============================================================================
+#
+# Touch top-level scons
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright 2016-18 Qualcomm Technologies, Inc.  All Rights Reserved.
+# Qualcomm Technologies Proprietary and Confidential.
+#-------------------------------------------------------------------------------
+#
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+####################################################################################
+#Macros for General Q6 compilation
+####################################################################################
+env.Replace(ASM_DFLAGS = '-D__V_DYNAMIC__')
+env.Replace(CC_DFLAGS = '-D__V_DYNAMIC__')
+env.Replace(HEXAGON_UNDEF = ' ')
+env.Append(SHLINKFLAGS = ' --wrap=malloc --wrap=calloc --wrap=free --wrap=realloc --wrap=memalign ')
+
+
+#----------------------------------------------------------------------------------------------------------
+# Add compilation flags for clang compiler which compiles .c/.cpp files with hexagon tool version > 5
+#----------------------------------------------------------------------------------------------------------
+
+hexagon_root = env.get('HEXAGON_ROOT')
+hexgaon_rtos_release = env.get('HEXAGON_RTOS_RELEASE')
+hexagon_version = env.get('Q6VERSION')
+#print "Hexagon Root: %s, Hexagon RTOS : %s, Hexagon version : %s" % (hexagon_root, hexgaon_rtos_release, hexagon_version )
+
+if int(env['HEXAGON_RTOS_RELEASE'][0]) > 5 :
+    env.Replace(HEXAGONCC_WARN = '-Wall -Werror -Wpointer-arith -Wno-missing-braces -Wno-strict-aliasing -Wstrict-prototypes -Wnested-externs')
+    env.Replace(HEXAGON_LANIND = '-fno-exceptions -fno-strict-aliasing -fno-zero-initialized-in-bss -fdata-sections')
+    HEXAGON_LIB_PATH = "{0}/{1}/Tools/target/hexagon/lib/{2}/G0/pic".format(hexagon_root,hexgaon_rtos_release,hexagon_version)
+#----------------------------------------------------------------------------------------------------------
+# Add compilation flags for gcc/g++ compiler which compiles .c/.cpp with 5.1.05 hexagon tool
+#----------------------------------------------------------------------------------------------------------
+else :
+    env.Replace(HEXAGONCC_WARN = '-Wall -Werror -Wpointer-arith -Wno-missing-braces -Wno-strict-aliasing -Wstrict-prototypes -Wnested-externs -Wno-unused-but-set-variable -Wno-enum-compare -fno-exceptions ')
+    env.Replace(HEXAGONCXX_WARN = '-Wall -Werror -Wpointer-arith -Wno-missing-braces -Wno-strict-aliasing -Wno-unused-but-set-variable -fexceptions ')
+    env.Replace(HEXAGON_LANIND = '-fno-strict-aliasing -fno-zero-initialized-in-bss -fdata-sections ')
+    HEXAGON_LIB_PATH = "{0}/{1}/dinkumware/lib/{2}/G0/pic".format(hexagon_root,hexgaon_rtos_release,hexagon_version)
+
+#Change this value to -O0 for ASM debugging
+env.Replace(HEXAGONCC_OPT = "-O3")
+
+####################################################################################
+#Chipset specific macros
+####################################################################################
+
+bimage_skel_name = 'libFastRPC_UTF_Forward_skel' #Common skel.so name for all chipsets.
+uimage_skel_name = 'libFastRPC_UTF_Forward_skel' #Common skel.so name for all chipsets.
+pkt_skel_name = 'libFastRPC_UTF_Forward_skel_pkt' #PKT skel.so name for all chipsets.
+
+if env.get('CHIPSET') == "msm8998":
+    # Sensors fusion gives a compile error and is temporarily disabled
+    #env.Append(CFLAGS = '-DSENSOR_FUSION')
+    #env.AddUsesFlags('USES_SENSOR_FUSION')
+    env.Append(CFLAGS = '-DSPI_BLSP')
+    env.Append(CFLAGS = '-DSKEL_INFO=\\"QTC-8998\\"')
+
+    BUILD_ENV = "SLPI"
+    #env.Append(CFLAGS = '-DENV_SLPI')
+
+    print "Compiling Touch for Target: MSM8998, Image: SLPI, SPI: BLSP"
+elif env.get('CHIPSET') == "sdm845":
+    #Heap manager for uImage and bImage
+    env.AddUsesFlags('USES_HEAP_MANAGER')
+    env.Append(CFLAGS = "-DHEAP_MANAGER")
+    #Currently large allocations for bImage do not work on Nazgul and so heap manager for bImage has to be disabled
+    # This macro enables heap manager for bImage also. It is disabled by default. It is temporary and can be deleted later after the issue is fixed.
+    #env.Append(CFLAGS = "-DHEAP_MANAGER_BIMAGE")
+
+    env.Append(CFLAGS = '-DSPI_QUPv3')
+    env.Append(CFLAGS = '-DSPI_QUPv3_IRQ')
+    env.Append(CFLAGS = '-DSDM845_TARGET')
+    env.Append(CFLAGS = '-DSKEL_INFO=\\"QTC-845\\"')
+    env.Append(CFLAGS = '-DUSE_UGPIOINT_TOUCH')
+    #env.Append(CFLAGS = '-DUSE_DIAG_MSG')
+
+    BUILD_ENV = "SLPI"
+    #env.Append(CFLAGS = '-DENV_SLPI')
+
+    print "Compiling Touch for Target: SDM845, Image: SLPI, SPI: QUPV3"
+
+    #Core user PIC for user-PD drivers
+    env.AddUsesFlags('USES_CORE_USER_PIC')
+
+    #Enable uImage feature
+    #env.AddUsesFlags('USES_TOUCH_UIMAGE')
+
+    if 'USES_CORE_USER_PIC' in env:
+        env.Append(CFLAGS = '-DUSE_CORE_USER_PIC')
+        print "CoreUserPIC Library is enabled"
+
+        if 'TOUCH_USES_PRAM' in env:
+            env.Append(CFLAGS = '-DUSE_PRAM') #Use PRAM for SPI
+            print "SPI buffer is set to use PRAM"
+        else:
+            print "SPI buffer is set to use DDR"
+
+        #Use sensor framework for fusion use-cases
+        #env.AddUsesFlags('USES_SSC_TOUCH')
+        if 'USES_SSC_TOUCH' in env:
+            env.Append(CFLAGS = '-DSSC_TOUCH')
+            print "Touch Fusion is enabled"
+    elif 'TOUCH_USES_PRAM' in env:
+        print "Touch cannot use PRAM as SPI buffer unless DSP build enables it!"
+        Return()
+
+    # Skel.so names (For Napali Only)
+    bimage_skel_name = 'libFastRPC_UTF_Forward_800s_sdm845_skel'         #Napali bImage skel.so name
+    uimage_skel_name = 'libFastRPC_UTF_Forward_800s_sdm845_uimg_skel'    #Napali uImage skel.so name
+
+elif env.get('CHIPSET') == "sdm855":
+    #Heap manager for uImage and bImage
+    env.AddUsesFlags('USES_HEAP_MANAGER')
+    env.Append(CFLAGS = "-DHEAP_MANAGER")
+    #Currently large allocations for bImage do not work on Nazgul and so heap manager for bImage has to be disabled
+    # This macro enables heap manager for bImage also. It is disabled by default. It is temporary and can be deleted later after the issue is fixed.
+    #env.Append(CFLAGS = "-DHEAP_MANAGER_BIMAGE")
+
+    env.Append(CFLAGS = '-DSPI_QUPv3')
+    env.Append(CFLAGS = '-DSPI_QUPv3_IRQ')
+    env.Append(CFLAGS = '-DSDM855_TARGET')
+    env.Append(CFLAGS = '-DSKEL_INFO=\\"QTC-855\\"')
+    env.Append(CFLAGS = '-DUSE_UGPIOINT_TOUCH')
+    env.Append(CFLAGS = '-DUSES_USLEEP_MULTI_ISLAND')
+    #env.Append(CFLAGS = '-DUSE_DIAG_MSG')
+
+    BUILD_ENV = "SLPI"
+    #env.Append(CFLAGS = '-DENV_SLPI')
+
+    print "Compiling Touch for Target: SDM855, Image: SLPI, SPI: QUPV3"
+
+    #Core user PIC for user-PD drivers
+    env.AddUsesFlags('USES_CORE_USER_PIC2')
+
+    #Enable uImage feature
+    #env.AddUsesFlags('USES_TOUCH_UIMAGE')
+
+    if 'USES_CORE_USER_PIC2' in env:
+        env.Append(CFLAGS = '-DUSE_CORE_USER_PIC2')
+        print "CoreUserPIC Library is enabled"
+
+        if 'TOUCH_USES_PRAM' in env:
+            env.Append(CFLAGS = '-DUSE_PRAM') #Use PRAM for SPI
+            print "SPI buffer is set to use PRAM"
+        else:
+            print "SPI buffer is set to use DDR"
+
+        #Use sensor framework for fusion use-cases
+        #env.AddUsesFlags('USES_SSC_TOUCH')
+        if 'USES_SSC_TOUCH' in env:
+            env.Append(CFLAGS = '-DSSC_TOUCH')
+            print "Touch Fusion is enabled"
+    elif 'TOUCH_USES_PRAM' in env:
+        print "Touch cannot use PRAM as SPI buffer unless DSP build enables it!"
+        Return()
+
+    # Skel.so names (For Hana Only)
+    bimage_skel_name = 'libFastRPC_UTF_Forward_801s_sdm855_skel'         #Hana bImage skel.so name
+    uimage_skel_name = 'libFastRPC_UTF_Forward_801s_sdm855_uimg_skel'    #Hana uImage skel.so name
+
+elif env.get('CHIPSET') == "sdm660":
+    env.Append(CFLAGS = "-DSPI_BLSP")
+    env.Append(CFLAGS = "-DSDM660_RESET_DURING_SUSPEND")
+    env.Append(CFLAGS = "-DSHARP_4K_PANEL_QF20")
+    env.Append(CFLAGS = '-DSKEL_INFO=\\"QTC-660\\"')
+    # env.Append(CFLAGS = '-DSENSOR_CLIENT_Q')
+    # env.Append(CFLAGS = '-DSENSOR_FUSION')
+    # env.AddUsesFlags('USES_SENSOR_FUSION')
+
+    BUILD_ENV = "ADSP"
+    #env.Append(CFLAGS = '-DENV_ADSP')
+
+    print "Compiling Touch for Target: SDM660, Image: ADSP, SPI: BLSP"
+elif env.get('CHIPSET') == "sdm670":
+    env.Append(CFLAGS = '-DSPI_QUPv3')
+    env.Append(CFLAGS = '-DSPI_QUPv3_IRQ')
+    #To keep afe_hal_en_multi_stroke_gests under some flag for now. Will revert this
+    env.Append(CFLAGS = '-DSDM670_TARGET')
+    env.Append(CFLAGS = "-DSDM660_RESET_DURING_SUSPEND")
+    env.Append(CFLAGS = "-DSHARP_4K_PANEL_QF20")
+    env.Append(CFLAGS = '-DSKEL_INFO=\\"QTC-670\\"')
+    env.Append(CFLAGS = "-DSDM845_TARGET")
+    env.Append(CFLAGS = "-DALLOCATE_QURT_MEM")
+    env.AddUsesFlags('COMPILE_PKT_SKEL')
+    BUILD_ENV = "ADSP"
+    #env.Append(CFLAGS = '-DENV_ADSP')
+    print "Compiling Touch for Target: SDM670, Image: ADSP, SPI: QUPV3"
+
+elif env.get('CHIPSET') == "msm8937":
+    env.Append(CFLAGS = '-DSKEL_INFO=\\"QTC2-8937\\"')
+    env.Append(CFLAGS = '-DDONOT_USE_QMI_CCI_OS_SIGNAL_CALLS ')
+    env.Append(CFLAGS = '-DSPI_DAL')
+    BUILD_ENV = "ADSP"
+    #env.Append(CFLAGS = '-DENV_ADSP')
+
+    print "Compiling Touch for Target: MSM8937, Image: ADSP, SPI: DAL"
+elif env.get('CHIPSET') == "sdm439":
+    env.Append(CFLAGS = '-DSKEL_INFO=\\"QTC2-8937\\"')
+    env.Append(CFLAGS = '-DDONOT_USE_QMI_CCI_OS_SIGNAL_CALLS ')
+    env.Append(CFLAGS = '-DSPI_DAL')
+
+    BUILD_ENV = "ADSP"
+    #env.Append(CFLAGS = '-DENV_ADSP')
+
+    print "Compiling Touch for Target: SDM439, Image: ADSP, SPI: DAL"
+elif env.get('CHIPSET') == "msm8953":
+    env.Append(CFLAGS = '-DSKEL_INFO=\\"QTC2-8953\\"')
+    env.Append(CFLAGS = '-DDONOT_USE_QMI_CCI_OS_SIGNAL_CALLS ')
+    env.Append(CFLAGS = '-DSPI_DAL')
+    env.Append(CFLAGS = '-DSDM450_WAIT_BEFORE_PRODUCTID_READ')
+    env.Append(CFLAGS = "-DSDM660_RESET_DURING_SUSPEND")
+    BUILD_ENV = "ADSP"
+    #env.Append(CFLAGS = '-DENV_ADSP')
+
+    print "Compiling Touch for Target: MSM8953, Image: ADSP, SPI: DAL"
+else:
+    print "Unsupported target! Aborting!"
+    Return()
+
+
+####################################################################################
+#Macros
+####################################################################################
+#Define this flag to generate build for bring up
+if 'USES_IMPROVETOUCH_BRINGUP' in env:
+    env.Append(CFLAGS = '-DIMPROVETOUCH_BRINGUP')
+
+#Define this flag for modules to know compilation happens under LPASS environment
+# Needed for some common include files e.g utf_msg.h
+env.Append(CFLAGS = '-D_DSP')
+
+#Enable QDSS profiling
+# Needed for dtf_prof_utils.h
+env.Append(CFLAGS = '-DDTF_QDSS_PROF')
+
+# SPI GPIO config macro to configure SPI GPIO pins
+# This was used in older ADSP targets (e.g El Capitan/Sahi) and new SLPI targets (e.g. Istari / Nazgul)
+# TODO: Temporarily disabled GPIO_CONFIG_SPI for Napali. Revert later
+if BUILD_ENV == "SLPI" and env.get('CHIPSET') != "sdm845" and env.get('CHIPSET') != "sdm855":
+    env.Append(CFLAGS = '-DGPIO_CONFIG_SPI')
+    print "Enabling SPI GPIO configuration"
+
+#getting compilation error without this flag (on updated hexagon tools 8.0.07)
+env.Append(CFLAGS = "-D_PROVIDE_POSIX_TIME_DECLS")
+
+# Enable uImage feature
+if 'USES_TOUCH_UIMAGE' in env:
+    env.Append(CFLAGS = '-DUSES_UIMAGE')
+    env.Append(CFLAGS = '-DUSE_CORE_USER_PIC_BYPASS_PD_RESTART_TIMER')
+    env.Append(CFLAGS = '-DUSE_CORE_USER_PIC_BYPASS_PD_RESTART_IRQ')
+    env.Append(CFLAGS = '-DUSE_CORE_USER_PIC_BYPASS_PD_RESTART_QMI')
+    print "Enable uImage features for improveTouch"
+    # Add support for V_uImage=1 related changes below
+
+
+# Other framework macros
+env.Append(CFLAGS = "-DSTATIC_AFE")
+env.Append(CFLAGS = "-DUTF_PM")
+if not 'USES_HIMAX_AFE' in env:
+   env.Append(CFLAGS = "-DAFE_SUSPEND_POWER_OFF")
+env.Append(CFLAGS = "-DENABLE_TOUCH_ANALOG_POWER_RAIL")
+#env.Append(CFLAGS = "-DBLOB_TOUCH_INTERFERENCE")
+
+
+#-----------------------------------------------------------------------------
+#   Reading algo_defs file.
+#-----------------------------------------------------------------------------
+touch_sources_algo = []
+#In external releases we don't ship any src files so open("../algo/src/algo_defs") will throw compilation error
+#Adding a check to perform only on internal builds
+if env.IsBuildInternal():
+    if 'USES_NVT_AFE' in env:
+      algoinfile = open("../algo_nvt/src/algo_defs", "r")
+    elif 'USES_HIMAX_AFE' in env:
+      algoinfile = open("../tafe/himax/algo/src/algo_defs", "r")
+    else:
+      algoinfile = open("../algo/src/algo_defs", "r")
+def parse_algo_flags( algoinfile, str ):
+  algo_var_detected=0
+  for line in algoinfile:
+    # find str 
+    if str in line:
+      algo_var_detected = 1
+      # skip over line that includes $ALGO_DEFS
+      if '$' in line:
+        if not("\\" in line):
+          break
+        else:
+          continue
+      else:
+        line = line.split("=", 1)[1]
+
+    # append to CFLAGS 
+    if algo_var_detected == 1:
+      env.Append(CFLAGS ="-D"+line.split("\\")[0].strip())
+
+      # detect last flag in assignment
+      if not("\\" in line):
+        break 
+
+def parse_algo_defs( algoinfile ):
+  # read algo_defs first
+  parse_algo_flags( algoinfile, "ALGO_DEFS" )
+  if 'USES_NVT_AFE' not in env:
+     parse_algo_flags( algoinfile, "ALGO_DEFS_800S" )
+  else:
+     parse_algo_flags( algoinfile, "ALGO_DEFS_NVT" )
+
+  # read algo src files list
+  algo_var_detected=0
+  if 'USES_NVT_AFE' not in env:
+     algo_src_prefix_str ='${BUILDPATH}/touch/algo/src/'
+  else:
+     algo_src_prefix_str ='${BUILDPATH}/touch/algo_nvt/src/'
+  for line in algoinfile:
+    if "ALGO_SRC" in line:
+      algo_var_detected = 1
+      line = line.split("=", 1)[1]
+
+    # look for end of assignment 
+    if algo_var_detected == 1:
+      src_files = line.split("\\")[0].strip().split(" ")
+      for filename in src_files:
+        touch_sources_algo.append(algo_src_prefix_str + filename.strip())
+
+      if not("\\" in line):
+        break # end of processing the src
+
+if env.IsBuildInternal():
+    parse_algo_defs(algoinfile)
+    algoinfile.close()
+
+
+#-----------------------------------------------------------------------------
+#   AFE macros (800S)
+#-----------------------------------------------------------------------------
+env.Append(CFLAGS = "-DENABLE_QTC800S")
+env.Append(CFLAGS = "-DENABLE_QTC800S_SEMI_INCELL")
+env.Append(CFLAGS = "-DENABLE_QTC800H")
+env.Append(CFLAGS = "-DENABLE_QTC801S")
+#env.Append(CFLAGS = "-DENABLE_QTC800T")
+env.Append(CFLAGS = "-DENABLE_AFE_WATCHDOG")
+
+#-----------------------------------------------------------------------------
+#   AFE MACROS
+#-----------------------------------------------------------------------------
+if 'USES_NVT_AFE' in env:
+   env.Append(CFLAGS ="-DQTOUCH")
+   env.Append(CFLAGS ="-DAIT_CLASS_AFE")
+   #env.Append(CFLAGS ="-DIDLE_MODE_COLUMN_SKIP")
+   env.Append(CFLAGS ="-DIDLE_MODE_GANGED")
+   #env.Append(CFLAGS ="-DIDLE_MODE_60Hz")
+   if 'USES_THIN_HAL' in env:
+      env.Append(CFLAGS ="-DTHIN_AFE_HAL")
+   if "USES_NT36672" in env:
+      env.Append(CFLAGS ="-DNT36672")
+
+#-------------------------------------------------------------------------------
+# Get the required Include directories
+#-------------------------------------------------------------------------------
+core_public_apis = [
+    'DAL',
+    'BUSES',
+    'DEBUGTOOLS',
+    'DEBUGTRACE',
+    'KERNEL',
+    'POWER',
+    'SERVICES',
+    'SYSTEMDRIVERS',
+    'MPROC',
+    'PRODUCTS',
+    'STORAGE',
+]
+
+qdsp6_public_apis = [
+    'QDSP6'
+]
+
+platform_public_apis = [
+    'DLW',
+    'HAPSDK',
+    'STDDEF',
+    'PLS',
+    'REMOTE',
+    'UTILS',
+    'APPS_MEM',
+    'ADSP_MMAP',
+]
+
+sensors_public_apis = [
+    'SENSOR1',
+]
+
+ssc_public_apis = [
+    'SNS_INCLUDES',
+]
+
+qmimsgs_public_apis = [
+    'COMMON',
+]
+
+env.RequirePublicApi(qdsp6_public_apis, area= 'qdsp6')
+env.RequirePublicApi(core_public_apis, area= 'core')
+env.RequirePublicApi(platform_public_apis, area= 'platform')
+env.RequirePublicApi(sensors_public_apis, area= 'Sensors')
+env.RequirePublicApi(ssc_public_apis, area= 'ssc')
+env.RequirePublicApi(qmimsgs_public_apis, area= 'qmimsgs')
+
+SRCPATH = "${BUILD_ROOT}"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-----------------------------------------------------------------------------
+#   Source files list
+#-----------------------------------------------------------------------------
+
+touch_sources_shared = [
+    '${BUILDPATH}/touch/fwk/src/utf_api.c',
+    '${BUILDPATH}/touch/fwk/src/utf_config.c',
+    '${BUILDPATH}/touch/fwk/src/utf_debug_api.c',
+    '${BUILDPATH}/touch/fwk/src/utf_data_logger.c',
+    '${BUILDPATH}/touch/fwk/src/utf_algo_interface.c',
+    '${BUILDPATH}/touch/fwk/src/utf_command_api.c',
+    '${BUILDPATH}/touch/fwk/src/utf_commands.c',
+    '${BUILDPATH}/touch/fwk/src/utf_shared_config.c',
+    '${BUILDPATH}/touch/fwk/src/utf_thread_common.c',
+    '${BUILDPATH}/touch/utils/common/src/meta_config.c',
+    '${BUILDPATH}/touch/utils/common/src/list.c',
+    '${BUILDPATH}/touch/utils/common/src/priority_queue.c',
+    '${BUILDPATH}/touch/utils/common/src/buffer_queue.c',
+    '${BUILDPATH}/touch/utils/common/src/utf_timer.c',
+    '${BUILDPATH}/touch/utils/common/src/utf_power.c',
+    '${BUILDPATH}/touch/utils/common/src/utf_debug_log.c',
+    '${BUILDPATH}/touch/utils/configParser/src/AccessFunctions.c',
+    '${BUILDPATH}/touch/utils/configParser/src/CfgParser.c',
+    '${BUILDPATH}/touch/utils/configParser/src/CoreParser.c',
+    '${BUILDPATH}/touch/utils/configParser/src/ParserUtil.c',
+    '${BUILDPATH}/touch/utils/mmOSAL/src/Q6/MMQ6CriticalSection.c',
+    '${BUILDPATH}/touch/utils/mmOSAL/src/Q6/MMQ6Malloc.c',
+    '${BUILDPATH}/touch/utils/mmOSAL/src/Q6/MMQ6Signal.c',
+    '${BUILDPATH}/touch/utils/mmOSAL/src/Q6/MMQ6Thread.c',
+    '${BUILDPATH}/touch/utils/mmOSAL/src/Q6/MMQ6Err.c',
+    '${BUILDPATH}/touch/platform/src/touch_driver_stub.c',
+    '${BUILDPATH}/touch/Transport/src/dspTouch_RPCimp.c',
+    '${BUILDPATH}/touch/Transport/src/dspAUE_RPCimp.c',
+]
+
+touch_sources_shared_pkt_dump = [
+    '${BUILDPATH}/touch/utils/common/src/pkt_dump.c',
+]
+
+touch_sources_shared_pkt = [
+    '${BUILDPATH}/touch/utils/common/src/pkt_test.c',
+    '${BUILDPATH}/touch/utils/configParser/src/ToolParser.c',    
+]
+
+touch_sources_shared_uimage = [
+    '${BUILDPATH}/touch/platform/src/touch_driver_stub_uimg.c',
+    '${BUILDPATH}/touch/utils/mmOSAL/src/Q6/MMQ6CriticalSection_uimg.c',
+    '${BUILDPATH}/touch/utils/mmOSAL/src/Q6/MMQ6Malloc_uimg.c',
+    '${BUILDPATH}/touch/utils/mmOSAL/src/Q6/MMQ6Signal_uimg.c',
+    '${BUILDPATH}/touch/utils/common/src/list_uimg.c',
+    '${BUILDPATH}/touch/utils/common/src/priority_queue_uimg.c',
+    '${BUILDPATH}/touch/utils/common/src/utf_power_uimg.c',
+    '${BUILDPATH}/touch/utils/common/src/utf_debug_log_uimg.c',
+]
+
+touch_sources_aue = [
+    '${BUILDPATH}/touch/aue/main/src/aueInf.c',
+    '${BUILDPATH}/touch/aue/main/src/aueMainThread.c',
+    '${BUILDPATH}/touch/aue/main/src/aue_data_logger.c',
+    '${BUILDPATH}/touch/aue/main/src/aueCfg.c',
+    '${BUILDPATH}/touch/aue/classifiers/stroke/main/src/aueStroke.c',
+    '${BUILDPATH}/touch/aue/classifiers/stroke/main/src/aueStrokeCollect.c',
+    '${BUILDPATH}/touch/aue/classifiers/stroke/gestureTek/src/aueStrokeClassifier.cpp',
+    '${BUILDPATH}/touch/aue/classifiers/stroke/gestureTek/src/HMMTrain.cpp',
+    '${BUILDPATH}/touch/aue/classifiers/stroke/gestureTek/src/HMMUtilities.cpp',
+    '${BUILDPATH}/touch/aue/classifiers/stroke/gestureTek/src/ARCClassifiers.cpp',
+    '${BUILDPATH}/touch/aue/classifiers/stroke/gestureTek/src/CGEWrapper.cpp',
+    '${BUILDPATH}/touch/aue/classifiers/stroke/gestureTek/src/manager.cpp',
+    '${BUILDPATH}/touch/aue/classifiers/blob/main/src/aueBlob.c',
+    '${BUILDPATH}/touch/aue/classifiers/blob/algo/src/aueBlobController.c',
+    '${BUILDPATH}/touch/aue/classifiers/blob/algo/src/blobGestureClassifier.c',
+    '${BUILDPATH}/touch/aue/classifiers/blob/algo/src/blobMotionClassifier.c',
+    '${BUILDPATH}/touch/aue/classifiers/blob/algo/src/mfd.c',
+    '${BUILDPATH}/touch/aue/classifiers/sensorFusion/main/src/aueSensorFusion.c',
+    '${BUILDPATH}/touch/aue/classifiers/sensorFusion/algo/src/aueSensorFusionController.c',
+    '${BUILDPATH}/touch/aue/classifiers/sensorFusion/algo/src/tsfusion.c',
+]
+
+touch_sources_aue_uimage = [
+    '${BUILDPATH}/touch/aue/main/src/aueUcDM.c',
+    '${BUILDPATH}/touch/aue/main/src/aueMainThread_uimg.c',
+    '${BUILDPATH}/touch/aue/classifiers/stroke/main/src/aueStroke_uimg.c',
+    '${BUILDPATH}/touch/aue/classifiers/stroke/main/src/aueStrokeCollect_uimg.c',
+    '${BUILDPATH}/touch/aue/classifiers/stroke/gestureTek/src/aueStrokeClassifier_uimg.cpp',
+    '${BUILDPATH}/touch/aue/classifiers/stroke/gestureTek/src/gesture_detector_trajectory.cpp',
+    '${BUILDPATH}/touch/aue/classifiers/stroke/gestureTek/src/ARCClassifiers_uimg.cpp',
+    '${BUILDPATH}/touch/aue/classifiers/stroke/gestureTek/src/CGEWrapper_uimg.cpp',
+    '${BUILDPATH}/touch/aue/classifiers/stroke/gestureTek/src/HMMUtilities_uimg.cpp',
+    '${BUILDPATH}/touch/aue/classifiers/stroke/gestureTek/src/manager_uimg.cpp',
+    '${BUILDPATH}/touch/aue/classifiers/stroke/gestureTek/src/models.cpp',
+    '${BUILDPATH}/touch/aue/classifiers/stroke/gestureTek/src/HMM.cpp',
+    '${BUILDPATH}/touch/aue/classifiers/stroke/gestureTek/src/heuristics_trj_swipe.cpp',
+    '${BUILDPATH}/touch/aue/classifiers/stroke/gestureTek/src/cgemem.cpp',
+    '${BUILDPATH}/touch/aue/classifiers/stroke/preproc/src/aueStrokePreProc.c'
+]
+
+touch_sources_pkt = [
+    '${BUILDPATH}/touch/tafe/pkt/hal/src/qtc_driver.c',
+    '${BUILDPATH}/touch/tafe/pkt/hal/src/afe_hal.c',
+    '${BUILDPATH}/touch/tafe/pkt/hal/src/config/afe_hal_config.c',
+    '${BUILDPATH}/touch/tafe/pkt/hal/src/config/afe_preClassifier_config.c',
+    '${BUILDPATH}/touch/tafe/pkt/hal/src/config/platform_config.c',
+    '${BUILDPATH}/touch/tafe/pkt/hal/src/config/sensor_config.c',
+    '${BUILDPATH}/touch/tafe/pkt/hal/src/config/tsc_config.c',
+    '${BUILDPATH}/touch/tafe/pkt/controller/utf_thread.c',
+    '${BUILDPATH}/touch/tafe/pkt/controller/utf_afe_interface.c',
+    '${BUILDPATH}/touch/utils/common/src/utf_circ_buffer.c',
+]
+
+touch_sources_qtc = [
+    '${BUILDPATH}/touch/tafe/qtc2/hal/src/qtc_chip.c',
+    '${BUILDPATH}/touch/tafe/qtc2/hal/src/qtc_driver.c',
+    '${BUILDPATH}/touch/tafe/qtc2/hal/src/afe_hal.c',
+    '${BUILDPATH}/touch/tafe/qtc2/hal/src/chip/afe_tables.c',
+    '${BUILDPATH}/touch/tafe/qtc2/hal/src/chip/qtc800s.c',
+    '${BUILDPATH}/touch/tafe/qtc2/hal/src/chip/qtc800h.c',
+    '${BUILDPATH}/touch/tafe/qtc2/hal/src/chip/qtc801s.c',
+    '${BUILDPATH}/touch/tafe/qtc2/hal/src/chip/qtc800t.c',
+    '${BUILDPATH}/touch/tafe/qtc2/hal/src/chip/qtc_common.c',
+    '${BUILDPATH}/touch/tafe/qtc2/hal/src/config/afe_hal_config.c',
+    '${BUILDPATH}/touch/tafe/qtc2/hal/src/config/afe_preClassifier_config.c',
+    '${BUILDPATH}/touch/tafe/qtc2/hal/src/config/platform_config.c',
+    '${BUILDPATH}/touch/tafe/qtc2/hal/src/config/sensor_config.c',
+    '${BUILDPATH}/touch/tafe/qtc2/hal/src/config/tsc_config.c',
+    '${BUILDPATH}/touch/tafe/qtc2/controller/utf_thread.c',
+    '${BUILDPATH}/touch/tafe/qtc2/controller/utf_afe_interface.c',
+    '${BUILDPATH}/touch/utils/common/src/utf_circ_buffer.c',
+]
+
+touch_sources_pkt_uimage = [
+    '${BUILDPATH}/touch/tafe/pkt/hal/src/afe_hal_uimg.c',
+    '${BUILDPATH}/touch/tafe/pkt/hal/src/qtc_driver_uimg.c',
+    '${BUILDPATH}/touch/tafe/pkt/controller/utf_thread_uimg.c',
+]
+
+touch_sources_qtc_uimage = [
+    '${BUILDPATH}/touch/tafe/qtc2/hal/src/afe_hal_uimg.c',
+    '${BUILDPATH}/touch/tafe/qtc2/hal/src/qtc_chip_uimg.c',
+    '${BUILDPATH}/touch/tafe/qtc2/hal/src/qtc_driver_uimg.c',
+    '${BUILDPATH}/touch/tafe/qtc2/hal/src/chip/qtc800s_uimg.c',
+    '${BUILDPATH}/touch/tafe/qtc2/controller/utf_thread_uimg.c',
+]
+
+touch_sources_qtc_inspection = [
+    '${BUILDPATH}/touch/tafe/qtc2/hal/src/inspection/noise_scan.c',
+    '${BUILDPATH}/touch/tafe/qtc2/hal/src/inspection/sensor_tuning.c',
+    '${BUILDPATH}/touch/tafe/qtc2/hal/src/inspection/sensor_tuning/mutual_corr_phase.c',
+    '${BUILDPATH}/touch/tafe/qtc2/hal/src/inspection/sensor_tuning/mutual_offset_cap.c',
+    '${BUILDPATH}/touch/tafe/qtc2/hal/src/inspection/sensor_tuning/mutual_offset_phase.c',
+    '${BUILDPATH}/touch/tafe/qtc2/hal/src/inspection/sensor_tuning/mutual_tx_phase.c',
+    '${BUILDPATH}/touch/tafe/qtc2/hal/src/inspection/sensor_tuning/self_coarse_fine_dac.c',
+    '${BUILDPATH}/touch/tafe/qtc2/hal/src/inspection/production_test.c',
+    '${BUILDPATH}/touch/tafe/qtc2/hal/src/inspection/production_test/drive_test.c',
+    '${BUILDPATH}/touch/tafe/qtc2/hal/src/inspection/production_test/sense_test.c',
+    '${BUILDPATH}/touch/tafe/qtc2/hal/src/inspection/production_test/pixel_test.c',
+    '${BUILDPATH}/touch/tafe/qtc2/hal/src/inspection/production_test/noise_test.c',
+]
+
+
+# Sources specific to uImage only
+touch_sources_uimage_only = [
+    '${BUILDPATH}/touch/Transport/uimg_dl_ver.c',
+]
+
+# Source to support SPI_QUPv3 (without CoreUserPIC)
+touch_sources_misc = [
+    '${BUILDPATH}/touch/utils/common/src/spi_qdi_user.c',
+]
+
+#Sources that go into static image. Utils are duplicated from shared sources
+touch_sources_static = [
+    '${BUILDPATH}/touch/platform/src/touch_afe_cfg.c',
+    '${BUILDPATH}/touch/platform/src/touch_qdi.c',
+    '${BUILDPATH}/touch/utils/mmOSAL/src/Q6/MMQ6Malloc.c',
+    '${BUILDPATH}/touch/utils/mmOSAL/src/Q6/MMQ6Malloc_uimg.c',
+    '${BUILDPATH}/touch/utils/mmOSAL/src/Q6/MMQ6Signal.c',
+    '${BUILDPATH}/touch/utils/mmOSAL/src/Q6/MMQ6Signal_uimg.c',
+    '${BUILDPATH}/touch/utils/mmOSAL/src/Q6/MMQ6CriticalSection.c',
+    '${BUILDPATH}/touch/utils/mmOSAL/src/Q6/MMQ6CriticalSection_uimg.c',
+]
+
+#Sources for sensor fusion use-cases (V1 - Nazgul)
+touch_sources_sf_v1 = [
+    '${BUILDPATH}/touch/fwk/src/utf_roi_frame.c',
+    '${BUILDPATH}/touch/fwk/src/utf_smgr.c',
+    '${BUILDPATH}/Sensors/common/idl/src/sns_common_v01.c',
+    '${BUILDPATH}/Sensors/common/idl/src/sns_smgr_common_v01.c',
+    '${BUILDPATH}/Sensors/common/idl/src/sns_smgr_api_v01.c',
+]
+
+#Sources for sensor fusion use-cases (V2 - Napali onwards)
+touch_sources_sf_v2 = [
+    '${BUILDPATH}/touch/fwk/src/utf_ssc.c',
+    '${BUILDPATH}/touch/fwk/src/utf_roi_frame.c',
+#   '${BUILDPATH}/ssc/tools/ssc_sim_main/qmi/src/common_v01.c',
+    '${BUILDPATH}/ssc/framework/cm/src/sns_client_api_v01.c',
+    '${BUILDPATH}/ssc/framework/cm/pb/sns_client.pb.c',
+    '${BUILDPATH}/ssc/framework/suid_sensor/pb/sns_suid.pb.c',
+    '${BUILDPATH}/ssc/sensors/pb/sns_std.pb.c',
+    '${BUILDPATH}/ssc/sensors/pb/sns_std_type.pb.c',
+    '${BUILDPATH}/ssc/utils/nanopb/src/pb_encode.c',
+    '${BUILDPATH}/ssc/utils/nanopb/src/pb_decode.c',
+    '${BUILDPATH}/ssc/utils/nanopb/src/pb_common.c',
+    '${BUILDPATH}/ssc/sensors/pb/sns_std_sensor.pb.c',
+]
+
+# qTouch algorithm related sources
+touch_sources_qtouch = [
+    '${BUILDPATH}/touch/qtouch/src/qtouch.c',
+    '${BUILDPATH}/touch/qtouch/src/qtouch_baselining.c',
+    '${BUILDPATH}/touch/qtouch/src/qtouch_blob.c',
+    '${BUILDPATH}/touch/qtouch/src/qtouch_process.c',
+    '${BUILDPATH}/touch/qtouch/src/qtouch_tracking.c',
+    '${BUILDPATH}/touch/qtouch/src/qtouch_utils.c',
+    '${BUILDPATH}/touch/qtouch/src/qtouch_preclassifier.c',
+]
+
+# Novatech related sources
+touch_sources_nvt = [
+    '${BUILDPATH}/touch/tafe/nvt/hal/src/nvt_driver.c',
+    '${BUILDPATH}/touch/tafe/nvt/hal/src/afe_hal.c',
+    '${BUILDPATH}/touch/tafe/nvt/hal/src/nvt_sensor_cctrim.c',
+    '${BUILDPATH}/touch/tafe/nvt/hal/src/nvt_noise_scan.c',
+    '${BUILDPATH}/touch/tafe/nvt/hal/src/platform_config.c',
+    '${BUILDPATH}/touch/tafe/nvt/hal/src/sensor_config.c',
+    '${BUILDPATH}/touch/tafe/nvt/hal/src/tsc_config.c',
+    '${BUILDPATH}/touch/tafe/nvt/hal/src/afe_preClassifier_config.c',
+    '${BUILDPATH}/touch/tafe/nvt/controller/utf_thread.c',
+    '${BUILDPATH}/touch/tafe/nvt/controller/utf_afe_interface.c',
+    '${BUILDPATH}/touch/utils/common/src/utf_circ_buffer.c',
+]
+
+touch_sources_nvt_uimage = [
+    '${BUILDPATH}/touch/tafe/nvt/controller/utf_thread_uimg.c',
+]
+
+# Himax related sources
+touch_sources_himax = [
+    '${BUILDPATH}/touch/utils/common/src/utf_circ_buffer.c',
+    '${BUILDPATH}/touch/tafe/himax/hal/src/afe_hal.c',
+    '${BUILDPATH}/touch/tafe/himax/hal/src/himax_driver.c',
+    '${BUILDPATH}/touch/tafe/himax/hal/src/config/afe_hal_config.c',
+    '${BUILDPATH}/touch/tafe/himax/hal/src/config/platform_config.c',
+    '${BUILDPATH}/touch/tafe/himax/hal/src/config/sensor_config.c',
+    '${BUILDPATH}/touch/tafe/himax/controller/utf_afe_interface.c',
+    '${BUILDPATH}/touch/tafe/himax/controller/utf_thread.c',
+    '${BUILDPATH}/touch/tafe/himax/algo/src/hbtp.c',
+]
+
+touch_sources_libhimax = [
+    '${BUILDPATH}/touch/tafe/himax/dummy_lib/src/thp_hal.c',
+    '${BUILDPATH}/touch/tafe/himax/dummy_lib/src/himax_hbtp.c'
+]
+
+#Standard C++ library et al.
+if int(env['HEXAGON_RTOS_RELEASE'][0]) > 5 :
+    ext_libs = [
+        '${HEXAGON_ROOT}/${HEXAGON_RTOS_RELEASE}/Tools/target/hexagon/lib/${Q6VERSION}/G0/pic/libstdc++.a',
+        '${HEXAGON_ROOT}/${HEXAGON_RTOS_RELEASE}/Tools/target/hexagon/lib/${Q6VERSION}/G0/pic/initS.o',
+        '${HEXAGON_ROOT}/${HEXAGON_RTOS_RELEASE}/Tools/target/hexagon/lib/${Q6VERSION}/G0/pic/finiS.o',
+    ]
+else:
+    ext_libs = [
+        '${HEXAGON_ROOT}/${HEXAGON_RTOS_RELEASE}/dinkumware/lib/${Q6VERSION}/G0/pic/libstdc++.a',
+        '${HEXAGON_ROOT}/${HEXAGON_RTOS_RELEASE}/dinkumware/lib/${Q6VERSION}/G0/pic/initS.o',
+        '${HEXAGON_ROOT}/${HEXAGON_RTOS_RELEASE}/dinkumware/lib/${Q6VERSION}/G0/pic/finiS.o',
+    ]
+
+#Core user PIC libraries for bImage
+core_user_pic_libs = [
+    '../../core/products/pram_mgr/build/core_user_pic/qdsp6/${SHORT_BUILDPATH}/pram_mgr_clnt.lib',
+    '../../core/kernel/libstd/build/core_user_pic/qdsp6/${SHORT_BUILDPATH}/libstd.lib',
+]
+
+#Core user PIC libraries for uImage
+core_user_pic_libs_uimage = [
+    '../../core/kernel/qurt/build/core_user_pic/qdsp6/${SHORT_BUILDPATH}/install/sensorsv65/lib/libqurt.a',
+    '${HEXAGON_ROOT}/${HEXAGON_RTOS_RELEASE}/Tools/target/hexagon/lib/${Q6VERSION}/G0/pic/libgcc.a',
+    '${HEXAGON_ROOT}/${HEXAGON_RTOS_RELEASE}/Tools/target/hexagon/lib/${Q6VERSION}/G0/pic/libc.a',
+    '../../core/kernel/libstd/build/core_user_pic/qdsp6/${SHORT_BUILDPATH}/libstd.lib',
+    '../../core/buses/spi/build/core_user_pic/qdsp6/${SHORT_BUILDPATH}/SpiClient.lib',
+    '../../core/power/uSleep/build/core_user_pic/qdsp6/${SHORT_BUILDPATH}/uSleep_user_island.lib',
+    '../../core/systemdrivers/GPIOInt/build/core_user_pic/qdsp6/${SHORT_BUILDPATH}/GPIOInt/ugpioint/uGPIOIntuserisland.lib',
+]
+
+
+if 'USES_HEAP_MANAGER' in env:
+    touch_sources_static.append('${BUILDPATH}/touch/utils/common/src/sns_memheap_lite.c')
+    touch_sources_shared.append('${BUILDPATH}/touch/utils/common/src/sns_memheap_lite.c')
+
+if 'COMPILE_PKT_SKEL' in env:
+    env_pkt = env.Clone()
+    #env.AddUsesFlags('ENABLE_PKT_TEST_RUN')
+    #env_pkt.Append(CFLAGS = "-DENABLE_PKT_TEST_RUN")
+    env_pkt.Append(HALPATH = ["../tafe/pkt/hal/inc"])
+    env_pkt.Append(ALGOPATH = ["../algo/inc"])  
+    env_pkt.PublishPrivateApi('TOUCH',[
+        '../../platform/fastrpc_process/inc',                 #Required for "adsp_mmap.h", API not public, check with fastRPC team
+
+        '../../core/buses/spi/inc',                           #For spi_qdi_user.c, temporary change till core PIC is enabled
+        '../../core/power/npa/src/remote',                    #Required for "npa_remote_qdi_protocol.h"
+
+        # For Sensor fusion use-cases
+        '../../ssc/framework/cm/inc',
+        '../../ssc/inc/internal',
+        '../../ssc/presil/Sensors/playback/src',
+
+        '../aue/main/inc',
+        '../aue/main/src',
+        '../aue/classifiers/stroke/api',
+        '../aue/classifiers/stroke/main/inc',
+        '../aue/classifiers/stroke/main/src',
+        '../aue/classifiers/stroke/preproc/inc',
+        '../aue/classifiers/stroke/gestureTek/inc',
+        '../aue/classifiers/blob/main/inc',
+        '../aue/classifiers/blob/main/src',
+        '../aue/classifiers/blob/algo/inc',
+        '../aue/classifiers/sensorFusion/main/inc',
+        '../aue/classifiers/sensorFusion/algo/inc',
+        env_pkt.subst('${ALGOPATH}'),
+        env_pkt.subst('${HALPATH}'),
+        '../tafe/interface/inc',
+        '../utils/mmOSAL/inc',
+        '../utils/common/inc',
+        '../utils/common/inc',
+        '../utils/mmOSAL/inc',
+        '../utils/configParser/inc',
+        '../fwk/inc',
+        '../fwk/src',
+        '../TestApp',
+        '../Transport/inc',
+        '../platform/inc',
+        '../qtouch/inc',
+    ])
+
+
+if 'USES_NVT_AFE' in env:
+   env.Append(HALPATH = ["../tafe/nvt/hal/inc"])
+   env.Append(ALGOPATH = ["../algo_nvt/inc"])
+if 'USES_HIMAX_AFE' in env:
+   env.Append(HALPATH = ["../tafe/himax/hal/inc"])
+   env.Append(HALPATH = ["../tafe/himax/dummy_lib/inc"])
+   env.Append(ALGOPATH = ["../algo/inc"])  
+else :
+   env.Append(HALPATH = ["../tafe/qtc2/hal/inc"])
+   env.Append(ALGOPATH = ["../algo/inc"])  
+
+env.PublishPrivateApi('TOUCH',[
+    '../../platform/fastrpc_process/inc',                 #Required for "adsp_mmap.h", API not public, check with fastRPC team
+
+    '../../core/buses/spi/inc',                           #For spi_qdi_user.c, temporary change till core PIC is enabled
+    '../../core/power/npa/src/remote',                    #Required for "npa_remote_qdi_protocol.h"
+
+    # For Sensor fusion use-cases
+    '../../ssc/framework/cm/inc',
+    '../../ssc/inc/internal',
+    '../../ssc/presil/Sensors/playback/src',
+
+    '../aue/main/inc',
+    '../aue/main/src',
+    '../aue/classifiers/stroke/api',
+    '../aue/classifiers/stroke/main/inc',
+    '../aue/classifiers/stroke/main/src',
+    '../aue/classifiers/stroke/preproc/inc',
+    '../aue/classifiers/stroke/gestureTek/inc',
+    '../aue/classifiers/blob/main/inc',
+    '../aue/classifiers/blob/main/src',
+    '../aue/classifiers/blob/algo/inc',
+    '../aue/classifiers/sensorFusion/main/inc',
+    '../aue/classifiers/sensorFusion/algo/inc',
+    '${ALGOPATH}',
+    '${HALPATH}',
+    '../tafe/interface/inc',
+    '../utils/mmOSAL/inc',
+    '../utils/common/inc',
+    '../utils/common/inc',
+    '../utils/mmOSAL/inc',
+    '../utils/configParser/inc',
+    '../fwk/inc',
+    '../fwk/src',
+    '../TestApp',
+    '../Transport/inc',
+    '../platform/inc',
+    '../qtouch/inc',
+])
+
+#-------------------------------------------------------------------------------
+# Shared lib compilation
+#-------------------------------------------------------------------------------
+# On SLPI, flag USES_SHARED_LIBS_COMPILATION is defined for shared object compilation
+# On ADSP, alias shared_libs is defined
+if 'USES_SHARED_LIBS_COMPILATION' in env or env.CheckAlias(alias_list=['shared_libs']):
+    print "Compiling Touch shared objects"
+
+   #Form bImage sources
+    if 'USES_NVT_AFE' in env:
+        bimage_sources = touch_sources_shared + touch_sources_algo + touch_sources_aue + touch_sources_nvt + touch_sources_qtouch + touch_sources_shared_pkt_dump
+    elif 'USES_HIMAX_AFE' in env:
+        env.Append(CFLAGS = '-DUSES_HIMAX_HAL')
+        env.Append(CFLAGS = '-DSENSOR_FUSION')
+        env.AddUsesFlags('USES_SENSOR_FUSION')
+        env.Append(CFLAGS = '-DBLOB_TOUCH_INTERFERENCE') # Make sure Transport/inc/FastRPC_Touch.idl is updated accordingly.
+        bimage_sources = touch_sources_shared + touch_sources_algo + touch_sources_aue + touch_sources_himax + touch_sources_shared_pkt_dump
+    else:
+        bimage_sources = touch_sources_shared + touch_sources_algo + touch_sources_aue + touch_sources_qtc + touch_sources_qtc_inspection + touch_sources_shared_pkt_dump
+
+    #Add Sensor fusion files, if enabled
+    if 'USES_SENSOR_FUSION' in env:
+        bimage_sources += touch_sources_sf_v1
+    if 'USES_SSC_TOUCH' in env:
+        bimage_sources += touch_sources_sf_v2
+
+    #Add user PD driver files for Napali (if CoreUserPIC is not enabled)
+    if 'USES_CORE_USER_PIC' not in env and (env.get('CHIPSET') == "sdm845" or env.get('CHIPSET') == "sdm855"):
+        bimage_sources +=  touch_sources_misc
+
+    #Add user PD driver files for SDM670
+    if env.get('CHIPSET') == "sdm670":
+        bimage_sources +=  touch_sources_misc
+
+    #Use uncancellable wait for 8937/8953/660/439
+    if env.get('CHIPSET') == "msm8937" or env.get('CHIPSET') == "msm8953" or env.get('CHIPSET') == "sdm660" or env.get('CHIPSET') == "sdm439":
+        env.Append(CFLAGS = '-DUSE_UNCANCELLABLE_SIGNAL_WAIT')
+
+
+    #Remove "advanced" features from bImage sources if IMPROVETOUCH_BRINGUP macro is defined
+    #(we use minimal set for bringup)
+    if 'USES_IMPROVETOUCH_BRINGUP' in env:
+        bimage_sources += touch_sources_shared + touch_sources_qtc
+
+    #Form uImage sources
+    if 'USES_NVT_AFE' in env:
+        uimage_sources = touch_sources_nvt_uimage + touch_sources_shared_uimage + touch_sources_aue_uimage
+    elif 'USES_HIMAX_AFE' in env:
+        bimage_sources += touch_sources_shared_uimage + touch_sources_aue_uimage
+    else:
+        uimage_sources = touch_sources_qtc_uimage + touch_sources_shared_uimage + touch_sources_aue_uimage
+        
+    #Compile apps_mem.idl
+    # This is a prereq for the bImage skel.so
+    prereq = env.HeaderBuilder('../Transport/inc/apps_mem.h', '${BUILD_ROOT}/platform/apps_mem/apps_mem.idl')
+
+    #Compile apps_mem.idl
+    # This is a prereq for the PKT skel.so
+    if 'COMPILE_PKT_SKEL' in env:
+        prereq_pkt = env_pkt.HeaderBuilder('../Transport/inc/apps_mem.h', '${BUILD_ROOT}/platform/apps_mem/apps_mem.idl')
+
+    #Specify touch IDL file
+    touch_idl = "${BUILD_ROOT}/touch/Transport/inc/FastRPC_Touch.idl"
+
+    #skel.so compilation - compile uImage and bImage skel.so if uImage is enabled
+    #Otherwise, combine uImage sources into bImage and create only one skel.so
+    if 'USES_TOUCH_UIMAGE' in env:
+        print "Touch uImage skel.so compilation enabled"
+
+        #Add uImage specific sources
+        uimage_sources += touch_sources_uimage_only
+
+        #Clone the environment for uImage specific loader flags
+        env_uimage = env.Clone()
+        env_uimage.Append(SHLINKFLAGS = '--script=${BUILD_ROOT}/touch/Transport/uimage.lcs.toolv80 ')
+        env_uimage.Append(CTEMP_FLAGS = '-mno-pic-data-is-text-relative')
+
+        #Core PIC libs include for uImage
+        if 'USES_CORE_USER_PIC' in env:
+            env_uimage.Append(SHLINKFLAGS = ' --no-whole-archive ')
+            # Add Core User PIC Libraries
+            # ToDo: "--no-whole-archive -Wl,--start-group [source + core_user_pic] -Wl,--end-group"
+            #       is the proper to generate the shared object.
+            uimage_sources += core_user_pic_libs_uimage
+
+            #Put explicit dependency on each of the libs, so that they get generated first
+            for lib in core_user_pic_libs_uimage:
+                env_uimage.Depends('${BUILDPATH}/'+uimage_skel_name+'.so', lib)        
+
+        #Build the uImage skel.so
+        target_uimage = env_uimage.AddMySharedLibrary(['ADSP_SHARED_LIBS'], '${BUILDPATH}/'+uimage_skel_name, uimage_sources)
+
+        #Link uImage skel.so dynamically to bImage skel.so
+        env.Append(SHLINKFLAGS =  ' -Bdynamic -L${BUILD_ROOT}/touch/build/${BUILDPATH} --library=:%s.so ' %(uimage_skel_name))
+
+        #Ensure uImage skel.so is present before building bImage skel.so
+        env.Depends('${BUILDPATH}/'+bimage_skel_name+'.so','${BUILDPATH}/'+uimage_skel_name+'.so')
+    elif 'USES_HIMAX_AFE' in env:
+        #Set library names for Himax
+        bimage_skel_name = 'libFastRPC_UTF_Forward_800h_skel'   #Himax QTC Framework skel.so name
+        uimage_skel_name = 'libhimax'                           #Himax library skel.so name
+
+        #Build the Himax.so
+        env_himax = env.Clone()
+        env_himax.Append(CTEMP_FLAGS = '-mno-pic-data-is-text-relative')
+        env_himax.Append(SHLINKFLAGS = ' --no-whole-archive ')
+        target_himax = env_himax.AddMySharedLibrary(['ADSP_SHARED_LIBS'], '${BUILDPATH}/'+uimage_skel_name, touch_sources_libhimax)
+
+        #Link Himax.so dynamically to QTC.so
+        env.Append(SHLINKFLAGS =  ' -Bdynamic -L${BUILD_ROOT}/touch/build/${BUILDPATH} --library=:%s.so ' %(uimage_skel_name))
+
+        #Ensure Himax.so is present before building QTC.so
+        env.Depends('${BUILDPATH}/'+bimage_skel_name+'.so','${BUILD_ROOT}/touch/build/${BUILDPATH}/'+uimage_skel_name+'.so')
+    else: #uImage is not enabled, add uImage sources to bImage skel
+        #Add uimage files to bimage
+        bimage_sources += uimage_sources
+
+    #end of USES_TOUCH_UIMAGE
+
+    #bImage compilation (Always done)
+    #Include Core User PIC libraries
+    if 'USES_CORE_USER_PIC2' in env:
+        env.Append(SHLINKFLAGS = ' --no-whole-archive ')
+        if 'COMPILE_PKT_SKEL' in env:
+            env_pkt.Append(SHLINKFLAGS = ' --no-whole-archive ')
+        # Add Core User PIC Libraries
+        # ToDo: "--no-whole-archive -Wl,--start-group [source + core_user_pic] -Wl,--end-group"
+        #       is the proper to generate the shared object.
+        # Note: By using --start-group / --end-group the specified archives are searched repeatedly
+        #       until no new undefined references are created.
+        #       However, we haven't found proper way to put the source list with --start/end-group.
+        #       By duplicating the library multiple times at the end, we can get 2 iteration of this search.
+        #       This was sufficient enough to support bImage CoreUserPIC.
+        bimage_sources += core_user_pic_libs
+        bimage_sources += core_user_pic_libs
+
+        #Put explicit dependency on each of the libs, so that they get generated first
+        for lib in core_user_pic_libs:
+            env.Depends('${BUILDPATH}/'+bimage_skel_name+'.so', lib)         
+            if 'COMPILE_PKT_SKEL' in env:
+                env_pkt.Depends('${BUILDPATH}/'+pkt_skel_name+'.so', lib)         
+
+    # Add Standard C++ libraries et al.
+    # ToDo: "--no-whole-archive -Wl,--start-group [source + core_user_pic] -Wl,--end-group"
+    #       is the proper to generate the shared object.
+    bimage_sources += ext_libs
+
+    #Build the bImage skel.so
+    target = env.AddMySharedLibrary(['ADSP_SHARED_LIBS'], '${BUILDPATH}/'+bimage_skel_name, bimage_sources, touch_idl)
+
+    #Ensure apps_mem.idl is compiled before building bImage skel.so
+    env.Requires(target, prereq)
+
+    if 'COMPILE_PKT_SKEL' in env:
+#       pkt_skel_sources = list(set(bimage_sources) - set(touch_sources_qtc))
+#       pkt_skel_sources = list(set(pkt_skel_sources) - set(touch_sources_qtc_inspection))
+#       pkt_skel_sources = list(set(pkt_skel_sources) - set(touch_sources_qtc_uimage))
+        pkt_skel_sources = [item for item in bimage_sources if item not in touch_sources_qtc]
+        pkt_skel_sources = [item for item in pkt_skel_sources if item not in touch_sources_qtc_inspection]
+        pkt_skel_sources = [item for item in pkt_skel_sources if item not in touch_sources_qtc_uimage]
+        pkt_skel_sources = [item for item in pkt_skel_sources if item not in touch_sources_shared_pkt_dump]
+        pkt_skel_sources += touch_sources_pkt + touch_sources_pkt_uimage + touch_sources_shared_pkt
+        #Build the PKT skel.so
+        target_pkt = env_pkt.AddMySharedLibrary(['ADSP_SHARED_LIBS'], '${BUILDPATH}/'+pkt_skel_name, pkt_skel_sources, touch_idl)
+
+        #Ensure apps_mem.idl is compiled before building bImage skel.so
+        env_pkt.Requires(target_pkt, prereq_pkt)
+        #env.Depends(target, target_pkt)
+
+    #Install the Config & Firmware to the build
+    if env.get('CHIPSET') == "sdm670":
+        print "SDM670! installing iTouch Config & FW!"
+        install_fw = env.InstallFiles('${BUILD_ROOT}/build/dynamic_modules/${SHORT_BUILDPATH}', ['${BUILD_ROOT}/touch/firmware/qtc800h.bin', '${BUILD_ROOT}/touch/firmware/qtc800s_dsp.bin', '${BUILD_ROOT}/touch/firmware/qtc801s.bin'])
+        env.BindAliasesToTargets(install_fw)
+        install_config = env.InstallFiles('${BUILD_ROOT}/build/dynamic_modules/${SHORT_BUILDPATH}', ['${BUILD_ROOT}/touch/config/hbtpcfg_sdm670_800h_qhd.dat', '${BUILD_ROOT}/touch/config/hbtpcfg_sdm670_800s_fhd.dat', '${BUILD_ROOT}/touch/config/hbtpcfg_sdm670_801s_qhd.dat'])
+        env.BindAliasesToTargets(install_config)
+    else:
+        print "Unsupported target! Not installing iTouch Config & FW!"
+        Return()
+
+#end of 'USES_SHARED_LIBS_COMPILATION'
+
+
+#-------------------------------------------------------------------------------
+# Static compilation
+#-------------------------------------------------------------------------------
+else:
+    print "Compiling Touch static object"
+    LIBNAME = 'libadsp_touch_static_partial'
+    if BUILD_ENV == "ADSP":
+        RCINIT_IMG = ['TOUCH_ADSP']
+    else:
+        RCINIT_IMG = ['SSC_SLPI_ROOT']
+
+    env.AddBinaryLibrary(RCINIT_IMG, '${BUILDPATH}/'+LIBNAME, touch_sources_static)
+#-------------------------------------------------------------------------------
+# RC INIT , added TOUCH_ADSP aswell
+#-------------------------------------------------------------------------------
+    if 'USES_RCINIT' in env:
+        print "Processing touch qdi rcinit"
+        env.AddRCInitFunc(            # Code Fragment in TMC: NO
+        RCINIT_IMG,                   # define TMC_RCINIT_INIT_PMIC_INIT
+        {
+            'sequence_group'          : 'RCINIT_GROUP_7',
+            'init_name'               : 'improveTouch',
+            'init_function'           : 'QDI_Touch_Init',
+        })

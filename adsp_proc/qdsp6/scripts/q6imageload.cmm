@@ -1,0 +1,163 @@
+;*****************************************************************
+; Filename:  q6imgsurfload.cmm
+;
+;    INPUT Parameters:
+;       &entry_addr     - Starting physical address of the DSP image
+;       &supportdebug   - "debugimg" for enable JTAG ISDB interface
+;                       - "noimg" for just enable DSP JTAG interface
+;                       - "nodbg" for disabling DSP JTAG debugging
+;       &filename       - DSP image filename, prompted if empty
+;
+; DSP Multimedia
+;*****************************************************************
+ENTRY &entry_addr &supportdebug &filename
+
+LOCAL &runflag
+
+&runflag=0
+if run()
+(
+    &runflag=1
+    break;
+)
+
+if "&supportdebug"!="noimg"&&"&entry_addr"==""
+(
+        print "ERROR: Need provide Q6 entry address as 1st agrument"
+        ENDDO 0
+)
+if "&supportdebug"!="noimg"&&"&filename"==""
+(
+        dialog.file *.mbn
+        entry &filename
+)
+if "&supportdebug"=="noimg"
+(
+	&entry_addr=0x46700000
+	d.s a:0x46700040 %long 0 // test Q6 alive mem location
+)
+
+
+ Y.CREATE.L   HWIO_LCC_Q6_FUNC_ADDR                                                      0x2800001C
+ Y.CREATE.L   HWIO_QDSP6SS_RST_EVB_ADDR                                                  0x28800000
+ Y.CREATE.L   HWIO_QDSP6SS_STRAP_TCM_ADDR                                                0x2880001C
+ Y.CREATE.L   HWIO_QDSP6SS_STRAP_AHB_ADDR                                                0x28800020
+ Y.CREATE.L   HWIO_QDSP6SS_CGC_OVERRIDE_ADDR                                             0x28800018
+ Y.CREATE.L   SFAB_LPASS_Q6_ACLK_CTL							 0x009023A0
+ Y.CREATE.DONE
+
+;*******************************************************************
+; Enable Q6 CLK branch
+;*******************************************************************
+d.s A:SFAB_LPASS_Q6_ACLK_CTL %long 0x10
+
+;*******************************************************************
+; q6 code start address
+;*******************************************************************
+&qdsp6_start_address=&entry_addr
+
+start_loading:
+;**************************************************************************
+; Put QDSP6 in reset state
+;**************************************************************************
+; configure HWIO_LCC_Q6_FUNC_ADDR to reset q6
+; HWIO_LCC_Q6_FUNC_ADDR has the bit for q6 core reset (bit 9). 
+; Power on reset value is 0x0005b7c2
+d.set A:HWIO_LCC_Q6_FUNC_ADDR %long %le 0x05F6AF84
+
+d.set A:HWIO_LCC_Q6_FUNC_ADDR %long %le 0x0416AF84
+
+
+;**************************************************************************
+; Program  QDSP6 reset vector register
+;**************************************************************************
+&qdsp6_low_addr=(&qdsp6_start_address>>12.)&0xfffff
+d.set A:HWIO_QDSP6SS_RST_EVB_ADDR %long &qdsp6_low_addr ;; 20bit register
+
+;**************************************************************************
+; Load Q6 image without symbol, enable JTAG debugging
+;**************************************************************************
+if "&supportdebug"!="noimg"
+    d.load.elf &filename /NOSYMBOL /NOREG
+
+if "&supportdebug"=="debugimg"
+(
+&rtos_debug_3=&qdsp6_start_address+0x2c
+&isdb_secure_debug_flag=&qdsp6_start_address+0x30
+&isdb_trusted_flag=&qdsp6_start_address+0x34
+&isdb_debug_flag=&qdsp6_start_address+0x38
+d.s A:(&isdb_secure_debug_flag) %long 1
+d.s A:(&isdb_trusted_flag) %long 1
+d.s A:(&isdb_debug_flag) %long 1
+)
+else if "&supportdebug"=="noimg"
+(
+d.s A:(&qdsp6_start_address+0x00) %long 0x7800c51a
+d.s A:(&qdsp6_start_address+0x04) %long 0x671ac012
+d.s A:(&qdsp6_start_address+0x08) %long 0x57c0c002
+d.s A:(&qdsp6_start_address+0x0C) %long 0x7800c120
+d.s A:(&qdsp6_start_address+0x10) %long 0x6700c029
+d.s A:(&qdsp6_start_address+0x14) %long 0xa840c000
+d.s A:(&qdsp6_start_address+0x18) %long 0x71a0feef
+d.s A:(&qdsp6_start_address+0x1C) %long 0x72e0cafe
+d.s A:(&qdsp6_start_address+0x20) %long 0x7121c040
+d.s A:(&qdsp6_start_address+0x24) %long 0x7261c670
+d.s A:(&qdsp6_start_address+0x28) %long 0xa181c000
+d.s A:(&qdsp6_start_address+0x2C) %long 0x6c20c000
+d.s A:(&qdsp6_start_address+0x30) %long 0x5800c000
+)
+
+;**************************************************************************
+; Program STRAP registers
+; QDSP6SS_STRAP_AHB(23:12)    0x280
+; QDSP6SS_STRAP_AHB(11:0)     0x290
+; qdsp6_strap_tcm_base_address[31:21] &0     QDSP6SS_STRAP_TCM(26:16) &0 0x28C *
+; qdsp6_strap_tcm_config_base_address[31:20] QDSP6SS_STRAP_TCM(11:0)     0x28B
+;**************************************************************************
+d.set A:HWIO_QDSP6SS_STRAP_TCM_ADDR %long 0x0146028B  
+d.set A:HWIO_QDSP6SS_STRAP_AHB_ADDR %long 0x00290280
+
+;**************************************************************************
+; Take Q6 out of reset (If not doing in C code)
+; bit24 - Q6 Clamp, [21:10] Q6SS reset, isdb reset, q6 etm reset, bit9 - q6 core reset
+;**************************************************************************
+d.set A:HWIO_LCC_Q6_FUNC_ADDR %long %le 0x0016AF84
+wait 100ms
+d.set A:HWIO_LCC_Q6_FUNC_ADDR %long %le 0x0016AB84
+
+if "&supportdebug"=="nodbg"
+(
+  wait 1s
+  &dmavalue=d.l(A:0x28106000)
+  if (&dmavalue&0x0010)==0
+  (
+    dialog.ok "Q6 not start, reset HW and reload again!!"
+  )
+)
+
+if "&supportdebug"=="noimg"
+(
+    wait 1s
+    &data=d.l(a:0x46700040)   ;; location of memwrite to check for Q6 is alive or not
+    if &data==0xcafebeef
+    (
+        dialog.ok "QDSP6 is UP, open QDSP6 T32 to connect"
+    )
+    else
+    (
+        dialog.ok "QDSP6 is not running!!"
+    )
+)
+
+if &runflag==1
+(
+    go
+)
+
+ENDDO
+
+
+
+
+
+

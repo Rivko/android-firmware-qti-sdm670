@@ -1,0 +1,315 @@
+; rpm_parse_faults.cmm
+; ------------------------------------------------------------------
+;
+; When to use this script 
+; -----------------------
+; This script attempts to parse a crashed RPM's core dump for meaningful fault
+; information.  Use it while you're in a fault handler.  It prints its analysis
+; to the area window, so make sure you have that open.
+;
+; Note: You must have loaded symbols and have the register state mirroring the
+; fault handler's register state for this script to work.
+;
+; How to use this script
+; ----------------------
+; With a T32 session session open inside a fault handler...
+;
+; area
+; do rpm_parse_faults
+;
+ENTRY
+
+GLOBAL &returnR0
+GLOBAL &returnR1
+GLOBAL &returnR2
+GLOBAL &returnR3
+GLOBAL &returnR12
+GLOBAL &returnLR
+GLOBAL &returnPC
+GLOBAL &returnXPSR
+
+area
+area.clear
+area.select
+
+; Check to see if a valid core dump exists.
+&cookie=V.VALUE(rpm_core_dump.cookie)
+&dumped=V.VALUE(rpm_core_dump.dumped_at)
+
+if (&cookie!=0xbaff1ed)||(&dumped==0)
+(
+    PRINT %error "*** No valid core dump detected! ***"
+    ENDDO
+)
+
+&irqnum=r(XPSR)&0xFF
+
+if (&irqnum==0)||(&irqnum>0xf)
+(
+    if &irqnum==0
+    (
+        PRINT "*** Not in a fault handler/ISR ***"
+    )
+    else if &irqnum>0xf
+    (
+        PRINT "======================================="
+        PRINT %attr 2 "        NORMAL EXCEPTION DETECTED"
+        PRINT "---------------------------------------"
+        PRINT "IRQ: "+format.decimal(0,&irqnum-0x10)
+        print "ISR: "+y.function(d:v.value(vector_table[&irqnum]))
+        PRINT "======================================="
+    )
+
+    ENDDO
+)
+
+
+;
+; Start checking for various M3 faults
+;
+
+&shcas=V.VALUE(rpm_core_dump.fault_detail.SystemHandlerCtrlAndState)
+
+if (&shcas&0xF000)!=0
+(
+    PRINT "WARNING: multiple pended faults detected.  Analyze carefully!"
+)
+
+&exc_return=V.VALUE(rpm_core_dump.registers.LR)
+if (&exc_return&0x4)==0
+(
+    &msp=V.VALUE(rpm_core_dump.registers.SP_main)
+    &returnR0=DATA.LONG(d:(&msp+0x0))
+    &returnR1=DATA.LONG(d:(&msp+0x4))
+    &returnR2=DATA.LONG(d:(&msp+0x8))
+    &returnR3=DATA.LONG(d:(&msp+0xC))
+    &returnR12=DATA.LONG(d:(&msp+0x10))
+    &returnLR=DATA.LONG(d:(&msp+0x14))
+    &returnPC=DATA.LONG(d:(&msp+0x18))
+    &returnXPSR=DATA.LONG(d:(&msp+0x1C))
+
+)
+else
+(
+    &psp=V.VALUE(rpm_core_dump.registers.SP_process)
+    &returnR0=DATA.LONG(d:(&psp+0x0))
+    &returnR1=DATA.LONG(d:(&psp+0x4))
+    &returnR2=DATA.LONG(d:(&psp+0x8))
+    &returnR3=DATA.LONG(d:(&psp+0xC))
+    &returnR12=DATA.LONG(d:(&psp+0x10))
+    &returnLR=DATA.LONG(d:(&psp+0x14))
+    &returnPC=DATA.LONG(d:(&psp+0x18))
+    &returnXPSR=DATA.LONG(d:(&psp+0x1C))
+)
+
+PRINT "======================================="
+PRINT "   STACK FRAME PUSHED UPON EXCEPTION"
+PRINT "---------------------------------------"
+PRINT "    R0  : &returnR0"
+PRINT "    R1  : &returnR1"
+PRINT "    R2  : &returnR2"
+PRINT "    R3  : &returnR3"
+PRINT "    R12 : &returnR12"
+PRINT "    LR  : &returnLR"
+PRINT "    PC  : &returnPC"
+PRINT "    XPSR: &returnXPSR"
+PRINT "======================================="
+PRINT
+
+&hfsr=V.VALUE(rpm_core_dump.fault_detail.HardFaultStatus)
+
+&mmfsr=V.VALUE(rpm_core_dump.fault_detail.ConfigurableFaultStatus)&0xFF
+if ((&shcas&0x1)!=0)||(((&hfsr&0x40000000)!=0)&&(&mmfsr!=0))
+(
+    PRINT "======================================="
+    PRINT %attr 0x85 "        MEMORY FAULT DETECTED"
+    PRINT "---------------------------------------"
+    if (&mmfsr&0x1)!=0
+    (
+        PRINT "Instruction access violation attempting to fetch @ 0x" &returnPC
+    )
+    if (&mmfsr&0x2)!=0
+    (
+        PRINT "Data access violation @ pc = 0x" &returnPC
+        &mem_fault_addr=V.VALUE(rpm_core_dump.fault_detail.MemManageAddress)
+        if (&mmfsr&0x80)!=0
+        (
+            PRINT "Attempted to access address 0x" &mem_fault_addr
+            if (&mem_fault_addr>=v.value(rpm_image_section_array[2].section_end))&&(&mem_fault_addr<v.value(rpm_image_section_array[3].section_base))
+            (
+                PRINT %error "Stack overflowed"
+            )
+        )
+    )
+    if (&mmfsr&0x8)!=0
+    (
+        PRINT "Unstacking error."
+    )
+    if (&mmfsr&0x10)!=0
+    (
+        PRINT "Stacking error."
+    )
+    PRINT "======================================="
+)
+
+&bfsr=(V.VALUE(rpm_core_dump.fault_detail.ConfigurableFaultStatus)>>8)&0xFF
+if ((&shcas&0x2)!=0)||(((&hfsr&0x40000000)!=0)&&(&bfsr!=0))
+(
+    PRINT "======================================="
+    PRINT %attr 0x85 "         BUS FAULT DETECTED"
+    PRINT "---------------------------------------"
+    if (&bfsr&0x1)!=0
+    (
+        PRINT "Instruction bus error."
+    )
+    if (&bfsr&0x2)!=0
+    (
+        PRINT "Precise data bus error commited from pc = 0x" &returnPC
+    )
+    if (&bfsr&0x4)!=0
+    (
+        PRINT "IMPRECISE data bus error."
+        PRINT "*** Please note that the return PC is not related to this fault! ***"
+    )
+    if (&bfsr&0x8)!=0
+    (
+        PRINT "Unstacking error."
+    )
+    if (&bfsr&0x10)!=0
+    (
+        PRINT "Stacking error."
+    )
+    if (&bfsr&0x80)!=0
+    (
+        PRINT "Faulting access was to 0x" V.VALUE(rpm_core_dump.fault_detail.BusFaultAddress)
+    )
+    PRINT "======================================="
+)
+
+&ufsr=(V.VALUE(rpm_core_dump.fault_detail.ConfigurableFaultStatus)>>16)&0xFFFF
+if ((&shcas&0x8)!=0)||(((&hfsr&0x40000000)!=0)&&(&ufsr!=0))
+(
+    PRINT "======================================="
+    PRINT %attr 0x85 "        USAGE FAULT DETECTED"
+    PRINT "---------------------------------------"
+    if (&ufsr&0x1)!=0
+    (
+        PRINT "Undefined instruction @ pc = 0x" &returnPC
+    )
+    if (&ufsr&0x2)!=0
+    (
+        PRINT "Invalid combination of EPSR and instruction @ pc = 0x" &returnPC
+    )
+    if (&ufsr&0x4)!=0
+    (
+        PRINT "Illegal EXC_RETURN load to PC @ pc = 0x" &returnPC
+    )
+    if (&ufsr&0x8)!=0
+    (
+        PRINT "Attempt to use a coprocessor instruction @ pc = 0x" &returnPC
+        PRINT "Note: the Cortex M3 does not support coprocessor instructions."
+    )
+    if (&ufsr&0x100)!=0
+    (
+        PRINT "Unaligned memory access @ pc = 0x" &returnPC
+        PRINT "Note: LDM/STM/LDRD/STRD instructions must *always* be aligned."
+    )
+    if (&ufsr&0x200)!=0
+    (
+        PRINT "Divide by zero @ pc = 0x" &returnPC
+    )
+    PRINT "======================================="
+)
+
+if (&shcas&0x80)!=0
+(
+    PRINT "======================================="
+    PRINT %attr 0x85 "          SVCALL DETECTED"
+    PRINT "---------------------------------------"
+    PRINT "Attempted SVC @ pc = 0x" &returnPC
+    PRINT "Note: this isn't a 'proper' fault, but we don't support SVC's."
+    PRINT "======================================="
+)
+
+if (&shcas&0x80)!=0
+(
+    PRINT "======================================="
+    PRINT %attr 0x85 "          SVCALL DETECTED"
+    PRINT "---------------------------------------"
+    PRINT "Attempted SVC @ pc = 0x" &returnPC
+    PRINT "Note: this isn't a 'proper' fault, but we don't support SVC's."
+    PRINT "======================================="
+)
+
+if (&shcas&0x100)!=0
+(
+    PRINT "======================================="
+    PRINT %attr 0x85 "        DEBUG MONITOR EXCEPTION"
+    PRINT "---------------------------------------"
+    PRINT "Note: Our software does not support the debug monitor."
+    &dfsr=V.VALUE(rpm_core_dump.fault_detail.DebugFaultStatus)
+    if (&dfsr&0x1)!=0
+    (
+        PRINT "Halt requested by NVIC."
+    )
+    if (&dfsr&0x2)!=0
+    (
+        PRINT "Hit breakpoint @ pc = 0x" &returnPC
+    )
+    if (&dfsr&0x4)!=0
+    (
+        PRINT "DWT match."
+    )
+    if (&dfsr&0x8)!=0
+    (
+        PRINT "Vector fetch occurred."
+    )
+    if (&dfsr&0x10)!=0
+    (
+        PRINT "EDBGRQ (external debug request) signal asserted."
+    )
+    PRINT "======================================="
+)
+
+if (&shcas&0x400)!=0
+(
+    PRINT "======================================="
+    PRINT %attr 0x85 "           PENDSV DETECTED"
+    PRINT "---------------------------------------"
+    PRINT "PendSV attempted @ pc = 0x" &returnPC
+    PRINT "Note: this isn't a 'proper' fault, but we don't support SVC's."
+    PRINT "======================================="
+)
+
+if (&shcas&0x800)!=0
+(
+    PRINT "======================================="
+    PRINT %attr 0x85 "           SYSTICK DETECTED"
+    PRINT "---------------------------------------"
+    PRINT "Systick interrupt received."
+    PRINT "Note: The RPM's systick is not reliable in all cases.  Unless you really know what you're doing, use the QTimer."
+    PRINT "======================================="
+)
+
+
+if (&hfsr&0xC0000002)!=0
+(
+    PRINT "======================================="
+    PRINT %attr 0x85 "          HARD FAULT DETECTED"
+    PRINT "---------------------------------------"
+    if (&hfsr&0x2)!=0
+    (
+        PRINT "A hard fault was triggered by a failed vector fetch."
+    )
+    if (&hfsr&0x40000000)!=0
+    (
+        PRINT "A hard fault was triggered by a bus/memory management/usage fault."
+        PRINT "This is okay: you should have information about that fault above."
+    )
+    if (&hfsr&0x80000000)!=0
+    (
+        PRINT "A hard fault was triggered by a debug event."
+    )
+    PRINT "======================================="
+)
+

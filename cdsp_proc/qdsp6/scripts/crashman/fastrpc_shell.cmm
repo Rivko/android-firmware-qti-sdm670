@@ -1,0 +1,173 @@
+entry &ADSP_BUILDROOT &OutputPath &sofile &frpcshell &Target_Name
+
+ON ERROR JUMPTO fastrpc_end
+
+&OutputPath_Qurt="&OutputPath\Qurt_logs"
+&OutputPath_temp="&OutputPath\temp"
+printer.file &OutputPath_Qurt\dsp_QT.txt
+printer.filetype ascii
+printer.size 0xfa,0xfa
+wp.task.tasklist
+printer.file.close
+
+&command="python &CurrentDirectory\fastrpc_name.py &OutputPath_Qurt QT"
+Os.Hidden &command
+
+&string=" "
+&frpc_address_check="0x&string"
+
+OPEN #5 "&OutputPath\fprc_shell_names.txt" /APPEND
+WRITE #5 "FastRPC Shells Loaded in ADSP:"
+WRITE #5 ""
+WRITE #5 ""
+CLOSE #5
+
+OPEN #1 "&OutputPath_Qurt\DSP_QT_New.txt" /READ
+RePeaT 
+(
+    READ #1 %line &headerline
+    IF EOF()
+    GOTO endloop
+    &frpc_name=string.mid("&headerline", 0x0, 6)
+    &string=string.mid("&headerline", 0x6, 8)
+    &present_name="0x&string"
+    if ("&frpc_name"=="/frpc/")&&!("&frpc_address_check"=="&present_name")
+    (
+        &string="&headerline"
+        ;GOTO endloop
+        if ("&string"==" ")
+        (
+            enddo
+        )    
+
+        &string=string.mid("&string", 0x6, 8)
+        &frpc_address="0x&string"
+        &frpc_address_check="0x&string"
+
+        &Linkedlist_l_name_full=V.STRING(((*(((struct loaded_process*)&frpc_address))).name))
+        &Linkedlist_l_name=string.cut("&Linkedlist_l_name_full", 0xa)
+        &frpc_sring=string.mid("&Linkedlist_l_name", 5, 0xe)
+
+        &frpc_name=string.mid("&frpc_address", 2, 8)
+        &frpc_name="/frpc/&frpc_name"
+
+        &frpc_sring=CONV.TOLOWER("&frpc_sring")
+        &frpc_name=CONV.TOLOWER("&frpc_name")
+
+        if !("&frpc_sring"=="&frpc_name")
+        (
+           print %ERROR "/frpc/&frpc_address name is not present in the variable. Exiting the script."
+           enddo
+        )
+        OPEN #5 "&OutputPath\fprc_shell_names.txt" /APPEND
+        WRITE #5 "&frpc_sring"
+        WRITE #5 ""
+        &entrypoint=V.VALUE((*(((struct loaded_process*)&frpc_address))).entryPoint)
+        &entrypoint=&entrypoint&~(0x100000-1)
+        &frpc_shell_name=V.STRING((*(((struct loaded_process*)&frpc_address))).name)
+        WRITE #5 "      EntryPoint: &entrypoint"
+        WRITE #5 "      Shell Name: &frpc_shell_name"
+        WRITE #5 ""
+        WRITE #5 ""
+        WRITE #5 "      .So's Present in the Shell:"
+        CLOSE #5
+
+        if OS.FILE(&frpcshell)
+        (
+            print "Loading &frpcshell &entrypoint /nocode /noclear"
+            d.load.elf &frpcshell &entrypoint /nocode /noclear
+        )    
+        else if OS.FILE(&ADSP_BUILDROOT\build\bsp\fastrpc_shell_img\build\AAAAAAAA\fastrpc_shell_0.unstripped)
+        (
+            print "Loading &ADSP_BUILDROOT\build\bsp\fastrpc_shell_img\build\AAAAAAAA\fastrpc_shell_0.unstripped &entrypoint /nocode /noclear"
+            d.load.elf &ADSP_BUILDROOT\build\bsp\fastrpc_shell_img\build\AAAAAAAA\fastrpc_shell_0.unstripped &entrypoint /nocode /noclear
+        )    
+        else if OS.FILE(&ADSP_BUILDROOT\build\bsp\fastrpc_shell_img\build\&Target_Name\fastrpc_shell_0.unstripped)
+        (
+            print "Loading &ADSP_BUILDROOT\build\bsp\fastrpc_shell_img\build\&Target_Name\fastrpc_shell_0.unstripped &entrypoint /nocode /noclear"
+            d.load.elf &ADSP_BUILDROOT\build\bsp\fastrpc_shell_img\build\&Target_Name\fastrpc_shell_0.unstripped &entrypoint /nocode /noclear
+        )   
+        else if OS.FILE(&ADSP_BUILDROOT\build\bsp\fastrpc_shell_img\build\660.adsp.prod\fastrpc_shell_0.unstripped)
+        (
+            print "Loading &ADSP_BUILDROOT\build\bsp\fastrpc_shell_img\build\660.adsp.prod\fastrpc_shell_0.unstripped &entrypoint /nocode /noclear"
+            d.load.elf &ADSP_BUILDROOT\build\bsp\fastrpc_shell_img\build\660.adsp.prod\fastrpc_shell_0.unstripped &entrypoint /nocode /noclear
+        )   
+        else if OS.FILE(&ADSP_BUILDROOT\build\bsp\fastrpc_shell_img\build\660.cdsp.prod\fastrpc_shell_3.unstripped)
+        (
+            print "Loading &ADSP_BUILDROOT\build\bsp\fastrpc_shell_img\build\660.cdsp.prod\fastrpc_shell_3.unstripped &entrypoint /nocode /noclear"
+            d.load.elf &ADSP_BUILDROOT\build\bsp\fastrpc_shell_img\build\660.cdsp.prod\fastrpc_shell_3.unstripped &entrypoint /nocode /noclear
+        )   
+        else if OS.FILE(&ADSP_BUILDROOT\build\bsp\fastrpc_shell_img\build\845.adsp.prod\fastrpc_shell_0.unstripped)
+        (
+            print "Loading &ADSP_BUILDROOT\build\bsp\fastrpc_shell_img\build\845.adsp.prod\fastrpc_shell_0.unstripped &entrypoint /nocode /noclear"
+            d.load.elf &ADSP_BUILDROOT\build\bsp\fastrpc_shell_img\build\845.adsp.prod\fastrpc_shell_0.unstripped &entrypoint /nocode /noclear
+        )   
+        else if OS.FILE(&ADSP_BUILDROOT\build\bsp\fastrpc_shell_img\build\845.cdsp.prod\fastrpc_shell_3.unstripped)
+        (
+            print "Loading &ADSP_BUILDROOT\build\bsp\fastrpc_shell_img\build\845.cdsp.prod\fastrpc_shell_3.unstripped &entrypoint /nocode /noclear"
+            d.load.elf &ADSP_BUILDROOT\build\bsp\fastrpc_shell_img\build\845.cdsp.prod\fastrpc_shell_3.unstripped &entrypoint /nocode /noclear
+        )   
+        else if OS.FILE(&ADSP_BUILDROOT\build\bsp\fastrpc_shell_img\build\670.adsp.prod\fastrpc_shell_0.unstripped)
+        (
+            print "Loading &ADSP_BUILDROOT\build\bsp\fastrpc_shell_img\build\670.adsp.prod\fastrpc_shell_0.unstripped &entrypoint /nocode /noclear"
+            d.load.elf &ADSP_BUILDROOT\build\bsp\fastrpc_shell_img\build\670.adsp.prod\fastrpc_shell_0.unstripped &entrypoint /nocode /noclear
+        )   
+        else if OS.FILE(&ADSP_BUILDROOT\build\bsp\fastrpc_shell_img\build\670.cdsp.prod\fastrpc_shell_3.unstripped)
+        (
+            print "Loading &ADSP_BUILDROOT\build\bsp\fastrpc_shell_img\build\670.cdsp.prod\fastrpc_shell_3.unstripped &entrypoint /nocode /noclear"
+            d.load.elf &ADSP_BUILDROOT\build\bsp\fastrpc_shell_img\build\670.cdsp.prod\fastrpc_shell_3.unstripped &entrypoint /nocode /noclear
+        )   
+        &Linkedlist_l_next=0
+        &name=""
+        if (Y.EXIST("\\fastrpc_shell_0\Global\_rtld_debug"))||(Y.EXIST("\\&frpcshell_name\Global\_rtld_debug"))||(Y.EXIST("\\fastrpc_shell_3\Global\_rtld_debug"))
+        (
+            
+            if (Y.EXIST("\\&frpcshell_name\Global\_rtld_debug"))
+            (
+                &Linkedlist_l_next=V.VALUE((*((\\&frpcshell_name\Global\_rtld_debug).r_map)).l_next)
+                &name="\\&frpcshell_name\Global\_rtld_debug"
+            )
+            else if (Y.EXIST("\\fastrpc_shell_0\Global\_rtld_debug"))
+            (
+                &Linkedlist_l_next=V.VALUE((*((\\fastrpc_shell_0\Global\_rtld_debug).r_map)).l_next)
+                &name="\\fastrpc_shell_0\Global\_rtld_debug"
+            )
+            else if (Y.EXIST("\\fastrpc_shell_3\Global\_rtld_debug"))
+            (
+                &Linkedlist_l_next=V.VALUE((*((\\fastrpc_shell_3\Global\_rtld_debug).r_map)).l_next)
+                &name="\\fastrpc_shell_3\Global\_rtld_debug"
+            )
+            if (&Linkedlist_l_next==0)
+            (
+                ;print " No Dynamic objects loaded using fastrpc_shell_0"
+            )
+            else
+            (
+                OPEN #2 "&OutputPath_temp\soaddress.txt" /APPEND
+                OPEN #5 "&OutputPath\fprc_shell_names.txt" /APPEND
+                while (&Linkedlist_l_next!=0)
+                (
+                    &Linkedlist_l_addr=V.VALUE((*(((struct link_map *)&Linkedlist_l_next))).l_addr)
+                    &Linkedlist_l_name_full=V.STRING((*(((struct link_map *)&Linkedlist_l_next))).l_name)
+                    &Linkedlist_l_name=string.cut("&Linkedlist_l_name_full", 0xa)
+                    ;print " Start address: &Linkedlist_l_addr, Obj Name: &Linkedlist_l_name "  
+                    &Linkedlist_l_next=V.VALUE((*(((struct link_map *)&Linkedlist_l_next))).l_next)
+                    WRITE #2 " Start address: &Linkedlist_l_addr, Obj Name: &Linkedlist_l_name --> &name &entrypoint"
+                    WRITE #5 "      Start address: &Linkedlist_l_addr, Obj Name: &Linkedlist_l_name "
+                )
+                CLOSE #2
+                WRITE #5 ""
+                WRITE #5 ""
+                CLOSE #5
+            )
+        )
+        
+    )    
+)
+endloop: CLOSE #1
+
+enddo
+
+fastrpc_end:
+do &CurrentDirectory\cmm_error.cmm "fastrpc_shell.cmm"
+enddo

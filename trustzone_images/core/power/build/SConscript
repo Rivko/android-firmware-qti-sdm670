@@ -1,0 +1,104 @@
+#===============================================================================
+#
+# POWER Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009 by QUALCOMM, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //source/qcom/qct/core/pkg/trustzone/rel/1.4/trustzone_images/core/power/build/SConscript#1 $
+#  $DateTime: 2012/02/29 15:54:43 $
+#  $Author: coresvc $
+#  $Change: 2238812 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 12/16/10   rks     Add support for 8960
+# 11/01/10   ca      Added Support for SAW2 SPM for RIVA.
+# 11/16/09   rks     publish power/utils/inc only inside power sub-system
+# 08/13/09   taw     Initial version.
+#
+#===============================================================================
+Import('env')
+
+env = env.Clone()
+
+"""
+  Determine which processor the currently build is for using the
+  actively building image. There cannot be more than one of the
+  same name within a target.  Meaning, 7x30 cannot have two 
+  processors named apps.
+
+  Possible processors are:
+
+  apps - Applications
+  modem - Modem Functionality 
+  modemCtrl - Modem Controller
+  rpm - Resource Power Manager
+  lpa - Low Power Audio
+  riva - wireless connectivity
+"""
+
+target_images = [
+    (['default'],
+        {
+            'modem'   : ['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE',
+                         'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+                         'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE'],
+            'apps'    : ['APPS_IMAGE', 'CBSP_APPS_IMAGE'],
+            'rpm'     : ['RPM_IMAGE'],
+            'riva'    : ['WCN_IMAGE', 'CBSP_WCN_IMAGE'],
+            'sensors' : ['CORE_SPS'],
+            'sbl3'    : ['SBL3_BOOT_IMAGE'],
+        },
+    ),
+    (['8200', '8900', '9x00', '8220'],
+        {
+            'modem'     : ['QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE'],
+            'modemCtrl' : ['MODEM_IMAGE', 'CBSP_MODEM_IMAGE'],
+        },
+    ),
+]
+
+def find_image_list(hal_platform):
+    target_specific_images = [x[1] for x in target_images if hal_platform in x[0]]
+    default_images = [x[1] for x in target_images if 'default' in x[0]]
+    return (target_specific_images + default_images)[0]
+
+def determine_processor_name(env):
+  target_images = find_image_list(env['HAL_PLATFORM'])
+
+  env_var_names = set(env.gvars().keys())
+
+  for image in target_images:
+    if (env_var_names.intersection(set(target_images[image]))):
+      return image
+
+  return 'unknown'
+
+env.AddMethod(determine_processor_name, 'DetermineProcessorName')
+
+#Protected APIs are only accessible to units inside power
+env.PublishProtectedApi('POWER_UTILS', [
+	"${INC_ROOT}/core/power/utils/inc",
+	"${INC_ROOT}/core/power/sleep/inc"
+	])
+
+#-------------------------------------------------------------------------------
+# Enable werror
+#-------------------------------------------------------------------------------
+env.Append(CFLAGS = " -Werror ")
+
+#-------------------------------------------------------------------------------
+# Load sub scripts
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()

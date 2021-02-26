@@ -1,0 +1,450 @@
+//============================================================================
+//  Name:                                                                     
+//    std_loadsim_apps.cmm 
+//
+//  Description:                                                              
+//    Script to load APPS logs
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//  Description:
+//  T32 simulator loader specific to rpm dumps. This file has some 8994 specific areas.
+// 
+//  Dependencies:
+//  Depends on cmm script framework (various dependent files) to work, and assumes that a 
+//  sanitized argument line has been passed in from std_loadsim.cmm script
+//  
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who             what, where, why
+// --------   ---             ---------------------------------------------------------
+// 09/08/2015 JBILLING      Updated for automation, symbol loading
+// 11/07/2014 JBILLING      Overhaul with new error messages
+// 09/06/2012 AJCheriyan    Added USB RAM dump support
+// 08/31/2012 AJCheriyan    Created for B-family 
+//
+
+
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////// std_loadsim_apps //////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+//###################Arguments passed #####################
+LOCAL &ArgumentLine
+ENTRY %LINE &ArgumentLine
+LOCAL &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+ENTRY &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+
+
+//#####################Select Subroutine###################
+// Name of the utility we are calling
+LOCAL &SUBROUTINE
+// Any subroutine specific options
+// Default exists for each subroutine
+
+
+// Input Argument 0 is the name of the utility
+&SUBROUTINE="&UTILITY"
+IF !(("&SUBROUTINE"=="VERIFYBUILD")||("&SUBROUTINE"=="HELP")||("&SUBROUTINE"=="help"))
+(
+    &SUBROUTINE="MAIN"   
+)
+
+    // This should be created by some top level script. The setupenv for each proc would
+    // set this up
+    AREA.SELECT
+    // Call the required utility
+    GOSUB &SUBROUTINE &ArgumentLine
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+
+    ENDDO &rvalue
+
+
+
+////////////////////////////////////////
+//
+//            MAIN
+//            Main std_loadsim_adsp logic
+//            Expected input: None. Relies on global variables
+//
+/////////////////////////////////////////
+
+MAIN:
+    LOCAL &image &imagebuildroot &logpath &logtype &targetprocessor &processor_root_name &loadsimscript &symbolloadscript &multi_elf_option &alternateelf &extraoptions 
+    ENTRY &image &imagebuildroot &logpath &logtype &targetprocessor &processor_root_name &loadsimscript &symbolloadscript &multi_elf_option &alternateelf &extraoptions 
+
+    LOCAL &rvalue
+    
+    // Load the memory map to initialize variables
+    do std_memorymap 
+
+    // First, all the sanity checks
+    GOSUB CHECKBINARIES
+        ENTRY %LINE &rvalue
+        IF "&rvalue"!="SUCCESS"
+        (
+            GOSUB EXIT &rvalue
+        )
+        
+    // Binaries look good. Else, we wouldn't be here    
+    GOSUB SETUPSIM
+    
+    // Load the binaries
+    GOSUB LOADBIN
+    
+    // Setup the environment
+    do std_setupenv noareaclear
+    
+    //Preference is to load TZ elf files as well
+    //do std_loadsyms_tz &TZ_BUILDROOT locally NULL loadsecondelf NULL &extraoptions
+    // Load the symbols
+    &extraoptions="&extraoptions"+",noclear"
+    do std_loadsyms_apps &imagebuildroot locally NULL NULL &alternateelf &extraoptions
+        ENTRY %LINE &rvalue
+        IF "&rvalue"!="SUCCESS"
+        (
+            GOSUB EXIT &rvalue    
+        )
+        
+    
+    // Load the "state" at the time of the crash
+    GOSUB RESTORESTATE
+    ENTRY %LINE &rvalue
+    
+    //Wait for a few seconds if in automation mode  
+    //in case user wants to spot check results.
+    IF STRING.SCAN("&extraoptions","forcesilent",0)!=-1
+    (
+        WAIT.3s
+    )
+    // Off you go..
+    GOSUB EXIT &rvalue
+
+////////////////////////////////////////
+//
+//          VERIFYBUILD
+//          Public function
+//          Verify that needed files are present
+//          Expected input: Build Location
+//
+/////////////////////////////////////////
+VERIFYBUILD:
+    LOCAL &OPTION &builddir &options 
+    ENTRY &OPTION &builddir &options 
+    LOCAL &result &LOCAL_BUILDROOT
+    
+    &result="FAILURE"
+    
+    
+
+        
+        //AREA.RESET
+        //AREA.CREATE std_loadsim_build_verify 125. 6.
+        //AREA.SELECT std_loadsim_build_verify
+        //WINPOS 0. 0. 90. 6.
+        //AREA.VIEW std_loadsim_build_verify
+        
+        
+        
+        IF (FILE.EXIST("&builddir/vmlinux"))||(OS.DIR("&builddir/LINUX"))||(OS.DIR("&builddir/out"))
+        (
+            &result="SUCCESS"
+        )
+        ELSE
+        (
+            &result="FAILURE"
+        )
+                
+              
+                
+    RETURN &result
+////////////////////////////////////////
+//
+//          SETUPSIM
+//          Private function
+//          Set the simulator for the processor we want
+//          Expected input: None
+//
+/////////////////////////////////////////
+SETUPSIM:
+    SYS.CPU HYDRA
+    SYS.UP
+    
+
+    RETURN
+
+    
+////////////////////////////////////////
+//
+//          CHECKBINARIES
+//          Private function
+//          Checks if the binaries for the system are present in the location
+//          Loglocation should not be empty and assumes memory map is loaded
+//          Expected input: None. Uses global variables
+//          &logtype=<AUTODETECT,JTAG,USB> 
+//
+/////////////////////////////////////////
+CHECKBINARIES:
+LOCAL &file1 &file2 &file3 &logclass
+
+
+    // This is the best place to determine the type of the log too
+    IF ("&logtype"=="AUTODETECT")
+    (
+    
+        &logclass="&logtype"
+        
+
+        // Check if there's a load.cmm script provided
+        do std_utils FILEXIST EXIT &logpath load.cmm
+        ENTRY &file1
+
+        IF ("&file1"=="TRUE")
+        (
+             &logclass="LOADSCRIPT"
+        )
+    
+        
+        
+        IF ("&logclass"=="AUTODETECT")
+        (
+            // Check for USB logs
+            do std_utils FILEXIST EXIT &logpath &DDR_1_USB_log
+                ENTRY &file1
+
+            IF ("&file1"=="TRUE")
+            (
+                 &logclass="USB"
+            )
+        )
+                
+        IF ("&logclass"=="AUTODETECT")
+        (
+            do std_utils FILEXIST EXIT &logpath &HLOS_1_log
+                ENTRY &file1
+
+
+            IF ("&file1"=="TRUE")
+            (
+                 &logclass="JTAG"
+            )
+        )
+
+
+
+        // If we even after that, we are stuck with "AUTODETECT" we have a problem
+        IF ("&logclass"=="AUTODETECT")
+        (
+            PRINT %ERROR "Neither USB nor JTAG logs present in folder: &logpath"
+            GOSUB FATALEXIT "Neither USB nor JTAG logs present in folder: &logpath"
+        )
+        ELSE
+        (
+            // Safe to change the logtype
+            &logtype="&logclass"
+            PRINT "Detected &logtype logs in folder: &logpath"
+        )
+    )
+            
+    IF ("&logtype"=="JTAG")
+    (
+        
+        // Check for JTAG logs
+        do std_utils FILEXIST EXIT &logpath &HLOS_1_log
+        ENTRY &file1
+
+        IF ("&file1"=="FALSE")
+        (
+            PRINT %ERROR "JTAG logs not present in folder: &logpath"
+            GOSUB FATALEXIT "JTAG logs not present in folder: &logpath"
+        )
+    )
+
+    IF ("&logtype"=="USB")
+    (
+        
+        // Check for USB logs
+        do std_utils FILEXIST EXIT &logpath &DDR_1_USB_log
+        ENTRY &file1
+
+        IF ("&file1"=="FALSE")
+        (
+            do std_utils FILEXIST EXIT &logpath load.cmm
+            ENTRY &file1
+            IF ("&file1"=="FALSE")
+            (
+                AREA
+                PRINT %ERROR "USB logs not present in folder: &logpath"
+                GOSUB FATALEXIT "USB logs not present in folder: &logpath"
+            )
+            ELSE
+            (
+                AREA 
+                PRINT "USB Logs not detected but load.cmm script found"
+                PRINT "Will attempt to use &logpath\load.cmm to load dumps"
+                &logtype="LOADSCRIPT"
+        
+            )
+        )
+    )    
+        
+        
+    
+
+    RETURN SUCCESS
+
+////////////////////////////////////////
+//
+//          LOADBIN
+//          Private function
+//          Loads the saved binaries
+//          Expected input: None. Uses global variables
+//          &logtype=<JTAG,USB> 
+//
+/////////////////////////////////////////
+
+LOADBIN:
+    
+    LOCAL &filepresent
+
+    IF ("&logtype"=="JTAG")
+    (
+
+        do std_utils FILEXIST EXIT &logpath &HLOS_1_log
+            ENTRY &filepresent
+        IF ("&filepresent"=="TRUE")
+        (
+             do std_utils LOADBIN &logpath &HLOS_1_log &HLOS_1_start
+        )
+
+        do std_utils FILEXIST EXIT &logpath &HLOS_2_log
+            ENTRY &filepresent
+        IF ("&filepresent"=="TRUE")
+        (
+             do std_utils LOADBIN &logpath &HLOS_2_log &HLOS_2_start
+        )
+
+        do std_utils FILEXIST EXIT &logpath &HLOS_3_log
+            ENTRY &filepresent
+        IF ("&filepresent"=="TRUE")
+        (
+             do std_utils LOADBIN &logpath &HLOS_3_log &HLOS_3_start
+        )
+
+        do std_utils FILEXIST EXIT &logpath &HLOS_3_log
+            ENTRY &filepresent
+        IF ("&filepresent"=="TRUE")
+        (
+             do std_utils LOADBIN &logpath &HLOS_3_log &HLOS_3_start
+        )
+    )
+
+        
+    IF ("&logtype"=="USB")
+    (
+        do std_utils FILEXIST EXIT &logpath &DDR_1_USB_log
+            ENTRY &filepresent
+        IF ("&filepresent"=="TRUE")
+        (
+             do std_utils LOADBIN &logpath &DDR_1_USB_log &DDR_1_start
+        )
+
+        do std_utils FILEXIST EXIT &logpath &DDR_2_USB_log
+            ENTRY &filepresent
+        IF ("&filepresent"=="TRUE")
+        (
+             do std_utils LOADBIN &logpath &DDR_2_USB_log &DDR_2_start
+        )
+    )
+    
+
+    IF ("&logtype"=="LOADSCRIPT")
+    (
+        PRINT "Running &logpath\load.cmm"
+        ON ERROR GOSUB
+        (
+            PRINT %ERROR    "Error detected running &logpath\load.cmm. Please review dump and file"
+            GOSUB FATALEXIT "Error detected running &logpath\load.cmm. Please review dump and file"
+        )
+        do std_utils EXECUTESCRIPT EXIT &logpath\load.cmm
+        
+        do std_memorymap DYNAMIC
+       
+    )
+        
+    RETURN SUCCESS
+    
+////////////////////////////////////////
+//
+//          RESTORESTATE
+//          Private function
+//          To load the error information from the saved logs
+//          Expected input: None. Uses global variables
+//          &logtype=<JTAG,USB> 
+//          Expects various files to be present
+//
+/////////////////////////////////////////
+RESTORESTATE:
+    // Restore the registers from file if JTAG logs
+    IF ("&logtype"=="JTAG")
+    (
+         do std_utils EXECUTESCRIPT EXIT &logpath/&APPS_Cluster0_Core0_regs
+         do std_utils EXECUTESCRIPT EXIT &logpath/&APPS_Cluster0_Core0_mmu
+    )
+
+
+    Register.Set NS 1
+    Data.Set SPR:0x30201 %Quad 0x21860000
+    Data.Set SPR:0x30202 %Quad 0x00000032B5193519
+    Data.Set SPR:0x30A20 %Quad 0x000000FF440C0400
+    Data.Set SPR:0x30A30 %Quad 0x0000000000000000
+    Data.Set SPR:0x30100 %Quad 0x0000000004C5D93D
+    Register.Set CPSR 0x3C5
+    MMU.Delete
+    MMU.SCAN PT 0xFFFFFF8000000000--0xFFFFFFFFFFFFFFFF
+    mmu.on
+    mmu.pt.list 0xffffff8000000000
+
+    ON ERROR CONTINUE
+    task.dtask
+    ON ERROR
+    
+    v.v &ASCII %STRING linux_banner
+    
+    //In case the script is there
+    IF (FILE.EXIST("&logpath/core0_regs.cmm"))
+    (
+        do std_utils EXECUTESCRIPT EXIT &logpath/core0_regs.cmm
+    )
+    
+    RETURN SUCCESS
+
+EXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    ENDDO &rvalue
+    
+
+
+FATALEXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    IF STRING.SCAN("&FAILUREKEYWORD","FAILUREKEYWORD",0)==-1
+    (
+        GOSUB EXIT &FAILUREKEYWORD - &rvalue
+    )
+    ELSE
+    (
+        GOSUB EXIT &rvalue
+    )
+    
+//Should never get here
+    END

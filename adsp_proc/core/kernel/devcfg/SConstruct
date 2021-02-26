@@ -1,0 +1,209 @@
+#===============================================================================
+#                    Copyright (c) 2013  by Qualcomm Technologies, Inc.  All Rights Reserved.
+#                         QUALCOMM Proprietary/GTDR
+#===============================================================================
+import os
+import fnmatch
+import sys
+import re
+import SCons
+import time
+
+# Add command line parameters for target, install directory and build directory
+AddOption('--target',
+          dest='target',
+          default=ARGUMENTS.get('TARGET', ''),
+          type='string',
+          nargs=1,
+          action='store',
+          metavar='TRGT',
+          help='Initialize Target')
+
+AddOption('--test',
+          dest='test',
+          default=ARGUMENTS.get('TEST', ''),
+          type='string',
+          nargs=1,
+          action='store',
+          metavar='TEST',
+          help='testcase')
+
+AddOption('--drivers',
+          dest='drivers',
+          default=ARGUMENTS.get('DRIVERS', 'default'),
+          type='string',
+          nargs=1,
+          action='store',
+          metavar='DRIVERS',
+          help='test drivers to use')
+
+AddOption('--build_path',
+          dest='buildpath',
+          default='build',
+          type='string',
+          nargs=1,
+          action='store',
+          metavar='BUILDPATH',
+          help='Initialize Install directory')
+
+AddOption('--q6_tools_root',
+          dest='toolsroot',
+          type='string',
+          nargs=1,
+          action='store',
+          metavar='Q6_TOOLS_ROOT',
+          help='Set tools directory')
+
+AddOption('--q6_tools_ver',
+          dest='toolsver',
+          type='string',
+          nargs=1,
+          action='store',
+          metavar='Q6_TOOLS_VER',
+          help='Set tools directory')
+
+if GetOption('help')==True:
+   print "\nUsage: \nscons qurt" 
+   print "          --target=<TARGET>"
+   print "          --install_dir=<INSTALL DIRECTORY>"
+   print "          --build_dir=<BUILD_DIRECTORY>"
+   print "          --q6_tools_root=<Q6_TOOLS_ROOT>"
+   print "          --q6_tools_ver=<Q6_TOOLS_VER>"
+   sys.exit(0)
+
+env = DefaultEnvironment(ENV = {'PATH' : os.environ['PATH']}, 
+                         TRGT          = GetOption('target'),
+                         TEST          = GetOption('test'),
+                         DRIVERS          = GetOption('drivers'),
+                         BUILDPATH  = os.path.relpath(GetOption('buildpath')),
+                         Q6_TOOLS_ROOT = GetOption('toolsroot'),
+                         Q6_TOOLS_VER = GetOption('toolsver'),
+                         tools         = ['mingw'])
+      
+env = env.Clone()
+
+#########################crutch############################
+env.Replace(DEVCFG_STANDALONE = True)
+env.Replace(MSM_ID = "8996")
+env.Replace(DEVCFG_MULTIPLE_CONFIG = "false")
+env.Replace(PROC_CONFIG         = 'modem')
+env.Replace(BUILD_ROOT          = os.getcwd())
+env.Replace(DEVCFG_ROOT         = "${BUILD_ROOT}")
+env.Replace(DEVCFG_SYSAPI       = "${DEVCFG_ROOT}/api")
+env.Replace(IMAGE_CONFIG_XML    = "${DEVCFG_ROOT}/test/image_cfg/image_cfg_modem_root.xml")
+
+env.Replace(USES_DEVCFG = True)
+env.Replace(BUILD_TAGS = ['DAL_DEVCFG_IMG'])
+
+env.Tool('target_tools',toolpath=['test'])
+env.Replace(PYTHONCMD = 'python')
+
+env.Append(INCPATHS = " -I$BUILD_ROOT/api")
+env.Append(INCPATHS = " -I$BUILD_ROOT/inc")
+
+pre_process_action = SCons.Action.Action('$CCPPCOM', '$CCPPCOMSTR')
+pre_process_builder = Builder( source_scanner=SCons.Scanner.C.CScanner(), action=pre_process_action, suffix='.pp')
+env.Append(BUILDERS={'PreProcess' : pre_process_builder})
+
+pre_process_clean_action = SCons.Action.Action('$CCPPCLCOM', '$CCPPCLCOMSTR')
+pre_process_clean_builder = Builder(action=pre_process_clean_action, suffix='.i')
+env.Append(BUILDERS={'PreProcessClean' : pre_process_clean_builder})
+
+def add_library(env, targets, library, sources, **args):
+    return env.Library(library, sources)
+env.AddMethod(add_library, "AddLibrary")
+
+def add_object(env, targets, sources, **args):
+    return env.Object(sources)
+env.AddMethod(add_object, "AddObject")
+
+def real_path(env, paths, posix=False):
+    return os.path.realpath(env.subst(paths))
+env.AddMethod(real_path, "RealPath")
+env.AddMethod(real_path, "SubstRealPath")
+
+def get_uses_flag(env, flag):
+    return flag in env
+env.AddMethod(get_uses_flag, "GetUsesFlag")
+
+env.Replace(IMAGE_ENV = env)
+###############todo: dont use crutch###################
+if 'DEVCFG_STANDALONE' in env:
+    env.Append(CPPDEFINES = ['DEVCFG_STANDALONE'])
+env.Tool('devcfg_builder', toolpath = ['scripts'])
+
+coretest = env.SConscript('test/drivers/${DRIVERS}/SConscript', exports='env')
+
+returnlibs = SConscript('SConscript', exports='env')
+
+env.Depends(returnlibs, coretest)
+
+if env['TEST'] != "":
+    env.Replace(TEST_TOP = os.getcwd() + "/test")
+    env.Replace(Q6_RTOS_ROOT="${TEST_TOP}/lib/qurt")
+    env.Replace(BUILD_DIR="${TEST_TOP}/build")
+    env.Replace(TEST_TIMEOUT = 3500)
+
+    env.Tool('target_tools', toolpath=["${Q6_RTOS_ROOT}/${TRGT}/scripts"])
+    env.Tool('qurt_builders', toolpath = ["${Q6_RTOS_ROOT}/scripts"])
+
+    #Initialize utilities
+    sys.path.append("test")
+    import utils
+    utils.Init(env)
+    if env.subst('$USE_LLVM') == 'True':
+       env.Replace(HEXAGON_WARN = env.subst('$HEXAGON_WARN') + " -Wno-error=typedef-redefinition")
+    env.Replace(OPTIMIZATION=['-O2'])
+    env.Replace(CCFLAGS=['-m${Q6VERSION}','-g','${OPTIMIZATION}'])
+    env.Replace(CPPPATH=['.','./src','./asm_src','./include','${Q6_RTOS_ROOT}/include/qurt',
+                         '${Q6_RTOS_ROOT}/include/qube','${Q6_RTOS_ROOT}/include/posix',
+                         '${TEST_TOP}/lib/passfail/include','${TEST_TOP}/lib/backdoor/include','${TEST_TOP}/lib/profile/include'])
+
+    #for posterity
+    starttime= time.time()
+
+    targets = env['TEST']
+
+    #cleanprevious test
+    #os.remove(env.subst("$BUILD_DIR/")+test+"/result")
+
+    #find test location
+    target_paths = []
+    if os.path.isfile(targets+"/SConscript"):
+        target_paths.append()
+    elif os.path.isfile(os.path.join(env.subst("$TEST_TOP")+'/testcases/', targets) + "/SConscript"):
+        target_paths.append(os.path.join(env.subst("$TEST_TOP")+'/testcases/', targets))
+    else:
+        print "test cannot be found."
+        exit(1)
+
+    #run tests
+    results = env.SConscript(dirs=target_paths, exports=['env', 'returnlibs'])
+
+    #alias target should be preserved before any manipulation
+    env.Alias(targets, results)
+
+    #process results on exit
+    import atexit
+    def print_build_failures():
+        from SCons.Script import GetBuildFailures
+        print "\nTesting Results:\n"
+        failures = GetBuildFailures()
+        localresults = results    
+        #if only one test, print and create list similar to multiple tests
+        #if len(targets) == 1:
+        if os.path.exists(str(results[2])):
+            print open(str(results[2]), 'r').read()
+        localresults = [results]
+
+        for res in localresults:   
+            test = os.path.basename(os.path.dirname(str(res)))
+            print "NAME !!!"
+            print str(res)
+            status = ''
+
+        endtime= time.time()
+        print"\nTesting took %.2f seconds\n" % float(endtime-starttime)
+
+    if (str(GetOption('clean')) == "False"):
+        atexit.register(print_build_failures)

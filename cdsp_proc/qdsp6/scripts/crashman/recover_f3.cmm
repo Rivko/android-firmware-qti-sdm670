@@ -1,0 +1,2272 @@
+;=================================================================
+;
+; recover_f3.cmm
+;
+; This script reconstructs te F3 messages saved to the F3 Trace Buffer
+;
+; Usage instructions found in InitArea routine.
+;
+; $Header: //components/rel/dspcore.adsp/4.0/scripts/crashman/recover_f3.cmm#3 $
+;
+; Copyright (c) 2009-2012, 2013 by QUALCOMM Technologies, Inc
+;=================================================================
+; -----------------------------------------------
+
+
+; Parameters passed to script
+entry &getelfnamesymbol &pd_type &efs_flag &outfile_path  &hash_file
+
+; Declaration of 'constants' used in this script
+;
+ON ERROR JUMPTO recover_end
+
+; Type constants
+local &TYPE_INVALID
+&TYPE_INVALID="INVALID"
+local &TYPE_EVENT
+&TYPE_EVENT="EVENT"
+local &TYPE_LOG
+&TYPE_LOG="LOG"
+local &TYPE_MSG
+&TYPE_MSG="MSG"
+
+; MSG constants
+local &MSG_TYPE_INVALID
+&MSG_TYPE_INVALID="INVALID"
+local &MSG_TYPE_STANDARD
+&MSG_TYPE_STANDARD="MSG_STANDARD"
+local &MSG_TYPE_QSHRINK
+&MSG_TYPE_QSHRINK="MSG_QSHRINK"
+local &MSG_TYPE_QSHRINK20
+&MSG_TYPE_QSHRINK20="MSG_QSHRINK20"
+
+; SIZEOF constants
+local &SIZEOF_HEADERFLAG
+&SIZEOF_HEADERFLAG=4
+local &SIZEOF_HEADER
+&SIZEOF_HEADER=2
+local &SIZEOF_ELENGTH
+&SIZEOF_ELENGTH=2
+local &SIZEOF_EID
+&SIZEOF_EID=2
+local &SIZEOF_EPLENGTH
+&SIZEOF_EPLENGTH=1
+local &SIZEOF_TIME
+&SIZEOF_TIME=6
+
+; Other constants
+local &HEADER_FLAG
+&HEADER_FLAG=0xA55A6BB6
+local &TOKEN_OUTPUT_FILE
+&TOKEN_OUTPUT_FILE="f3tokens_temp.txt"
+local &DEBUG_LOG_FILE
+&DEBUG_LOG_FILE="f3recover_debug.txt"
+local &OUTFILE_DEFAULT_PATH
+&OUTFILE_DEFAULT_PATH="c:/temp"
+local &OUTFILE_DEFAULT
+&OUTFILE_DEFAULT="f3log.txt"
+&FORMATSCRIPT="FormatT32F3Trace.pl"
+local &HASHFILE_DEFAULT
+&HASHFILE_DEFAULT_NEW="msg_hash.txt"
+;&HASHFILE_DEFAULT_OLD="./tools/qshrink/msg_hash.txt"
+;;REALLYOLD="../../tools/qshrink/hash.txt"
+
+; ------------------------------------------------------------------------
+; Declaration of global vairblaes used in this script
+; (variables are declared 'local' since they are not used by other scripts,
+;  but they are used by multiple functions within this script)
+;
+
+; Globals used to save the current header fields
+local &header &h_type &h_num_args &h_msg_type &h_arg_byte_size 
+local &h_save_time &h_save_args &header_flag
+
+; Globals used to store values retrieved from variables from the logs
+local &trace_buffer_start &trace_buffer_end &total_item_count &tb_head &tb_tail
+local &trace_detail_mask &trace_control_mask
+local &buffer_wrap_flag
+
+; Pointers used to manage buffer access
+local &start_ptr &end_ptr &current_ptr &bailout &wrap_flag
+local &infinite_loop_break
+
+; Other variables used by the script
+local &item_count &time_start &status_update &event_count &msg_count
+local &bad_header_flag &bad_start_addr &bad_end_addr &efs_mode
+local &lockless_design &error_count &error_flag &vm_access_mode
+
+; ----------------------------------------------
+; This controls the level of debug messages printed to the screen
+; The higher the value, the more messages will be displayed
+; A level of 0 removes all debug messages from the screen
+; (level 0 messages are 'standard' messages and will always be output)
+;
+local &debug_level_screen
+&debug_level_screen=0
+
+; ----------------------------------------------
+; This controls the level of debug messages printed to the log file
+; The higher the value, the more messages will be displayed
+; A level of 0 will not generate a log file 
+; (i.e. must be level 1 or higher to see a log)
+;
+local &debug_level_log
+&debug_level_log=0
+
+; Internal flag. Should always be intialized to 0
+local &debug_log_open
+&debug_log_open=0
+
+
+; *************************************************************************
+; Main
+;
+;   This is the main control loop for the script
+; *************************************************************************
+
+Main:
+
+  gosub InitParameters
+  gosub InitArea
+  gosub OpenOutputFile
+
+  gosub CheckForDependencies
+  
+  if "&efs_mode"=="TRUE"
+  (
+    gosub LoadEFSFile
+  )
+  else
+  (
+    gosub ReadElfVariables
+  )
+
+  ;printing the values in the T32 area
+  gosub DebugPrint 0 "diag_f3_trace_control_mask = &trace_control_mask"
+  gosub DebugPrint 0 "diag_f3_trace_detail_mask = &trace_detail_mask"
+  
+  ;writing the values to the file f3tokens_temp.txt
+  WRITE #1 "diag_f3_trace_control_mask = &trace_control_mask"
+  WRITE #1 "diag_f3_trace_detail_mask = &trace_detail_mask"
+  
+  if (&trace_control_mask==0)
+  (
+	gosub DebugPrint 0 "F3 Saving is not enabled"
+	WRITE #1 "F3 Saving is not enabled"
+  )
+  else
+  (
+	  
+	  gosub DebugPrint 0 "F3 Levels Enabled to be saved are:"
+	  WRITE #1 "F3 Levels Enabled to be saved are :"
+	  if (((&trace_detail_mask>>3)&0x1)==0x1)
+	  (
+		gosub DebugPrint 0 "     => MSG_LOW (MSG_MASK_0)"
+		WRITE #1 "     => MSG_LOW (MSG_MASK_0)"
+	  )
+	  if (((&trace_detail_mask>>4)&0x1)==0x1)
+	  (
+		gosub DebugPrint 0 "     => MSG_MED (MSG_MASK_1)"
+		WRITE #1 "     => MSG_MED (MSG_MASK_1)"
+	  )
+	  if (((&trace_detail_mask>>5)&0x1)==0x1)
+	  (
+		gosub DebugPrint 0 "     => MSG_HIGH (MSG_MASK_2)"
+		WRITE #1 "     => MSG_HIGH (MSG_MASK_2)"
+	  )
+	  if (((&trace_detail_mask>>6)&0x1)==0x1)
+	  (
+		gosub DebugPrint 0 "     => MSG_ERROR (MSG_MASK_3)"
+		WRITE #1 "     => MSG_ERROR (MSG_MASK_3)"
+	  )
+	  if (((&trace_detail_mask>>7)&0x1)==0x1)
+	  (
+		gosub DebugPrint 0 "     => MSG_FATAL (MSG_MASK_4)"
+		WRITE #1 "     => MSG_FATAL (MSG_MASK_4)"
+	  )
+	  if (((&trace_detail_mask>>2)&0x1)==0x1)
+	  (
+		gosub DebugPrint 0 "     => Custom Levels (above MSG_MASK_4)"
+		WRITE #1 "     => Custom Levels (above MSG_MASK_4)"
+	  )
+   )
+	  
+  ; Early bailout check
+  if (&total_item_count==0)&&(&lockless_design==0)
+  (
+    gosub DebugPrint 0 "F3 trace buffer is empty. No items to process."
+    ENDDO
+  )
+
+  gosub InitVariables
+  gosub TestVMAccess
+
+  ; NOTE for lockless design:
+  ;   Since the lockless design has no tail pointer, the main loop will likely have
+  ;   to parse through some bad data before locating the first valid item.
+  ;   Error messages are supressed in this case.
+
+  if (&lockless_design==1)
+  (
+    gosub LocateFirstEntry
+  )
+
+  ; Main processing loop
+  while ((&lockless_design==1)||((&lockless_design==0)&&(&item_count<&total_item_count)))&&(&bailout==0)&&(&infinite_loop_break==0)
+  (
+    local &prev_ptr
+
+    if &bad_header_flag==0
+    (
+      gosub StatusUpdate 
+    )
+
+    gosub DebugPrint 1 "Item count: &item_count"
+    gosub DebugPrint 2 "----------------------------------------------"
+
+    &prev_ptr=&current_ptr
+
+    ; Read the next header
+    if &lockless_design==1
+    (
+      gosub ReadBytes &SIZEOF_HEADERFLAG
+      entry &header_flag
+
+    )
+    gosub ReadBytes &SIZEOF_HEADER
+    entry &header
+
+    if &lockless_design==1
+    (
+      gosub DebugPrint 1 "Header at &prev_ptr is: &header_flag, &header"
+    )
+    else
+    (
+      gosub DebugPrint 1 "Header at &prev_ptr is: &header"
+    )
+
+    gosub ParseHeader &header
+
+    gosub ValidateHeader 
+    entry &valid_header
+
+    if "&valid_header"=="FALSE"
+    (
+      if &bad_header_flag==0
+      (
+        if ((&lockless_design==0)||((&lockless_design==1)&&(&item_count>0)))
+        (
+          ; Only print error message if not using lockless design,
+          ; or if we're already found a valid item within the lockless design
+
+          gosub DebugPrint 0 "Bad header at item &item_count (address &prev_ptr). Attempting recovery."
+        )
+          &bad_start_addr=&prev_ptr
+          &bad_header_flag=1
+      )
+      gosub BadHeader &prev_ptr
+    )
+    else
+    (
+      if &bad_header_flag==1
+      (
+        if ((&lockless_design==0)||((&lockless_design==1)&&(&item_count>0)))
+        (
+          gosub DebugPrint 0 "Valid header found at address &prev_ptr. Continuing processing."
+          &bad_end_addr=&prev_ptr-1
+          gosub OutputCORRUPT
+        )
+        &bad_header_flag=0
+      )
+      gosub OutputITEM &header &h_type
+
+      if "&h_type"=="&TYPE_EVENT"
+      (
+        gosub ProcessEvent
+        &item_count=&item_count+1
+        &event_count=&event_count+1
+      )
+      else if "&h_type"=="&TYPE_MSG"
+      (
+        gosub ProcessMessage
+        &item_count=&item_count+1
+	&msg_count=&msg_count+1
+      )
+      else
+      (
+        ; Should not reach here (item validation should catch this case)
+        gosub BadHeader &prev_ptr
+      )
+    )  
+
+    gosub CheckAddressOverrun
+    entry &bailout
+
+  ) ; end while loop
+
+  if &bad_header_flag==1
+  (
+    &bad_end_addr=&current_ptr
+    gosub OutputCORRUPT    
+  )
+
+  local &item_fmt &msg_fmt &event_fmt &error_fmt
+  &item_fmt=  format.udecimal(4,&item_count)
+  &msg_fmt=   format.udecimal(4,&msg_count)
+  &event_fmt= format.udecimal(4,&event_count)
+  &error_fmt= format.udecimal(4,&error_count)
+
+  gosub DebugPrint 0
+  gosub DebugPrint 0 "Token file created. "
+  gosub DebugPrint 0 "  Processed &item_fmt total items."
+  gosub DebugPrint 0 "    &msg_fmt items were messages"
+  gosub DebugPrint 0 "    &event_fmt items were events"
+  gosub DebugPrint 0 "  Note that events will not appear in the final output file."
+  gosub DebugPrint 0 "  Encountered &error_count errors or warnings"
+  gosub DebugPrint 0
+ 
+  close #1
+
+  gosub PostProcessing
+
+  gosub DebugPrint 0 "Script complete."
+
+  if &debug_log_open==1
+  (
+    close #2
+  )
+
+ENDDO
+
+
+
+; *************************************************************************
+; LocateFirstEntry
+;
+;   Scan the buffer 'quickly' to find the first valid entry in it.
+;   Needed when parsing the lockelss buffer.
+;
+; *************************************************************************
+LocateFirstEntry:
+  local &found_header_flag
+  local &prev_scan_ptr
+  &found_header_flag=0
+
+  ; Check for case where buffer is empty. Indicated by wrap flag not being set,
+  ; and having start and end ptrs equal to 0.
+  if (&buffer_wrap_flag==0)&&(&tb_head==0)
+  (
+    gosub DebugPrint 0 
+    gosub DebugPrint 0 "WARNING: Buffer is empty"
+    &bailout=1
+    RETURN
+  )
+
+  gosub DebugPrint 0 "Scanning for first item in buffer..."
+
+  while ((&found_header_flag==0)&&(&bailout==0))
+  (
+    &prev_scan_ptr=&current_ptr
+
+    ; Read initial header flag
+    gosub ReadBytes &SIZEOF_HEADERFLAG
+    entry &header_flag
+
+    if (&header_flag==&HEADER_FLAG)
+    (
+      &found_header_flag=1
+    )
+    else
+    (
+      gosub BadHeader &prev_scan_ptr
+    )
+    gosub CheckAddressOverrun
+    entry &bailout
+  )
+
+  if (&found_header_flag==1)
+  (
+    &current_ptr=&prev_scan_ptr
+    gosub DebugPrint 2 "valid header found at &current_ptr"
+    gosub DebugPrint 0 "Found initial header, now processing buffer."
+  )
+
+  if (&bailout==1)
+  (
+    gosub DebugPrint 0 "Error: Did not find a valid header in the buffer."
+  )
+
+RETURN
+
+; *************************************************************************
+; ProcessMessage
+;
+;   This routine processes a message from the buffer, excluding the initial
+;   header. 
+;
+; *************************************************************************
+ProcessMessage:
+  local &msg &file &hash &cnst_ptr &desc_ptr &str_ptr &line
+
+  ; Read pointer stored after header
+  ; Points to MSG const type (Standard or Qshrink)
+  gosub ReadBytes 4
+  entry &cnst_ptr
+
+  ON ERROR GOSUB
+  (
+    &error_count=&error_count+1
+    if &error_flag==0
+    (
+      gosub DebugPrint 0 " Warning: T32 error occurred during processing of message &item_count."
+      gosub DebugPrint 0 " This does not necesarily mean that there is a problem"
+      gosub DebugPrint 0 "  with the F3 messages. Corrupt messages, if any, will"
+      gosub DebugPrint 0 "  be flagged in the final output file."
+      gosub DebugPrint 0 " Processing will continue, and further error messages"
+      gosub DebugPrint 0 "  will be counted but not displayed."
+      &error_flag=1
+    )
+    else
+    (
+      gosub DebugPrint 1 " Warning: T32 error occurred during processing of message &item_count."
+    )
+    RETURN
+  )
+
+  gosub DebugPrint 3 "MsgConst pointer is: &cnst_ptr"
+
+
+  ; We need to retrieve the line number from msg_desc_type, 
+  ; which has this format (same for standard and Qshrink):
+  ;
+  ;  typedef struct
+  ;  {
+  ;    uint16 line;    /* Line number in source file */
+  ;    uint16 ss_id;   /* Subsystem ID               */
+  ;    uint32 ss_mask; /* Subsystem Mask             */
+  ;  } msg_desc_type;
+  ;
+
+  if &vm_access_mode==1
+  (  
+    ; If enabled, use VM to access const data
+    &line=data.word(D:&cnst_ptr)
+  )
+  else
+  (
+    &line=data.word(D:&cnst_ptr)	  
+  )
+
+
+
+  if "&h_msg_type"=="&MSG_TYPE_STANDARD"
+  (
+    ; Need to extract msg string and file name from msg_const_type:
+    ;
+    ; typedef struct
+    ; {
+    ;   msg_desc_type desc; /* ss_mask, line, ss_id */
+    ;   const char *fmt;    /* Printf style format string */
+    ;   const char *fname;  /* Pointer to source file name */
+    ;   boolean do_save;    /* If TRUE, save msg to RAM buffer */
+    ; } msg_const_type
+
+    if &vm_access_mode==1
+    (  
+      ; If enabled, use VM to access const data
+      &str_ptr=data.long(D:&cnst_ptr+8.)
+      &msg=data.string(D:&str_ptr)
+    )
+    else
+    (
+      &str_ptr=data.long(D:&cnst_ptr+8.)
+      &msg=data.string(D:&str_ptr)
+    )
+
+    gosub DebugPrint 3 "Message string (&str_ptr): &msg"
+
+    if &vm_access_mode==1
+    (
+      ; If enabled, use VM to access const data  
+      &str_ptr=data.long(D:&cnst_ptr+12.)
+      ;&file=data.string(D:&str_ptr)
+    )
+    else
+    (
+      &str_ptr=data.long(D:&cnst_ptr+12.)
+      ;&file=data.string(D:&str_ptr)
+    )
+
+    gosub DebugPrint 3 "File string (&str_ptr): &file"
+
+    gosub DebugPrint 1 "Found FILE LINE MSG: &file &line &msg"
+
+    gosub OutputMFORMAT "&msg"
+    gosub OutputMFILE "&file"
+    gosub OutputMLINE &line
+
+  )
+  else if "&h_msg_type"=="&MSG_TYPE_QSHRINK"
+  (
+    ; Need to extract hash from msg_qsr_const_type
+    ; 
+    ; typedef struct
+    ; {
+    ;   msg_desc_type desc;    /* ss_mask, line, ss_id */
+    ;   const uint32 msg_hash; /* message hash value */
+    ; } msg_qsr_const_type;
+
+    if &vm_access_mode==1
+    (  
+      ; If enabled, use VM to access const data
+      &hash=data.long(D:&cnst_ptr+8.)
+    )
+    else
+    (
+      &hash=data.long(D:&cnst_ptr+8.)
+    )
+
+
+    gosub DebugPrint 1 "Found MSG LINE HASH: &line &hash"
+
+    gosub OutputMHASH &hash
+    gosub OutputMLINE &line
+
+  )
+  else if "&h_msg_type"=="&MSG_TYPE_QSHRINK20"
+    (
+    ; extract hash as in MSG_TYPE_QSHRINK
+      &hash=data.long(D:&cnst_ptr+8.)
+
+    if (&hash&0x3)==0
+    (
+      ; Need to extract msg string and file name from msg_qsr_const_type:
+      ; the hash value is pointer to filename\0string 
+
+      &msg=data.string(D:&hash)
+      gosub DebugPrint 3 "Message string (&str_ptr): &msg"
+
+      gosub DebugPrint 1 "Found FILE LINE MSG: &file &line &msg"
+
+      gosub OutputMFORMAT "&msg"
+      gosub OutputMLINE &line     
+    )
+    else
+    (
+    gosub DebugPrint 1 "Found MSG LINE HASH: &line &hash"
+
+    gosub OutputMHASH &hash
+    gosub OutputMLINE &line
+
+  )
+
+  )
+  else
+  (
+    ; Should not reach this case.  Item validation should catch this.
+  )
+
+  if &h_save_time==1
+  (
+    gosub OutputTIME
+  )
+
+  if &h_save_args==1
+  (
+    gosub OutputMARGS
+  )
+
+RETURN
+
+
+
+; *************************************************************************
+; ProcessEvent
+;
+;   This routine processes an event from the buffer, excluding the initial
+;   header. 
+;
+; *************************************************************************
+
+ProcessEvent:
+  local &e_length &e_id &e_plength &e_pload &e_length_orig
+
+  gosub ReadBytes &SIZEOF_ELENGTH
+  entry &e_length
+  gosub OutputELENGTH &e_length
+
+  gosub ReadBytes &SIZEOF_EID
+  entry &e_id
+  gosub OutputEID &e_id
+  &e_length=&e_length-&SIZEOF_EID
+
+  if &h_save_time==1
+  (
+    gosub OutputTIME
+    &e_length=&e_length-&SIZEOF_TIME
+  )
+
+  &e_length_orig=&e_length;
+      
+  if &e_length>2
+  (
+    gosub ReadBytes &SIZEOF_EPLENGTH
+    entry &e_plength
+    gosub OutputEPLENGTH &e_plength
+    &e_length=&e_length-&SIZEOF_EPLENGTH
+  )
+
+  ; Event Sanity Check
+  ; Check to see if lengths match up...if not, abort
+  (
+    local &expected_length &eid_plength
+    &expected_length=0
+    &eid_plength=(&e_id&0x6000)>>13.
+    gosub DebugPrint 3 "Event has ID (&e_id) embedded length of &eid_plength"
+    if &eid_plength==0x3
+    (
+      &expected_length=&expected_length+&SIZEOF_EPLENGTH
+      &expected_length=&expected_length+&e_plength
+    )
+    else
+    (
+      &expected_length=&expected_length+&eid_plength
+    )
+    if &expected_length!=&e_length_orig
+    (
+      gosub DebugPrint 2 "Corrupted event: Calculated &expected_length, expected &e_length_orig"
+      gosub DebugPrint 0 "Corrutped Event detected. Aborting Event processing."
+      RETURN
+    )
+  )
+
+  if &e_length>0
+  (
+    gosub OutputEPLOAD &e_length      
+  )
+
+RETURN
+
+
+
+; *************************************************************************
+; OutputMARGS
+;
+;   This routine outputs the MSG_ARGS token to the output file (file #1). 
+;   The format is:
+;     MSG_ARGS 0xNN... ... 0xNN...
+;   where there are &h_num_args 0xNN... arguments, each size &h_arg_byte_size
+;
+; *************************************************************************
+OutputMARGS:
+  local &payload
+
+  gosub DebugPrint 3 "Message has &h_num_args arguments"
+
+  if &h_num_args>0
+  (
+    gosub ReadVariableBytes &h_num_args &h_arg_byte_size
+    entry &payload
+
+    gosub DebugPrint 2 "Arguments are:"
+    gosub DebugPrint 2 &payload
+
+    WRITE #1 "MSG_ARGS " &payload
+  )
+
+RETURN
+
+
+
+; *************************************************************************
+; OutputCORRUPT
+;
+;   This routine outputs the CORRUPT_DATA token to the output file (file #1)
+;   indicating that there was a section of corrupt data in the file
+;   The format is:
+;     CORRUPT_DATA
+;
+; *************************************************************************
+OutputCORRUPT:
+
+  WRITE #1
+  WRITE #1 "CORRUPT_DATA 0x" format.HEX(8.,&bad_start_addr) "--0x" format.HEX(8.,&bad_end_addr)
+
+RETURN
+
+
+
+; *************************************************************************
+; OutputMFORMAT &M
+;
+;   This routine outputs the MSG_FORMAT token to the output file (file #1). 
+;   The format is:
+;     MSG_FORMAT string
+;
+; *************************************************************************
+OutputMFORMAT:
+  entry &m_str
+
+  WRITE #1 "MSG_FORMAT " &m_str
+
+RETURN
+
+
+
+; *************************************************************************
+; OutputMFILE &F
+;
+;   This routine outputs the MSG_FILE token to the output file (file #1). 
+;   The format is:
+;     MSG_FILE string
+;
+; *************************************************************************
+OutputMFILE:
+  entry &m_file
+
+  WRITE #1 "MSG_FILE " &m_file
+
+RETURN
+
+
+
+; *************************************************************************
+; OutputMLINE &L
+;
+;   This routine outputs the MSG_LINE token to the output file (file #1). 
+;   The format is:
+;     MSG_LINE line
+;
+; *************************************************************************
+OutputMLINE:
+  entry &m_line
+
+  WRITE #1 "MSG_LINE " format.UDECIMAL(1.,&m_line)
+
+RETURN
+
+
+
+; *************************************************************************
+; OutputMHASH &H
+;
+;   This routine outputs the MSG_HASH token to the output file (file #1). 
+;   The format is:
+;     MSG_HASH 0xNNNNNNNN
+;   where 0xNNNN is the 32 bit hash value
+;
+; *************************************************************************
+OutputMHASH:
+  entry &m_hash
+
+  WRITE #1 "MSG_HASH 0x" format.HEX(8.,&m_hash)
+
+RETURN
+
+
+
+; *************************************************************************
+; OutputEPLENGTH &L
+;
+;   This routine outputs the EVT_PLENGTH token to the output file (file #1). 
+;   The format is:
+;     EVT_PLENGTH 0xNN
+;   where 0xNN is the value of the payload length field
+;
+; *************************************************************************
+OutputEPLENGTH:
+  entry &e_plength
+
+  gosub DebugPrint 2 "Payload length is &e_plength"
+
+  WRITE #1 "EVT_PLENGTH 0x" format.HEX(4.,&e_plength)
+
+RETURN
+
+
+
+; *************************************************************************
+; OutputEPLOAD &L
+;
+;   This routine outputs the EVT_PAYLOAD token to the output file (file #1). 
+;   The format is:
+;     EVT_PAYLOAD 0xNN ... 0xNN
+;   where 0xNN is &L bytes containing the payload of the event
+;
+; *************************************************************************
+OutputEPLOAD:
+  entry &length
+  local &payload
+
+  gosub ReadVariableBytes &length 1
+  entry &payload
+
+  gosub DebugPrint 2 "Payload is:"
+  gosub DebugPrint 2 &payload
+
+  WRITE #1 "EVT_PAYLOAD " &payload
+
+RETURN
+
+
+
+; *************************************************************************
+; OutputTIME 
+;
+;   This routine outputs the TIME token to the output file (file #1). 
+;   The format is:
+;     TIME 0xNNNN 0xNNNN 0xNNNN
+;   where 0xNNNN 0xNNNN 0xNNNN is the six byte timestamp in hexidecimal,
+;   read two bytes at a time from memory
+;
+; *************************************************************************
+OutputTIME:
+  local &ta &tb &tc
+
+  gosub ReadBytes 4
+  entry &ta
+  gosub ReadBytes 2
+  entry &tb
+  ;gosub ReadBytes 2
+  ;entry &tc
+
+  gosub DebugPrint 2 "Timestamp is: &ta &tb &tc"
+
+  ;WRITE #1 "TIME 0x" format.HEX(4.,&ta) " 0x" format.HEX(4.,&tb) " 0x" format.HEX(4.,&tc)
+  WRITE #1 "TIME 0x" format.HEX(8.,&ta) " 0x" format.HEX(4.,&tb)
+
+
+RETURN
+
+
+
+; *************************************************************************
+; OutputITEM &H &T
+;
+;   This routine outputs the ITEM token to the output file (file #1). 
+;   The format is:
+;     ITEM EVENT|MSG 0xNNNN
+;   where 0xNNNN is the header in hexidecimal
+;
+; *************************************************************************
+OutputITEM:
+  ENTRY &header &type
+
+  WRITE #1
+  WRITE #1 "ITEM &type 0x" format.HEX(4.,&header)
+
+RETURN
+
+
+
+; *************************************************************************
+; OutputEID &E
+;
+;   This routine outputs the EVT_ID token to the output file (file #1). 
+;   The format is:
+;     EVT_ID 0xNNNN
+;   where 0xNNNN is the event id field in hexidecimal
+;
+; *************************************************************************
+OutputEID:
+  ENTRY &e_id
+
+  gosub DebugPrint 2 "Event ID is &e_id"
+
+  WRITE #1 "EVT_ID 0x" format.HEX(4.,&e_id)
+
+RETURN
+
+
+
+; *************************************************************************
+; OutputELENGTH &L
+;
+;   This routine outputs the EVT_LENGTH token to the output file (file #1). 
+;   The format is:
+;     EVENT_LENGTH 0xNNNN
+;   where 0xNNNN is the event length field in hexidecimal
+;
+; *************************************************************************
+OutputELENGTH:
+  ENTRY &length
+
+  gosub DebugPrint 2 "Event length is &length"
+
+  WRITE #1 "EVT_LENGTH 0x" format.HEX(4.,&length)
+
+RETURN
+
+
+
+; *************************************************************************
+; ReadVariableBytes &L &B
+;
+;   This routine reads &L items and places them into a single string of
+;   the format:
+;   0xNN... ... 0xNN...
+;   where each 0xNN... consists of &B bytes
+;
+; Returns: &payload
+; *************************************************************************
+
+ReadVariableBytes:
+  entry &items &size
+  local &payload &first &value
+
+  gosub DebugPrint 4 "Entering ReadVariableBytes (&items &size)"
+
+  &payload=""  
+  &first=1
+
+  while (&items>0)
+  (
+    gosub ReadBytes &size
+    entry &value
+
+    gosub DebugPrint 4 "Value is &value"
+
+    if &first==1
+    (
+      &payload="0x"+format.HEX((&size*2.),&value)
+      &first=0
+    )
+    else
+    (
+      &payload="&payload 0x"+format.HEX((&size*2.),&value)
+    )
+
+    gosub DebugPrint 4 "Payload is now: "
+    gosub DebugPrint 4 "&payload"
+    
+    &items=&items-1
+  )
+
+RETURN "&payload"
+
+
+
+; *************************************************************************
+; CheckBailoutCondition
+;
+;   This routine checks to see if the entire buffer has been passed through
+;   once during item processing. It allows for a bailout if garbage is found
+;   in the buffer and the total number of items is less than expected.
+;
+;   Bailout flag is set if there is not enough room left in the buffer to
+;   read a full message or event (minimum 6 bytes for either case)
+;
+; Returns: &bailout (1 if bailout should occur)
+; *************************************************************************
+
+CheckAddressOverrun:
+  LOCAL &bailout
+
+  &bailout=0
+  if &start_ptr<&end_ptr
+  (
+    if (&current_ptr+5)>&end_ptr
+    (
+     &bailout=1
+    )
+  )
+  else
+  (
+    if ((&current_ptr+5)>&end_ptr)&&(&wrap_flag==1)
+    (
+      &bailout=1
+    )
+  )
+
+RETURN &bailout
+
+; *************************************************************************
+; TestVMAccess
+;
+;   See if VM accesses are working or not
+;
+; *************************************************************************
+
+TestVMAccess:
+
+  local &test_value
+
+  ; Enable vm_access mode by default
+  &vm_access_mode=1
+
+  ON ERROR GOSUB
+  (
+    ; if error encountered and we can't access the function listing
+    ; in VM mode, then disable VM ccess mode
+
+    &vm_access_mode=0
+    RETURN
+  )
+
+  ; Attempt to access variable in VM. If VM not loaded, access will fail.
+  if "&pd_type"=="SENSOR"
+  &test_value=data.long(D:diag_f3_trace_buffer_head)
+  else if "&pd_type"=="AUDIO"
+  &test_value=data.long(diag_f3_trace_buffer_head)
+  else
+  &test_value=data.long(err_f3_trace_buffer_head)
+  ON ERROR
+
+  if &vm_access_mode==1
+  (
+    gosub DebugPrint 0 "INFO: VM access mode detected."
+  )
+  else
+  (
+    gosub DebugPrint 0 "INFO: VM access mode not detected."
+  )
+
+RETURN
+
+
+; *************************************************************************
+; InitVariables
+;
+;   This routine initializes the various pointers used to access the item
+;   buffer in memory, as well as other variables
+;
+; *************************************************************************
+
+InitVariables:
+
+  &error_flag= 0
+  &error_count=0
+  &wrap_flag=  0
+  &bailout=    0
+  &infinite_loop_break=0
+  &item_count= 0  
+  &event_count=     0
+  &msg_count=       0
+  &bad_header_flag= 0
+  &bad_start_addr=  0
+  &bad_end_addr=    0
+  &header_flag=     0
+
+  &status_update=250.
+
+  if &lockless_design==1
+  (
+    if &buffer_wrap_flag==1
+    (
+      ; original buffer wrapped, so start at head
+      &start_ptr=   &trace_buffer_start+&tb_head
+
+      ; Corner case if head==0 and original buffer wrapped
+      if &tb_head==0
+      (
+        &end_ptr=     &trace_buffer_end
+        &wrap_flag=1
+      )
+      else
+      (
+        &end_ptr=     &start_ptr-1
+      )
+    )
+    else
+    (
+      ; buffer never wrapped originally, so start at beginning, end at head
+      &start_ptr=   &trace_buffer_start
+      &end_ptr=     &trace_buffer_start+&tb_head
+    )
+
+	;Either &start_ptr or &end_ptr will have a value of &trace_buffer_start+&tb_head.
+	;If either of those values is past the end of the buffer, we know it is corrupted.
+    if (&start_ptr>&trace_buffer_end)||(&end_ptr>&trace_buffer_end)
+    (
+      ; Corrupted head data; read the entire buffer to see what can be salvaged
+      &start_ptr=&trace_buffer_start
+      &end_ptr=&trace_buffer_end
+      gosub DebugPrint 0 "****************"
+      gosub DebugPrint 0 "** Possible corruption of buffer pointers detected."
+      gosub DebugPrint 0 "** Reading through the buffer once to see what can be salvaged."
+      gosub DebugPrint 0 "** NOTE: Messages may be out of order in the output file!"
+      gosub DebugPrint 0 "****************"
+      ; Since we're reading through the entire buffer once, don't let it wrap
+      &buffer_wrap_flag=1
+      &wrap_flag=1
+
+    )
+
+    &current_ptr= &start_ptr
+  )
+  else
+  (
+    &start_ptr=   &trace_buffer_start+&tb_tail
+    &end_ptr=     &trace_buffer_start+&tb_head
+    &current_ptr= &start_ptr
+ 
+    if &tb_tail<&tb_head
+    (
+      ; Address wrap will not occur
+      &wrap_flag=1
+    )
+  )
+
+  &time_start=clock.unix()
+
+  gosub DebugPrint 3 "Initialized start_ptr to &start_ptr"
+  gosub DebugPrint 3 "Initialized end_ptr to &end_ptr"
+  gosub DebugPrint 3 "Initialized current_ptr to &current_ptr"
+
+RETURN
+
+
+
+; *************************************************************************
+; ValidateHeader
+;
+;   This routine validates the header that was previously read, based on 
+;   the values of the various global header variables
+;
+; Returns: &valid (TRUE if valid, FALSE if invalid)
+;
+; *************************************************************************
+ValidateHeader:
+  local &valid
+  &valid="TRUE"
+
+  if (&lockless_design==1)&&(&header_flag!=&HEADER_FLAG)
+  (
+    &valid="FALSE"
+    RETURN &valid
+  )
+
+  if "&h_type"=="&TYPE_INVALID"
+  (
+    &valid="FALSE"
+    RETURN &valid
+  )
+  
+  if ("&h_type"=="&TYPE_MSG")&&("&h_msg_type"=="&MSG_TYPE_INVALID")
+  (
+    &valid="FALSE"
+    RETURN &valid
+  )
+
+  if "&h_type"=="&TYPE_EVENT"
+  (
+    ; Precautionary check for corupted header.
+    ; All these fields should be 0 for events.
+    ; Note byte_size "4" is actually a value of zero from the header
+    if (&h_num_args!=0)||(&h_arg_byte_size!=4)||("&h_msg_type"!="&MSG_TYPE_STANDARD")
+    (
+      &valid="FALSE"
+      RETURN &valid
+    )
+  )
+
+  ; Additional checks could be put in based on other header fields,
+  ; e.g. for events the unused MSG fields should be '0'
+  ; But for now we will leave just these simple checks in place  
+
+RETURN &valid
+
+
+
+; *************************************************************************
+; ParseHeader &H
+;
+;   This routine parses the 2 byte header &H and returns information
+;   regarding the contents. No values are returned but the following
+;   global variables are set:
+;
+; Globals: &h_type           (Type of item)
+;          &h_num_args       (Number of arguments)
+;          &h_msg_type       (Type of msg)
+;          &h_arg_byte_size  (Size of arguments)
+;          &h_save_time      (Flag indicating if timestamp was saved)
+;          &h_save_args      (Flag indicating it arguments were saved)
+;
+; *************************************************************************
+
+ParseHeader:
+  ENTRY &header
+  LOCAL &type_val
+
+  ; Type is contained in the upper three bits of the 2 byte header
+  ; bit 15 = EVENT
+  ; bit 14 = LOG (unsupported)
+  ; bit 13 = MSG
+  &type_val=&header/0x2000
+  if &type_val==0x1
+  (
+    &h_type="&TYPE_MSG"
+  ) 
+  else if &type_val==0x4
+  (
+    &h_type="&TYPE_EVENT"
+  )
+  else
+  (
+    ; all other values are unsupported
+    &h_type="&TYPE_INVALID"
+  )
+
+  ; &save_time is bit 1 of the header.
+  ; It indicates if a timestamp was saved with the item.
+  &h_save_time=(&header&0x0002)>>1
+
+  ; &save_args is bit 0 of the header.
+  ; It indicates if arguments were saved with the MSG
+  &h_save_args=(&header&0x0001)
+
+  ; &num_args is obtained from bits 12:8 from the header
+  ; It only applies to messages with &h_save_args set.
+  &h_num_args=(&header&0x1f00)>>8
+
+  ; &arg_byte_size is obtained from bits 3:2 of the header
+  ; It only applies to messages with &h_save_args set.
+  ; It is used to specify the number of bytes used to store each argument
+  ;    Number of bytes per argument = (4 - &num_args)
+  ; Conversion done here before returning value
+  &h_arg_byte_size=(&header&0x000C)>>2
+  &h_arg_byte_size=4-&h_arg_byte_size
+
+  ; &msg_type is obtained from bits 7:4 of the header
+  ; It indicates if the MSG is STANDARD of QSHRINK
+  &temp_val=(&header&0x00F0)>>4
+  if &temp_val==0x0
+  (
+    &h_msg_type= "&MSG_TYPE_STANDARD"
+  )
+  else if &temp_val==0x1
+  (
+    &h_msg_type= "&MSG_TYPE_QSHRINK"
+  )
+  else if &temp_val==0x2
+  (
+    &h_msg_type= "&MSG_TYPE_QSHRINK20"
+  )
+  else
+  (
+    &h_msg_type= "&MSG_TYPE_INVALID"
+  )
+
+  gosub DebugPrint 2 "Header values are type:      &h_type"
+  gosub DebugPrint 2 "                  save_time: &h_save_time"
+  gosub DebugPrint 2 "                  save_args: &h_save_args"
+  gosub DebugPrint 2 "                  num_args:  &h_num_args"
+  gosub DebugPrint 2 "                  byte_size: &h_arg_byte_size"
+  gosub DebugPrint 2 "                  msg_type:  &h_msg_type"
+
+RETURN 
+
+
+
+; *************************************************************************
+; ReadElfVariables
+;
+;   This routine initializes all pointers, counters, etc., that need to
+;   be retrieved from symbols and variables in the system.
+;
+; *************************************************************************
+
+ReadElfVariables:
+
+  ON ERROR Gosub
+  (
+    gosub DebugPrint 0 "Could not retrieve value for a required symbol."
+    gosub DebugPrint 0 "Unable to process logs"
+    ENDDO
+  )
+
+  if y.exist(diag_f3_trace_detail_mask)
+  (
+	&trace_detail_mask= v.value(diag_f3_trace_detail_mask)
+  )
+  if y.exist(diag_f3_trace_control_mask)
+  (
+	&trace_control_mask= v.value(diag_f3_trace_control_mask)
+  )
+  if y.exist(\\ROOT_660\diag_f3_trace\diag_f3_trace_detail_mask)
+  (
+	&trace_detail_mask= v.value(\\ROOT_660\diag_f3_trace\diag_f3_trace_detail_mask)
+  )
+  if y.exist(\\ROOT_660\diag_f3_trace\diag_f3_trace_control_mask)
+  (
+	&trace_control_mask= v.value(\\ROOT_660\diag_f3_trace\diag_f3_trace_control_mask)
+  )
+  if y.exist(\\ROOT_845\diag_f3_trace\diag_f3_trace_detail_mask)
+  (
+	&trace_detail_mask= v.value(\\ROOT_845\diag_f3_trace\diag_f3_trace_detail_mask)
+  )
+  if y.exist(\\ROOT_845\diag_f3_trace\diag_f3_trace_control_mask)
+  (
+	&trace_control_mask= v.value(\\ROOT_845\diag_f3_trace\diag_f3_trace_control_mask)
+  )
+  
+  if y.exist(\\M8974AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_detail_mask)
+  (
+	&trace_detail_mask= v.value(\\M8974AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_detail_mask)
+  )
+  if y.exist(\\M8974AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_control_mask)
+  (
+	&trace_control_mask= v.value(\\M8974AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_control_mask)
+  )
+  
+  if y.exist(\\M8996AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_detail_mask)
+  (
+	&trace_detail_mask= v.value(\\M8996AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_detail_mask)
+  )
+  if y.exist(\\M8996AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_control_mask)
+  (
+	&trace_control_mask= v.value(\\M8996AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_control_mask)
+  )
+
+  if y.exist(\\M8998AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_detail_mask)
+  (
+	&trace_detail_mask= v.value(\\M8998AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_detail_mask)
+  )
+  if y.exist(\\M8998AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_control_mask)
+  (
+	&trace_control_mask= v.value(\\M8998AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_control_mask)
+  )
+
+  if y.exist(\\M8998AAAAAAAAQ1234_v1\diag_f3_trace\diag_f3_trace_detail_mask)
+  (
+	&trace_detail_mask= v.value(\\M8998AAAAAAAAQ1234_v1\diag_f3_trace\diag_f3_trace_detail_mask)
+  )
+  if y.exist(\\M8998AAAAAAAAQ1234_v1\diag_f3_trace\diag_f3_trace_control_mask)
+  (
+	&trace_control_mask= v.value(\\M8998AAAAAAAAQ1234_v1\diag_f3_trace\diag_f3_trace_control_mask)
+  )
+
+  if y.exist(\\M8998AAAAAAAAQ1234_v2\diag_f3_trace\diag_f3_trace_detail_mask)
+  (
+	&trace_detail_mask= v.value(\\M8998AAAAAAAAQ1234_v2\diag_f3_trace\diag_f3_trace_detail_mask)
+  )
+  if y.exist(\\M8998AAAAAAAAQ1234_v2\diag_f3_trace\diag_f3_trace_control_mask)
+  (
+	&trace_control_mask= v.value(\\M8998AAAAAAAAQ1234_v2\diag_f3_trace\diag_f3_trace_control_mask)
+  )
+  
+  if y.exist(\\M8992AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_detail_mask)
+  (
+	&trace_detail_mask= v.value(\\M8992AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_detail_mask)
+  )
+  if y.exist(\\M8992AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_control_mask)
+  (
+	&trace_control_mask= v.value(\\M8992AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_control_mask)
+  )
+
+
+  if y.exist(\\M8994AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_detail_mask)
+  (
+	&trace_detail_mask= v.value(\\M8994AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_detail_mask)
+  )
+  if y.exist(\\M8994AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_control_mask)
+  (
+	&trace_control_mask= v.value(\\M8994AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_control_mask)
+  )
+
+  if y.exist(\\M8952AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_detail_mask)
+  (
+	&trace_detail_mask= v.value(\\M8952AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_detail_mask)
+  )
+  if y.exist(\\M8952AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_control_mask)
+  (
+	&trace_control_mask= v.value(\\M8952AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_control_mask)
+  )
+  
+  
+  if y.exist(\\M8953AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_detail_mask)
+  (
+	&trace_detail_mask= v.value(\\M8953AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_detail_mask)
+  )
+  if y.exist(\\M8953AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_control_mask)
+  (
+	&trace_control_mask= v.value(\\M8953AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_control_mask)
+  )
+  
+  
+  if y.exist(\\M8937AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_detail_mask)
+  (
+	&trace_detail_mask= v.value(\\M8937AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_detail_mask)
+  )
+  if y.exist(\\M8937AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_control_mask)
+  (
+	&trace_control_mask= v.value(\\M8937AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_control_mask)
+  )
+
+  if y.exist(\\M8976AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_detail_mask)
+  (
+	&trace_detail_mask= v.value(\\M8976AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_detail_mask)
+  )
+  if y.exist(\\M8976AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_control_mask)
+  (
+	&trace_control_mask= v.value(\\M8976AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_control_mask)
+  )
+  
+  if y.exist(\\M8x26AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_detail_mask)
+  (
+    &trace_detail_mask= v.value(\\M8x26AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_detail_mask)
+  )
+  if y.exist(\\M8x26AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_control_mask)
+  (
+    &trace_control_mask= v.value(\\M8x26AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_control_mask)
+  )
+  
+  if y.exist(\\M8084AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_detail_mask)
+  (
+    &trace_detail_mask= v.value(\\M8084AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_detail_mask)
+  )
+  if y.exist(\\M8084AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_control_mask)
+  (
+    &trace_control_mask= v.value(\\M8084AAAAAAAAQ1234\diag_f3_trace\diag_f3_trace_control_mask)
+  )
+  if y.exist(\\&getelfnamesymbol\diag_f3_trace\diag_f3_trace_detail_mask)
+  (
+    &trace_detail_mask= v.value(\\&getelfnamesymbol\diag_f3_trace\diag_f3_trace_detail_mask)
+  )
+  if y.exist(\\&getelfnamesymbol\diag_f3_trace\diag_f3_trace_control_mask)
+  (
+    &trace_control_mask= v.value(\\&getelfnamesymbol\diag_f3_trace\diag_f3_trace_control_mask)
+  )
+  
+  if "&pd_type"=="SENSOR"
+  (
+      if y.exist(\\SENSOR_660\diag_f3_trace\diag_f3_trace_detail_mask)
+      (
+        &trace_detail_mask= v.value(\\SENSOR_660\diag_f3_trace\diag_f3_trace_detail_mask)
+      )
+      if y.exist(\\SENSOR_660\diag_f3_trace\diag_f3_trace_control_mask)
+      (
+        &trace_control_mask= v.value(\\SENSOR_660\diag_f3_trace\diag_f3_trace_control_mask)
+      )
+      if y.exist(\\SENSOR_845\diag_f3_trace\diag_f3_trace_detail_mask)
+      (
+        &trace_detail_mask= v.value(\\SENSOR_845\diag_f3_trace\diag_f3_trace_detail_mask)
+      )
+      if y.exist(\\SENSOR_845\diag_f3_trace\diag_f3_trace_control_mask)
+      (
+        &trace_control_mask= v.value(\\SENSOR_845\diag_f3_trace\diag_f3_trace_control_mask)
+      )
+      if y.exist(\\M8994AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      (
+        &trace_detail_mask= v.value(\\M8994AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      )
+      if y.exist(\\M8994AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      (
+        &trace_control_mask= v.value(\\M8994AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      )
+      
+      if y.exist(\\M8992AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      (
+        &trace_detail_mask= v.value(\\M8992AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      )
+      if y.exist(\\M8992AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      (
+        &trace_control_mask= v.value(\\M8992AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      )
+
+      if y.exist(\\M8952AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      (
+        &trace_detail_mask= v.value(\\M8952AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      )
+      if y.exist(\\M8952AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      (
+        &trace_control_mask= v.value(\\M8952AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      )
+
+      if y.exist(\\M8953AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      (
+        &trace_detail_mask= v.value(\\M8953AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      )
+      if y.exist(\\M8953AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      (
+        &trace_control_mask= v.value(\\M8953AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      )
+
+      if y.exist(\\M8937AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      (
+        &trace_detail_mask= v.value(\\M8937AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      )
+      if y.exist(\\M8937AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      (
+        &trace_control_mask= v.value(\\M8937AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      )
+
+      
+      if y.exist(\\M8976AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      (
+        &trace_detail_mask= v.value(\\M8976AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      )
+      if y.exist(\\M8976AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      (
+        &trace_control_mask= v.value(\\M8976AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      )
+      
+      if y.exist(\\M8996AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      (
+        &trace_control_mask= v.value(\\M8996AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      )
+      if y.exist(\\M8996AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      (
+        &trace_control_mask= v.value(\\M8996AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      )
+
+      if y.exist(\\M8998AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      (
+        &trace_control_mask= v.value(\\M8998AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      )
+      if y.exist(\\M8998AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      (
+        &trace_control_mask= v.value(\\M8998AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      )
+
+      if y.exist(\\M8998AAAAAAAAQ1234_SENSOR_v1\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      (
+        &trace_control_mask= v.value(\\M8998AAAAAAAAQ1234_SENSOR_v1\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      )
+      if y.exist(\\M8998AAAAAAAAQ1234_SENSOR_v1\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      (
+        &trace_control_mask= v.value(\\M8998AAAAAAAAQ1234_SENSOR_v1\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      )
+
+      if y.exist(\\M8998AAAAAAAAQ1234_SENSOR_v2\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      (
+        &trace_control_mask= v.value(\\M8998AAAAAAAAQ1234_SENSOR_v2\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      )
+      if y.exist(\\M8998AAAAAAAAQ1234_SENSOR_v2\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      (
+        &trace_control_mask= v.value(\\M8998AAAAAAAAQ1234_SENSOR_v2\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      )
+      
+      if y.exist(\\M8974AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      (
+        &trace_detail_mask= v.value(\\M8974AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      )
+      if y.exist(\\M8974AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      (
+        &trace_control_mask= v.value(\\M8974AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      )
+      
+      if y.exist(\\M8x26AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      (
+        &trace_detail_mask= v.value(\\M8x26AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      )
+      if y.exist(\\M8x26AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      (
+        &trace_control_mask= v.value(\\M8x26AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      )
+      
+      if y.exist(\\M8084AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      (
+        &trace_detail_mask= v.value(\\M8084AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      )
+      if y.exist(\\M8084AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      (
+        &trace_control_mask= v.value(\\M8084AAAAAAAAQ1234_SENSOR\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      )
+      if y.exist(\\&getelfnamesymbol\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      (
+        &trace_detail_mask= v.value(\\&getelfnamesymbol\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      )
+      if y.exist(\\&getelfnamesymbol\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      (
+        &trace_control_mask= v.value(\\&getelfnamesymbol\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      )
+  )
+  else  if "&pd_type"=="AUDIO"
+  (
+      if y.exist(\\AUDIO_660\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      (
+        &trace_detail_mask= v.value(\\AUDIO_660\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      )
+      if y.exist(\\AUDIO_660\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      (
+        &trace_control_mask= v.value(\\AUDIO_660\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      )
+      if y.exist(\\AUDIO_845\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      (
+        &trace_detail_mask= v.value(\\AUDIO_845\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      )
+      if y.exist(\\AUDIO_845\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      (
+        &trace_control_mask= v.value(\\AUDIO_845\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      )
+      if y.exist(\\M8994AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      (
+        &trace_detail_mask= v.value(\\M8994AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      )
+      if y.exist(\\M8994AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      (
+        &trace_control_mask= v.value(\\M8994AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      )
+      
+      if y.exist(\\M8992AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      (
+        &trace_detail_mask= v.value(\\M8992AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      )
+      if y.exist(\\M8992AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      (
+        &trace_control_mask= v.value(\\M8992AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      )
+      
+      if y.exist(\\M8952AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      (
+        &trace_detail_mask= v.value(\\M8952AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      )
+      if y.exist(\\M8952AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      (
+        &trace_control_mask= v.value(\\M8952AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      )
+      
+      if y.exist(\\M8953AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      (
+        &trace_detail_mask= v.value(\\M8953AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      )
+      if y.exist(\\M8953AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      (
+        &trace_control_mask= v.value(\\M8953AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      )
+      
+      if y.exist(\\M8937AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      (
+        &trace_detail_mask= v.value(\\M8937AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      )
+      if y.exist(\\M8937AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      (
+        &trace_control_mask= v.value(\\M8937AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      )
+      
+      if y.exist(\\M8976AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      (
+        &trace_detail_mask= v.value(\\M8976AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      )
+      if y.exist(\\M8976AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      (
+        &trace_control_mask= v.value(\\M8976AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      )
+      
+      if y.exist(\\M8996AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      (
+        &trace_detail_mask= v.value(\\M8996AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      )
+      if y.exist(\\M8996AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      (
+        &trace_control_mask= v.value(\\M8996AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      )
+
+      if y.exist(\\M8998AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      (
+        &trace_detail_mask= v.value(\\M8998AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      )
+      if y.exist(\\M8998AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      (
+        &trace_control_mask= v.value(\\M8998AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      )
+
+      
+      if y.exist(\\M8974AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      (
+        &trace_detail_mask= v.value(\\M8974AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      )
+      if y.exist(\\M8974AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      (
+        &trace_control_mask= v.value(\\M8974AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      )
+      
+      if y.exist(\\M8x26AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      (
+        &trace_detail_mask= v.value(\\M8x26AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      )
+      if y.exist(\\M8x26AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      (
+        &trace_control_mask= v.value(\\M8x26AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      )
+      
+      if y.exist(\\M8084AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      (
+        &trace_detail_mask= v.value(\\M8084AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      )
+      if y.exist(\\M8084AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      (
+        &trace_control_mask= v.value(\\M8084AAAAAAAAQ1234_AUDIO\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      )
+
+      if y.exist(\\&getelfnamesymbol\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      (
+        &trace_detail_mask= v.value(\\&getelfnamesymbol\Diag_LSM_F3_Trace\diag_f3_trace_detail_mask)
+      )
+      if y.exist(\\&getelfnamesymbol\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      (
+        &trace_control_mask= v.value(\\&getelfnamesymbol\Diag_LSM_F3_Trace\diag_f3_trace_control_mask)
+      )
+  )
+
+
+  
+  if "&pd_type"=="SENSOR"
+  (
+    if y.exist(\\SENSOR_660\Global\diag_f3_trace_buffer)
+    (
+        mmu.tlb.scan
+        &trace_buffer_start= v.value(\\SENSOR_660\Global\diag_f3_trace_buffer)
+        &trace_buffer_end=   &trace_buffer_start+v.value(\\SENSOR_660\Diag_LSM_F3_Trace\diag_f3_trace_buffer_length)
+        &tb_head=            data.long(D:\\SENSOR_660\Diag_LSM_F3_Trace\diag_f3_trace_buffer_head)
+        &tb_tail=            0
+        &total_item_count=   0
+        &buffer_wrap_flag=   data.byte(D:\\SENSOR_660\Global\diag_f3_trace_wrap_flag)
+        &lockless_design=    1
+    )
+    else if y.exist(\\SENSOR_845\Global\diag_f3_trace_buffer)
+    (
+        mmu.tlb.scan
+        &trace_buffer_start= v.value(\\SENSOR_845\Global\diag_f3_trace_buffer)
+        &trace_buffer_end=   &trace_buffer_start+v.value(\\SENSOR_845\Diag_LSM_F3_Trace\diag_f3_trace_buffer_length)
+        &tb_head=            data.long(D:\\SENSOR_845\Diag_LSM_F3_Trace\diag_f3_trace_buffer_head)
+        &tb_tail=            0
+        &total_item_count=   0
+        &buffer_wrap_flag=   data.byte(D:\\SENSOR_845\Global\diag_f3_trace_wrap_flag)
+        &lockless_design=    1
+    )
+    else
+    (
+        mmu.tlb.scan
+        &trace_buffer_start= v.value(diag_f3_trace_buffer)
+        &trace_buffer_end=   &trace_buffer_start+v.value(diag_f3_trace_buffer_length)
+        &tb_head=            data.long(D:diag_f3_trace_buffer_head)
+        &tb_tail=            0
+        &total_item_count=   0
+        &buffer_wrap_flag=   data.byte(D:diag_f3_trace_wrap_flag)
+        &lockless_design=    1
+    )
+  )
+  else  if "&pd_type"=="AUDIO"
+  (
+    if y.exist(\\AUDIO_660\Global\diag_f3_trace_buffer)
+    (
+        mmu.tlb.scan
+        &trace_buffer_start= v.value(\\AUDIO_660\Global\diag_f3_trace_buffer)
+        &trace_buffer_end=   &trace_buffer_start+v.value(\\AUDIO_660\Diag_LSM_F3_Trace\diag_f3_trace_buffer_length)
+        &tb_head=            data.long(D:\\AUDIO_660\Diag_LSM_F3_Trace\diag_f3_trace_buffer_head)
+        &tb_tail=            0
+        &total_item_count=   0
+        &buffer_wrap_flag=   data.byte(D:\\AUDIO_660\Global\diag_f3_trace_wrap_flag)
+        &lockless_design=    1
+    )
+    else if y.exist(\\AUDIO_845\Global\diag_f3_trace_buffer)
+    (
+        mmu.tlb.scan
+        &trace_buffer_start= v.value(\\AUDIO_845\Global\diag_f3_trace_buffer)
+        &trace_buffer_end=   &trace_buffer_start+v.value(\\AUDIO_845\Diag_LSM_F3_Trace\diag_f3_trace_buffer_length)
+        &tb_head=            data.long(D:\\AUDIO_845\Diag_LSM_F3_Trace\diag_f3_trace_buffer_head)
+        &tb_tail=            0
+        &total_item_count=   0
+        &buffer_wrap_flag=   data.byte(D:\\AUDIO_845\Global\diag_f3_trace_wrap_flag)
+        &lockless_design=    1
+    )
+    else
+    (
+        mmu.tlb.scan
+        &trace_buffer_start= v.value(diag_f3_trace_buffer)
+        &trace_buffer_end=   &trace_buffer_start+v.value(diag_f3_trace_buffer_length)
+        &tb_head=            data.long(diag_f3_trace_buffer_head)
+        &tb_tail=            0
+        &total_item_count=   0
+        &buffer_wrap_flag=   data.byte(diag_f3_trace_wrap_flag)
+        &lockless_design=    1
+    )
+  )
+  else
+  (
+  if y.exist(err_f3_save_msg)
+  (
+    ; New lockless F3 saving which has new header, but no tail or item count
+    &trace_buffer_start= v.value(&err_f3_trace_buffer)
+    &trace_buffer_end=   &trace_buffer_start+y.sizeof(err_f3_trace_buffer)
+    &tb_head=            data.long(D:err_f3_trace_buffer_head)
+    &tb_tail=            0
+    &total_item_count=   0
+    &buffer_wrap_flag=   data.byte(D:err_f3_trace_wrap_flag)
+    &lockless_design=    1
+  )
+  else if y.exist(err_f3_trace_buffer)
+  (
+    &trace_buffer_start= v.value(&err_f3_trace_buffer)
+    &trace_buffer_end=   &trace_buffer_start+y.sizeof(err_f3_trace_buffer)
+    &tb_head=            data.long(D:err_f3_trace_buffer_head)
+    &tb_tail=            data.long(D:err_f3_trace_buffer_tail)
+    &total_item_count=   data.word(D:err_f3_trace_record_count)
+    &lockless_design=    0
+    &buffer_wrap_flag=   0
+  )
+  else
+  (
+    &trace_buffer_start= v.value(&trace_buffer)
+    &trace_buffer_end=   &trace_buffer_start+y.sizeof(trace_buffer)
+    &tb_head=            data.long(D:trace_buffer_head)
+    &tb_tail=            data.long(D:trace_buffer_tail)
+    &total_item_count=   data.long(D:diag_debug_trace_record_count)
+    &lockless_design=    0
+    &buffer_wrap_flag=   0
+  )
+ )
+  gosub DebugPrint 2 "Initial values: trace_buffer_start = &trace_buffer_start"
+  gosub DebugPrint 2 "                trace_buffer_end   = &trace_buffer_end"
+  gosub DebugPrint 2 "                tb_head            = &tb_head"
+  gosub DebugPrint 2 "                tb_tail            = &tb_tail"
+  gosub DebugPrint 2 "                total_item_count   = &total_item_count"
+  gosub DebugPrint 2 "                lockess_design     = &lockless_design"
+  gosub DebugPrint 2 "                buffer_wrap_flag   = &buffer_wrap_flag"
+  
+  ON ERROR
+
+RETURN
+
+
+
+; *************************************************************************
+; LoadEFSFile
+;
+;   This routine loads an f3 log file previously saved to EFS andd then
+;   initializes all pointers, counters, etc., needed to begin F3 recovery
+;
+; *************************************************************************
+
+LoadEFSFile:
+local &efs_file
+
+  ON ERROR Gosub
+  (
+    gosub DebugPrint 0 "Could not retrieve value for a required symbol."
+    gosub DebugPrint 0 "Unable to process logs"
+    ENDDO
+  )
+
+  &lockless_design=0
+  &buffer_wrap_flag=0
+
+  if y.exist(diag_f3_trace_detail_mask)
+  (
+	&trace_detail_mask= v.value(&diag_f3_trace_detail_mask)
+  )
+  if y.exist(diag_f3_trace_control_mask)
+  (
+	&trace_control_mask= v.value(&diag_f3_trace_control_mask)
+  )
+  
+  if y.exist(err_f3_save_msg)
+  (
+    &lockless_design=    1
+  )
+
+  if y.exist(err_f3_trace_buffer)
+  (
+    &trace_buffer_start= v.value(&err_f3_trace_buffer)
+    &trace_buffer_end=   &trace_buffer_start+v.value(sizeof(err_f3_trace_buffer))
+    &tb_head=            v.value(sizeof(err_f3_trace_buffer))
+    &tb_tail=            0
+  )
+  else
+  (
+    &trace_buffer_start= v.value(&trace_buffer)
+    &trace_buffer_end=   &trace_buffer_start+v.value(sizeof(trace_buffer))
+    &tb_head=            v.value(sizeof(trace_buffer))
+    &tb_tail=            0
+  )
+
+
+  ON ERROR
+  
+  gosub DebugPrint 0 "Please select the trace buffer collected from the EFS (ie: err_f3_index00.f3)"
+  dialog.file *.f3
+  ENTRY &efs_file
+  if "&efs_file"==""
+  (
+    gosub DebugPrint 0 "File not selected."
+    gosub DebugPrint 0 "Unable to process logs"
+    ENDDO
+  )
+  gosub DebugPrint 1 "Executing:   d.load.binary &efs_file &trace_buffer_start-4 /noclear"
+  d.load.binary &efs_file &trace_buffer_start-4 /noclear
+
+  &total_item_count= data.long(D:&trace_buffer_start-4)
+
+  gosub DebugPrint 2 "Initial values: Log file loaded             = &efs_file"
+  gosub DebugPrint 2 "                trace_buffer_start          = &trace_buffer_start"
+  gosub DebugPrint 2 "                trace_buffer_end            = &trace_buffer_end"
+  gosub DebugPrint 2 "                tb_head                     = &tb_head"
+  gosub DebugPrint 2 "                tb_tail                     = &tb_tail"
+  gosub DebugPrint 2 "                total_item_count (from EFS) = &total_item_count"
+
+
+RETURN
+
+
+; *************************************************************************
+; BadHeader &A
+;
+;   If a corrupted/bad/invalid header was found, this routine restores the
+;   address pointer to a position where a read attempt can be made again.
+;
+; *************************************************************************
+BadHeader:
+  entry &prev_ptr
+
+  if (!(&lockless_design==1)&&(&item_count==0))
+  gosub DebugPrint 1 "Attempting recovering from bad header"
+
+  if &current_ptr<&prev_ptr
+  (
+    ; The address wrapped around. Reset the wrap flag.
+    &wrap_flag=0;
+  )
+
+  &current_ptr=&prev_ptr
+  &current_ptr=&current_ptr+1
+
+  gosub DebugPrint 4 "Badheader: Ptr now &current_ptr"
+
+  gosub CheckAddressWrap
+
+RETURN
+
+
+
+; *************************************************************************
+; OpenOutputFile
+;
+;   This routine creates the output file that will be passed to the perl
+;   script for final processing. If the file is not provided a temp file
+;   will be used.
+;
+; *************************************************************************
+OpenOutputFile:
+
+  ON ERROR gosub
+  (
+    gosub DebugPrint 0 "Unable to create file &outfile in &outfile_path for processing"
+    gosub DebugPrint 0 "Aborting F3 retrieval."
+    ENDDO
+  )
+
+  if "&outfile_path"==""
+  (
+    &outfile_path="&OUTFILE_DEFAULT_PATH"
+    gosub DebugPrint 0 "Output directory not specified on command line."
+    gosub DebugPrint 0 "Using default output directory: &outfile_path"
+  )
+
+  gosub DebugPrint 0 "Extracting F3 tokens to file &outfile_path/&TOKEN_OUTPUT_FILE"
+  gosub DebugPrint 0
+
+  OPEN #1 "&outfile_path/&TOKEN_OUTPUT_FILE" /CREATE
+
+  if &debug_level_log>0
+  (
+    OPEN #2 "&outfile_path/&DEBUG_LOG_FILE" /CREATE
+    &debug_log_open=1
+  )
+
+  ON ERROR
+
+RETURN
+
+
+
+; *************************************************************************
+; ReadBytes &N
+;
+;   This routine reads &N bytes from the address pointed to by global 
+;   &current_ptr returing a single value that concatinates the &N bytes.
+;   Needed to prevent unaligned memory accesses by Trace32.
+;
+; Returns: &data
+;
+; *************************************************************************
+
+ReadBytes:
+  ENTRY &length
+  LOCAL &ptr &data &num_shift &temp &orig_ptr
+
+  &data=0
+  &num_shift=0
+  &orig_ptr=&current_ptr
+
+  WHILE (&length>0)
+  (
+    &temp=Data.BYTE(D:&current_ptr)
+    gosub DebugPrint 4 "Read &temp from &current_ptr"
+    &data=((&temp<<(&num_shift*8))|&data)
+    &length=&length-1
+    &num_shift=&num_shift+1
+    &current_ptr=&current_ptr+1
+
+    gosub CheckAddressWrap
+
+  )
+
+  gosub DebugPrint 4 "Read &data from &orig_ptr"
+
+RETURN &data
+
+
+
+; *************************************************************************
+; CheckAddressWrap
+;
+;   This routine checks if the global &current_ptr has exceeded the buffer
+;   range, and wraps it around to the start of the buffer if needed.
+; *************************************************************************
+
+CheckAddressWrap:
+
+  if &current_ptr>=&trace_buffer_end
+  (
+    if &wrap_flag==1
+    (
+      ; Address already wrapped! Don't wrap twice.
+      &infinite_loop_break=1;
+      gosub DebugPrint 1 "Multiple buffer wraps detected; Setting bailout flag."
+    )
+    &current_ptr=&trace_buffer_start
+    &wrap_flag=1
+    gosub DebugPrint 3 "Address wrapped around. Now set to &current_ptr"
+  )
+
+RETURN
+
+
+
+; *************************************************************************
+; InitArea
+;
+;   Initializes text areas needed by T32 and any related initialization.
+; *************************************************************************
+
+InitArea:
+
+  Area.Create F3
+  WINPOS 50% 0. 50% 103% 0. 0. F3
+  Area.Select F3
+  Area.Clear F3
+  Area F3
+
+  gosub DebugPrint 0 "Beginning recover_f3.cmm script"
+  gosub DebugPrint 0 
+  gosub DebugPrint 0 "  Usage: cd.do <path>/recover_f3.cmm [EFS] <output_dir> <hash_file>"
+  gosub DebugPrint 0 "         'EFS' flag indicates direct retrieval from an EFS file."
+  gosub DebugPrint 0 "         <output_dir> is location to write output"
+  gosub DebugPrint 0 "             default is c:/temp"
+  gosub DebugPrint 0 "         <hash_file> is location and name of qshrink hash file."
+  gosub DebugPrint 0 "             default is ../../../../tools/qshrink/hash.txt"
+  gosub DebugPrint 0 "             requires that <output_dir> be specified"
+  gosub DebugPrint 0 
+
+RETURN
+
+
+; *************************************************************************
+; InitParameters
+;
+;   Checks input parameters and sets appropriate settings
+; *************************************************************************
+
+InitParameters:
+
+
+  if ("&efs_flag"!="EFS")&&("&efs_flag"!="efs")
+  (
+    &hash_file="&outfile_path"
+    &outfile_path="&efs_flag"
+    &efs_mode="FALSE"
+  )
+  else
+  (
+    &efs_mode="TRUE"
+    gosub DebugPrint 1 "EFS retrieval mode is active"
+  )
+ 
+  if ("&pd_type"!="AUDIO")&&("&pd_type"!="SENSOR")&&("&efs_flag"!="EFS")&&("&efs_flag"!="efs")
+  (
+;This condition is made only to take care of below usage-
+; do recover_f3 <output_file_folder_path>
+  
+      &outfile_path="&pd_type"
+
+  )
+RETURN
+
+
+
+; *************************************************************************
+; DebugPrint &L &M
+;
+;   Prints out debug message &M if &L is less than or equal to the global
+;   variable &debug_level
+; *************************************************************************
+
+DebugPrint:
+  entry &level &debugmsg
+  
+  if &level<=&debug_level_screen
+  (
+    if &level==0
+    (
+      print &debugmsg
+    )
+    else
+    (
+      print "DEBUG &level: &debugmsg"
+    )
+  )
+
+
+  if (&level<=&debug_level_log)&&(&debug_log_open==1)
+  (
+    WRITE #2 "Debug &level: &debugmsg"
+  )
+
+
+RETURN
+
+
+
+; *************************************************************************
+; StatusUpdate
+;
+;   Prints out status update to let user know how fast processing is going
+; *************************************************************************
+
+StatusUpdate:
+
+  if (&item_count%&status_update)==0
+  (
+    local &tsec
+    local &tmin
+    local &seconds
+    local &minutes
+    local &item_format &total_format
+
+    &tsec=clock.unix()
+    &tsec=&tsec-&time_start
+    &tmin=(&tsec)/60.
+
+    if (&tsec%60.)<10.
+    (
+      &seconds= "0"+format.udecimal(1.,&tsec%60.) 
+    )
+    else
+    (
+      &seconds= format.udecimal(2.,&tsec%60.)
+    )
+
+    &minutes= format.udecimal(1.,&tmin)
+    &item_format= format.udecimal(4.,&item_count)
+
+    if (&lockless_design==1)
+    (
+      gosub DebugPrint 0 "Status: Processed &item_format items. (Elapsed time &minutes:&seconds)"
+    )
+    else
+    (
+      &total_format= format.udecimal(4.,&total_item_count)
+      gosub DebugPrint 0 "Status: Processed &item_format of &total_format items. (Elapsed time &minutes:&seconds)"
+    )      
+  )
+
+RETURN
+
+
+
+; *************************************************************************
+; CheckForDependencies
+;
+;   Check for any external dependencies needed before proceeding (like 
+;   available perl scripts, hash files, etc.)
+; *************************************************************************
+CheckForDependencies:
+  local &script_path
+
+  &script_path=OS.PWD()
+
+  if (!os.file("&script_path/&FORMATSCRIPT"))
+  (
+    gosub DebugPrint 0 "ERROR: Script &FORMATSCRIPT not found in current working directory."
+    gosub DebugPrint 0 "       Token file will not be parsed and formatted."
+  )
+
+  if "&hash_file"==""
+  (
+    &hash_file="&HASHFILE_DEFAULT_NEW"
+    if (!os.file("&hash_file"))
+    (
+      gosub DebugPrint 0 "  Qshrink hash file not detected at &hash_file."
+;      gosub DebugPrint 0 "  Trying alternate location."
+;      &hash_file="&HASHFILE_DEFAULT_OLD"
+    )
+  )
+
+  if (!os.file("&hash_file"))
+  (
+    gosub DebugPrint 0 "  Qshrink hash file not detected at &hash_file."
+    gosub DebugPrint 0 "  NOTE: QSR messages from this log, if any, will NOT be fully processed."
+    gosub DebugPrint 0
+    &hash_file=""
+  )
+  else
+  (
+    local &hash_path
+    gosub DebugPrint 0 "  Found Qshrink hash file at &hash_file"
+    gosub DebugPrint 0
+
+    ; Convert hash file path to absolute path (not relative)
+    &hash_path= os.file.path(&hash_file)
+    &hash_file= os.file.name(&hash_file)
+    &hash_file="&hash_path/&hash_file"
+  )
+
+RETURN
+
+
+
+; *************************************************************************
+; PostProcessing
+;
+;   Run perl script to process the tokenized output
+; *************************************************************************
+PostProcessing:
+  local &script_path
+
+  &script_path=OS.PWD()
+
+  if (!os.file("&script_path/&FORMATSCRIPT"))
+  (
+    gosub DebugPrint 0 "ERROR: Token file not formatted because required perl script "
+    gosub DebugPrint 0 "       &FORMATSCRIPT can not be located."
+  )
+  else if (&item_count==0)
+  (
+    gosub DebugPrint 0 "No F3 items were processed."
+  )
+  else
+  (
+    local &command &final_output
+
+    &command="perl &script_path/&FORMATSCRIPT &outfile_path/&TOKEN_OUTPUT_FILE &hash_file"
+    &final_output="&outfile_path/&OUTFILE_DEFAULT"
+
+    gosub DebugPrint 0 "Formatting token file with perl script to create &final_output."
+    gosub DebugPrint 0 "Executing: &command"
+    gosub DebugPrint 0 "Please wait..."
+
+    ; Use 'winprint' command to capture any error messages that might pop up
+    printer.file "&final_output"
+    wp.OS.window &command
+    gosub DebugPrint 0 "F3 messages can be found in &final_output"
+  )
+
+RETURN
+
+
+enddo
+recover_end:
+do &CurrentDirectory\cmm_error.cmm "recover_f3.cmm"
+enddo

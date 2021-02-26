@@ -1,0 +1,1860 @@
+; ============================================================================
+;
+;  vrm.cmm
+;
+;  Script to print DRV votes on VRM resources and VRM resource status
+;
+;  Execution:
+;  do vrm.cmm <target> <rsrc_names> <config_optional>
+;
+;  <target>: Target on which the script is executed
+;  <rsrc_names>: Optional resource names or vrm regulator/xob id (, separated) for which status needs to be printed (e.g s1a,l1a,reg6)
+;  <config_optional>: Optional configs (, separated) (e.g. file=<dump_file>,pmic=<true or false>,access=<a or ezaxi>,debug=<true or false>)
+;
+;  Example:
+;  do vrm.cmm 845      -> Prints all the VRM resource status
+;  do vrm.cmm 845 l5a  -> Prints LDOA5 VRM status
+;  do vrm.cmm 845 rf3a -> Prints RFCLKA3 VRM status
+;  do vrm.cmm 845 s2c  -> Prints SMPSC2 VRM status
+;  do vrm.cmm 845 s3a,bob1b,l5a,rf2a -> Prints SMPSA3, BOBB1, LDOA5, RFCLKA2 VRM status
+;  do vrm.cmm 845 l1a access=a,debug=true -> Uses access=a and debug=true to get the status in sleep
+;  do vrm.cmm 845 reg35 pmic=false -> Prints VRM REG35 status with no pmic access
+;  do vrm.cmm 845 l1a,s3a file=\\<user>\dropbox\demo.txt -> Dumps LDOA1,SMPA3 VRM status to demo.txt
+;  ====================================================================
+;
+;  Copyright (c) 2017 QUALCOMM Technologies Incorporated.  All Rights Reserved.
+;  QUALCOMM Proprietary and Confidential.
+;
+;  ====================================================================
+;
+;  $Header: //components/rel/core.glue/1.2/tools/tools/systemdrivers/pmic/hoya/vrm.cmm#7 $
+;  $DateTime: 2017/11/15 17:28:44 $
+;  $Author: pwbldsvc $
+;
+; ============================================================================
+;
+
+entry &target &rsrc_names &vrm_config
+
+;-----------------------------------------------------------------------------
+; PERIPHERAL BASE ADDRESSES
+;-----------------------------------------------------------------------------
+local &PM_XO_PERIPH_BASE_ADDR &PM_LNBBCLK_PERIPH_BASE_ADDR &PM_RFCLK_PERIPH_BASE_ADDR &PM_PMX_LNBBCLK_PERIPH_BASE_ADDR 
+local &PM_CLKDIST_PERIPH_BASE_ADDR &PM_SLPCLK_PERIPH_BASE_ADDR &PM_DIVCLK_PERIPH_BASE_ADDR &PM_RTC_RW_PERIPH_BASE_ADDR
+local &PM_SMPS_PERIPH_BASE_ADDR &PM_LDO_PERIPH_BASE_ADDR &PM_VS_PERIPH_BASE_ADDR
+local &PM_BOOST_PERIPH_BASE_ADDR &PM_BOOST_BYP_PERIPH_BASE_ADDR &PM_BOB_PERIPH_BASE_ADDR
+
+&PM_XO_PERIPH_BASE_ADDR=0x5000
+&PM_LNBBCLK_PERIPH_BASE_ADDR=0x5100
+&PM_RFCLK_PERIPH_BASE_ADDR=0x5400
+&PM_PMX_LNBBCLK_PERIPH_BASE_ADDR=0x5800
+&PM_CLKDIST_PERIPH_BASE_ADDR=0x5900
+&PM_SLPCLK_PERIPH_BASE_ADDR=0x5A00
+&PM_DIVCLK_PERIPH_BASE_ADDR=0x5B00
+&PM_RTC_RW_PERIPH_BASE_ADDR=0x6000
+&PM_SMPS_PERIPH_BASE_ADDR=0x11400
+&PM_LDO_PERIPH_BASE_ADDR=0x14000
+&PM_VS_PERIPH_BASE_ADDR=0x18000
+&PM_BOOST_PERIPH_BASE_ADDR=0x1A000
+&PM_BOOST_BYP_PERIPH_BASE_ADDR=0x1A200
+&PM_BOB_PERIPH_BASE_ADDR=0x1A000
+
+;-----------------------------------------------------------------------------
+; RESOURCE TYPES
+;-----------------------------------------------------------------------------
+local &VRM_UNKNOWN_RSRC_TYPE &VRM_REG_RSRC_TYPE &VRM_XOB_RSRC_TYPE &VRM_XO_RSRC_TYPE
+local &VRM_MAX_RSRC_TYPE
+
+&VRM_UNKNOWN_RSRC_TYPE=0x0
+&VRM_REG_RSRC_TYPE=0x1
+&VRM_XOB_RSRC_TYPE=0x2
+&VRM_XO_RSRC_TYPE=0x3
+&VRM_MAX_RSRC_TYPE=0x4
+
+VAR.NEW char[&VRM_MAX_RSRC_TYPE][6] \vrm_rsrc_type_name_arr
+
+VAR.SET \vrm_rsrc_type_name_arr[&VRM_UNKNOWN_RSRC_TYPE]="UNK"
+VAR.SET \vrm_rsrc_type_name_arr[&VRM_REG_RSRC_TYPE]="REG"
+VAR.SET \vrm_rsrc_type_name_arr[&VRM_XOB_RSRC_TYPE]="XOB"
+VAR.SET \vrm_rsrc_type_name_arr[&VRM_XO_RSRC_TYPE]="XO"
+
+;-----------------------------------------------------------------------------
+; DRV
+;-----------------------------------------------------------------------------
+local &VRM_TZ_DRV &VRM_HYP_DRV &VRM_HLOS_DRV &VRM_SECPROC_DRV &VRM_AUDIO_DRV &VRM_SENSORS_DRV
+local &VRM_AOP_DRV &VRM_DEBUG_DRV &VRM_GPU_DRV &VRM_DISPLAY_DRV &VRM_MODEM_SW_DRV &VRM_MODEM_HW_DRV
+local &VRM_COMPUTE_DSP_DRV &VRM_ARC_CPRF_DRV &VRM_BCM_CD0_DRV &VRM_BCM_DRV &VRM_MAX_DRV
+
+&VRM_MAX_DRV=16.
+
+VAR.NEW char[&VRM_MAX_DRV][10] \vrm_drv_name_arr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&VRM_MAX_DRV
+	VAR.SET \vrm_drv_name_arr[\i++]="UNKNWN"
+
+;-----------------------------------------------------------------------------
+; PMIC INDEX NAMES
+;-----------------------------------------------------------------------------
+local &PM_MAX_NUM_PMICS
+&PM_MAX_NUM_PMICS=7.
+VAR.NEW char[&PM_MAX_NUM_PMICS][2] \pmic_index_name_arr
+
+VAR.SET \pmic_index_name_arr[0]="A"
+VAR.SET \pmic_index_name_arr[1]="B"
+VAR.SET \pmic_index_name_arr[2]="C"
+VAR.SET \pmic_index_name_arr[3]="D"
+VAR.SET \pmic_index_name_arr[4]="E"
+VAR.SET \pmic_index_name_arr[5]="F"
+VAR.SET \pmic_index_name_arr[6]="G"
+
+;-----------------------------------------------------------------------------
+; Default bus access mode and owner
+;-----------------------------------------------------------------------------
+
+local &spmi_owner_channel
+&spmi_owner_channel=3  ; LPASS Channel by default
+
+local &current_dir
+&current_dir=OS.PWD()
+
+local &pmic_io_script
+&pmic_io_script="&current_dir"+"\pmic_io.cmm"
+
+local &parse_arg_script
+&parse_arg_script="&current_dir"+"\pmic_parse_arg.cmm"
+
+local &bus_access_mode
+&bus_access_mode="EZAXI"
+
+local &pmic_flag
+&pmic_flag=TRUE()
+
+local &debug_flag
+&debug_flag=FALSE()
+
+local &temp_pmic_flag
+&temp_pmic_flag=""
+
+local &temp_debug_flag
+&temp_debug_flag=""
+
+local &temp_access_mode
+&temp_access_mode=""
+
+local &aoss_base_addr
+&aoss_base_addr=0xb000000
+
+&vrm_config=string.trim("&vrm_config")
+&vrm_config=string.lower("&vrm_config")
+&vrm_config=string.replace("&vrm_config",","," ",0.)
+if ("&vrm_config"!="")
+(
+  &temp_access_mode=string.scanandextract("&vrm_config","access=","")
+  &temp_pmic_flag=string.scanandextract("&vrm_config","pmic=","")
+  &temp_debug_flag=string.scanandextract("&vrm_config","debug=","")
+)
+
+if ("&temp_access_mode"!="")
+(
+  &bus_access_mode="&temp_access_mode"
+)
+
+if (string.compare("&temp_pmic_flag","false"))
+(
+  &pmic_flag=FALSE()
+)
+
+if (string.compare("&temp_debug_flag","true"))
+(
+  &debug_flag=TRUE()
+)
+
+if (string.lower("&bus_access_mode")=="a")
+(
+  &aoss_base_addr=0
+  &spmi_owner_channel=4
+)
+
+;-----------------------------------------------------------------------------
+; Determine the file name to save to.
+;-----------------------------------------------------------------------------
+
+local &vrm_date
+&vrm_date=FORMAT.DECIMAL(0,DATE.DAY())+FORMAT.DECIMAL(0,DATE.MONTH())+FORMAT.DECIMAL(0,DATE.YEAR())+"_"+FORMAT.DECIMAL(0,DATE.SECONDS())
+
+local &save_to_file
+&save_to_file=0
+
+local &dump_file
+&dump_file=""
+
+if ("&vrm_config"!="")
+(
+  &dump_file=string.scanandextract("&vrm_config","file=","")
+)
+
+if (("&dump_file"=="")||(string.compare(string.lower("&dump_file"),"default")==TRUE()))
+(
+  if (string.compare(string.lower("&dump_file"),"default")==TRUE())
+  (
+    &save_to_file=1
+  )
+  &dump_file="c:\temp\vrmstatus_"+"&vrm_date"+".txt"
+)
+else
+(
+  &save_to_file=1
+)
+
+if !win.exist(vrm_status)
+(
+  WinPOS ,,,,,,vrm_status
+  area.create vrm_status 200 500
+)
+area.view vrm_status
+area.select vrm_status
+
+local &astr_str
+&astr_str="****************************************************"
+
+print "&astr_str&astr_str"
+
+;-----------------------------------------------------------------------------
+; Check for non-interactive mode.
+;-----------------------------------------------------------------------------
+
+if ("&target"=="") 
+(
+  print %color.red "Specify target folder (i.e. 845)"
+  gosub Usage
+  print "&astr_str&astr_str"
+  enddo "Specify target folder (i.e. 845)"
+)
+
+if ("&rsrc_names"=="") 
+(
+  &rsrc_names="*"
+  &save_to_file=1
+)
+
+if ((file.exist(vrm/&target/hwio.cmm))&&(file.exist(vrm/&target/meta.txt)))
+(
+  do vrm/&target/hwio.cmm &aoss_base_addr
+)
+else
+(
+  print %color.red "Target not supported!"
+  print "&astr_str&astr_str"
+  enddo "Target not supported!"
+)
+
+//*****************************************************************************
+// HW Settings
+//*****************************************************************************
+
+local &num_reg &num_xob &num_xo &num_type &num_drv &num_seqcers &num_arb_vrm &num_drv &tmp &tmp_drv
+
+OPEN #1 vrm/&target/meta.txt /Read
+READ #1 &tmp &num_reg
+READ #1 &tmp &num_xob
+READ #1 &tmp &num_xo
+READ #1 &tmp &num_arb_vrm
+READ #1 &tmp &num_drv
+
+if &num_drv>&VRM_MAX_DRV
+(
+  print %color.red "Error: NumDrvs exceeded max array size &VRM_MAX_DRV!"
+  print "&astr_str&astr_str"
+  CLOSE #1
+  enddo
+)
+WHILE !EOF()
+(
+  READ #1 &tmp &tmp_drv
+  gosub vrm_set_drv &tmp &tmp_drv
+)
+CLOSE #1
+
+if (&save_to_file==1)
+(
+  if file.exist(&dump_file)==TRUE()
+  (
+    OPEN #1 &dump_file /Append
+  )
+  else
+  (
+    OPEN #1 &dump_file /Create
+  )
+)
+
+local &rsrc_name &rsrc_names_len &rsrc_name_len &name_index &error_status
+&rsrc_name=""
+&rsrc_names_len=0
+&rsrc_name_len=0
+&name_index=0
+&error_status=0
+
+local &reg_str &reg_index &xob_str &xob_index &xo_str &xo_index
+&reg_str=""
+&reg_index=0
+&xob_str=""
+&xob_index=0
+&xo_str="XO"
+&xo_index=0
+
+local &pmic_index &periph_baseaddr &periph_id &periph_index &repeat_flag
+
+&pmic_index=0
+&periph_baseaddr=0
+&periph_id=0
+&periph_index=0
+&repeat_flag=0
+
+&rsrc_names=string.trim("&rsrc_names")
+&rsrc_names=string.lower("&rsrc_names")
+&rsrc_names_len=string.length("&rsrc_names")
+
+if ("&rsrc_names"=="*") 
+(
+  while (&reg_index<&num_reg)
+  (
+    gosub vrm_get_rsrc_str &VRM_REG_RSRC_TYPE &reg_index
+    entry &reg_str
+
+    do &parse_arg_script &reg_str
+    entry &pmic_index &periph_baseaddr &periph_id
+
+    if ((&periph_baseaddr!=0)&&(&periph_id!=0))
+    (
+      &periph_index=&periph_id-1.
+      gosub vrm_rsrc_status &pmic_index &periph_baseaddr &periph_index &VRM_REG_RSRC_TYPE &reg_index
+      entry &error_status
+    )
+    &reg_index=&reg_index+1
+  )
+
+  while (&xob_index<&num_xob)
+  (
+    gosub vrm_get_rsrc_str &VRM_XOB_RSRC_TYPE &xob_index
+    entry &xob_str
+
+    do &parse_arg_script &xob_str
+    entry &pmic_index &periph_baseaddr &periph_id
+
+    if ((&periph_baseaddr!=0)&&(&periph_id!=0))
+    (
+      &periph_index=&periph_id-1.
+      gosub vrm_rsrc_status &pmic_index &periph_baseaddr &periph_index &VRM_XOB_RSRC_TYPE &xob_index
+      entry &error_status
+    )
+    &xob_index=&xob_index+1
+  )
+
+  while (&xo_index<&num_xo)
+  (
+    gosub vrm_get_rsrc_str &VRM_XO_RSRC_TYPE &xo_index
+    entry &xo_str
+
+    do &parse_arg_script &xo_str
+    entry &pmic_index &periph_baseaddr &periph_id
+
+    if ((&periph_baseaddr!=0)&&(&periph_id!=0))
+    (
+      &periph_index=&periph_id-1.
+      gosub vrm_rsrc_status &pmic_index &periph_baseaddr &periph_index &VRM_XO_RSRC_TYPE &xo_index
+      entry &error_status
+    )
+    &xo_index=&xo_index+1
+  )
+  &rsrc_names=""
+)
+else if (string.compare("&rsrc_names","reg*")==TRUE()) 
+(
+  &reg_index=string.scanandextract("&rsrc_names","reg","")
+  &reg_index="&reg_index"+"."
+
+  if (&reg_index<&num_reg)
+  (
+    gosub vrm_get_rsrc_str &VRM_REG_RSRC_TYPE &reg_index
+    entry &reg_str
+  )
+
+  do &parse_arg_script &reg_str
+  entry &pmic_index &periph_baseaddr &periph_id
+
+  if ((&periph_baseaddr!=0)&&(&periph_id!=0))
+  (
+    &periph_index=&periph_id-1.
+    gosub vrm_rsrc_status &pmic_index &periph_baseaddr &periph_index &VRM_REG_RSRC_TYPE &reg_index
+    entry &error_status
+  )
+  else
+  (
+    print %color.red "&rsrc_names: Not a supported vrm resource!"
+    if (&save_to_file==1)
+    (
+      WRITE #1 "&rsrc_names: Not a supported vrm resource!"
+    )
+    &error_status=1
+  )
+  &rsrc_names=""
+)
+else if (string.compare("&rsrc_names","xob*")==TRUE()) 
+(
+  &xob_index=string.scanandextract("&rsrc_names","xob","")
+  &xob_index="&xob_index"+"."
+
+  if (&xob_index<&num_xob)
+  (
+    gosub vrm_get_rsrc_str &VRM_XOB_RSRC_TYPE &xob_index
+    entry &xob_str
+  )
+
+  do &parse_arg_script &xob_str
+  entry &pmic_index &periph_baseaddr &periph_id
+
+  if ((&periph_baseaddr!=0)&&(&periph_id!=0))
+  (
+    &periph_index=&periph_id-1.
+    gosub vrm_rsrc_status &pmic_index &periph_baseaddr &periph_index &VRM_XOB_RSRC_TYPE &xob_index
+    entry &error_status
+  )
+  else
+  (
+    print %color.red "&rsrc_names: Not a supported vrm resource!"
+    if (&save_to_file==1)
+    (
+      WRITE #1 "&rsrc_names: Not a supported vrm resource!"
+    )
+    &error_status=1
+  )
+  &rsrc_names=""
+)
+else if (string.compare("&rsrc_names","xo*")==TRUE()) 
+(
+  &xo_index=string.scanandextract("&rsrc_names","xo","")
+  &xo_index="&xo_index"+"."
+
+  if (&xo_index<&num_xo)
+  (
+    gosub vrm_get_rsrc_str &VRM_XO_RSRC_TYPE &xo_index
+    entry &xo_str
+  )
+
+  do &parse_arg_script &xo_str
+  entry &pmic_index &periph_baseaddr &periph_id
+
+  if ((&periph_baseaddr!=0)&&(&periph_id!=0))
+  (
+    &periph_index=&periph_id-1.
+    gosub vrm_rsrc_status &pmic_index &periph_baseaddr &periph_index &VRM_XO_RSRC_TYPE &xo_index
+    entry &error_status
+  )
+  else
+  (
+    print %color.red "&rsrc_names: Not a supported vrm resource!"
+    if (&save_to_file==1)
+    (
+      WRITE #1 "&rsrc_names: Not a supported vrm resource!"
+    )
+    &error_status=1
+  )
+  &rsrc_names=""
+)
+
+repeat
+(
+  &rsrc_name=""
+  &rsrc_name=string.split("&rsrc_names",",",&name_index)
+
+  if ("&rsrc_name"!="")
+  (
+    &pmic_index=0
+    &periph_baseaddr=0
+    &periph_id=0
+    &periph_index=0
+
+    do &parse_arg_script &rsrc_name
+    entry &pmic_index &periph_baseaddr &periph_id
+
+    if ((&periph_baseaddr!=0)&&(&periph_id!=0))
+    (
+      &periph_index=&periph_id-1.
+      gosub vrm_rsrc_status &pmic_index &periph_baseaddr &periph_index
+      entry &error_status
+    )
+  )
+  &name_index=&name_index+1
+)
+while ("&rsrc_name"!="")
+
+if (&error_status!=0x1)
+(
+  gosub Usage
+)
+
+if (&save_to_file==1)
+(
+  CLOSE #1
+)
+
+if (&save_to_file==1)
+(
+  PRINT " "
+  PRINT %color.blue "VRM status copied to"
+  PRINT %color.blue "&dump_file"
+)
+
+print "&astr_str&astr_str"
+enddo
+
+;=============================================================================
+; SUB: Usage
+;=============================================================================
+Usage:
+  print " "
+  print %color.blue "Usage examples"
+  print " "
+  print %color.blue "do vrm.cmm <target> <rsrc_names> <config_optional>"
+  print " "
+  print %color.blue "<target>: Target on which the script is executed"
+  print %color.blue "<rsrc_names>: Optional resource names or vrm regulator/xob id (, separated) for which status needs to be printed (e.g s1a,l1a,s2a)"
+  print %color.blue "<config_optional>: Optional configs (, separated) (e.g. file=<dump_file>,pmic=<true or false>,access=<a or ezaxi>,debug=<true or false>)"
+  print " "
+  print %color.maroon "do vrm.cmm 845" %color.black " -> Prints all the VRM resource status "
+  print %color.maroon "do vrm.cmm 845 l5a" %color.black " -> Prints LDOA5 VRM status "
+  print %color.maroon "do vrm.cmm 845 rf3a" %color.black " -> Prints RFCLKA3 VRM status"
+  print %color.maroon "do vrm.cmm 845 s2c" %color.black " -> Prints SMPSC2 VRM status"
+  print %color.maroon "do vrm.cmm 845 s3a,bob1b,l5a,rf2a" %color.black " -> Prints SMPSA3, BOBB1, LDOA5, RFCLKA2 VRM status"
+  print %color.maroon "do vrm.cmm 845 l1a access=a,debug=true" %color.black " -> Use access=a and debug=true to use debug channel and get status in sleep"
+  print %color.maroon "do vrm.cmm 845 reg35 pmic=false" %color.black " -> Prints VRM REG35 status with no pmic access"
+  print %color.maroon "do vrm.cmm 845 l1a,s3a file=\\<user>\dropbox\demo.txt" %color.black " -> Dumps LDOA1,SMPA3 VRM status to demo.txt"
+  return
+
+
+;=============================================================================
+; sub: vrm_rsrc_status
+;=============================================================================
+vrm_rsrc_status:
+  entry &pmic_index &periph_baseaddr &periph_index &rsrc_type &rsrc_id
+
+  local &rsrc_str &drv_id &error_status
+  &rsrc_str=""
+  &drv_id=&num_drv
+  &error_status=1
+
+  local &pwrrail_str &periph_index_addr &periph_type &periph_subtype &read_status
+  &pwrrail_str=""
+  &periph_index_addr=0
+  &periph_type=0
+  &periph_subtype=0
+  &read_status=0
+
+  local &vrm_version
+  &vrm_version=0
+
+  if ("&rsrc_type"=="")
+  (
+    &rsrc_type=&VRM_UNKNOWN_RSRC_TYPE
+  )
+
+  if ("&rsrc_id"=="")
+  (
+    &rsrc_id=0
+  )
+
+  &vrm_version=data.long(&bus_access_mode:(HWIO_RPMH_VRM_VRM_VERSION_ADDR))
+
+  if (&vrm_version==0x10000)
+  (
+    VAR.SET \vrm_drv_name_arr[10.]="MDMSW "
+    VAR.SET \vrm_drv_name_arr[11.]="MDMHW "
+    VAR.SET \vrm_drv_name_arr[12.]="COMDSP"
+  )
+
+  gosub periph_info_read &pmic_index &periph_baseaddr &periph_index
+  entry &read_status &periph_type &periph_subtype &periph_index_addr
+
+  if &pmic_flag
+  (
+    if (&read_status==0)||(&periph_type==0)||(&periph_subtype==0)||(&periph_index_addr==0)
+    (
+      print %color.red "Invalid pmic peripheral!"
+      print " "
+      if (&save_to_file==1)
+      (
+        WRITE #1 "Invalid pmic peripheral!"
+        WRITE #1 " "
+      )
+      &error_status=0
+      return &error_status
+    )
+  )
+  
+  if ((&periph_baseaddr==&PM_XO_PERIPH_BASE_ADDR)&&(&periph_index_addr<&PM_LNBBCLK_PERIPH_BASE_ADDR))
+  (
+    &pwrrail_str="XO"
+  )
+  else if ((&periph_baseaddr==&PM_LNBBCLK_PERIPH_BASE_ADDR)&&(&periph_index_addr<&PM_RFCLK_PERIPH_BASE_ADDR))
+  (
+    &pwrrail_str="LNBBCLK"
+  )
+  else if ((&periph_baseaddr==&PM_RFCLK_PERIPH_BASE_ADDR)&&(&periph_index_addr<&PM_PMX_LNBBCLK_PERIPH_BASE_ADDR))
+  (
+    &pwrrail_str="RFCLK"
+  )
+  else if ((&periph_baseaddr==&PM_PMX_LNBBCLK_PERIPH_BASE_ADDR)&&(&periph_index_addr<&PM_CLKDIST_PERIPH_BASE_ADDR))
+  (
+    &pwrrail_str="LNBBCLK"
+  )
+  else if ((&periph_baseaddr==&PM_CLKDIST_PERIPH_BASE_ADDR)&&(&periph_index_addr<&PM_DIVCLK_PERIPH_BASE_ADDR))
+  (
+    &pwrrail_str="CLKDIST"
+  )
+  else if ((&periph_baseaddr==&PM_DIVCLK_PERIPH_BASE_ADDR)&&(&periph_index_addr<&PM_RTC_RW_PERIPH_BASE_ADDR))
+  (
+    &pwrrail_str="DIVCLK"
+  )
+  else if ((&periph_baseaddr==&PM_SMPS_PERIPH_BASE_ADDR)&&(&periph_index_addr<&PM_LDO_PERIPH_BASE_ADDR))
+  (
+    &pwrrail_str="SMPS"
+  )
+  else if ((&periph_baseaddr==&PM_LDO_PERIPH_BASE_ADDR)&&(&periph_index_addr<&PM_VS_PERIPH_BASE_ADDR))
+  (
+    &pwrrail_str="LDO"
+  )
+  else if ((&periph_baseaddr==&PM_VS_PERIPH_BASE_ADDR)&&(&periph_index_addr<&PM_BOB_PERIPH_BASE_ADDR))
+  (
+    &pwrrail_str="VS"
+  )
+  else if ((&periph_baseaddr==&PM_BOB_PERIPH_BASE_ADDR)&&(&periph_index_addr<=&PM_BOB_PERIPH_BASE_ADDR))
+  (
+    &pwrrail_str="BOB"
+  )
+  else
+  (
+    print %color.red "Not a supported vrm resource!"
+    print " "
+    if (&save_to_file==1)
+    (
+      WRITE #1 "Not a supported vrm resource!"
+      WRITE #1 " "
+    )
+    &error_status=0
+    return &error_status
+  )
+  &pwrrail_str="&pwrrail_str"+FORMAT.DECIMAL(0,&periph_index+1)+VAR.STRING(\pmic_index_name_arr[&pmic_index])
+
+  if (&rsrc_type==&VRM_UNKNOWN_RSRC_TYPE)
+  (
+    gosub vrm_rsrc_info_read &pmic_index &periph_baseaddr &periph_index
+    entry &rsrc_type &rsrc_id &periph_index_addr
+  )
+
+  if (&rsrc_type!=&VRM_UNKNOWN_RSRC_TYPE)
+  (
+    &rsrc_str="&rsrc_str"+VAR.STRING(\vrm_rsrc_type_name_arr[&rsrc_type])+FORMAT.DECIMAL(0,&rsrc_id)
+  )
+  else
+  (
+    print %color.red "&pwrrail_str: Not a vrm resource!"
+    print " "
+    if (&save_to_file==1)
+    (
+      WRITE #1 "&pwrrail_str: Not a vrm resource!"
+      WRITE #1 " "
+    )
+    &error_status=0
+    return &error_status
+  )
+
+  local &line_str
+  &line_str="------------------------------------------"
+  print %color.blue "&line_str &pwrrail_str &rsrc_str VOTES &line_str"
+  print " "
+
+  if (&save_to_file==1)
+  (
+    WRITE #1 "&line_str &pwrrail_str &rsrc_str VOTES &line_str"
+    WRITE #1 " "
+  )
+
+
+  if &pmic_flag
+  (
+    gosub vrm_pmic_status &pmic_index &periph_index_addr &rsrc_type &periph_baseaddr
+    entry &error_status
+  )
+
+  gosub vrm_crs_status &rsrc_type &rsrc_id &periph_baseaddr
+  entry &error_status
+
+  gosub vrm_wrs_status &rsrc_type &rsrc_id &periph_baseaddr
+  entry &error_status
+
+  gosub vrm_drs_status &rsrc_type &rsrc_id &periph_baseaddr
+  entry &error_status
+
+  print " "
+  if (&save_to_file==1)
+  (
+    WRITE #1 " "
+  )
+
+  if (&drv_id==&num_drv)
+  (
+    &drv_id=0
+    while (&drv_id<&num_drv)
+    (
+      gosub vrm_drv_status &rsrc_type &rsrc_id &drv_id &periph_baseaddr
+      entry &error_status
+      &drv_id=&drv_id+1
+
+      if (&drv_id<&num_drv)
+      (
+        gosub vrm_drv_cont_status &rsrc_type &rsrc_id &drv_id &periph_baseaddr
+        entry &error_status
+        &drv_id=&drv_id+1
+      )
+
+      if (&drv_id<&num_drv)
+      (
+        gosub vrm_drv_cont_status &rsrc_type &rsrc_id &drv_id &periph_baseaddr
+        entry &error_status
+        &drv_id=&drv_id+1
+      )
+
+      if (&drv_id<&num_drv)
+      (
+        gosub vrm_drv_cont_status &rsrc_type &rsrc_id &drv_id &periph_baseaddr
+        entry &error_status
+        &drv_id=&drv_id+1
+      )
+    )
+  )
+  else
+  (
+    gosub vrm_drv_status &rsrc_type &rsrc_id &drv_id &periph_baseaddr
+    entry &error_status
+  )
+
+  print " "
+  if (&save_to_file==1)
+  (
+    WRITE #1 " "
+  )
+
+  return &error_status
+
+;=============================================================================
+; sub: periph_info_read
+;=============================================================================
+
+periph_info_read:
+
+  entry &pmic_index &periph_baseaddr &periph_index
+
+  local &read_status
+  local &periph_type
+  local &periph_subtype
+  local &periph_index_addr
+  local &periph_type_addr
+  local &periph_subtype_addr
+  local &periph_offset
+
+  &read_status=0
+  &periph_type=0
+  &periph_subtype=0
+  &periph_index_addr=0
+  &periph_type_addr=0
+  &periph_subtype_addr=0
+  &periph_offset=0x100
+
+  if (&periph_baseaddr==&PM_SMPS_PERIPH_BASE_ADDR)
+  (
+    &periph_offset=0x300
+  )
+
+  &periph_index_addr=(&periph_baseaddr+(&periph_index*&periph_offset))
+  &periph_type_addr=&periph_index_addr+0x04
+
+  if &pmic_flag
+  (
+    gosub pmic_read 0x104 &pmic_index
+    gosub pmic_read &periph_type_addr &pmic_index 
+    entry &read_status &periph_type
+    if (&periph_type==0x51)
+    (
+      &periph_type=0
+      &read_status=0
+      return &read_status &periph_type &periph_subtype &periph_index_addr
+    )
+    if ((&read_status==1.)&&(&periph_type!=0.))
+    (
+  
+      &periph_subtype_addr=&periph_index_addr+0x05
+      gosub pmic_read &periph_subtype_addr &pmic_index 
+      entry &read_status &periph_subtype
+    )
+  )
+  
+  return &read_status &periph_type &periph_subtype &periph_index_addr
+
+;=============================================================================
+; sub: vrm_rsrc_info_read
+;=============================================================================
+
+vrm_rsrc_info_read:
+
+  entry &pmic_index &periph_baseaddr &periph_index
+
+  local &rsrc_type &rsrc_id &arb_addr &reg_data &index
+
+  &rsrc_type=&VRM_UNKNOWN_RSRC_TYPE
+  &rsrc_id=0
+  &arb_addr=0
+  &reg_data=0
+  &index=0
+
+  local &periph_index_addr &periph_offset &slave_id &periph_slave_addr
+
+  &periph_index_addr=0
+  &periph_offset=0x100
+  &slave_id=2*&pmic_index
+
+  if (&periph_baseaddr==&PM_SMPS_PERIPH_BASE_ADDR)
+  (
+    &periph_offset=0x300
+  )
+
+  &periph_index_addr=(&periph_baseaddr+(&periph_index*&periph_offset))
+  &periph_slave_addr=&periph_index_addr+(&slave_id<<16.)
+
+  &index=0
+  while (&index<&num_arb_vrm)
+  (
+    &reg_data=data.long(&bus_access_mode:(HWIO_PMIC_ARB_VRM_S_ADDR0_ADDR+(4*&index)))
+
+    if (&reg_data==&periph_slave_addr)
+    (
+      &arb_addr=&index
+      &index=&num_arb_vrm
+    )
+    &index=&index+1
+  )
+
+  &index=0
+  while (&index<&num_reg)
+  (
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_BASE_ADDR_CSR_REG0_ADDR+(0x100*&index)))
+
+    if (&reg_data==&arb_addr)
+    (
+      &rsrc_type=&VRM_REG_RSRC_TYPE
+      &rsrc_id=&index
+      &index=&num_reg
+    )
+    &index=&index+1
+  )
+
+  &index=0
+  while ((&index<&num_xob)&&(&rsrc_type==&VRM_UNKNOWN_RSRC_TYPE))
+  (
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_BASE_ADDR_CSR_XOB0_ADDR+(0x100*&index)))
+
+    if (&reg_data==&arb_addr)
+    (
+      &rsrc_type=&VRM_XOB_RSRC_TYPE
+      &rsrc_id=&index
+      &index=&num_xob
+    )
+    &index=&index+1
+  )
+
+  &index=0
+  while ((&index<&num_xo)&&(&rsrc_type==&VRM_UNKNOWN_RSRC_TYPE))
+  (
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_BASE_ADDR_CSR_XO0_ADDR+(0x100*&index)))
+
+    if (&reg_data==&arb_addr)
+    (
+      &rsrc_type=&VRM_XO_RSRC_TYPE
+      &rsrc_id=&index
+      &index=&num_xo
+    )
+    &index=&index+1
+  )
+  
+  return &rsrc_type &rsrc_id &periph_index_addr
+
+;=============================================================================
+; SUB: vrm_drv_status
+;=============================================================================
+
+vrm_drv_status:
+  entry &rsrc_type &rsrc_id &drv_id &periph_baseaddr
+
+  local &rsrc_enable &rsrc_mode &rsrc_volt &rsrc_hr
+  &rsrc_enable=""
+  &rsrc_mode=""
+  &rsrc_volt=""
+  &rsrc_hr=""
+
+  local &reg_addr &reg_data &error_status
+  &reg_addr=0
+  &reg_data=0
+  &error_status=1
+
+  local &final_str
+  &final_str=""
+
+  local &drv_str
+  &drv_str=VAR.STRING(\vrm_drv_name_arr[&drv_id])
+
+  print %color.fuchsia "&drv_str - "
+
+  &final_str="&final_str"+"&drv_str - "
+
+  if (&rsrc_type==&VRM_REG_RSRC_TYPE)
+  (
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_ENABLE_VOTE_DRV0_REG0_ADDR+(0x100*&rsrc_id)+(0x10000*&drv_id)))
+    &reg_data=(&reg_data&0x1)
+    if (&reg_data==0x1)
+    (
+      &rsrc_enable="ON "
+    )
+    else
+    (
+      &rsrc_enable="OFF"
+    )
+
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_MODE_VOTE_DRV0_REG0_ADDR+(0x100*&rsrc_id)+(0x10000*&drv_id)))
+    &reg_data=(&reg_data&0x7)
+
+    if (&periph_baseaddr==&PM_BOB_PERIPH_BASE_ADDR)
+    (
+      if (&reg_data==0x0)
+      (
+        &rsrc_mode="  PASS_"+FORMAT.DECIMAL(0,&reg_data)
+      )
+      else if (&reg_data==0x1)
+      (
+        &rsrc_mode="  FPFM_"+FORMAT.DECIMAL(0,&reg_data)
+      )
+      else if (&reg_data==0x2)
+      (
+        &rsrc_mode="  AUTO_"+FORMAT.DECIMAL(0,&reg_data)
+      )
+      else if (&reg_data==0x3)
+      (
+        &rsrc_mode="  FPWM_"+FORMAT.DECIMAL(0,&reg_data)
+      )
+      else
+      (
+        &rsrc_mode="UNUSED_"+FORMAT.DECIMAL(0,&reg_data)
+      )
+    )
+    else if (&reg_data==0x7)
+    (
+      &rsrc_mode="   NPM_"+FORMAT.DECIMAL(0,&reg_data)
+    )
+    else if (&reg_data==0x6)
+    (
+      &rsrc_mode="  AUTO_"+FORMAT.DECIMAL(0,&reg_data)
+    )
+    else if (&reg_data==0x5)
+    (
+      &rsrc_mode="   LPM_"+FORMAT.DECIMAL(0,&reg_data)
+    )
+    else if (&reg_data==0x4)
+    (
+      &rsrc_mode="   RET_"+FORMAT.DECIMAL(0,&reg_data)
+    )
+    else
+    (
+      &rsrc_mode="UNUSED_"+FORMAT.DECIMAL(0,&reg_data)
+    )
+
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_VOLTAGE_VOTE_DRV0_REG0_ADDR+(0x100*&rsrc_id)+(0x10000*&drv_id)))
+    &reg_data=(&reg_data&0x1FFF)
+    &rsrc_volt=FORMAT.DECIMAL(4,&reg_data)+"mV"
+
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_HEADROOM_VOTE_DRV0_REG0_ADDR+(0x100*&rsrc_id)+(0x10000*&drv_id)))
+    &reg_data=(&reg_data&0x1FF)
+    &rsrc_hr=FORMAT.DECIMAL(2,&reg_data)+"mV"
+
+    print %cont "&rsrc_enable &rsrc_mode &rsrc_volt &rsrc_hr"
+
+    &final_str="&final_str"+"&rsrc_enable &rsrc_mode &rsrc_volt &rsrc_hr"
+  )
+  else if (&rsrc_type==&VRM_XOB_RSRC_TYPE)
+  (
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_ENABLE_VOTE_DRV0_XOB0_ADDR+(0x100*&rsrc_id)+(0x10000*&drv_id)))
+    &reg_data=(&reg_data&0x1)
+    if (&reg_data==0x1)
+    (
+      &rsrc_enable="ON "
+    )
+    else
+    (
+      &rsrc_enable="OFF"
+    )
+    print %cont "&rsrc_enable"
+
+    &final_str="&final_str"+"&rsrc_enable"
+  )
+  else if (&rsrc_type==&VRM_XO_RSRC_TYPE)
+  (
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_ENABLE_VOTE_DRV0_XO0_ADDR+(0x100*&rsrc_id)+(0x10000*&drv_id)))
+    &reg_data=(&reg_data&0x1)
+    if (&reg_data==0x1)
+    (
+      &rsrc_enable="ON "
+    )
+    else
+    (
+      &rsrc_enable="OFF"
+    )
+    print %cont "&rsrc_enable"
+
+    &final_str="&final_str"+"&rsrc_enable"
+  )
+  else
+  (
+    &error_status=0
+  )
+
+  if (&save_to_file==1)
+  (
+    WRITE #1 "&final_str"
+  )
+
+  return &error_status
+
+;=============================================================================
+; SUB: vrm_drv_cont_status
+;=============================================================================
+
+vrm_drv_cont_status:
+  entry &rsrc_type &rsrc_id &drv_id &periph_baseaddr
+
+  local &rsrc_enable &rsrc_mode &rsrc_volt &rsrc_hr
+  &rsrc_enable=""
+  &rsrc_mode=""
+  &rsrc_volt=""
+  &rsrc_hr=""
+
+  local &reg_addr &reg_data &error_status
+  &reg_addr=0
+  &reg_data=0
+  &error_status=1
+
+  local &final_str
+  &final_str=""
+
+  local &drv_str
+  &drv_str=VAR.STRING(\vrm_drv_name_arr[&drv_id])
+
+  print %cont %color.fuchsia " | &drv_str - "
+
+  &final_str="&final_str"+" | &drv_str - "
+
+  if (&rsrc_type==&VRM_REG_RSRC_TYPE)
+  (
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_ENABLE_VOTE_DRV0_REG0_ADDR+(0x100*&rsrc_id)+(0x10000*&drv_id)))
+    &reg_data=(&reg_data&0x1)
+    if (&reg_data==0x1)
+    (
+      &rsrc_enable="ON "
+    )
+    else
+    (
+      &rsrc_enable="OFF"
+    )
+
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_MODE_VOTE_DRV0_REG0_ADDR+(0x100*&rsrc_id)+(0x10000*&drv_id)))
+    &reg_data=(&reg_data&0x7)
+
+    if (&periph_baseaddr==&PM_BOB_PERIPH_BASE_ADDR)
+    (
+      if (&reg_data==0x0)
+      (
+        &rsrc_mode="  PASS_"+FORMAT.DECIMAL(0,&reg_data)
+      )
+      else if (&reg_data==0x1)
+      (
+        &rsrc_mode="  FPFM_"+FORMAT.DECIMAL(0,&reg_data)
+      )
+      else if (&reg_data==0x2)
+      (
+        &rsrc_mode="  AUTO_"+FORMAT.DECIMAL(0,&reg_data)
+      )
+      else if (&reg_data==0x3)
+      (
+        &rsrc_mode="  FPWM_"+FORMAT.DECIMAL(0,&reg_data)
+      )
+      else
+      (
+        &rsrc_mode="UNUSED_"+FORMAT.DECIMAL(0,&reg_data)
+      )
+    )
+    else if (&reg_data==0x7)
+    (
+      &rsrc_mode="   NPM_"+FORMAT.DECIMAL(0,&reg_data)
+    )
+    else if (&reg_data==0x6)
+    (
+      &rsrc_mode="  AUTO_"+FORMAT.DECIMAL(0,&reg_data)
+    )
+    else if (&reg_data==0x5)
+    (
+      &rsrc_mode="   LPM_"+FORMAT.DECIMAL(0,&reg_data)
+    )
+    else if (&reg_data==0x4)
+    (
+      &rsrc_mode="   RET_"+FORMAT.DECIMAL(0,&reg_data)
+    )
+    else
+    (
+      &rsrc_mode="UNUSED_"+FORMAT.DECIMAL(0,&reg_data)
+    )
+
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_VOLTAGE_VOTE_DRV0_REG0_ADDR+(0x100*&rsrc_id)+(0x10000*&drv_id)))
+    &reg_data=(&reg_data&0x1FFF)
+    &rsrc_volt=FORMAT.DECIMAL(4,&reg_data)+"mV"
+
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_HEADROOM_VOTE_DRV0_REG0_ADDR+(0x100*&rsrc_id)+(0x10000*&drv_id)))
+    &reg_data=(&reg_data&0x1FF)
+    &rsrc_hr=FORMAT.DECIMAL(2,&reg_data)+"mV"
+
+    print %cont "&rsrc_enable &rsrc_mode &rsrc_volt &rsrc_hr"
+
+    &final_str="&final_str"+"&rsrc_enable &rsrc_mode &rsrc_volt &rsrc_hr"
+  )
+  else if (&rsrc_type==&VRM_XOB_RSRC_TYPE)
+  (
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_ENABLE_VOTE_DRV0_XOB0_ADDR+(0x100*&rsrc_id)+(0x10000*&drv_id)))
+    &reg_data=(&reg_data&0x1)
+    if (&reg_data==0x1)
+    (
+      &rsrc_enable="ON "
+    )
+    else
+    (
+      &rsrc_enable="OFF"
+    )
+    print %cont "&rsrc_enable"
+
+    &final_str="&final_str"+"&rsrc_enable"
+  )
+  else if (&rsrc_type==&VRM_XO_RSRC_TYPE)
+  (
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_ENABLE_VOTE_DRV0_XO0_ADDR+(0x100*&rsrc_id)+(0x10000*&drv_id)))
+    &reg_data=(&reg_data&0x1)
+    if (&reg_data==0x1)
+    (
+      &rsrc_enable="ON "
+    )
+    else
+    (
+      &rsrc_enable="OFF"
+    )
+    print %cont "&rsrc_enable"
+
+    &final_str="&final_str"+"&rsrc_enable"
+  )
+  else
+  (
+    &error_status=0
+  )
+
+  if (&save_to_file==1)
+  (
+    WRITE #1 %cont "&final_str"
+  )
+
+  return &error_status
+
+;=============================================================================
+; SUB: vrm_crs_status
+;=============================================================================
+
+vrm_crs_status:
+  entry &rsrc_type &rsrc_id &periph_baseaddr
+
+  local &rsrc_enable &rsrc_mode &rsrc_volt &rsrc_hr
+  &rsrc_enable=""
+  &rsrc_mode=""
+  &rsrc_volt=""
+  &rsrc_hr=""
+
+  local &reg_addr &reg_data &error_status
+  &reg_addr=0
+  &reg_data=0
+  &error_status=1
+
+  local &final_str
+  &final_str=""
+
+  if (&rsrc_type==&VRM_REG_RSRC_TYPE)
+  (
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_ENABLE_CRS_CSR_REG0_ADDR+(0x100*&rsrc_id)))
+    if (&reg_data==0x1)
+    (
+      &rsrc_enable="ON"
+    )
+    else
+    (
+      &rsrc_enable="OFF"
+    )
+
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_MODE_CRS_CSR_REG0_ADDR+(0x100*&rsrc_id)))
+    gosub vrm_get_mode_str &reg_data &periph_baseaddr
+    entry &rsrc_mode
+
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_VOLTAGE_CRS_CSR_REG0_ADDR+(0x100*&rsrc_id)))
+    &rsrc_volt=FORMAT.DECIMAL(0,&reg_data)+"mV"
+
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_HEADROOM_CRS_CSR_REG0_ADDR+(0x100*&rsrc_id)))
+    &rsrc_hr=FORMAT.DECIMAL(0,&reg_data)+"mV"
+
+    print %color.maroon "VRM_CRS  - &rsrc_enable &rsrc_mode &rsrc_volt &rsrc_hr"
+
+    &final_str="&final_str"+"VRM_CRS  - &rsrc_enable &rsrc_mode &rsrc_volt &rsrc_hr"
+  )
+  else if (&rsrc_type==&VRM_XOB_RSRC_TYPE)
+  (
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_ENABLE_CRS_CSR_XOB0_ADDR+(0x100*&rsrc_id)))
+    if (&reg_data==0x1)
+    (
+      &rsrc_enable="ON"
+    )
+    else
+    (
+      &rsrc_enable="OFF"
+    )
+    print %color.maroon "VRM_CRS  - &rsrc_enable"
+
+    &final_str="&final_str"+"VRM_CRS  - &rsrc_enable"
+  )
+  else if (&rsrc_type==&VRM_XO_RSRC_TYPE)
+  (
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_ENABLE_CRS_CSR_XO0_ADDR+(0x100*&rsrc_id)))
+    if (&reg_data==0x1)
+    (
+      &rsrc_enable="ON"
+    )
+    else
+    (
+      &rsrc_enable="OFF"
+    )
+    print %color.maroon "VRM_CRS  - &rsrc_enable"
+
+    &final_str="&final_str"+"VRM_CRS  - &rsrc_enable"
+  )
+  else
+  (
+    &error_status=0
+  )
+
+  if (&save_to_file==1)
+  (
+    WRITE #1 "&final_str"
+  )
+  return &error_status
+
+;=============================================================================
+; SUB: vrm_wrs_status
+;=============================================================================
+
+vrm_wrs_status:
+  entry &rsrc_type &rsrc_id &periph_baseaddr
+
+  local &rsrc_enable &rsrc_mode &rsrc_volt &rsrc_hr
+  &rsrc_enable=""
+  &rsrc_mode=""
+  &rsrc_volt=""
+  &rsrc_hr=""
+
+  local &reg_addr &reg_data &error_status
+  &reg_addr=0
+  &reg_data=0
+  &error_status=1
+
+  local &final_str
+  &final_str=""
+
+  if (&rsrc_type==&VRM_REG_RSRC_TYPE)
+  (
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_ENABLE_WRS_CSR_REG0_ADDR+(0x100*&rsrc_id)))
+    if (&reg_data==0x1)
+    (
+      &rsrc_enable="ON"
+    )
+    else
+    (
+      &rsrc_enable="OFF"
+    )
+
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_MODE_WRS_CSR_REG0_ADDR+(0x100*&rsrc_id)))
+    gosub vrm_get_mode_str &reg_data &periph_baseaddr
+    entry &rsrc_mode
+
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_VOLTAGE_WRS_CSR_REG0_ADDR+(0x100*&rsrc_id)))
+    &rsrc_volt=FORMAT.DECIMAL(0,&reg_data)+"mV"
+
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_HEADROOM_WRS_CSR_REG0_ADDR+(0x100*&rsrc_id)))
+    &rsrc_hr=FORMAT.DECIMAL(0,&reg_data)+"mV"
+
+    print %color.maroon "VRM_WRS  - &rsrc_enable &rsrc_mode &rsrc_volt &rsrc_hr"
+
+    &final_str="&final_str"+"VRM_WRS  - &rsrc_enable &rsrc_mode &rsrc_volt &rsrc_hr"
+  )
+  else if (&rsrc_type==&VRM_XOB_RSRC_TYPE)
+  (
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_ENABLE_WRS_CSR_XOB0_ADDR+(0x100*&rsrc_id)))
+    if (&reg_data==0x1)
+    (
+      &rsrc_enable="ON"
+    )
+    else
+    (
+      &rsrc_enable="OFF"
+    )
+    print %color.maroon "VRM_WRS  - &rsrc_enable"
+
+    &final_str="&final_str"+"VRM_WRS  - &rsrc_enable"
+  )
+  else if (&rsrc_type==&VRM_XO_RSRC_TYPE)
+  (
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_ENABLE_WRS_CSR_XO0_ADDR+(0x100*&rsrc_id)))
+    if (&reg_data==0x1)
+    (
+      &rsrc_enable="ON"
+    )
+    else
+    (
+      &rsrc_enable="OFF"
+    )
+    print %color.maroon "VRM_WRS  - &rsrc_enable"
+
+    &final_str="&final_str"+"VRM_WRS  - &rsrc_enable"
+  )
+  else
+  (
+    &error_status=0
+  )
+
+  if (&save_to_file==1)
+  (
+    WRITE #1 "&final_str"
+  )
+
+  return &error_status
+
+;=============================================================================
+; SUB: vrm_drs_status
+;=============================================================================
+
+vrm_drs_status:
+  entry &rsrc_type &rsrc_id &periph_baseaddr
+
+  local &rsrc_enable &rsrc_mode &rsrc_volt &rsrc_hr
+  &rsrc_enable=""
+  &rsrc_mode=""
+  &rsrc_volt=""
+  &rsrc_hr=""
+
+  local &reg_addr &reg_data &error_status
+  &reg_addr=0
+  &reg_data=0
+  &error_status=1
+
+  local &final_str
+  &final_str=""
+
+  if (&rsrc_type==&VRM_REG_RSRC_TYPE)
+  (
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_ENABLE_DRS_CSR_REG0_ADDR+(0x100*&rsrc_id)))
+    if (&reg_data==0x1)
+    (
+      &rsrc_enable="ON"
+    )
+    else
+    (
+      &rsrc_enable="OFF"
+    )
+
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_MODE_DRS_CSR_REG0_ADDR+(0x100*&rsrc_id)))
+    gosub vrm_get_mode_str &reg_data &periph_baseaddr
+    entry &rsrc_mode
+
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_VOLTAGE_DRS_CSR_REG0_ADDR+(0x100*&rsrc_id)))
+    &rsrc_volt=FORMAT.DECIMAL(0,&reg_data)+"mV"
+
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_HEADROOM_DRS_CSR_REG0_ADDR+(0x100*&rsrc_id)))
+    &rsrc_hr=FORMAT.DECIMAL(0,&reg_data)+"mV"
+
+    print %color.maroon "VRM_DRS  - &rsrc_enable &rsrc_mode &rsrc_volt &rsrc_hr"
+
+    &final_str="&final_str"+"VRM_DRS  - &rsrc_enable &rsrc_mode &rsrc_volt &rsrc_hr"
+  )
+  else if (&rsrc_type==&VRM_XOB_RSRC_TYPE)
+  (
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_ENABLE_DRS_CSR_XOB0_ADDR+(0x100*&rsrc_id)))
+    if (&reg_data==0x1)
+    (
+      &rsrc_enable="ON"
+    )
+    else
+    (
+      &rsrc_enable="OFF"
+    )
+    print %color.maroon "VRM_DRS  - &rsrc_enable"
+
+    &final_str="&final_str"+"VRM_DRS  - &rsrc_enable"
+  )
+  else if (&rsrc_type==&VRM_XO_RSRC_TYPE)
+  (
+    &reg_data=data.long(&bus_access_mode:(HWIO_RPMH_VRM_ENABLE_DRS_CSR_XO0_ADDR+(0x100*&rsrc_id)))
+    if (&reg_data==0x1)
+    (
+      &rsrc_enable="ON"
+    )
+    else
+    (
+      &rsrc_enable="OFF"
+    )
+    print %color.maroon "VRM_DRS  - &rsrc_enable"
+
+    &final_str="&final_str"+"VRM_DRS  - &rsrc_enable"
+  )
+  else
+  (
+    &error_status=0
+  )
+
+  if (&save_to_file==1)
+  (
+    WRITE #1 "&final_str"
+  )
+
+  return &error_status
+
+;=============================================================================
+; SUB: vrm_pmic_status
+;=============================================================================
+
+vrm_pmic_status:
+  entry &pmic_index &periph_index_addr &rsrc_type &periph_baseaddr
+
+  local &status_addr &vset_lb_addr &vset_ub_addr &vset_valid_lb_addr &vset_valid_ub_addr 
+  local &mode_ctl1_addr &en_ctl_addr &pin_ctl_addr &mode_ctl2_addr
+
+  &status_addr=&periph_index_addr+0x08
+  &vset_lb_addr=&periph_index_addr+0x40
+  &vset_ub_addr=&periph_index_addr+0x41
+  &vset_valid_lb_addr=&periph_index_addr+0x42
+  &vset_valid_ub_addr=&periph_index_addr+0x43
+  &mode_ctl1_addr=&periph_index_addr+0x45
+  &en_ctl_addr=&periph_index_addr+0x46
+  &pin_ctl_addr=&periph_index_addr+0x47
+  &mode_ctl2_addr=&periph_index_addr+0x49
+
+  local &pmic_volt &pmic_mode &pmic_enable &pmic_pin &pmic_sec_mode
+  &pmic_volt=0
+  &pmic_mode=0
+  &pmic_enable=0
+  &pmic_pin=0
+  &pmic_sec_mode=0
+
+  local &reg_data &reg_data1 &error_status
+  &reg_data=0
+  &reg_data1=0
+  &error_status=1
+
+  local &final_str
+  &final_str=""
+
+  gosub pmic_read &en_ctl_addr &pmic_index 
+  entry &error_status &reg_data
+
+  if ((&reg_data&0x80)==0x80)
+  (
+    &pmic_enable="ON"
+  )
+  else
+  (
+    &pmic_enable="OFF"
+  )
+
+  if (&rsrc_type!=&VRM_REG_RSRC_TYPE)
+  (
+    print %color.maroon "PMIC_STS - &pmic_enable"
+
+    &final_str="&final_str"+"PMIC_STS - &pmic_enable"
+
+    if (&save_to_file==1)
+    (
+      WRITE #1 "&final_str"
+    )
+    return &error_status
+  )
+
+  gosub pmic_read &vset_lb_addr &pmic_index 
+  entry &error_status &reg_data
+
+  gosub pmic_read &vset_ub_addr &pmic_index 
+  entry &error_status &reg_data1
+
+  &pmic_volt=(&reg_data1<<8)|(&reg_data)
+  &pmic_volt=FORMAT.DECIMAL(0,&pmic_volt)+"mV"
+
+  gosub pmic_read &mode_ctl1_addr &pmic_index 
+  entry &error_status &reg_data
+
+  gosub vrm_get_mode_str &reg_data &periph_baseaddr
+  entry &pmic_mode
+
+  print %color.maroon "PMIC_STS - &pmic_enable &pmic_mode &pmic_volt"
+
+  &final_str="&final_str"+"PMIC_STS - &pmic_enable &pmic_mode &pmic_volt"
+
+  if (&save_to_file==1)
+  (
+    WRITE #1 "&final_str"
+  )
+
+  return &error_status
+
+;=============================================================================
+; SUB: vrm_get_mode_str
+;=============================================================================
+
+vrm_get_mode_str:
+  local &vrm_mode &vrm_mode_str
+  entry &vrm_mode &periph_baseaddr
+
+  if (&periph_baseaddr==&PM_BOB_PERIPH_BASE_ADDR)
+  (
+    if (&vrm_mode==0x0)
+    (
+      &vrm_mode_str="PASS_"+FORMAT.DECIMAL(0,&vrm_mode)
+    )
+    else if (&vrm_mode==0x1)
+    (
+      &vrm_mode_str="FPFM_"+FORMAT.DECIMAL(0,&vrm_mode)
+    )
+    else if (&vrm_mode==0x2)
+    (
+      &vrm_mode_str="AUTO_"+FORMAT.DECIMAL(0,&vrm_mode)
+    )
+    else if (&vrm_mode==0x3)
+    (
+      &vrm_mode_str="FPWM_"+FORMAT.DECIMAL(0,&vrm_mode)
+    )
+    else
+    (
+      &vrm_mode_str="UNUSED_"+FORMAT.DECIMAL(0,&vrm_mode)
+    )
+  )
+  else if (&vrm_mode==0x7)
+  (
+    &vrm_mode_str="NPM_"+FORMAT.DECIMAL(0,&vrm_mode)
+  )
+  else if (&vrm_mode==0x6)
+  (
+    &vrm_mode_str="AUTO_"+FORMAT.DECIMAL(0,&vrm_mode)
+  )
+  else if (&vrm_mode==0x5)
+  (
+    &vrm_mode_str="LPM_"+FORMAT.DECIMAL(0,&vrm_mode)
+  )
+  else if (&vrm_mode==0x4)
+  (
+    &vrm_mode_str="RET_"+FORMAT.DECIMAL(0,&vrm_mode)
+  )
+  else
+  (
+    &vrm_mode_str="UNUSED_"+FORMAT.DECIMAL(0,&vrm_mode)
+  )
+
+  return &vrm_mode_str
+
+;=============================================================================
+; SUB: vrm_get_rsrc_str
+;=============================================================================
+
+vrm_get_rsrc_str:
+  local &rsrc_type &rsrc_index
+  entry &rsrc_type &rsrc_index
+
+  local &rsrc_str
+  &rsrc_str=""
+
+  local &arb_index &base_addr
+  &arb_index=0xFF
+  &base_addr=0
+
+  local &rail_addr &rail_index &rail_offset &rail_pmic_index &rail_sid &rail_sid_index
+  &rail_addr=0
+  &rail_index=0
+  &rail_offset=0x100
+  &rail_pmic_index=0
+  &rail_sid=0
+  &rail_sid_index=0
+
+  local &clk_settling_time
+  &clk_settling_time=0
+
+  if (&rsrc_type==&VRM_REG_RSRC_TYPE)
+  (
+    &arb_index=data.long(&bus_access_mode:(HWIO_RPMH_VRM_BASE_ADDR_CSR_REG0_ADDR+(0x100*&rsrc_index)))
+  )
+  else if (&rsrc_type==&VRM_XOB_RSRC_TYPE)
+  (
+    &arb_index=data.long(&bus_access_mode:(HWIO_RPMH_VRM_BASE_ADDR_CSR_XOB0_ADDR+(0x100*&rsrc_index)))
+    &clk_settling_time=data.long(&bus_access_mode:(HWIO_RPMH_VRM_XOB_SETTLING_TIME_CSR_RES0_ADDR+(0x4*&rsrc_index)))
+  )
+  else if (&rsrc_type==&VRM_XO_RSRC_TYPE)
+  (
+    &arb_index=data.long(&bus_access_mode:(HWIO_RPMH_VRM_BASE_ADDR_CSR_XO0_ADDR+(0x100*&rsrc_index)))
+    &clk_settling_time=data.long(&bus_access_mode:(HWIO_RPMH_VRM_XO_SETTLING_TIME_CSR_RES0_ADDR+(0x4*&rsrc_index)))
+  )
+
+  if (&arb_index==0xFF)
+  (
+    return &rsrc_str
+  )
+
+  &rail_addr=data.long(&bus_access_mode:(HWIO_PMIC_ARB_VRM_S_ADDR0_ADDR+(0x4*&arb_index)))
+
+  &rail_sid=((&rail_addr>>16.)&0xFF)
+  &rail_addr=(&rail_addr&0xFFFF)
+  &rail_pmic_index=(&rail_sid/2)
+  &rail_sid_index=(&rail_sid%2)
+  &rail_addr=((&rail_sid_index<<16.)|&rail_addr)
+
+  if ((&rail_addr>=&PM_XO_PERIPH_BASE_ADDR)&&(&rail_addr<&PM_LNBBCLK_PERIPH_BASE_ADDR)&&(&clk_settling_time!=0))
+  (
+    &base_addr=&PM_XO_PERIPH_BASE_ADDR
+    &rsrc_str="XO"
+  )
+  else if ((&rail_addr>=&PM_LNBBCLK_PERIPH_BASE_ADDR)&&(&rail_addr<&PM_RFCLK_PERIPH_BASE_ADDR))
+  (
+    &base_addr=&PM_LNBBCLK_PERIPH_BASE_ADDR
+    &rsrc_str="LNBBCLK"
+  )
+  else if ((&rail_addr>=&PM_RFCLK_PERIPH_BASE_ADDR)&&(&rail_addr<&PM_PMX_LNBBCLK_PERIPH_BASE_ADDR))
+  (
+    &base_addr=&PM_RFCLK_PERIPH_BASE_ADDR
+    &rsrc_str="RFCLK"
+  )
+  else if ((&rail_addr>=&PM_PMX_LNBBCLK_PERIPH_BASE_ADDR)&&(&rail_addr<&PM_CLKDIST_PERIPH_BASE_ADDR))
+  (
+    &base_addr=&PM_PMX_LNBBCLK_PERIPH_BASE_ADDR
+    &rsrc_str="LNBBCLK"
+  )
+  else if ((&rail_addr>=&PM_CLKDIST_PERIPH_BASE_ADDR)&&(&rail_addr<&PM_DIVCLK_PERIPH_BASE_ADDR))
+  (
+    &base_addr=&PM_CLKDIST_PERIPH_BASE_ADDR
+    &rsrc_str="CLKDIST"
+  )
+  else if ((&rail_addr>=&PM_DIVCLK_PERIPH_BASE_ADDR)&&(&rail_addr<&PM_RTC_RW_PERIPH_BASE_ADDR))
+  (
+    &base_addr=&PM_DIVCLK_PERIPH_BASE_ADDR
+    &rsrc_str="DIVCLK"
+  )
+  else if ((&rail_addr>=&PM_SMPS_PERIPH_BASE_ADDR)&&(&rail_addr<&PM_LDO_PERIPH_BASE_ADDR))
+  (
+    &rail_offset=0x300
+    &base_addr=&PM_SMPS_PERIPH_BASE_ADDR
+    &rsrc_str="SMPS"
+  )
+  else if ((&rail_addr>=&PM_LDO_PERIPH_BASE_ADDR)&&(&rail_addr<&PM_VS_PERIPH_BASE_ADDR))
+  (
+    &base_addr=&PM_LDO_PERIPH_BASE_ADDR
+    &rsrc_str="LDO"
+  )
+  else if ((&rail_addr>=&PM_VS_PERIPH_BASE_ADDR)&&(&rail_addr<&PM_BOB_PERIPH_BASE_ADDR))
+  (
+    &base_addr=&PM_VS_PERIPH_BASE_ADDR
+    &rsrc_str="VS"
+  )
+  else if ((&rail_addr>=&PM_BOB_PERIPH_BASE_ADDR)&&(&rail_addr<=&PM_BOB_PERIPH_BASE_ADDR))
+  (
+    &base_addr=&PM_BOB_PERIPH_BASE_ADDR
+    &rsrc_str="BOB"
+  )
+
+  &rail_index=((&rail_addr-&base_addr)/&rail_offset)
+
+  if ((&rail_pmic_index<&PM_MAX_NUM_PMICS)&&("&rsrc_str"!="")&&(&base_addr!=&PM_PMX_LNBBCLK_PERIPH_BASE_ADDR))
+  (
+    &rsrc_str="&rsrc_str"+FORMAT.DECIMAL(0,&rail_index+1)+VAR.STRING(\pmic_index_name_arr[&rail_pmic_index])
+  )
+
+  return &rsrc_str
+
+;=============================================================================
+; SUB: vrm_set_drv
+;=============================================================================
+
+vrm_set_drv:
+
+  entry &drv_name &drv_id
+
+  if (("&drv_name"=="")||("&drv_id"==""))
+  (
+    return
+  )
+
+  if (&drv_id>=&VRM_MAX_DRV)
+  (
+    return
+  )
+
+  if ("&drv_name"=="TzDrv")
+  (
+    VAR.SET \vrm_drv_name_arr[&drv_id]="TZ    "
+  )
+
+  if ("&drv_name"=="HypDrv")
+  (
+    VAR.SET \vrm_drv_name_arr[&drv_id]="HYP   "
+  )
+
+  if ("&drv_name"=="HlosDrv")
+  (
+    VAR.SET \vrm_drv_name_arr[&drv_id]="HLOS  "
+  )
+
+  if ("&drv_name"=="SecProcDrv")
+  (
+    VAR.SET \vrm_drv_name_arr[&drv_id]="SECPRO"
+  )
+
+  if ("&drv_name"=="AudioDrv")
+  (
+    VAR.SET \vrm_drv_name_arr[&drv_id]="AUDIO "
+  )
+
+  if ("&drv_name"=="SensorsDrv")
+  (
+    VAR.SET \vrm_drv_name_arr[&drv_id]="SENSOR"
+  )
+
+  if ("&drv_name"=="AopDrv")
+  (
+    VAR.SET \vrm_drv_name_arr[&drv_id]="AOP   "
+  )
+
+  if ("&drv_name"=="DebugDrv")
+  (
+    VAR.SET \vrm_drv_name_arr[&drv_id]="DEBUG "
+  )
+
+  if ("&drv_name"=="GpuDrv")
+  (
+    VAR.SET \vrm_drv_name_arr[&drv_id]="GPU   "
+  )
+
+  if ("&drv_name"=="DisplayDrv")
+  (
+    VAR.SET \vrm_drv_name_arr[&drv_id]="DISP  "
+  )
+
+  if ("&drv_name"=="ModemSwDrv")
+  (
+    VAR.SET \vrm_drv_name_arr[&drv_id]="MDMSW "
+  )
+
+  if ("&drv_name"=="ModemHwDrv")
+  (
+    VAR.SET \vrm_drv_name_arr[&drv_id]="MDMHW "
+  )
+
+  if ("&drv_name"=="ComputeDspDrv")
+  (
+    VAR.SET \vrm_drv_name_arr[&drv_id]="COMDSP"
+  )
+
+  if ("&drv_name"=="ArcCprfDrv")
+  (
+    VAR.SET \vrm_drv_name_arr[&drv_id]="ARCCPR"
+  )
+
+  if ("&drv_name"=="BcmCd0Drv")
+  (
+    VAR.SET \vrm_drv_name_arr[&drv_id]="BCMCD0"
+  )
+
+  if ("&drv_name"=="BcmDrv")
+  (
+    VAR.SET \vrm_drv_name_arr[&drv_id]="BCM   "
+  )
+
+  return
+
+;=============================================================================
+; SUB: pmic_to_spmi
+;=============================================================================
+
+pmic_to_spmi:
+
+  entry &addr &devid
+  local &spmi_sid &spmi_addr
+
+  &spmi_sid=2*&devid
+
+  &pmic_sid=&addr>>16.
+  if &pmic_sid==1
+  (
+    &spmi_sid=&spmi_sid+1
+  )
+
+  &spmi_addr=&addr&0xFFFF
+
+  return &spmi_sid &spmi_addr
+
+
+;=============================================================================
+; SUB: pmic_read
+;=============================================================================
+
+pmic_read:
+  local &pmic_addr &pmic_index
+  entry &pmic_addr &pmic_index
+
+  &read_status=0
+  &read_data=0
+
+  gosub pmic_to_spmi &pmic_addr &pmic_index
+  entry &spmi_sid &spmi_addr
+
+  do &pmic_io_script read &spmi_owner_channel &bus_access_mode &spmi_sid &spmi_addr &read_data &debug_flag
+  entry &read_status &read_data
+
+  return &read_status &read_data
+
+
+;=============================================================================
+; SUB: pmic_write
+;=============================================================================
+
+pmic_write:
+  local &pmic_addr &pmic_index &pmic_data
+  entry &pmic_addr &pmic_index &pmic_data
+
+  &write_status=0
+
+  gosub pmic_to_spmi &pmic_addr &pmic_index
+  entry &spmi_sid &spmi_addr
+
+  do &pmic_io_script write &spmi_owner_channel &bus_access_mode &spmi_sid &spmi_addr &pmic_data &debug_flag
+  entry &write_status
+
+  return &write_status
+

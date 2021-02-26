@@ -1,0 +1,139 @@
+#===============================================================================
+#
+# Xport SMEM Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2014-2015, 2017 Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Qualcomm Technologies, Inc. Confidential and Proprietary.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1.c4/mproc/glink/xport_smem/build/xport_smem.scons#1 $
+#  $DateTime: 2018/07/30 01:21:36 $
+#  $Author: pwbldsvc $
+#  $Change: 16759227 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 01/26/17   jlg     Move Device Configuration settings to core/settings directory
+# 05/19/15   an      QoS support
+# 05/13/15   db      Added RCINIT initialization for TN APSS image
+# 05/04/15   db      Added compilation support for APSS images
+# 02/23/15   bc      Added tracer packet support
+# 06/23/14   an      Initial version.
+#
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+UNITPATH = "${BUILD_ROOT}/core/mproc/glink/xport_smem"
+SRCPATH  = UNITPATH + "/src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+#  Publish Private APIs
+#-------------------------------------------------------------------------------
+
+env.PublishPrivateApi('MPROC_GLINK', [
+   "${BUILD_ROOT}/core/mproc/glink/os/inc",
+   "${BUILD_ROOT}/core/mproc/glink/xport_smem/inc",
+   "${BUILD_ROOT}/core/mproc/glink/glink_tracer/inc"
+] )
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'BUSES',
+   'DEBUGTOOLS',
+   'HAL',
+   'DAL',
+   'HWENGINES',
+   'MPROC',
+   'MEMORY',
+   'POWER',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'WIREDCONNECTIVITY',
+
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+CBSP_API_RESTRICTED = [
+   'BUSES',
+   'DEBUGTOOLS',
+   'HAL',
+   'DAL',
+   'HWENGINES',
+   'MPROC',
+   'MPROC_GLINK_OS_SETTINGS',
+   'MPROC_GLINK_XPORT_SMEM_SETTINGS',
+   'MEMORY',
+   'POWER',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'WIREDCONNECTIVITY',
+
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API_RESTRICTED)
+env.RequireProtectedApi(['MPROC_GLINK'])
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+XPORT_SMEM_SRC = [
+   '${BUILDPATH}/xport_smem.c',
+   '${BUILDPATH}/xport_smem_qos_generic.c',
+   '${BUILDPATH}/xport_smem_devcfg.c',
+]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+APPS_IMAGES = ['CBSP_APPS_IMAGE', 'APPS_IMAGE']
+
+ROOT_IMAGES = ['CORE_QDSP6_SW', 'CORE_MPSS_ROOT', 'CORE_ADSP_ROOT', 'WCN_IMAGE',
+               'CORE_SLPI_ROOT', 'CORE_ADSP_SLPI_ROOT', 'CORE_CDSP_ROOT']
+
+# Add Image-specific Libraries, whose sources should be packed out.
+env.AddBinaryLibrary(APPS_IMAGES + ROOT_IMAGES,
+                     '${BUILDPATH}/xport_smem',
+                     [XPORT_SMEM_SRC])
+
+#-------------------------------------------------------------------------------
+# CleanPack (Remove) all remaining files for peripheral processors
+#-------------------------------------------------------------------------------
+PACK_OUT = env.FindFiles(['*.h', '*.c', '*.s'], SRCPATH)
+# Don't include RPM in this list, because it already does we want automatically.
+env.CleanPack(ROOT_IMAGES, PACK_OUT)
+
+#-------------------------------------------------------------------------------
+# RCINIT Task and Init Fields and Initialization
+#-------------------------------------------------------------------------------
+RCINIT_INIT_XPORT_SMEM_INIT = {
+  'sequence_group'             : 'RCINIT_GROUP_0',           # required
+  'init_name'                  : 'xport_smem',          # required
+  'init_function'              : 'xport_smem_init',          # required
+  'dependencies'               : ['glink', 'smem']
+}
+
+if 'USES_RCINIT' in env:
+  RCINIT_IMG = APPS_IMAGES + ROOT_IMAGES
+  env.AddRCInitFunc( RCINIT_IMG, RCINIT_INIT_XPORT_SMEM_INIT )
+

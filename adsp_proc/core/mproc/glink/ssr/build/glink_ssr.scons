@@ -1,0 +1,120 @@
+#===============================================================================
+#
+# G-LINK SSR Component Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2014-2015, 2017 Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Qualcomm Technologies, Inc. Confidential and Proprietary.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1/mproc/glink/ssr/build/glink_ssr.scons#2 $
+#  $DateTime: 2017/09/14 03:40:04 $
+#  $Author: pwbldsvc $
+#  $Change: 14371357 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 01/25/17   jlg     Move Device Configuration Settings to core/settings directory
+# 06/30/15   bc      Add spss update
+# 12/11/14   rs      Support link notifications
+# 07/27/14   rs      Initial version for G-Link SSR component.
+#
+#===============================================================================
+Import('env')
+Import('GLINK_BUILD_ROOT')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+UNITPATH = GLINK_BUILD_ROOT + "/ssr"
+SRCPATH  = UNITPATH + "/src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+#  Publish Private APIs
+#-------------------------------------------------------------------------------
+OS_INC_PATH = GLINK_BUILD_ROOT+"/os/inc"
+CORE_INC_PATH = GLINK_BUILD_ROOT+"/core/inc"
+SSR_INC_PATH = GLINK_BUILD_ROOT+"/ssr/inc"
+
+env.PublishPrivateApi('MPROC_GLINK', [
+   OS_INC_PATH,
+   SSR_INC_PATH,
+   CORE_INC_PATH
+] )
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'BOOT',
+   'DEBUGTOOLS',
+   'HAL',
+   'DAL',
+   'HWENGINES',
+   'MPROC',
+   'MEMORY',
+   'POWER',
+   'SERVICES',
+   'SECUREMSM',
+   'SYSTEMDRIVERS',
+   'WIREDCONNECTIVITY',
+
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(['MPROC', 'MPROC_GLINK_SSR_SETTINGS'])
+env.RequireProtectedApi(['MPROC_GLINK'])
+
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+GLINK_SSR_CORE = [
+   '${BUILDPATH}/glink_ssr.c',
+   '${BUILDPATH}/glink_ssr_devcfg.c',
+]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+ROOT_IMAGES = ['CORE_QDSP6_SW', 'CORE_MPSS_ROOT', 'CORE_ADSP_ROOT', 'WCN_IMAGE',
+               'CORE_SLPI_ROOT', 'CORE_ADSP_SLPI_ROOT', 'CORE_CDSP_ROOT']
+
+# Add Image-specific Libraries, whose sources should be packed out.
+env.AddBinaryLibrary(ROOT_IMAGES + ['RPM_IMAGE', 'MISSIONROM_IMAGE'],
+                     '${BUILDPATH}/glink_ssr',
+                     [GLINK_SSR_CORE])
+
+                     
+#-------------------------------------------------------------------------------
+# CleanPack (Remove) all remaining files for peripheral processors
+#-------------------------------------------------------------------------------
+PACK_OUT = env.FindFiles(['*.h', '*.c', '*.s'], SRCPATH)
+# Don't include RPM in this list, because it already does we want automatically.
+env.CleanPack(ROOT_IMAGES, PACK_OUT)
+
+#-------------------------------------------------------------------------------
+# RCINIT Task and Init Fields and Initialization
+#-------------------------------------------------------------------------------
+RCINIT_INIT_GLINK_SSR_START = {
+  'sequence_group'             : 'RCINIT_GROUP_0',           # required
+  'init_name'                  : 'glink_ssr',                # required
+  'init_function'              : 'glink_ssr_init',           # required
+  'dependencies'               : [ 'dalsys', 'glink' ]
+}
+
+if 'USES_RCINIT' in env:
+  env.AddRCInitFunc( ROOT_IMAGES, RCINIT_INIT_GLINK_SSR_START )

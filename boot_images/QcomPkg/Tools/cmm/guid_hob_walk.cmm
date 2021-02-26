@@ -1,0 +1,157 @@
+;============================================================================
+;  Name: guid_hobwalk.cmm
+;
+;  Description: Print GUID hobs    
+;
+;  Copyright (c) 2012-2016 Qualcomm Technologies, Inc.
+;  All Rights Reserved. 
+;  Qualcomm Technologies Proprietary and Confidential. 
+;
+;----------------------------------------------------------------------------
+
+;============================================================================
+;
+;                        EDIT HISTORY FOR MODULE
+;
+;
+;
+;  when         who     what, where, why
+;  ----------   ---     -----------------------------------------------------
+;  2016-05-07   vk      Update infoblock address
+;  2015-02-12   bh      Change RD: to A:
+;  2015-01-27   bh      Use global variable from InitOffsets.cmm
+;  2014-03-02   vk      Add support for UefiBase 0x8020_0000
+;  2013-06-03   vk      Initial version
+;============================================================================;
+
+;  HOB Types
+; -----------------------------------------
+; EFI_HOB_TYPE_HANDOFF              0x0001
+; EFI_HOB_TYPE_MEMORY_ALLOCATION    0x0002
+; EFI_HOB_TYPE_RESOURCE_DESCRIPTOR  0x0003
+; EFI_HOB_TYPE_GUID_EXTENSION       0x0004
+; EFI_HOB_TYPE_FV                   0x0005
+; EFI_HOB_TYPE_CPU                  0x0006
+; EFI_HOB_TYPE_MEMORY_POOL          0x0007
+; EFI_HOB_TYPE_FV2                  0x0009
+; EFI_HOB_TYPE_LOAD_PEIM_UNUSED     0x000A
+; EFI_HOB_TYPE_UEFI_CAPSULE         0x000B
+; EFI_HOB_TYPE_UNUSED               0xFFFE
+; EFI_HOB_TYPE_END_OF_HOB_LIST      0xFFFF
+
+global &hobCountType4
+
+;-------------------------------------------
+; Script entry point
+;-------------------------------------------
+  print "------------------"
+  print "UEFI GUID HOB Walk"
+  print "------------------"
+
+  ;entry &UefiBase
+  &UefiBase=0x9fc00000
+  
+  do ../InitOffsets.cmm
+     
+  gosub FindHobStartPtr &UefiBase
+  entry &Hob_start_ptr
+  
+  if (&Hob_start_ptr==0)
+  (
+    PRINT %ERROR "Unable to locate UEFI Info Block with ref to the Base Addr : &UefiBase"
+    END
+  )
+
+  &hobCountType4=0
+
+  while (&Hob_start_ptr>0)
+  (
+    gosub print_hob &Hob_start_ptr
+    entry &Hob_start_ptr
+  )
+
+  print "Type 4 GUID HOB [EFI_HOB_TYPE_GUID_EXTENSION] Count = &hobCountType4"
+enddo
+
+;-----------------------------------------------------------
+; print hob and return next hob pointer, null if end of it
+;-----------------------------------------------------------
+
+print_hob:
+  entry &Hob_ptr
+
+  local &hob_type
+  local &hob_size
+  local &next_hob
+  
+  &next_hob=0
+
+  &hob_type=data.word(A:&Hob_ptr)
+
+  &hob_size=data.word(A:&Hob_ptr+2)
+
+  ;print "Addr :  &Hob_ptr  Hob Type : &hob_type  Hob Size :  &hob_size "
+    
+  if (&hob_type==0x4)
+  (
+    &Data1=data.long(A:&Hob_ptr+0x8)
+    &Data2=data.short(A:&Hob_ptr+0xC)
+    &Data3=data.short(A:&Hob_ptr+0xE)
+    &Data4_1=data.byte(A:&Hob_ptr+0x10)
+    &Data4_2=data.byte(A:&Hob_ptr+0x11)
+    &Data4_3=data.byte(A:&Hob_ptr+0x12)
+    &Data4_4=data.byte(A:&Hob_ptr+0x13)
+    &Data4_5=data.byte(A:&Hob_ptr+0x14)
+    &Data4_6=data.byte(A:&Hob_ptr+0x15)
+    &Data4_7=data.byte(A:&Hob_ptr+0x16)
+    &Data4_8=data.byte(A:&Hob_ptr+0x17)
+
+    print "GUID HOB@&Hob_ptr : GUID 0x", FORMAT.HEX(8.,&Data1), " 0x", FORMAT.HEX(4.,&Data2) , " 0x", FORMAT.HEX(4.,&Data3), " 0x", FORMAT.HEX(2.,&Data4_1), " 0x", FORMAT.HEX(2.,&Data4_2) , " 0x", FORMAT.HEX(2.,&Data4_3) , " 0x", FORMAT.HEX(2.,&Data4_4) , " 0x", FORMAT.HEX(2.,&Data4_5) , " 0x", FORMAT.HEX(2.,&Data4_6) , " 0x", FORMAT.HEX(2.,&Data4_7) , " 0x", FORMAT.HEX(2.,&Data4_8) 
+    &hobCountType4=&hobCountType4+1
+  )
+
+  if (&hob_type==0xFFFF)
+  (
+    &next_hob=&Hob_ptr+&hob_size
+  )
+
+  if (&hob_size==0)
+    return 0
+
+  if (&hob_type!=0xFFFF)
+  (
+    &next_hob=&Hob_ptr+&hob_size
+  )
+
+return &next_hob
+
+enddo
+
+
+;---------------------------------------------------
+; FindHobStartPtr
+;---------------------------------------------------
+FindHobStartPtr:
+  ENTRY &UefiBase
+  ;&UefiBase is the base of FD
+  &InfoBlkPtrOffset=0x003FF000
+  &InfoBlkAddr=&UefiBase+&InfoBlkPtrOffset
+
+  ;Read signature and verify
+  &Sig=data.long(A:&InfoBlkAddr)
+
+  ;Check signature before dereference
+  if (&Sig!=0x6B6C4249)
+  (
+    PRINT "Unable to locate UEFI Info Block with ref to the Base Addr : &InfoBlkAddr"
+    &HobStartPtr=0
+    RETURN &HobStartPtr
+  )
+  else
+  (
+    PRINT "InfoBlock Signature OK"
+  )
+
+  &HobStartPtr=data.long(A:&InfoBlkAddr+&IBlkHobBaseOffset)
+
+RETURN &HobStartPtr

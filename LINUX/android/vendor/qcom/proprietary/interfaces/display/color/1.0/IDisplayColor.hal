@@ -1,0 +1,431 @@
+/*
+ * Copyright (c) 2017 Qualcomm Technologies, Inc.
+ * All Rights Reserved.
+ * Confidential and Proprietary - Qualcomm Technologies, Inc.
+ */
+
+package vendor.display.color@1.0;
+
+interface IDisplayColor {
+    /**
+     * Initialize a color context.
+     *
+     * Each client is expected to call init interface and acquire a context
+     * handle before exercising any other interface.
+     *
+     * @param  flags client identifier.
+     * @return result OK on success or BAD_VALUE if any parameters are invalid.
+     * @return ctxHandle context handle.
+     */
+    init(uint32_t flags) generates (Result result, Handle ctxHandle);
+
+    /**
+     * De-initialize a color context.
+     *
+     * Client must free the context after use.
+     *
+     * @param  ctxHandle context handle.
+     * @param  flags reserved.
+     * @return result OK on success or BAD_VALUE if any parameters are invalid.
+     */
+    deInit(Handle ctxHandle, uint32_t flags) generates (Result result);
+
+    /**
+     * Query number of available displays.
+     *
+     * Clients can query number of various displays supported i.e.
+     *   - Primary display
+     *   - External display (if supported)
+     *
+     * @param  ctxHandle context handle.
+     * @return result OK on success or BAD_VALUE if any parameters are invalid.
+     * @return numDisplays  number of supported displays.
+     * @return flags reserved.
+     */
+    getNumDisplay(Handle ctxHandle) generates (Result result,
+                                               uint32_t numDisplays,
+                                               uint32_t flags);
+
+    /**
+     * Enumarate a requested display.
+     *
+     * Enumarates client requested display identified by the index.
+     *
+     * @param  ctxHandle context handle.
+     * @param  index display index.
+     * @return result OK on success or BAD_VALUE if any parameters are invalid.
+     * @return dispInfo display information @DisplayInfo.
+     */
+    getDisplay(Handle ctxHandle,
+               uint32_t index) generates (Result result, DisplayInfo dispInfo);
+
+    /**
+     * Query number of color modes.
+     *
+     * Clients can query number of color modes present i.e.
+     *   - Native mode
+     *   - sRGB mode etc
+     *
+     * @param  ctxHandle context handle.
+     * @param  dispId display Id.
+     * @param  modeType color mode type, for details refer to @DispModeType.
+     * @return result OK on success or BAD_VALUE if any parameters are invalid.
+     * @return numModes  number of supported color modes of requested modeType.
+     * @return flags reserved.
+     */
+    getNumModes(Handle ctxHandle,
+                uint32_t dispId,
+                DispModeType modeType) generates (Result result,
+                                                  uint32_t numModes,
+                                                  uint32_t flags);
+
+    /**
+     * Enumarate color modes.
+     *
+     * Enumarates all the color modes present on device based on requested type.
+     *
+     * @param  ctxHandle context handle.
+     * @param  dispId display id.
+     * @param  modeType color mode type, for details refer to @DispModeType.
+     * @param  numModes  number of color modes queried @getNumModes API.
+     * @return result OK on success or BAD_VALUE if any parameters are invalid.
+     * @return modeList list of @ModeInfo.
+     * @return flags reserved.
+     */
+    getModes(Handle ctxHandle,
+             uint32_t dispId,
+             DispModeType modeType,
+             uint32_t numModes) generates (Result result,
+                                           vec<ModeInfo> modeList,
+                                           uint32_t flags);
+
+    /**
+     * Get active color mode id.
+     *
+     * Queries currently active color mode id.
+     *
+     * @param  ctxHandle context handle.
+     * @param  dispId display id.
+     * @return result OK on success or BAD_VALUE if any parameters are invalid.
+     * @return modeId active color mode ID.
+     * @return mask indicates dirty features ontop of active color mode.
+     * @return flags reserved.
+     */
+    getActiveModeId(Handle ctxHandle,
+                    uint32_t dispId) generates (Result result,
+                                                int32_t modeId,
+                                                uint32_t mask,
+                                                uint32_t flags);
+
+    /**
+     * Set active color mode.
+     *
+     * Sets the requested color mode (represented by modeId) as current
+     * active color mode.
+     *
+     * @param  ctxHandle context handle.
+     * @param  dispId display id.
+     * @param  modeId color mode ID to be set
+     * @param  flags reserved.
+     * @return result OK on success or BAD_VALUE if any parameters are invalid.
+     */
+    setActiveModesId(Handle ctxHandle,
+                     uint32_t dispId,
+                     int32_t modeId,
+                     uint32_t flags) generates (Result result);
+
+    /**
+     * Get default color mode id.
+     *
+     * Queries default color mode id out of color mode list.
+     *
+     * @param  ctxHandle context handle.
+     * @param  dispId display id.
+     * @return result OK on success or BAD_VALUE if any parameters are invalid.
+     * @return modeId default color mode ID.
+     * @return flags reserved.
+     */
+    getDefaultModeId(Handle ctxHandle,
+                     uint32_t dispId) generates (Result result,
+                                                 int32_t modeId,
+                                                 uint32_t flags);
+
+    /**
+     * Set default color mode.
+     *
+     * Sets the requested color mode (represented by modeId) as default
+     * color mode. This mode will be applied by display sw post subsequent
+     * power cycle.
+     *
+     * @param  ctxHandle context handle.
+     * @param  dispId display id.
+     * @param  modeId color mode ID to be set
+     * @param  flags reserved.
+     * @return result OK on success or BAD_VALUE if any parameters are invalid.
+     */
+    setDefaultModesId(Handle ctxHandle,
+                      uint32_t dispId,
+                      int32_t modeId,
+                      uint32_t flags) generates (Result result);
+
+    /**
+     * Create new mode.
+     *
+     * Creates a new color mode with the current feature settings.
+     *
+     * Note: If the caller of this API passes a negative modeId, then the API
+     * will assign a positive integer as new modeId for saved mode, and return.
+     * If the caller passes a positive ID or zero, then this API will
+     * check whether requested modeId already exists or not.
+     * If it, then update that mode; otherwise, create a new mode with this ID.
+     *
+     * @param  ctxHandle context handle.
+     * @param  dispId display id.
+     * @param  modeName mode name string.
+     * @param  modeId color mode ID to be used (if non negative)
+     * @param  flags reserved.
+     * @return result OK on success or BAD_VALUE if any parameters are invalid.
+     * @return modeId final color mode ID associated with new mode.
+     */
+    saveMode(Handle ctxHandle,
+             uint32_t dispId,
+             string modeName,
+             int32_t modeId,
+             uint32_t flags) generates (Result result, int32_t modeId);
+
+    /**
+     * Delete an existing color mode.
+     *
+     * Deletes an existing color mode (represented by modeId) if present.
+     *
+     * @param  ctxHandle context handle.
+     * @param  dispId display id.
+     * @param  modeId color mode ID to be deleted
+     * @param  flags reserved.
+     * @return result OK on success or BAD_VALUE if any parameters are invalid.
+     */
+    deleteMode(Handle ctxHandle,
+               uint32_t dispId,
+               uint32_t modeId,
+               uint32_t flags) generates (Result result);
+
+    /**
+     * Get supported global color balance range.
+     *
+     * @param  ctxHandle context handle.
+     * @param  dispId display id.
+     * @return result OK on success or BAD_VALUE if any parameters are invalid.
+     * @return range supported color balance range.
+     */
+    getCBRange(Handle ctxHandle,
+               uint32_t dispId) generates (Result result, Range range);
+
+    /**
+     * Set global color balance (warmness).
+     *
+     * Sets color balance based on requested warmness value. R/G/B coefficients
+     * are calculated internally.
+     * Note: Larger the value the warmer the color.
+     *
+     * @param  ctxHandle context handle.
+     * @param  dispId display id.
+     * @param  warmness warmness value - should be in supported range.
+     * @param  flags reserved.
+     * @return result OK on success or BAD_VALUE if any parameters are invalid.
+     */
+    setCB(Handle ctxHandle,
+          uint32_t dispId,
+          uint32_t warmness,
+          uint32_t flags) generates (Result result);
+
+    /**
+     * Get global color balance (warmness).
+     *
+     * Gets currently applied color balance value.
+     * Note: Larger the value the warmer the color.
+     *
+     * @param  ctxHandle context handle.
+     * @param  dispId display id.
+     * @return result OK on success or BAD_VALUE if any parameters are invalid.
+     * @return warmness warmness value.
+     * @return flags reserved.
+     */
+    getCB(Handle ctxHandle,
+          uint32_t dispId) generates (Result result,
+                                      uint32_t warmness,
+                                      uint32_t flags);
+
+    /**
+     * Set color balance based on user configuration.
+     *
+     * Sets color balance based on requested user configuration in terms of
+     * R/G/B color coefficients.
+     *
+     * @param  ctxHandle context handle.
+     * @param  dispId display id.
+     * @param  cfg user specific color balance coefficients.
+     * @return result OK on success or BAD_VALUE if any parameters are invalid.
+     */
+    setUsrCB(Handle ctxHandle,
+             uint32_t dispId,
+             usrCBConfig cfg) generates (Result result);
+
+    /**
+     * Get user applied color balance configuration.
+     *
+     * Gets user applied color balance configuration in terms of
+     * R/G/B color coefficients.
+     *
+     * @param  ctxHandle context handle.
+     * @param  dispId display id.
+     * @return result OK on success or BAD_VALUE if any parameters are invalid.
+     * @param  cfg user applied color balance coefficients.
+     */
+    getUsrCB(Handle ctxHandle,
+             uint32_t dispId) generates (Result result, usrCBConfig cfg);
+
+    /**
+     * Get supported global picture adjustment range.
+     *
+     * Gets supported picture adjustment range for hue, saturation, value and
+     * contrast.
+     *
+     * @param  ctxHandle context handle.
+     * @param  dispId display id.
+     * @return result OK on success or BAD_VALUE if any parameters are invalid.
+     * @return range supported picture adjustment range.
+     */
+    getGlobalPARange(Handle ctxHandle,
+                     uint32_t dispId) generates (Result result, PARange range);
+
+    /**
+     * Set global picture adjustment configuration.
+     *
+     * @param  ctxHandle context handle.
+     * @param  dispId display id.
+     * @param  enable enables picture adjustment on hw or cache.
+     * @param  cfg user specific picture adjustment coefficients.
+     * @return result OK on success or BAD_VALUE if any parameters are invalid.
+     */
+    setGlobalPA(Handle ctxHandle,
+                uint32_t dispId,
+                uint32_t enable,
+                PAConfig cfg) generates (Result result);
+
+    /**
+     * Get global picture adjustment configuration.
+     *
+     * @param  ctxHandle context handle.
+     * @param  dispId display id.
+     * @return result OK on success or BAD_VALUE if any parameters are invalid.
+     * @return enable picture adjustment enabled on hw or cache.
+     * @return cfg user applied specific picture adjustment coefficients.
+     */
+    getGlobalPA(Handle ctxHandle,
+                uint32_t dispId) generates (Result result,
+                                            uint32_t enable,
+                                            PAConfig cfg);
+
+    /**
+     * Get specific color feature version information.
+     *
+     * @param  ctxHandle context handle.
+     * @param  feature_id feature id.
+     * @return result OK on success or BAD_VALUE if any parameters are invalid.
+     * @return version feature version information.
+     * @return flags reserved.
+     */
+    getFeatureVersion(Handle ctxHandle,
+                      uint32_t feature_id) generates (Result result,
+                                                      versionInfo version,
+                                                      uint32_t flags);
+
+    /**
+     * Set user ebr (exposure, brightness and red-tint) configuration.
+     *
+     * Sets exposure, brightness and red-tint based on user requested
+     * configuration.
+     *
+     * @param  ctxHandle context handle.
+     * @param  dispId display id.
+     * @param  cfg user specific ebr configuration.
+     * @return result OK on success or BAD_VALUE if any parameters are invalid.
+     */
+    setUsrEBR(Handle ctxHandle,
+              uint32_t dispId,
+              usrEBRConfig cfg) generates (Result result);
+
+    /**
+     * Get user applied ebr (exposure, brightness and red-tint) configuration.
+     *
+     * Gets user applied exposure, brightness and red-tint configuration.
+     *
+     * @param  ctxHandle context handle.
+     * @param  dispId display id.
+     * @return result OK on success or BAD_VALUE if any parameters are invalid.
+     * @return cfg user applied ebr configuration.
+     */
+    getUsrEBR(Handle ctxHandle,
+              uint32_t dispId) generates (Result result, usrEBRConfig cfg);
+
+    /**
+     * Set gamma configuration.
+     *
+     * @param  ctxHandle context handle.
+     * @param  dispId display id.
+     * @param  op gamma operation type @DispGammaOp.
+     * @param  enable enable gamma operation.
+     * @param  lut gamma lut.
+     * @return result OK on success or BAD_VALUE if any parameters are invalid.
+     */
+    setGammaCfg(Handle ctxHandle,
+                uint32_t dispId,
+                DispGammaOp op,
+                uint32_t enable,
+                lutCfg lut) generates (Result result);
+
+    /**
+     * Get gamma configuration.
+     *
+     * @param  ctxHandle context handle.
+     * @param  dispId display id.
+     * @param  op gamma operation type @DispGammaOp.
+     * @return result OK on success or BAD_VALUE if any parameters are invalid.
+     * @return enable enable gamma operation.
+     * @return lut gamma lut.
+     */
+    getGammaCfg(Handle ctxHandle,
+                uint32_t dispId,
+                DispGammaOp op) generates (Result result,
+                                           uint32_t enable,
+                                           lutCfg lut);
+
+    /**
+     * Set global pcc configuration.
+     *
+     * @param  ctxHandle context handle.
+     * @param  dispId display id.
+     * @param  enable enable pcc function.
+     * @param  cfg global pcc configuration.
+     * @return result OK on success or BAD_VALUE if any parameters are invalid.
+     */
+    setPCCCfg(Handle ctxHandle,
+              uint32_t dispId,
+              uint32_t enable,
+              pccCoeffData cfg) generates (Result result);
+
+    /**
+     * Get global pcc configuration.
+     *
+     * @param  ctxHandle context handle.
+     * @param  dispId display id.
+     * @return result OK on success or BAD_VALUE if any parameters are invalid.
+     * @return enable enable pcc function.
+     * @return cfg global pcc configuration.
+     */
+    getPCCCfg(Handle ctxHandle,
+              uint32_t dispId) generates (Result result,
+                                          uint32_t enable,
+                                          pccCoeffData cfg);
+
+};

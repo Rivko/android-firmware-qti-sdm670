@@ -1,0 +1,100 @@
+#===============================================================================
+# Copyright (c) 2017 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===============================================================================
+Import('env')
+
+env = env.Clone()
+
+platform_root = '${BUILD_ROOT}/platform'
+env.Replace(ADSP_PLATFORM_ROOT = platform_root)
+
+env.RequirePublicApi([
+  'PLATFORM_LIBS',
+  'HAP_POOL',
+  'STDDEF',
+  'APPS_STD',
+  'UTILS',
+  'A1STD',
+  'REMOTE',
+  'DLW',
+  'HAPSDK',
+  'UTILS',
+  'QLIST',
+  'QDI_PORTAL',
+  ])
+
+core_public_apis = [
+  'DEBUGTOOLS',
+  'MPROC',
+  'SERVICES',
+  'KERNEL',
+  ]
+
+env.RequirePublicApi(core_public_apis, area='core')
+
+env.RequireRestrictedApi([
+  'FASTRPC_SMD',
+  'REMOTE_HEAP_MGR',
+  'APPS_MEM',
+  'FASTRPC_PROCESS',
+  'QLIST',
+ ])
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+
+SRCPATH = "${ADSP_PLATFORM_ROOT}/qdi_portal/src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#DLExpose(bInit, pre_init_heaps)
+env.PLRegister("u2g_client",['FASTRPC_SHELL_IMG'])
+
+#Enable to print debug messages
+#env.Append(CPPDEFINES = '_DEBUG')
+#env.Append(CPPDEFINES = 'VERIFY_PRINT_INFO')
+#env.Append(CPPDEFINES = 'VERIFY_PRINT_ERROR')
+
+QDI_PORTAL_SOURCES = [
+    '${BUILDPATH}/qdi_portal.c',
+    '${BUILDPATH}/mbserver.c',
+    '${BUILDPATH}/mbpipe.c',
+    '${BUILDPATH}/u2g_server.c',
+ ]
+
+
+SHELL_SOURCES = [
+    '${BUILDPATH}/mbclient.c',
+    '${BUILDPATH}/mbpipe.c',
+    '${BUILDPATH}/u2g_client.c',
+ ]
+ 
+SHELL_AVS_SOURCES = [
+    '${BUILDPATH}/mbclient.c',
+    '${BUILDPATH}/mbpipe.c',
+    '${BUILDPATH}/u2g_client.c',
+ ]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+qdi_portal_lib = env.AddBinaryLibrary(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+    'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'SSC_SLPI_USER', 'SSC_ADSP_USER'], '${BUILDPATH}/qdi_portal', QDI_PORTAL_SOURCES)
+
+lib = env.AddBinaryLibrary(['FASTRPC_SHELL_IMG'],'${BUILDPATH}/qdi_portal', SHELL_SOURCES)
+
+if('USES_ENABLE_GUESTOS_AUDIOPD_SUPPORT' not in env):
+   env.AddBinaryLibrary(['AVS_ADSP_USER'],'${BUILDPATH}/qdi_portal', SHELL_AVS_SOURCES)
+   
+
+#-------------------------------------------------------------------------------
+# Load Subunits (sys)
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+#Clean and pack rules
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.cpp', '*.h'], '${ADSP_PLATFORM_ROOT}/qdi_portal/src'))
+env.CleanPack(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE','QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'SSC_SLPI_USER', 'SSC_ADSP_USER'], CLEAN_LIST)

@@ -1,0 +1,109 @@
+#===============================================================================
+#
+#
+# GENERAL DESCRIPTION
+#
+# Copyright (c) 2016 QUALCOMM Technologies Incorporated. All Rights Reserved
+#
+# Qualcomm Proprietary
+#
+# Export of this technology or software is regulated by the U.S. Government.
+# Diversion contrary to U.S. law prohibited.
+#
+# All ideas, data and information contained in or disclosed by
+# this document are confidential and proprietary information of
+# Qualcomm Technologies Incorporated and all rights therein are expressly reserved.
+# By accepting this material the recipient agrees that this material
+# and the information contained therein are held in confidence and in
+# trust and will not be used, copied, reproduced in whole or in part,
+# nor its contents revealed in any manner to others without the express
+# written permission of Qualcomm Technologies Incorporated.
+#
+#-------------------------------------------------------------------------------
+#
+# $Header: //components/rel/core.qdsp6/2.1.c4/settings/pmic/pm/build/pm.scons#1 $
+# $DateTime: 2018/07/30 01:21:36 $ 
+#
+#                      EDIT HISTORY FOR FILE
+#                      
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#  
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 10/11/16   jg      Created
+#===============================================================================
+
+import os
+Import('env')
+
+#-------------------------------------------------------------------------------
+# Source PATH:  
+#-------------------------------------------------------------------------------
+
+SRCPATH = "../config"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+env.RequirePublicApi([
+    'DAL',
+    'POWER',
+    'SYSTEMDRIVERS',
+    'SERVICES',
+    'KERNEL',
+    'PMIC',
+    ],
+    area='CORE')
+
+env.RequireRestrictedApi(['PMIC_DEVCFG_INTERFACE'])
+
+# The LLVM compiler added in several dozen -Wunused-function warnings with entries
+# in device configuration.  We will suppress these warnings for the devcfg_img
+# SCons image only.
+env.Append(CFLAGS = ' -Wno-unused-function')
+
+
+#-------------------------------------------------------------------------------
+# DEVCFG - PMIC BSP - Not required for 8998.
+#-------------------------------------------------------------------------------
+
+if 'USES_DEVCFG' in env:
+  if env.has_key('SLPI_PROC'):
+    DEVCFG_IMG = ['DAL_DEVCFG_IMG']
+    env.AddDevCfgInfo(DEVCFG_IMG, 
+    {
+      '845_xml' : ['${BUILDPATH}/slpi/sdm845/pm_config_pam.c',
+                   '${BUILDPATH}/slpi/sdm845/pm_config_target.c',
+                   '../config/slpi/sdm845/pm_config_target.xml'],
+    })
+  elif env.has_key('ADSP_PROC'):
+    DEVCFG_IMG = ['DAL_DEVCFG_IMG']
+    env.AddDevCfgInfo(DEVCFG_IMG, 
+    {
+      '845_xml' : [#'${BUILDPATH}/adsp/sdm845/pm_config_pam.c',#
+                   '${BUILDPATH}/adsp/sdm845/pm_config_target.c',
+                   '../config/adsp/sdm845/pm_config_target.xml'],
+      '670_xml' : ['${BUILDPATH}/adsp/sdm670/pm_config_pam.c',
+                   '${BUILDPATH}/adsp/sdm670/pm_config_target.c',
+                   '../config/adsp/sdm670/pm_config_target.xml',
+                   '${BUILDPATH}/adsp/qcs605/pm_config_pam.c',
+                   '${BUILDPATH}/adsp/qcs605/pm_config_target.c',
+                   '../config/adsp/qcs605/pm_config_target.xml'],
+    })
+  elif('CDSP_PROC'):
+    DEVCFG_IMG = ['DAL_DEVCFG_IMG']
+    env.AddDevCfgInfo(DEVCFG_IMG, 
+    {
+      '845_xml' : [#'${BUILDPATH}/cdsp/sdm845/pm_config_pam.c',#
+                   '${BUILDPATH}/cdsp/sdm845/pm_config_target.c',
+                   '../config/cdsp/sdm845/pm_config_target.xml'],
+      '670_xml' : [#'${BUILDPATH}/cdsp/sdm670/pm_config_pam.c',#
+                   '${BUILDPATH}/cdsp/sdm670/pm_config_target.c',
+                   '../config/cdsp/sdm670/pm_config_target.xml',
+                   '${BUILDPATH}/cdsp/qcs605/pm_config_target.c',
+                   '../config/cdsp/qcs605/pm_config_target.xml'],
+
+    })
+

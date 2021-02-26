@@ -1,0 +1,119 @@
+#===============================================================================
+#
+# SecureMSM APIs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2013-2017 by QUALCOMM Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/ssg.tz/1.0.2/securemsm/secboot/build/secboot.api#1 $
+#  $DateTime: 2018/02/06 03:00:17 $
+#  $Author: pwbldsvc $
+#  $Change: 15399933 $
+#                      EDIT HISTORY FOR FILE
+#                      
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#  
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 06/09/2017 sm      Create new *.api file.
+#===============================================================================
+import os
+Import('env')
+
+BUILD_IMG = env['IMAGE_NAME'].lower()
+if BUILD_IMG == 'xbl_sec':
+  SECBOOT_IMG = BUILD_IMG
+else:
+  SECBOOT_IMG = 'tz'
+
+CHIPSET_DIR = env.subst("${INC_ROOT}/ssg/securemsm/secboot/chipset/${CHIPSET}")
+
+#-------------------------------------------------------------------------------
+# Publish Public APIs
+#-------------------------------------------------------------------------------
+if env['CHIPSET'] in ['sdm845', 'sdm670','qcs6200', 'sdm640']:
+ if env.get('IMAGE_ALIASES')[0] == 'xbl_sec':
+  env.PublishPublicApi('SECUREMSM', [
+   CHIPSET_DIR + "/xbl_sec",
+   "${INC_ROOT}/ssg/securemsm/secboot/inc/v2",
+  ])
+ else:  # for tz
+  env.PublishPublicApi('SECUREMSM', [
+   CHIPSET_DIR,
+   "${INC_ROOT}/ssg/securemsm/secboot/inc",
+   "${BUILD_ROOT}/ssg/securemsm/secboot/inc/shared/v2",
+  ])
+else:
+ if env.get('IMAGE_ALIASES')[0] == 'xbl_sec':
+  env.PublishPublicApi('SECUREMSM', [
+   CHIPSET_DIR + "/xbl_sec",
+   "${INC_ROOT}/ssg/securemsm/secboot/inc",
+  ])
+ else:
+  env.PublishPublicApi('SECUREMSM', [
+   CHIPSET_DIR + "/tz",
+   "${INC_ROOT}/ssg/securemsm/secboot/inc",
+   "${BUILD_ROOT}/ssg/securemsm/secboot/inc/shared",
+  ])
+
+env.PublishPublicApi('SECUREMSM', [
+   "${INC_ROOT}/ssg/securemsm/secboot/auth/inc",
+   "${INC_ROOT}/ssg/securemsm/secboot/inc/common",
+   "${INC_ROOT}/ssg/securemsm/secboot/env/" + SECBOOT_IMG,
+])
+#-------------------------------------------------------------------------------
+# Publish Restricted APIs
+#-------------------------------------------------------------------------------
+if env['CHIPSET'] in ['sdm845', 'sdm670','qcs6200', 'sdm640']:
+ if env.get('IMAGE_ALIASES')[0] == 'xbl_sec':
+  CHIPSET_DIR + "/xbl_sec",
+  env.PublishRestrictedApi('SECUREMSM', [
+   "${INC_ROOT}/ssg/securemsm/secboot/inc/v2",
+  ])
+ else:  # for tz
+  env.PublishRestrictedApi('SECUREMSM', [
+   CHIPSET_DIR,
+   "${INC_ROOT}/ssg/securemsm/secboot/inc",
+   "${BUILD_ROOT}/ssg/securemsm/secboot/inc/shared/v2",
+  ])
+else:
+ if env.get('IMAGE_ALIASES')[0] == 'xbl_sec':
+  env.PublishRestrictedApi('SECUREMSM', [
+   CHIPSET_DIR + "/xbl_sec",
+   "${INC_ROOT}/ssg/securemsm/secboot/inc",
+  ])
+ else:
+  env.PublishRestrictedApi('SECUREMSM', [
+   CHIPSET_DIR + "/tz",
+   "${INC_ROOT}/ssg/securemsm/secboot/inc",
+   "${BUILD_ROOT}/ssg/securemsm/secboot/inc/shared",
+  ])
+env.PublishRestrictedApi('SECUREMSM', [
+   "${INC_ROOT}/ssg/securemsm/secboot/auth/inc",
+   "${INC_ROOT}/ssg/securemsm/secboot/inc/common",
+   "${INC_ROOT}/ssg/securemsm/secboot/env/" + SECBOOT_IMG,
+])
+
+# stubs handler for new chipsets
+
+if not os.path.exists(CHIPSET_DIR):
+  env.PrintWarning("SECBOOT not implemented for {} - using stubs".format( \
+        env.subst("${CHIPSET}")))
+  env.PublishPublicApi('SECUREMSM', [
+    "${INC_ROOT}/ssg/securemsm/secboot/chipset/stubs",
+  ])
+  env.PublishRestrictedApi('SECUREMSM', [
+    "${INC_ROOT}/ssg/securemsm/secboot/chipset/stubs",
+  ])
+
+env.Deploy('secboot.api')
+
+env.LoadAPIUnits()
+

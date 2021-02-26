@@ -1,0 +1,70 @@
+#===============================================================================
+#
+# AVS AU
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2009-2009 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/avs.adsp/2.8.5/afe/drivers/hw/lpm/build/lpm.scons#1 $
+#  $DateTime: 2017/11/07 23:00:25 $
+#  $Author: pwbldsvc $
+#  $Change: 14795016 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+
+from glob import glob
+from os.path import join, basename
+
+CBSP_API = [
+   'BOOT',
+   'DAL',
+   'DEBUGTOOLS',
+   'HAL',
+   'MPROC',
+   'POWER',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',   
+]
+
+env.RequirePublicApi(CBSP_API,area='core')
+env.RequireRestrictedApi('AVS')
+env.RequireProtectedApi('AVS')
+
+
+env.PublishPrivateApi('AFE_LPM',[
+   '${AVS_ROOT}/afe/drivers/hw/lpm/inc',
+   ])
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${AVS_ROOT}/afe/drivers/hw/lpm"
+LIBNAME_LPM = 'lpm_driver'
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+srcpath = env.RealPath(SRCPATH, posix=True)
+lpm_sources = env.GlobFiles([srcpath+'/src/*.cpp', srcpath+'/src/*.c', srcpath+'/tst/*.cpp', srcpath+'/tst/*.c'], posix=True)
+lpm_sources = [source.replace(srcpath, '${BUILDPATH}') for source in lpm_sources]
+
+env.AddLibrary(['AVS_ADSP','AVS_ADSP_USER'], '${BUILDPATH}/'+LIBNAME_LPM, [lpm_sources])
+
+#env.Append(CFLAGS = '-O0')
+

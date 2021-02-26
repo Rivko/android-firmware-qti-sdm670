@@ -1,0 +1,93 @@
+#===============================================================================
+#
+# GENERAL DESCRIPTION
+#    Build script for HAL QDSS-TMC Library.
+#
+# Copyright (c) 2011-2012, 2017 Qualcomm Technologies Incorporated.
+# All rights reserved.
+# Qualcomm Confidential and Proprietary
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1/debugtrace/hwevent/dal/build/hweventdal.scons#4 $
+#
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 09/07/17   rs      Warlock specific changes
+#===============================================================================
+
+Import('env')
+import qdss
+
+if env.IsTargetEnable(qdss.BuildTags(['modem'])):
+   env.Append(CCFLAGS = " -DHWEVENT_DIAG_PROC_ID=0x0200")
+elif env.IsTargetEnable(qdss.BuildTags(['adsp'])):
+   env.Append(CCFLAGS = " -DHWEVENT_DIAG_PROC_ID=0x0500")
+elif env.IsTargetEnable(qdss.BuildTags(['wcn'])):
+   env.Append(CCFLAGS = " -DHWEVENT_DIAG_PROC_ID=0x0300")
+elif env.IsTargetEnable(qdss.BuildTags(['sensor'])):
+   env.Append(CCFLAGS = " -DHWEVENT_DIAG_PROC_ID=0x0800")
+elif env.IsTargetEnable(qdss.BuildTags(['sensor2'])):
+   env.Append(CCFLAGS = " -DHWEVENT_DIAG_PROC_ID=0x0C00")
+elif env.IsTargetEnable(qdss.BuildTags(['cdsp'])):
+   env.Append(CCFLAGS = " -DHWEVENT_DIAG_PROC_ID=0x0D00")
+else:
+   env.Append(CCFLAGS = " -DHWEVENT_DIAG_PROC_ID=0xFF00")
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+
+SRCPATH = "../src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+env.RequirePublicApi([
+   'HAL',
+   'DAL',
+   'DEBUGTRACE',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'POWER',
+   'KERNEL'
+   ])
+env.RequireRestrictedApi(['DEBUGTRACE'])
+env.RequireProtectedApi(['DEBUGTRACE'])
+
+env.PublishPrivateApi('HWEVENT_CONFIG', [
+   "${INC_ROOT}/core/debugtrace/hwevent/config/${IMAGE}/${CHIPSET}"  
+])
+
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+HWEVENT_DAL_SRC = [
+   '${BUILDPATH}/DalHWEvent.c',
+   ]
+
+if env.IsTargetEnable(qdss.BuildTags(['cdsp', 'adsp'])):
+   HWEVENT_DAL_SRC += ['${BUILDPATH}/hwevent_cntrl.c']
+
+#Add HWEvent image
+env.AddLibrary(qdss.BuildTags(['adsp', 'cdsp', 'audio']),
+               '${BUILDPATH}/hwevent_dal',HWEVENT_DAL_SRC)
+
+env.AddLibrary(qdss.BuildTags(['sensor2']),
+   '${BUILDPATH}/hwevent_dal','${BUILDPATH}/hwevent_cntrl_stub.c')
+
+if 'USES_RCINIT' in env:
+   RCINIT_IMG = qdss.BuildTags(['cdsp', 'adsp'])
+   env.AddRCInitFunc(           # Code Fragment in TMC: NO
+      RCINIT_IMG,
+      {
+         'sequence_group'             : 'RCINIT_GROUP_2',            # required
+         'init_name'                  : 'hwevent_init',              # required
+         'init_function'              : 'hwevent_diag_init',         # required
+         'dependencies'               : ['dalsys','diag']
+         })

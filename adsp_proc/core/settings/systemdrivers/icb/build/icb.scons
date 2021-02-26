@@ -1,0 +1,79 @@
+#===============================================================================
+#
+#                             Edit History
+#
+# $Header: //components/rel/core.qdsp6/2.1/settings/systemdrivers/icb/build/icb.scons#3 $
+# when         who     what, where, why
+# ----------   ---     ---------------------------------------------------------
+# 2016/10/10   jg      Initial Creation
+#
+#===============================================================================
+#            Copyright (c) 2017 QUALCOMM Technologies,Incorporated.
+#                              All Rights Reserved.
+#                            QUALCOMM Proprietary/GTDR
+#===============================================================================
+Import('env')
+import os
+
+# The LLVM compiler added in several dozen -Wunused-function warnings with entries
+# in device configuration.  We will suppress these warnings for the devcfg_img
+# SCons image only.
+env.Append(CFLAGS = ' -Wno-unused-function')
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+BUILDPATH = '../config'
+env.VariantDir('${BUILDPATH}', BUILDPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_APIS = [
+  'DAL',
+  'POWER',
+  'SERVICES',
+  'SYSTEMDRIVERS',
+  'ICB_DEVCFG_INTERFACE',
+  'KERNEL'
+]
+
+env.RequireRestrictedApi(['ICB_DEVCFG_INTERFACE','SYSTEMDRIVERS'])
+env.RequirePublicApi(CBSP_APIS)
+
+   
+
+#-------------------------------------------------------------------------------
+# Device Configuration Sources
+#-------------------------------------------------------------------------------
+if 'USES_DEVCFG' in env:
+  env.AddDevCfgInfo(['DAL_DEVCFG_IMG'],{
+	  '845_xml' : ['../config/icbcfg.xml',      
+		   '${BUILDPATH}/${IMAGE}/sdm845/ul_data.c',],
+	  '670_xml' : ['../config/icbcfg.xml',      
+		   '${BUILDPATH}/${IMAGE}/sdm670/ul_data.c',],
+					})
+
+  if os.path.exists('../config/' + env['IMAGE'] + '/sdm845/ABT_data.c'):
+	env.AddDevCfgInfo(['DAL_DEVCFG_IMG'],{
+		'845_xml' : ['../config/ABT.xml',
+					 '${BUILDPATH}/${IMAGE}/sdm845/ABT_data.c',],
+					  })
+
+  if os.path.exists('../config/' + env['IMAGE'] + '/sdm670/ABT_data.c'):
+	env.AddDevCfgInfo(['DAL_DEVCFG_IMG'],{
+		'670_xml' : ['../config/ABT.xml',
+					 '${BUILDPATH}/${IMAGE}/sdm670/ABT_data.c',],
+					  })
+
+  if os.path.exists('../config/' + env['IMAGE'] + '/sdm845/NOC_error_data.c'):
+	env.AddDevCfgInfo(['DAL_DEVCFG_IMG'],{
+		'845_xml' : ['../config/NOC_error.xml',
+					 '${BUILDPATH}/${IMAGE}/sdm845/NOC_error_data.c',],
+					  })
+
+  if os.path.exists('../config/' + env['IMAGE'] + '/sdm670/NOC_error_data.c'):
+	env.AddDevCfgInfo(['DAL_DEVCFG_IMG'],{
+		'670_xml' : ['../config/NOC_error.xml',
+					 '${BUILDPATH}/${IMAGE}/sdm670/NOC_error_data.c',],
+					  })

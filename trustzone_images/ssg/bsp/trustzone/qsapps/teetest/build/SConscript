@@ -1,0 +1,61 @@
+#===============================================================================
+#
+# teetest build script
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2015-2017 Qualcomm Technologies, Inc.  All Rights Reserved.
+# Qualcomm Technologies Proprietary and Confidential.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/ssg.tz/1.0.2/bsp/trustzone/qsapps/teetest/build/SConscript#1 $
+#  $DateTime: 2018/02/06 03:00:17 $
+#  $Author: pwbldsvc $
+#  $Change: 15399933 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+#===============================================================================
+import os
+Import('env')
+
+if env['TZ_EXEC_MODE'] == 'aarch32':
+   Return()
+   
+base_env = env.Clone()
+
+aliases = ['uefitzt', 'tzbsptest', 'all']
+if env["CHIPSET"] not in [ "sdm670" ]:
+    # build is currently broken for sdm670
+    aliases.append("deploy")
+    
+for teetest in ['teetest','teetest64']:
+  env = base_env.Clone()
+  
+  if teetest == 'teetest':
+    proc = 'scorpion'
+    build_tags = ['APPS_PROC', 'TEETEST_IMAGE']
+  else:
+    proc = 'A53_64'
+    build_tags = ['APPS_PROC', 'TEETEST64_IMAGE']
+  
+  env.InitImageVars(
+    alias_list = [teetest] + aliases,
+    proc = proc,
+    config = 'apps',
+    build_tags = build_tags,
+  )
+
+  env.Replace(OUT_DIR = '${BUILD_ROOT}/apps/bsp/trustzone/qsapps/' + teetest + '/build')
+  env.Replace(LIB_OUT_DIR = '${BUILD_ROOT}/apps/bsp/trustzone/qsapps/${LIBNAME}/' + teetest + '/build/${PROC}/${SHORT_BUILDPATH}')
+  env.LoadToolScript('${BUILD_ROOT}/ssg/bsp/build/scripts/secure_tee_builder.py')
+  env.InitBuildConfig()
+  sconspath = env.subst('${BUILD_ROOT}/ssg/securemsm/trustzone/qsapps/teetest/teetest/src/SConscript')
+  env.Replace(SRC_SCONS_ROOT = sconspath.split('SConscript')[0])
+  env.Replace(DEPLOY_APP = True)
+  SConscript( sconspath, exports='env',)
+  env.Deploy('SConscript')

@@ -1,0 +1,89 @@
+#===============================================================================
+#
+# AVS AU
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2016 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/avs.adsp/2.8.5/module_mgmt/amdb/build/amdb.scons#1 $
+#  $DateTime: 2017/11/07 23:00:25 $
+#  $Author: pwbldsvc $
+#  $Change: 14795016 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+
+#-------------------------------------------------------------------------------
+# Make all warnings into errors
+#-------------------------------------------------------------------------------
+
+
+env.Append(CFLAGS = '-Wunused-variable')
+
+if 'USES_ENABLE_FUNCTION_SECTIONS' in env:
+   env.Append(CFLAGS = '-ffunction-sections')
+
+core_public_apis = [
+   'DEBUGTOOLS',
+   'KERNEL',
+   'POWER',
+   'SERVICES',
+   'DAL',
+   'SYSTEMDRIVERS'
+   ]
+
+env.RequirePublicApi(core_public_apis, area='core')
+env.RequireRestrictedApi(['SHARED_LIBRARY_INC_PATHS'])
+env.RequireRestrictedApi('AVS')
+env.RequireProtectedApi('AVS')
+env.RequirePublicApi(core_public_apis, area='core')
+
+
+platform_public_apis = [
+  'STDDEF', # idl dependency
+  'HAPSDK_AUDIO', # CAPI_new, etc...
+  'QAIC', # idl -> .h
+  'PLATFORM_FS',
+  'RTLD'
+  ]
+
+# This has to be the last include command, so that the Elite_CAPI.h and Elite_APPI.h are not overridden
+env.RequirePublicApi(platform_public_apis, area='platform')
+
+env.RequirePublicApi('ADSP_AMDB')
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = ".."
+#Disable werror for mdsp mode for sim alone 
+if "MDSPMODE" in env and "USES_AVS_TEST" in env:
+    pass
+else: #Enable werror for all variants
+    env.Append(CFLAGS = ' -Werror ')
+    env.Append(CPPFLAGS = ' -Werror ')
+    env.Append(ASMFLAGS = ' -Werror ')
+
+LIBNAME = 'amdb'
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+avs_sources = env.GlobSourceFiles(['src/*.cpp', 'src/*.c'], SRCPATH,posix=True)
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+env.AddLibrary(['AVS_ADSP','AVS_ADSP_USER'], '${BUILDPATH}/'+LIBNAME, avs_sources)

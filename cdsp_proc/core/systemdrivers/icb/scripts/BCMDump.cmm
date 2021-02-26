@@ -1,0 +1,144 @@
+; When to use this script 
+; -----------------------
+; This script should be used to dump BCM state from T32.
+; 
+; How to use this script
+; ----------------------
+; do bcmdump <logPath>
+;
+; If <logPath> is given, a "ICBDump.ulog" file will be created in the given directory
+; If <logPath> is not given, the output will be dumped to the screen.
+;
+ENTRY &logPath
+LOCAL &dump 
+LOCAL &addrbase
+
+if "&logPath"==""
+(
+  &logPath="stdout"
+  ; Select the output area for messages
+  AREA.SELECT A000
+  AREA.CLEAR
+
+  &dump="PRINT"
+)
+
+; Check the logPath string for validity
+IF string.char("&(logPath)", string.len("&(logPath)")-1)=='\'
+(
+  &logPath=string.cut("&(logPath)", -1)
+)
+
+if "&logPath"!="stdout"
+(
+  OPEN #1 "&(logPath)\bcmdump.txt" /Create
+  PRINT "Dumping BCM state"
+  &dump="WRITE #1"
+)
+
+GOSUB DumpBCMFE
+GOSUB DumpBCMBE
+GOSUB DumpBCMSEQ
+GOSUB DumpVoteTables
+if "&logPath"!="stdout"
+(
+  CLOSE #1
+  PRINT "BCM Dump Complete"
+)
+ENDDO
+
+DumpBCMFE:
+  LOCAL &i &ip &val &addr
+
+  &i=0
+  &dump "BCM Front End:"
+  while &i<16.
+  (
+    &addr=0xBBF0004+&i*4
+    &val=DATA.LONG(ezaxi:&addr)
+    &agg_bw=&val>>16.&0x3FFF
+    &final_cp=&val>>4.&0xF
+    &agg_cp=&val&0xF
+    &ip=FORMAT.DECIMAL(0,&i)
+    &dump "VCD&(ip): AGG_BW: &(agg_bw) FINAL_CP: &(final_cp) AGG_CP &(agg_cp)"
+    &i=&i+1
+  )
+  &dump ""
+  RETURN
+
+DumpBCMBE:
+  LOCAL &i &ip &val &addr
+
+  &i=0
+  &dump "BCM Back End:"
+  while &i<16.
+  (
+    &addr=0xBBF0800+&i*4
+    &val=DATA.LONG(ezaxi:&addr)
+    &clk_dest_state=&val>>16.&0xF
+    &combined_cp=&val>>12.&0xF
+    &sw_cp_snap=&val>>8.&0xF
+    &written_cp=&val>>4.&0xF
+    &curr_cp=&val&0xF
+    &ip=FORMAT.DECIMAL(0,&i)
+    &dump "VCD&(ip): CLK_DEST_STATE: &(clk_dest_state) COMBINED_CP: &(combined_cp) SW_CP_SNAP: &(sw_cp_snap) WRITTEN_CP: &(written_cp) CURR_CP: &(curr_cp)"
+    &i=&i+1
+  )
+  &dump ""
+  RETURN
+
+DumpBCMSEQ:
+  LOCAL &i &ip &val &addr
+
+  &i=0
+  &dump "BCM Back End Sequencers:"
+  while &i<16.
+  (
+    &addr=0xBBF0880+&i*4
+    &val=DATA.LONG(ezaxi:&addr)
+    &seq_curr_pc=&val>>8.&0xFF
+    &seq_state=&val&0x1
+    &ip=FORMAT.DECIMAL(0,&i)
+    &dump "VCD&(ip): IDLE: &(seq_state) CURR_PC: &(seq_curr_pc)"
+    &i=&i+1
+  )
+  &dump ""
+  RETURN
+
+DumpVoteTables:
+  LOCAL &i
+  
+  &i=0
+  while &i<13.
+  (
+    GOSUB DumpVoteTable &i
+    &i=&i+1
+  )
+  RETURN
+
+DumpVoteTable:
+  ENTRY &index
+  LOCAL &votebase &tablebase &addr &val &i &ip
+  &votebase=0x0BA00000
+  &tablebase=&votebase+0x10000*&index
+  &tablestop=&tablebase+0xff
+  &addr=&tablebase
+  &i=0
+  &index=FORMAT.DECIMAL(0,&index)
+  &dump "Vote Table for DRV ID: &(index)"
+  while &addr<&tablestop
+  (
+    &val=DATA.LONG(ezaxi:&addr)
+    if &val>0
+    (
+      &vote_valid=&val>>29.&0x1
+      &vote_x=&val>>14.&0x3FFF
+      &vote_y=&val&0x3FFF
+      &ip=FORMAT.DECIMAL(0,&i)
+      &dump "BCM&(ip): VALID: &(vote_valid) VOTE_X: &(vote_x) VOTE_Y: &(vote_y)"
+    )
+    &i=&i+1
+    &addr=&addr+4
+  )
+  &dump ""
+  RETURN

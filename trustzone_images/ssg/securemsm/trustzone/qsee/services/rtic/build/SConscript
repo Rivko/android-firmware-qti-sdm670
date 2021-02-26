@@ -1,0 +1,85 @@
+#===============================================================================
+#
+#                             Edit History
+# $Header: //components/rel/ssg.tz/1.0.2/securemsm/trustzone/qsee/services/rtic/build/SConscript#1 $
+#
+# when         who     what, where, why
+# ----------   ---     ---------------------------------------------------------
+# 2011/07/12   spa     Create initial version
+#
+#===============================================================================
+#                    Copyright (c) 2011, 2017 QUALCOMM Incorporated.
+#                           All Rights Reserved.
+#                         QUALCOMM Proprietary/GTDR
+#===============================================================================
+import os
+
+#-------------------------------------------------------------------------------
+# QSEE Lib
+#-------------------------------------------------------------------------------
+Import('env')
+env = env.Clone()
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/services/rtic/src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+env.RequirePublicApi([
+   'KERNEL',
+   'KERNEL_API',                    #< stringl.h
+], area='core')
+
+env.RequirePublicApi([
+   'AC',
+   'SECUREMSM',
+   'KP',
+   'TZCHIPSET',
+   'SSGPLATFORM',
+], area='ssg')
+
+env.RequireRestrictedApi([
+      'AC',
+      'SECUREMSM',
+      'QSEE',
+      'TZCHIPSET',
+      'MINK',
+      'KP',
+      'QSEERTIC',
+   'SSGPLATFORM',             #< tzbsp_sys.h
+   ])
+
+#-------------------------------------------------------------------------------
+# Compiler options
+#-------------------------------------------------------------------------------
+#env.Append(CCFLAGS = "--gnu")
+
+if 'tzbsp_with_mmu' in env:
+  if env['tzbsp_with_mmu'] == 1:
+      print "With MMU is turned on"
+      env.Append(CCFLAGS = " -DTZBSP_WITH_MMU ")
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+
+RTIC_SYSCALL_SOURCE = [
+    '${BUILDPATH}/rtic_syscall_def.c',
+ ]
+
+RTIC_SOURCE = [
+    '${BUILDPATH}/rtic.c',
+]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+env.AddBinaryObject('TZOS_IMAGE', RTIC_SYSCALL_SOURCE)
+env.AddBinaryLibrary('TZOS_IMAGE', '${BUILDPATH}/tz_rtic', RTIC_SOURCE)
+
+env.Deploy('SConscript')

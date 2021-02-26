@@ -1,0 +1,129 @@
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;                 File: analyze_11dcache_dump_v61.cmm.cmm
+; 
+; This script formats and compares L1 Dcache data with the DDR contents.
+;
+; Usage: On T32 simulator that has the crash dump loaded, run the following:
+; do analyze_11dcache_dump_v61.cmm.cmm <output_dir>
+; This will create 2 files in the <output_dir> given in the cmd line
+; L1dcache_dump.txt: This will have the L1 D-cache dumps at the time of dump collection
+; L1dcache_mem.txt:  This will have the DDR contents for the corresponding address in the
+;                    crashdump
+;
+; For 9x55 modem, hexagon architecture is v61. This has a 16K L1 data cache.
+; Sets: 64
+; Ways: 8
+; Bytes: 32
+; 9x55 is 16K d$, so we have 64 sets and 8 ways. Each cache line is 32 bytes.
+;
+; Rd = dctagr(Rs)
+; Rs[10:5] : set
+; Rs[2:0]  : way
+;
+; Here is the mapping for Rd=dctagr(Rs) to PA for L1D:
+;
+; Rd[30:29]: State 
+; Rd[24:0]:   Tag
+;
+; PA[35:11]:           Tag (Rd[24:0])
+; PA[10:5]:            set (Rs[10:5])
+; PA[4:0]:             byte offset
+;
+; All L1 d-cache related data is stored at the location pointed to by QURTK_L1Dcache_dump
+; It is formatted as below:
+; Rd (dctagr o/p), Phys addr, word0, word1, word2, word3, word4, word5, word6, word7
+; So for each way 10 words are used as indicated above.
+; For 64 sets with 8 ways each, 20kB (64 * 8 * 10 * 4) data is dumped.
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+LOCAL &dump_dir
+ENTRY &dump_dir
+
+IF ("&dump_dir"=="")
+(
+  print %ERROR "Must specify dump directory"
+  ENDDO
+)
+
+IF (!Y.EXIST(QURTK_L1Dcache_dump))
+(
+  print %ERROR "L1 dcache dump not found - exiting"
+  ENDDO
+)
+
+; These values are for v61 hex architecture
+LOCAL &num_sets &num_ways
+&num_ways=8.
+&num_sets=64.
+
+LOCAL &dumpfile &memfile
+&dumpfile="&dump_dir/L1dcache_dump.txt"
+&memfile="&dump_dir/L1dcache_mem.txt"
+OPEN #1 &dumpfile /Create
+OPEN #2 &memfile /Create
+
+&set_loop=0
+&dump_buf_index=0.
+LOCAL &QURTK_l1dcache_base
+&QURTK_l1dcache_base=v.value(QURTK_L1Dcache_dump)
+WHILE (&set_loop<&num_sets)
+(    
+    &way_loop=0.
+    WHILE (&way_loop<&num_ways)
+    (
+        ;&tag=v.value(QURTK_L1Dcache_dump[&dump_buf_index])
+		&tag_addr=&QURTK_l1dcache_base+&dump_buf_index
+		&tag=data.long(D:&tag_addr)
+        LOCAL &valid
+        LOCAL &valid_check
+        ; bits [30:29] in the dctagr output are valid bits.
+        ; 01 and 11 are valid for v65
+        &valid=((&tag)&(0x60000000))>>29.
+        &valid_check=((&tag)&(0x20000000))>>29.
+        
+        &dump_buf_index=&dump_buf_index+4.
+        ;&addr=v.value(QURTK_L1Dcache_dump[&dump_buf_index])
+		&addr_addr=&QURTK_l1dcache_base+&dump_buf_index
+		&addr=data.long(D:&addr_addr)
+        
+        WRITE #1 %CONT format.decimal(3.,&set_loop) ":" format.decimal(1.,&way_loop) " " format.hex(8.,&addr) " " format.hex(8.,&tag) " " &valid
+        WRITE #2 %CONT format.decimal(3.,&set_loop) ":" format.decimal(1.,&way_loop) " " format.hex(8.,&addr) " " format.hex(8.,&tag) " " &valid
+        ;print %CONT format.decimal(3.,&set_loop) ":" format.decimal(1.,&way_loop) " " format.hex(8.,&addr) " " format.hex(8.,&tag) " " &valid
+        
+        &dump_buf_index=&dump_buf_index+4.
+        IF (&valid_check!=0)
+        (
+            LOCAL &i
+            
+            &i=0.
+            
+            WHILE (&i<8.)
+            (
+                &index=&dump_buf_index+(&i*4)                
+				&l1Ddata_addr=&QURTK_l1dcache_base+&index
+				&l1Ddata=data.long(D:&l1Ddata_addr)
+				WRITE #1 %CONT " " format.hex(8.,&l1Ddata)
+                &i=&i+1.
+            )
+            
+            &i=0.
+            WHILE (&i<8.)
+            (
+				&ddr_addr=d.long(A:(&addr+&i*4.))
+                WRITE #2 %CONT " " format.hex(8.,&ddr_addr)
+                &i=&i+1.
+            )
+        
+        )
+        &dump_buf_index=&dump_buf_index+(8.*4.)
+    
+        WRITE #1 ""
+        WRITE #2 ""
+        ;print " "
+
+        &way_loop=&way_loop+1.
+    )
+    &set_loop=&set_loop+1.
+)
+CLOSE #1
+CLOSE #2

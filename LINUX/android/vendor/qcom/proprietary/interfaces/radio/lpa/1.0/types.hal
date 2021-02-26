@@ -1,0 +1,145 @@
+/*
+ * Copyright (c) 2017 Qualcomm Technologies, Inc.
+ * All Rights Reserved.
+ * Confidential and Proprietary - Qualcomm Technologies, Inc.
+ *
+ */
+
+package vendor.qti.hardware.radio.lpa@1.0;
+
+enum UimLpaUserEventId : uint32_t {
+    UIM_LPA_UNKNOWN_EVENT_ID   = 0,
+    UIM_LPA_ADD_PROFILE        = 1,
+    UIM_LPA_ENABLE_PROFILE     = 2,
+    UIM_LPA_DISABLE_PROFILE    = 3,
+    UIM_LPA_DELETE_PROFILE     = 4,
+    UIM_LPA_EUICC_MEMORY_RESET = 5,
+    UIM_LPA_GET_PROFILE        = 6,
+    UIM_LPA_UPDATE_NICKNAME    = 7,
+    UIM_LPA_GET_EID            = 8,
+    UIM_LPA_USER_CONSENT       = 9,
+    UIM_LPA_SRV_ADDR_OPERATION = 10
+};
+
+enum UimLpaResult : uint32_t {
+    UIM_LPA_RESULT_SUCCESS = 0,
+    UIM_LPA_RESULT_FAILURE = 1,
+    UIM_LPA_RESULT_CONFRM_CODE_MISSING = 2
+};
+
+enum UimLpaProfileClassType : uint32_t {
+    UIM_LPA_PROFILE_CLASS_TEST         = 0,
+    UIM_LPA_PROFILE_CLASS_PROVISIONING = 1,
+    UIM_LPA_PROFILE_CLASS_OPERATIONAL  = 2
+};
+
+enum UimLpaProfilePolicyMask : uint32_t {
+    UIM_LPA_PROFILE_TYPE_DISABLE_NOT_ALLOWED = 1,
+    UIM_LPA_PROFILE_TYPE_DELETE_NOT_ALLOWED  = 2,
+    UIM_LPA_PROFILE_TYPE_DELETE_ON_DISABLE   = 4
+};
+
+enum UimLpaEuiccResetMask : uint32_t {
+    UIM_LPA_EUICC_RESET_TEST_PROFILES           = 1,
+    UIM_LPA_EUICC_RESET_OPERATIONAL_PROFILES    = 2,
+    UIM_LPA_EUICC_RESET_TO_DEFAULT_SMDP_ADDRESS = 4
+};
+
+enum UimLpaSrvAddrOp : uint32_t {
+    UIM_LPA_SERVER_ADDRESS_GET_OPERATION = 1,
+    UIM_LPA_SERVER_ADDRESS_SET_OPERATION = 2
+};
+
+enum UimLpaProfileState : uint32_t {
+    UIM_LPA_PROFILE_STATE_UNKNOWN  = 0,
+    UIM_LPA_PROFILE_STATE_ACTIVE   = 1,
+    UIM_LPA_PROFILE_STATE_INACTIVE = 2
+};
+
+enum UimLpaIconType : uint32_t {
+    UIM_LPA_ICON_TYPE_UNKNOWN = 0,
+    UIM_LPA_ICON_TYPE_JPEG    = 1,
+    UIM_LPA_ICON_TYPE_PNG     = 2
+};
+
+enum UimLpaAddProfileStatus : uint32_t {
+    UIM_LPA_ADD_PROFILE_STATUS_NONE                  = 0,
+    UIM_LPA_ADD_PROFILE_STATUS_ERROR                 = 1,
+    UIM_LPA_ADD_PROFILE_STATUS_DOWNLOAD_PROGRESS     = 2,
+    UIM_LPA_ADD_PROFILE_STATUS_INSTALLATION_PROGRESS = 3,
+    UIM_LPA_ADD_PROFILE_STATUS_INSTALLATION_COMPLETE = 4,
+    UIM_LPA_ADD_PROFILE_STATUS_GET_USER_CONSENT      = 5
+};
+
+enum UimLpaAddProfileFailureCause : uint32_t {
+    UIM_LPA_ADD_PROFILE_FAILURE_CAUSE_NONE    = 0,
+    UIM_LPA_ADD_PROFILE_FAILURE_CAUSE_GENERIC = 1,
+    UIM_LPA_ADD_PROFILE_FAILURE_CAUSE_SIM     = 2,
+    UIM_LPA_ADD_PROFILE_FAILURE_CAUSE_NETWORK = 3,
+    UIM_LPA_ADD_PROFILE_FAILURE_CAUSE_MEMORY  = 4
+};
+
+struct UimLpaSrvAddrOpReq {
+    UimLpaSrvAddrOp opCode;
+    string          smdpAddress;
+};
+
+struct UimLpaUserReq {
+    UimLpaUserEventId  event;
+    string             activationCode;   /* UIM_LPA_ADD_PROFILE */
+    string             confirmationCode; /* UIM_LPA_ADD_PROFILE */
+    string             nickname;         /* UIM_LPA_UPDATE_NICKNAME */
+    vec<uint8_t>       iccid;            /* UIM_LPA_ENABLE_PROFILE
+                                            UIM_LPA_DISABLE_PROFILE
+                                            UIM_LPA_DELETE_PROFILE
+                                            UIM_LPA_UPDATE_NICKNAME */
+    int32_t            resetMask;        /* UIM_LPA_EUICC_MEMORY_RESET */
+    bool               userOk;           /* UIM_LPA_USER_CONSENT */
+    UimLpaSrvAddrOpReq srvOpReq;         /* UIM_LPA_SRV_ADDR_OPERATION */
+};
+
+struct UimLpaProfileInfo {
+    UimLpaProfileState      state;
+    vec<uint8_t>            iccid;
+    string                  profileName;
+    string                  nickName;
+    string                  spName;
+    UimLpaIconType          iconType;
+    vec<uint8_t>            icon;
+    UimLpaProfileClassType  profileClass;
+    UimLpaProfilePolicyMask profilePolicy;
+};
+
+struct UimLpaSrvAddrOpResp {
+    string    smdpAddress;
+    string    smdsAddress;
+};
+
+struct UimLpaUserResp {
+    UimLpaUserEventId       event;
+    UimLpaResult            result;
+    vec<uint8_t>            eid;
+    vec<UimLpaProfileInfo>  profiles;
+    UimLpaSrvAddrOpResp     srvAddr;
+};
+
+struct UimLpaAddProfileProgressInd {
+    UimLpaAddProfileStatus        status;
+    UimLpaAddProfileFailureCause  cause;
+    int32_t                       progress;
+    UimLpaProfilePolicyMask       policyMask;
+    bool                          userConsentRequired;
+};
+
+struct UimLpaHttpCustomHeader {
+    string   headerName;
+    string   headerValue;
+};
+
+struct UimLpaHttpTransactionInd {
+    int32_t                     tokenId;
+    vec<uint8_t>                payload;
+    string                      contentType;
+    vec<UimLpaHttpCustomHeader> customHeaders;
+    string                      url;
+};

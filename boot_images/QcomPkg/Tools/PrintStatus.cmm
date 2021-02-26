@@ -1,0 +1,487 @@
+;============================================================================
+;  Name:
+;    PrintStatus.cmm
+;
+;  Description:
+;     Called to print the progress codes at run-time, after target is halted
+;
+; Copyright (c) 2015 Qualcomm Technologies, Inc.  All
+; Rights Reserved. Qualcomm Technologies Proprietary and
+; Confidential.
+;
+;----------------------------------------------------------------------------
+;============================================================================
+;
+;                        EDIT HISTORY FOR MODULE
+;
+;
+;
+;when         who     what, where, why
+;----------   ---     ----------------------------------------------------------
+;2015-05-08   dg      Initial version
+;============================================================================;
+
+;  README: Do not use this script unless the values are known, instead use the
+;          script in the target\tools\print_status.cmm that calls this script
+;          with proper parameter values
+;
+
+
+local &RecordIndex
+local &NumberOfRecords
+local &MaxRecordsNumber
+local &CodeType
+local &Value
+local &Instance
+
+ENTRY &StatusBase
+
+  ; Get the information from the header
+  &RecordIndex=data.short(ANC:&StatusBase+0x0)
+  &NumberOfRecords=data.short(ANC:&StatusBase+0x4)
+  &MaxRecordsNumber=data.long(ANC:&StatusBase+0x8)
+
+  &StatusBase=&StatusBase+0xC
+
+  &RecordIndex=&RecordIndex-&NumberOfRecords
+  if (&RecordIndex<0x0)
+  (
+    &RecordIndex=&RecordIndex+MaxRecordsNumber
+  )
+
+  ; Loop through from the Index
+  while (&NumberOfRecords>0x0)
+  (
+    ; Get the current record, and print it
+    &CodeType=data.long(ANC:&StatusBase+&RecordIndex*0xC)
+    &Value=data.long(ANC:&StatusBase+&RecordIndex*0xC+0x4)
+    &Instance=data.long(ANC:&StatusBase+&RecordIndex*0xC+0x8)
+
+    print "CodeType: &CodeType    Value: &Value    Instance: &Instance"
+    gosub ParseValue &CodeType &Value
+    print ""
+
+    ; Update variables for the next iteration
+    &RecordIndex=&RecordIndex+1
+    if (&RecordIndex==&MaxRecordsNumber)
+    (
+      &RecordIndex=0
+    )
+    &NumberOfRecords=&NumberOfRecords-1
+  )
+
+enddo
+
+; Given a CodeType and value, provides strings with more detail to it
+ParseValue:
+  entry &CodeType &Value
+
+  local &Class
+  local &SubClass
+  local &Operation
+  local &Type
+
+  &Type=((&CodeType)&0x000000FF)
+
+  &Class=((&Value)&0xFF000000)>>24.
+  &SubClass=((&Value)&0x00FF0000)>>16.
+  &Operation=((&Value)&0x0000FFFF)
+
+
+  if (&Type==0x01)
+  (
+    print "  EFI_PROGRESS CODE"
+    if (&Class==0x00)
+    (
+      print "  EFI_COMPUTING_UNIT"
+      if (&SubClass==0x0)
+      (
+        print %CONT "  EFI_COMPUTING_UNIT_UNSPECIFIED"
+      )
+      else if (&SubClass==0x1)
+      (
+        print %CONT "  EFI_COMPUTING_UNIT_HOST_PROCESSOR"
+      )
+      else if (&SubClass==0x2)
+      (
+        print %CONT "  EFI_COMPUTING_UNIT_FIRMWARE_PROCESSOR"
+      )
+      else if (&SubClass==0x3)
+      (
+        print %CONT "  EFI_COMPUTING_UNIT_IO_PROCESSOR"
+      )
+      else if (&SubClass==0x4)
+      (
+        print %CONT "  EFI_COMPUTING_UNIT_CACHE"
+      )
+      else if (&SubClass==0x5)
+      (
+        print %CONT "  EFI_COMPUTING_UNIT_MEMORY"
+      )
+      else if (&SubClass==0x6)
+      (
+        print %CONT "  EFI_COMPUTING_UNIT_CHIPSET"
+      )
+
+      if (&Operation==0x0000)
+      (
+        print %CONT "  EFI_CU_PC_INIT_BEGIN"
+      )
+      else if (&Operation==0x0001)
+      (
+        print %CONT "  EFI_CU_PC_INIT_END"
+      )
+      else
+      (
+        print %CONT "  Operation: &Operation"
+        if ((&Operation&0x1000)!=0x0)
+        (
+         print %CONT "(Subclass Specific)"
+        )
+        if ((&Operation&0x8000)!=0x0)
+        (
+         print %CONT "(OEM Specific)"
+        )
+      )
+    )
+    else if (&Class==0x01)
+    (
+      print "  EFI_PERIPHERAL"
+      if (&SubClass==0x0)
+      (
+        print %CONT "  EFI_PERIPHERAL_UNSPECIFIED"
+      )
+      else if (&SubClass==0x1)
+      (
+        print %CONT "  EFI_PERIPHERAL_KEYBOARD"
+      )
+      else if (&SubClass==0x2)
+      (
+        print %CONT "  EFI_PERIPHERAL_MOUSE"
+      )
+      else if (&SubClass==0x3)
+      (
+        print %CONT "  EFI_PERIPHERAL_LOCAL_CONSOLE"
+      )
+      else if (&SubClass==0x4)
+      (
+        print %CONT "  EFI_PERIPHERAL_REMOTE_CONSOLE"
+      )
+      else if (&SubClass==0x5)
+      (
+        print %CONT "  EFI_PERIPHERAL_SERIAL_PORT"
+      )
+      else if (&SubClass==0x6)
+      (
+        print %CONT "  EFI_PERIPHERAL_PARALLEL_PORT"
+      )
+      else if (&SubClass==0x7)
+      (
+        print %CONT "  EFI_PERIPHERAL_FIXED_MEDIA"
+      )
+      else if (&SubClass==0x8)
+      (
+        print %CONT "  EFI_PERIPHERAL_REMOVABLE_MEDIA"
+      )
+      else if (&SubClass==0x9)
+      (
+        print %CONT "  EFI_PERIPHERAL_AUDIO_INPUT"
+      )
+      else if (&SubClass==0xA)
+      (
+        print %CONT "  EFI_PERIPHERAL_AUDIO_OUTPUT"
+      )
+      else if (&SubClass==0xB)
+      (
+        print %CONT "  EFI_PERIPHERAL_LCD_DEVICE"
+      )
+      else if (&SubClass==0xC)
+      (
+        print %CONT "  EFI_PERIPHERAL_NETWORK"
+      )
+
+
+      if (&Operation==0x0000)
+      (
+        print %CONT "  EFI_P_PC_INIT"
+      )
+      else if (&Operation==0x0001)
+      (
+        print %CONT "  EFI_P_PC_RESET"
+      )
+      else if (&Operation==0x0002)
+      (
+        print %CONT "  EFI_P_PC_DISABLE"
+      )
+      else if (&Operation==0x0003)
+      (
+        print %CONT "  EFI_P_PC_PRESENCE_DETECT"
+      )
+      else if (&Operation==0x0004)
+      (
+        print %CONT "  EFI_P_PC_ENABLE"
+      )
+      else if (&Operation==0x0005)
+      (
+        print %CONT "  EFI_P_PC_RECONFIG"
+      )
+      else if (&Operation==0x0005)
+      (
+        print %CONT "  EFI_P_PC_DETECTED"
+      )
+      else
+      (
+        print %CONT "  Operation: &Operation"
+        if ((&Operation&0x1000)!=0x0)
+        (
+         print %CONT "(Subclass Specific)"
+        )
+        if ((&Operation&0x8000)!=0x0)
+        (
+         print %CONT "(OEM Specific)"
+        )
+      )
+   )
+    else if (&Class==0x02)
+    (
+      print "  EFI_IO_BUS"
+      if (&SubClass==0x0)
+      (
+        print %CONT "  EFI_IO_BUS_UNSPECIFIED"
+      )
+      else if (&SubClass==0x1)
+      (
+        print %CONT "  EFI_IO_BUS_PCI"
+      )
+      else if (&SubClass==0x2)
+      (
+        print %CONT "  EFI_IO_BUS_USB"
+      )
+      else if (&SubClass==0x3)
+      (
+        print %CONT "  EFI_IO_BUS_IBA"
+      )
+      else if (&SubClass==0x4)
+      (
+        print %CONT "  EFI_IO_BUS_AGP"
+      )
+      else if (&SubClass==0x5)
+      (
+        print %CONT "  EFI_IO_BUS_PC_CARD"
+      )
+      else if (&SubClass==0x6)
+      (
+        print %CONT "  EFI_IO_BUS_LPC"
+      )
+      else if (&SubClass==0x7)
+      (
+        print %CONT "  EFI_IO_BUS_SCSI"
+      )
+      else if (&SubClass==0x8)
+      (
+        print %CONT "  EFI_IO_BUS_ATA_ATAPI"
+      )
+      else if (&SubClass==0x9)
+      (
+        print %CONT "  EFI_IO_BUS_FC"
+      )
+      else if (&SubClass==0xA)
+      (
+        print %CONT "  EFI_IO_BUS_IP_NETWORK"
+      )
+      else if (&SubClass==0xB)
+      (
+        print %CONT "  EFI_IO_BUS_SMBUS"
+      )
+      else if (&SubClass==0xC)
+      (
+        print %CONT "  EFI_IO_BUS_I2C"
+      )
+
+      if (&Operation==0x0000)
+      (
+        print %CONT "  EFI_IOB_PC_INIT"
+      )
+      else if (&Operation==0x0001)
+      (
+        print %CONT "  EFI_IOB_PC_RESET"
+      )
+      else if (&Operation==0x0002)
+      (
+        print %CONT "  EFI_IOB_PC_DISABLE"
+      )
+      else if (&Operation==0x0003)
+      (
+        print %CONT "  EFI_IOB_PC_DETECT"
+      )
+      else if (&Operation==0x0004)
+      (
+        print %CONT "  EFI_IOB_PC_ENABLE"
+      )
+      else if (&Operation==0x0005)
+      (
+        print %CONT "  EFI_IOB_PC_RECONFIG"
+      )
+      else if (&Operation==0x0005)
+      (
+        print %CONT "  EFI_IOB_PC_HOTPLUG"
+      )
+      else
+      (
+        print %CONT "  Operation: &Operation"
+        if ((&Operation&0x1000)!=0x0)
+        (
+         print %CONT "(Subclass Specific)"
+        )
+        if ((&Operation&0x8000)!=0x0)
+        (
+         print %CONT "(OEM Specific)"
+        )
+      )
+
+
+    )
+    else if (&Class==0x03)
+    (
+      print "  EFI_SOFTWARE"
+      if (&SubClass==0x0)
+      (
+        print %CONT "  EFI_SOFTWARE_UNSPECIFIED"
+      )
+      else if (&SubClass==0x1)
+      (
+        print %CONT "  EFI_SOFTWARE_SEC"
+      )
+      else if (&SubClass==0x2)
+      (
+        print %CONT "  EFI_SOFTWARE_PEI_CORE"
+      )
+      else if (&SubClass==0x3)
+      (
+        print %CONT "  EFI_SOFTWARE_PEI_MODULE"
+      )
+      else if (&SubClass==0x4)
+      (
+        print %CONT "  EFI_SOFTWARE_DXE_CORE"
+      )
+      else if (&SubClass==0x5)
+      (
+        print %CONT "  EFI_SOFTWARE_DXE_BS_DRIVER"
+      )
+      else if (&SubClass==0x6)
+      (
+        print %CONT "  EFI_SOFTWARE_DXE_RT_DRIVER"
+      )
+      else if (&SubClass==0x7)
+      (
+        print %CONT "  EFI_SOFTWARE_SMM_DRIVER"
+      )
+      else if (&SubClass==0x8)
+      (
+        print %CONT "  EFI_SOFTWARE_EFI_APPLICATION"
+      )
+      else if (&SubClass==0x9)
+      (
+        print %CONT "  EFI_SOFTWARE_EFI_OS_LOADER"
+      )
+      else if (&SubClass==0xA)
+      (
+        print %CONT "  EFI_SOFTWARE_RT"
+      )
+      else if (&SubClass==0xB)
+      (
+        print %CONT "  EFI_SOFTWARE_AL"
+      )
+      else if (&SubClass==0xC)
+      (
+        print %CONT "  EFI_SOFTWARE_EBC_EXCEPTION"
+      )
+      else if (&SubClass==0xD)
+      (
+        print %CONT "  EFI_SOFTWARE_IA32_EXCEPTION"
+      )
+      else if (&SubClass==0xE)
+      (
+        print %CONT "  EFI_SOFTWARE_IPF_EXCEPTION"
+      )
+      else if (&SubClass==0xF)
+      (
+        print %CONT "  EFI_SOFTWARE_PEI_SERVICE"
+      )
+      else if (&SubClass==0x10)
+      (
+        print %CONT "  EFI_SOFTWARE_EFI_BOOT_SERVICE"
+      )
+      else if (&SubClass==0x11)
+      (
+        print %CONT "  EFI_SOFTWARE_EFI_RUNTIME_SERVICE"
+      )
+      else if (&SubClass==0x12)
+      (
+        print %CONT "  EFI_SOFTWARE_EFI_DXE_SERVICE"
+      )
+      else if (&SubClass==0x13)
+      (
+        print %CONT "  EFI_SOFTWARE_X64_EXCEPTION"
+      )
+      else if (&SubClass==0x14)
+      (
+        print %CONT "  EFI_SOFTWRE_ARM_EXCEPTION"
+      )
+
+      if (&Operation==0x0000)
+      (
+        print %CONT "  EFI_SW_PC_INIT"
+      )
+      else if (&Operation==0x0001)
+      (
+        print %CONT "  EFI_SW_PC_LOAD"
+      )
+      else if (&Operation==0x0002)
+      (
+        print %CONT "  EFI_SW_PC_INIT_BEGIN"
+      )
+      else if (&Operation==0x0003)
+      (
+        print %CONT "  EFI_SW_PC_INIT_END"
+      )
+      else if (&Operation==0x0004)
+      (
+        print %CONT "  EFI_SW_PC_AUTHENTICATE_BEGIN"
+      )
+      else if (&Operation==0x0005)
+      (
+        print %CONT "  EFI_SW_PC_AUTHENTICATE_END"
+      )
+      else if (&Operation==0x0006)
+      (
+        print %CONT "  EFI_SW_PC_INPUT_WAIT"
+      )
+      else if (&Operation==0x0007)
+      (
+        print %CONT "  EFI_SW_PC_USER_SETUP"
+      )
+      else
+      (
+        print %CONT "  Operation: &Operation"
+        if ((&Operation&0x1000)!=0x0)
+        (
+         print %CONT "(Subclass Specific)"
+        )
+        if ((&Operation&0x8000)!=0x0)
+        (
+         print %CONT "(OEM Specific)"
+        )
+      )
+    )
+  )
+  else if (&Type==0x02)
+  (
+    print "  EFI_ERROR_CODE"
+  )
+  else if (&Type==0x03)
+  (
+    print "  EFI_DEBUG_CODE"
+  )
+return 
+

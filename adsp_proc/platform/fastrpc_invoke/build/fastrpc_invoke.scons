@@ -1,0 +1,76 @@
+#===============================================================================
+# Copyright (c) 2012 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===============================================================================
+Import('env')
+
+env = env.Clone()
+
+platform_root = '${BUILD_ROOT}/platform'
+env.Replace(ADSP_PLATFORM_ROOT = platform_root)
+APIS=[
+  'FASTRPC_INVOKE',
+  'FASTRPC_PORT',
+  'FASTRPC_HEAP',
+  'FASTRPC_LOADER',
+  'PERF',
+  'QDI_PORTAL',
+  'HAPSDK',
+  'MOD_TABLE',
+  'PLATFORM_LIBS',
+  'REMOTE',
+  'STDDEF',
+  'A1STD',
+  'ATOMIC',
+  'MEMSTER',
+  'UTILS',
+  'QLIST',
+  'HAP',
+  'QI',
+  ]
+env.RequireRestrictedApi(APIS)
+env.RequirePublicApi(APIS)
+env.PLRegister("fastrpc_kmem",['PLATFORM_LIBS', 'PLATFORM_ROOT_LIBS'])
+
+core_public_apis = [
+   'KERNEL',
+   ]
+
+env.RequirePublicApi(core_public_apis, area='core')
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${ADSP_PLATFORM_ROOT}/fastrpc_invoke/src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+SOURCES =  [
+  '${BUILDPATH}/fastrpc_invoke.c',
+  '${BUILDPATH}/fastrpc_mem.c',
+  ]
+
+KSOURCES =  [
+  '${BUILDPATH}/fastrpc_kmem.c',
+  ]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+env.AddBinaryLibrary(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+ 'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'CORE_QDSP6_SENSOR_SW', 'FASTRPC_SHELL_IMG','AVS_ADSP_USER', 'SSC_ADSP_USER'],'${BUILDPATH}/fastrpc_invoke', SOURCES)
+
+env.AddBinaryLibrary(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+ 'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE'],'${BUILDPATH}/fastrpc_kmem', KSOURCES)
+
+#-------------------------------------------------------------------------------
+# Load Subunits (sys)
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+# Clean / pack rules
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.cpp', '*.h', '*.s'], '${ADSP_PLATFORM_ROOT}/fastrpc_invoke/src'))
+
+env.CleanPack(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+     'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'CORE_QDSP6_SENSOR_SW', 'FASTRPC_SHELL_IMG','AVS_ADSP_USER', 'SSC_ADSP_USER'], CLEAN_LIST)

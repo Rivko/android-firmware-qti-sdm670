@@ -1,0 +1,162 @@
+#===============================================================================
+#
+# CLOCK DRIVER HW (CHIPSET) LIBRARY
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2012-2016 Qualcomm Technologies Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1.c4/systemdrivers/clock/image/adsp/hw/sdm845/build/clock_chipset.scons#1 $
+#  $DateTime: 2018/07/30 01:21:36 $
+#  $Author: pwbldsvc $
+#  $Change: 16759227 $
+#
+#===============================================================================
+
+import os
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Add API folders
+#-------------------------------------------------------------------------------
+
+CLOCK_BUILD_ROOT = os.getcwd();
+
+#-------------------------------------------------------------------------------
+# Define paths
+#-------------------------------------------------------------------------------
+
+SRCPATH = "../"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Define any features or compiler flags
+#-------------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+CBSP_API = [
+   'DAL',
+   'HAL',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'POWER',
+   'KERNEL',
+   'DEBUGTRACE'
+]
+ 	 
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Define sources
+#-------------------------------------------------------------------------------
+
+CLOCK_HW_SOURCES = [
+   '${BUILDPATH}/ClockBSP.c',
+   '${BUILDPATH}/ClockTarget.c',
+   '${BUILDPATH}/ClockTargetBSP.c',
+   '${BUILDPATH}/ClockLPASSLite.c',
+   '${BUILDPATH}/HALclkTest.c',
+]
+
+CLOCK_HW_ASM_OBJS = [
+   '${BUILDPATH}/HALclkInitASM.S'
+]
+
+HAL_CLOCK_ASM_OBJS = [ '${BUILDPATH}/src/HALclkInitASM.S' ]
+env.AddObject(['CORE_ADSP_ROOT'], CLOCK_HW_ASM_OBJS)
+
+#-------------------------------------------------------------------------------
+# Add libraries to image
+#-------------------------------------------------------------------------------
+
+env.AddLibrary(
+   ['CORE_ADSP_ROOT'],
+   '${BUILDPATH}/ClockHW',
+   CLOCK_HW_SOURCES)
+
+#-------------------------------------------------------------------------------
+# HWIO
+#-------------------------------------------------------------------------------
+
+if env.has_key('HWIO_IMAGE'):
+  env.AddHWIOFile('HWIO', [
+    {
+      'filename': '${INC_ROOT}/core/systemdrivers/clock/image/${IMAGE}/hw/${CHIPSET}/HALclkHWIO.h',
+      'modules': [
+        'GCC_CLK_CTL_REG',
+        'LPASS_CC',
+        'LPASS_QDSP6V65SS_PUB',
+      ],
+      'filter-exclude': ['TSENS', 'ACR', 'RPU', 'RESERVED', 'RESERVE', 'DUMMY'],
+      'output-offsets': True,
+      'header':
+        '#include "msmhwiobase.h"\n'
+        '\n'
+        '/*\n'
+        ' * HWIO mapping of generic name to sub-system specific\n'
+        ' */\n'
+        '#define PROC_CLK_BRANCH_ENA_VOTE   GCC_LPASS_DSP_CLOCK_BRANCH_ENA_VOTE\n'
+        '#define PROC_CLK_BRANCH_ENA_VOTE_1 GCC_LPASS_DSP_CLOCK_BRANCH_ENA_VOTE_1\n'
+        '#define PROC_CLK_GCC_PLL_ENA_VOTE  GCC_LPASS_DSP_GPLL_ENA_VOTE\n'
+        '\n'
+    }
+  ])
+  env.AddHWIOFile('HWIO', [
+    {
+      'filename': '${INC_ROOT}/core/systemdrivers/clock/image/adsp/hw/${CHIPSET}/HALclkHWIOASM.h',
+      'modules': [
+        'LPASS_CC',
+        'LPASS_QDSP6V65SS_PUB',
+        'LPASS_QDSP6V65SS_PRIVATE',
+        'LPASS_QDSP6V65SS_CSR',
+        'LPASS_QDSP6SS_QDSP6SS_QTMR_AC',
+        'LPASS_QDSP6SS_QTMR_F0_0',
+        'LPASS_QDSP6SS_QTMR_F1_1',
+        'LPASS_QDSP6SS_QTMR_F2_2',
+        'TCSR_TCSR_REGS',
+      ],
+      'filter-exclude': ['TSENS', 'ACR', 'RPU', 'RESERVED', 'RESERVE', 'DUMMY'],
+      'output-offsets': True,
+      'header':
+        '#define LPASS_BASE_PHYS  0x17000000\n'
+		'#define LPASS_BASE       LPASS_BASE_PHYS\n'
+        '\n'
+    }
+  ])  
+
+#-------------------------------------------------------------------------------
+# Register initialization function and dependencies
+#-------------------------------------------------------------------------------
+
+if 'USES_RCINIT' in env:
+  RCINIT_IMG = ['CORE_ADSP_ROOT']
+  env.AddRCInitFunc(              # Code Fragment in TMC: NO
+    RCINIT_IMG,                   # 
+    {
+      'sequence_group' : 'RCINIT_GROUP_1',                       # required
+      'init_name'      : 'clk_regime_init_nv',                   # required
+      'init_function'  : 'clk_regime_init_nv',                   # required
+      'dependencies'   : ['vcs_efs']
+    })
+
+#-------------------------------------------------------------------------------
+# SWEvent processing
+#-------------------------------------------------------------------------------
+
+if 'USES_QDSS_SWE' in env:
+  env.Append(CPPDEFINES = ["CLOCK_TRACER_SWEVT"])
+
+if 'QDSS_TRACER_SWE' in env:
+  env.Append(CPPPATH = ['${BUILD_ROOT}/core/systemdrivers/clock/build/${BUILDPATH}/src'])
+

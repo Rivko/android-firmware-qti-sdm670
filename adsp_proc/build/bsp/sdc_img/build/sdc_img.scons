@@ -1,0 +1,207 @@
+#===============================================================================
+#
+# \SDC SCons Image
+#
+# GENERAL DESCRIPTION
+#    This is a basic SCons Image that will compile and link with the ARM compiler.
+#
+# Copyright (c) 2016-2017 by Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/dspbuild.adsp/5.0/bsp/sdc_img/build/sdc_img.scons#7 $
+#  $DateTime: 2018/07/30 02:57:08 $
+#  $Change: 16760086 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 06/07/2017 jc      Add SDM855 support
+# 05/12/2017 pb      Split sdc elf into data and code binaries
+# 04/11/2017 pk      Adding core only variant for sdc
+# 02/23/2017 pb      Compile sdc_img with default build command for sdm845 SLPI
+# 06/21/2016 sm      Slightly updating implementation to clean up.
+# 06/21/2016 sm      Add BuildProducts.txt generation.
+# 06/21/2016 sm      Removing ASCOMCPY and ASPPCOMCPY, as the tool has been
+#                    switched from 'rvct' to 'arm'.
+# 06/17/2016 sm      Temporarily adding ASCOMCPY and ASPPCOMCPY until SCons
+#                    properly declares it in rvct.py.
+# 05/19/2016 sm      Initial revision.
+#===============================================================================
+import string
+Import('env')
+import os
+import re
+
+#------------------------------------------------------------------------------
+# Init aliases array.
+# first alias (0th element in array) is always unique name, there should
+# never be two images with the same unique name
+aliases = ['sdc_img','sdc','sdm670_ADSP','SDC_core_drivers_only']
+
+#------------------------------------------------------------------------------
+# Init environment variables
+
+# Define the builders required for this image.
+build_tools = [
+               env.RealPath('./scripts/scl_builder.py'),  #SCL Builder
+               env.RealPath('./scripts/sdc_splitter.py'), #SDC Splitter
+               env.RealPath('./sdctools_defs.py'),   #Toolset and Flags Init Script for SDC
+              ]
+
+# Define the build tags defined for this image.
+build_tags = ['CORE_SLPI_SDC','SSC_SLPI_SDC']
+
+env.InitImageVars(
+   alias_list=aliases,
+   proc='sdc',
+   config='sdc',
+   build_tags = build_tags,
+   tools = build_tools
+)
+
+# Append a 'Q' to the Build ID accordingly.
+env.Replace(BUILD_ID_NO_Q=env.subst('${BUILD_ID}'))
+env.Replace(BUILD_ID=env.subst('${BUILD_ID}Q'))
+env.Replace(CUST_H=string.lower(env.subst('CUST${BUILD_ID}.H')))
+
+#------------------------------------------------------------------------------
+# Check if we need to load this script or just bail-out
+#------------------------------------------------------------------------------
+if not env.CheckAlias():
+   Return()
+
+#---------------------------------------------------------------------------
+# Load in CBSP uses and path variables
+#---------------------------------------------------------------------------
+# Update the ${COREBSP_ROOT} variables to account for new directory structure.
+corebsp_root = env.RealPath('${BUILD_ROOT}/sdc_core', posix=True)
+env.Replace(COREBSP_ROOT=corebsp_root)
+
+# Create an ${CORESDC_ROOT} variable.
+coresdc_root = env.RealPath('${BUILD_ROOT}/sdc_core', posix=True)
+env.Replace(CORESDC_ROOT=coresdc_root)
+
+# Create an ${SENSORS_SDC_ROOT} variable.
+sdc_sensors_root = env.RealPath('${BUILD_ROOT}/sdc_sensors', posix=True)
+env.Replace(SDC_SENSORS_ROOT=sdc_sensors_root)
+
+env.LoadToolScript('build_utils', toolpath = ['${BUILD_ROOT}/build/scripts'])
+env.InitTargetVariation()
+env.InitBuildConfig()
+
+if 'USES_SSC_SDC_IMG' not in env or 'BUILD_BAREBONE' in env or 'USES_DISABLE_SDC' in env or not env.IsBuildInternal():
+    CLEAN_LIST=env.FindFiles(['*'], '${BUILD_ROOT}/sdc_core')
+    CLEAN_LIST.extend(env.FindFiles(['*'], '${BUILD_ROOT}/sdc_sensors'))
+    env.CleanPack(build_tags, CLEAN_LIST)   
+    Return()
+
+#---------------------------------------------------------------------------
+# Now that we know we need to build something, the first thing we need
+# to do is add our image to BuildProducts.txt, so that tools can verify
+# when our build is successful.  Make sure we append, so that we don't
+# overwrite other images that have written to this file.
+#---------------------------------------------------------------------------
+prod_files = []
+prod_files.append(env.BuildProductsFile ("${SHORT_BUILDPATH}/BuildProducts.txt", "${SHORT_BUILDPATH}/${TARGET_NAME}.elf")) 
+
+
+#---------------------------------------------------------------------------
+# Libs/Objs
+#---------------------------------------------------------------------------
+image_libs = []
+image_objs = []
+
+#---------------------------------------------------------------------------
+# Libraries Section
+#---------------------------------------------------------------------------
+# Load the 'sdc_core' SCons files.
+au_name_items = env.LoadAreaSoftwareUnits('sdc_core')
+image_libs.extend(au_name_items['LIBS'])
+image_objs.extend(au_name_items['OBJS'])
+
+# Load 'sdc_sensors' SCons files.
+if not env.CheckAlias(alias_list=['SDC_core_drivers_only']):
+   # env.Append(CFLAGS='-DSSC_BASE=LPASS_BASE') 
+   au_name_items = env.LoadAreaSoftwareUnits('sdc_sensors')
+   image_libs.extend(au_name_items['LIBS'])
+   image_objs.extend(au_name_items['OBJS'])
+
+# Add the libraries and objects to the image.
+image_units = [image_objs, image_libs]
+
+# Split the SDC elf to code and data binaries.
+sdc_img_elf=env.RealPath('${BUILD_ID_NO_Q}/SDC_IMG_${BUILD_ID}.elf')
+sdc_code_bin=env.RealPath('${BUILD_ID_NO_Q}/sdc_code_tcm.bin')
+sdc_data_bin=env.RealPath('${BUILD_ID_NO_Q}/sdc_data_tcm.bin')
+
+#------------------------------------------------------------------------------
+# Putting the image toghther
+#------------------------------------------------------------------------------
+
+if 'IMAGE_BUILD_LOCAL_FILES' in env:
+   #-------------------------------------------------------------------------
+   # Local Files
+   #-------------------------------------------------------------------------
+
+   # this is where local files are created, for example link scripts (lcs)
+   # for qdsp6 like images, or scatter load files (scl) for amr like images.
+   local_items= []
+
+   image_units += local_items
+   
+      
+if 'IMAGE_BUILD_LINK' in env:
+   #-------------------------------------------------------------------------
+   # Link image
+   #-------------------------------------------------------------------------
+
+   # Generate the Listing File for this SCons Image.  At this point, this isn't actually
+   # used, but this is in place to generate the framework.
+   image_lf = env.AddListFile("${SHORT_BUILDPATH}/${TARGET_NAME}.lf", image_objs, LIBS=image_libs,
+         add_header=False, relative_path="${BUILD_ROOT}/build/ms", posix=True)
+   
+   # Define the scatter load file for this target.
+   target_scl = env.SclBuilder('${SHORT_BUILDPATH}/${TARGET_NAME}', [
+         'sdc.scl', 
+      ])
+
+
+   image_map = '${BUILD_ROOT}/build/bsp/sdc_img/build/${BUILD_ID_NO_Q}/SDC_IMG_${BUILD_ID}.map'
+   # For some reason, env.AddProgram is not supported for ARM.  So, using env.Program
+   # for the time being.
+   image_elf = env.Program("${SHORT_BUILDPATH}/${TARGET_NAME}", image_objs, LIBS=image_libs)
+
+   env.Depends(image_elf, target_scl)
+   #Making the scons to know about the generation of SDC map file needed for the target memory_info_sdc.txt
+   env.SideEffect(image_map, image_elf)
+
+if 'IMAGE_BUILD_POST_LINK' in env:
+   #-------------------------------------------------------------------------
+   # Post process image
+   #-------------------------------------------------------------------------
+
+   #=========================================================================
+   # Define targets needed
+   #
+   image_units += [
+      image_lf,
+      image_elf,
+      sdc_code_bin,
+      sdc_data_bin
+   ]
+
+   image_units += [
+      prod_files,
+   ]
+
+   sdc_code_bin,sdc_data_bin = env.SdcSplitter([sdc_code_bin,sdc_data_bin], [sdc_img_elf])
+
+#=========================================================================
+# Finish up...
+env.BindAliasesToTargets(image_units)

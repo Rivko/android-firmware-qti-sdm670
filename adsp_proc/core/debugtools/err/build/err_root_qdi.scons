@@ -1,0 +1,102 @@
+#===============================================================================
+#
+# ERR Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009 - 2017 by Qualcomm Technologies, Inc.  All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1/debugtools/err/build/err_root_qdi.scons#1 $
+#  $DateTime: 2017/07/21 22:10:47 $
+#  $Author: pwbldsvc $
+#  $Change: 13907704 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 01/25/17   jlg     Moved Device Configuration settings to core/settings directory
+#
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/debugtools/err/src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Features and Definitions
+#-------------------------------------------------------------------------------
+env.Append(CPPDEFINES=['ERR_CFG_QURT'])
+env.Append(CPPDEFINES=['ERR_HW_QDSP6'])
+
+env.PublishPrivateApi("ERR", [
+   "${INC_ROOT}/core/debugtools/err/src/q6",
+   "${INC_ROOT}/core/debugtools/err/src/qurt"
+])
+
+#-------------------------------------------------------------------------------
+# External depends outside CoreBSP
+#-------------------------------------------------------------------------------
+
+env.RequireExternalApi([
+])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+CBSP_API = [
+   'DAL',
+   'DEBUGTOOLS',
+   'HAL',
+   'MPROC',
+   'POWER',
+   'SERVICES',
+   'STORAGE',
+   'SYSTEMDRIVERS',
+
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Sources
+#-------------------------------------------------------------------------------
+
+ERR_ROOTPD_SOURCES =  [
+    '${BUILDPATH}/err_qdi.c',
+    '${BUILDPATH}/err_qdi_dalcfg.c',
+    '${BUILDPATH}/err_qdi_pdr_records.c',
+    ]
+
+ERR_IMGS = [
+    'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE','CORE_ROOT_PD', 
+    'CORE_QDSP6_SW', 'CORE_SLPI_ROOT'
+  ]
+
+BLD_SOURCES = ERR_ROOTPD_SOURCES
+
+env.AddLibrary( ERR_IMGS, '${BUILDPATH}/err_root_qdi', BLD_SOURCES )
+
+if 'USES_RCINIT' in env:
+   env.AddRCInitFunc(  
+    ERR_IMGS,            
+    {
+     'sequence_group'             : 'RCINIT_GROUP_1',                   # required
+     'init_name'                  : 'err_qdi_init',                     # required
+     'init_function'              : 'err_qdi_init',                     # required
+     'dependencies'               : ['err_init',]
+    })

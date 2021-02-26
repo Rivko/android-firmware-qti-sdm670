@@ -1,0 +1,40 @@
+/*
+ * Copyright (c) 2015-2016 Qualcomm Technologies, Inc.
+ * All Rights Reserved.
+ * Confidential and Proprietary - Qualcomm Technologies, Inc.
+ */
+char surface_splatting_visibility_frag [] =
+"#version 300 es\n"
+"\n"
+"precision highp float;\n"
+"\n"
+"in highp vec3 vs_center;\n"
+"in highp vec3 vs_normal;\n"
+"in highp vec3 vs_s_k;\n"
+"in highp vec3 vs_t_k;\n"
+"\n"
+"uniform vec2 gCS_unprojectScale;\n"
+"uniform vec2 gCS_unprojectOffset;\n"
+"uniform float gCS_nearPlane;\n"
+"uniform float gCS_depthScale;\n"
+"uniform float gCS_depthOffset;\n"
+"\n"
+"void main() {\n"
+"    //compute location of point on near plane\n"
+"    vec3 q_n = vec3(gl_FragCoord.xy * gCS_unprojectScale - gCS_unprojectOffset,\n"
+"        -gCS_nearPlane);\n"
+"\n"
+"    //compute location of point on splat in eye space\n"
+"    //normal has been scaled in vertex shader: n' = n dot(center, n)^-1\n"
+"    vec3 q = q_n / dot(q_n, vs_normal);\n"
+"\n"
+"    //determine if q is inside splat\n"
+"    float u = dot(vs_s_k, q - vs_center);\n"
+"    float v = dot(vs_t_k, q - vs_center);\n"
+"    float radius = u * u + v * v;\n"
+"    if(radius > 1.0)\n"
+"        discard;\n"
+"\n"
+"    gl_FragDepth = gCS_depthScale / (q.z - 0.001) + gCS_depthOffset;\n"
+"}\n"
+; 

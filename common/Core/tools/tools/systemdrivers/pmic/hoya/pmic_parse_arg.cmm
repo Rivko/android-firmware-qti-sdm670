@@ -1,0 +1,272 @@
+; ============================================================================
+;
+;  pmic_parse_arg.cmm
+;
+;  Script to parse pmic peripheral name arguments
+;
+;  Execution:
+;  do pmic_parse_arg.cmm smpsa (or smpa or sa)
+;  do pmic_parse_arg.cmm ldoa (or la)
+;  do pmic_parse_arg.cmm smps2c (or smpc2 or smp2c or s2c or sc2)
+;  do pmic_parse_arg.cmm ldo10a (or ldoa10 or l10a or la10)
+;  do pmic_parse_arg.cmm ldo5a (or ldoa5 or l5a or la5)
+;  do pmic_parse_arg.cmm smps3a (or smpa3 or smp3a or s3a or sa3)
+;  ====================================================================
+;
+;  Copyright (c) 2017 QUALCOMM Technologies Incorporated.  All Rights Reserved.
+;  QUALCOMM Proprietary and Confidential.
+;
+;  ====================================================================
+;
+;  $Header: //components/rel/core.glue/1.2/tools/tools/systemdrivers/pmic/hoya/pmic_parse_arg.cmm#2 $
+;  $DateTime: 2017/11/15 17:28:44 $
+;  $Author: pwbldsvc $
+;
+; ============================================================================
+;
+
+entry &periph_name
+
+;-----------------------------------------------------------------------------
+; PERIPHERAL BASE ADDRESSES
+;-----------------------------------------------------------------------------
+local &PM_XO_PERIPH_BASE_ADDR &PM_LNBBCLK_PERIPH_BASE_ADDR &PM_RFCLK_PERIPH_BASE_ADDR &PM_PMX_LNBBCLK_PERIPH_BASE_ADDR
+local &PM_CLKDIST_PERIPH_BASE_ADDR &PM_SLPCLK_PERIPH_BASE_ADDR &PM_DIVCLK_PERIPH_BASE_ADDR
+local &PM_SMPS_PERIPH_BASE_ADDR &PM_LDO_PERIPH_BASE_ADDR &PM_VS_PERIPH_BASE_ADDR
+local &PM_BOOST_PERIPH_BASE_ADDR &PM_BOOST_BYP_PERIPH_BASE_ADDR &PM_BOB_PERIPH_BASE_ADDR
+
+&PM_XO_PERIPH_BASE_ADDR=0x5000
+&PM_LNBBCLK_PERIPH_BASE_ADDR=0x5100
+&PM_RFCLK_PERIPH_BASE_ADDR=0x5400
+&PM_PMX_LNBBCLK_PERIPH_BASE_ADDR=0x5800
+&PM_CLKDIST_PERIPH_BASE_ADDR=0x5900
+&PM_SLPCLK_PERIPH_BASE_ADDR=0x5A00
+&PM_DIVCLK_PERIPH_BASE_ADDR=0x5B00
+&PM_SMPS_PERIPH_BASE_ADDR=0x11400
+&PM_LDO_PERIPH_BASE_ADDR=0x14000
+&PM_VS_PERIPH_BASE_ADDR=0x18000
+&PM_BOOST_PERIPH_BASE_ADDR=0x1A000
+&PM_BOOST_BYP_PERIPH_BASE_ADDR=0x1A200
+&PM_BOB_PERIPH_BASE_ADDR=0x1A000
+
+;-----------------------------------------------------------------------------
+; TYPES FOR INTERNAL SCRIPT USAGE
+;-----------------------------------------------------------------------------
+local &PM_XO_PERIPH_INTERNAL_TYPE &PM_LNBBCLK_PERIPH_INTERNAL_TYPE &PM_RFCLK_PERIPH_INTERNAL_TYPE &PM_PMX_LNBBCLK_PERIPH_INTERNAL_TYPE
+local &PM_CLKDIST_PERIPH_INTERNAL_TYPE &PM_SLPCLK_PERIPH_INTERNAL_TYPE &PM_DIVCLK_PERIPH_INTERNAL_TYPE
+local &PM_SMPS_PERIPH_INTERNAL_TYPE &PM_LDO_PERIPH_INTERNAL_TYPE &PM_VS_PERIPH_INTERNAL_TYPE
+local &PM_BOOST_PERIPH_INTERNAL_TYPE &PM_BOOST_BYP_PERIPH_INTERNAL_TYPE &PM_BOB_PERIPH_INTERNAL_TYPE
+local &PM_RAIL_PERIPH_INTERNAL_MAX &PM_RAIL_PERIPH_UNKNOWN_TYPE
+
+&PM_RAIL_PERIPH_UNKNOWN_TYPE=0.
+&PM_XO_PERIPH_INTERNAL_TYPE=1.
+&PM_LNBBCLK_PERIPH_INTERNAL_TYPE=2.
+&PM_RFCLK_PERIPH_INTERNAL_TYPE=3.
+&PM_CLKDIST_PERIPH_INTERNAL_TYPE=4.
+&PM_SLPCLK_PERIPH_INTERNAL_TYPE=5.
+&PM_DIVCLK_PERIPH_INTERNAL_TYPE=6.
+&PM_SMPS_PERIPH_INTERNAL_TYPE=7.
+&PM_LDO_PERIPH_INTERNAL_TYPE=8.
+&PM_VS_PERIPH_INTERNAL_TYPE=9.
+&PM_BOOST_PERIPH_INTERNAL_TYPE=10.
+&PM_BOOST_BYP_PERIPH_INTERNAL_TYPE=11.
+&PM_BOB_PERIPH_INTERNAL_TYPE=12.
+&PM_PMX_LNBBCLK_PERIPH_INTERNAL_TYPE=13.
+&PM_RAIL_PERIPH_INTERNAL_MAX=14.
+
+VAR.NEW int[&PM_RAIL_PERIPH_INTERNAL_MAX] \periph_base_addr_arr
+
+VAR.SET \periph_base_addr_arr[&PM_RAIL_PERIPH_UNKNOWN_TYPE]=0
+VAR.SET \periph_base_addr_arr[&PM_XO_PERIPH_INTERNAL_TYPE]=&PM_XO_PERIPH_BASE_ADDR
+VAR.SET \periph_base_addr_arr[&PM_LNBBCLK_PERIPH_INTERNAL_TYPE]=&PM_LNBBCLK_PERIPH_BASE_ADDR
+VAR.SET \periph_base_addr_arr[&PM_RFCLK_PERIPH_INTERNAL_TYPE]=&PM_RFCLK_PERIPH_BASE_ADDR
+VAR.SET \periph_base_addr_arr[&PM_CLKDIST_PERIPH_INTERNAL_TYPE]=&PM_CLKDIST_PERIPH_BASE_ADDR
+VAR.SET \periph_base_addr_arr[&PM_SLPCLK_PERIPH_INTERNAL_TYPE]=&PM_SLPCLK_PERIPH_BASE_ADDR
+VAR.SET \periph_base_addr_arr[&PM_DIVCLK_PERIPH_INTERNAL_TYPE]=&PM_DIVCLK_PERIPH_BASE_ADDR
+VAR.SET \periph_base_addr_arr[&PM_SMPS_PERIPH_INTERNAL_TYPE]=&PM_SMPS_PERIPH_BASE_ADDR
+VAR.SET \periph_base_addr_arr[&PM_LDO_PERIPH_INTERNAL_TYPE]=&PM_LDO_PERIPH_BASE_ADDR
+VAR.SET \periph_base_addr_arr[&PM_VS_PERIPH_INTERNAL_TYPE]=&PM_VS_PERIPH_BASE_ADDR
+VAR.SET \periph_base_addr_arr[&PM_BOOST_PERIPH_INTERNAL_TYPE]=&PM_BOOST_PERIPH_BASE_ADDR
+VAR.SET \periph_base_addr_arr[&PM_BOOST_BYP_PERIPH_INTERNAL_TYPE]=&PM_BOOST_BYP_PERIPH_BASE_ADDR
+VAR.SET \periph_base_addr_arr[&PM_BOB_PERIPH_INTERNAL_TYPE]=&PM_BOB_PERIPH_BASE_ADDR
+VAR.SET \periph_base_addr_arr[&PM_PMX_LNBBCLK_PERIPH_INTERNAL_TYPE]=&PM_PMX_LNBBCLK_PERIPH_BASE_ADDR
+
+;-----------------------------------------------------------------------------
+; Check for non-interactive mode.
+;-----------------------------------------------------------------------------
+
+&periph_name=string.trim("&periph_name")
+
+local &internal_type &pmic_index &periph_baseaddr &periph_id &periph_id_str &index &char_value &dec_multiplier
+
+&internal_type=&PM_RAIL_PERIPH_UNKNOWN_TYPE
+&pmic_index=0
+&periph_baseaddr=0
+&periph_id=0
+&periph_id_str=""
+&index=0
+&char_value=0
+&dec_multiplier=1
+
+if ("&periph_name"!="")
+(
+  &periph_name=string.lower("&periph_name")
+
+  if (string.compare("&periph_name","ldo*")==TRUE())
+  (
+    &internal_type=&PM_LDO_PERIPH_INTERNAL_TYPE
+    &periph_id_str=string.scanandextract("&periph_name","ldo","")
+  )
+  else if (string.compare("&periph_name","smps*")==TRUE())
+  (
+    &internal_type=&PM_SMPS_PERIPH_INTERNAL_TYPE 
+    &periph_id_str=string.scanandextract("&periph_name","smps","")
+  )
+  else if (string.compare("&periph_name","vs*")==TRUE())
+  (
+    &internal_type=&PM_VS_PERIPH_INTERNAL_TYPE 
+    &periph_id_str=string.scanandextract("&periph_name","vs","")
+  )
+  else if (string.compare("&periph_name","smp*")==TRUE())
+  (
+    &internal_type=&PM_SMPS_PERIPH_INTERNAL_TYPE 
+    &periph_id_str=string.scanandextract("&periph_name","smp","")
+  )
+  else if (string.compare("&periph_name","bob*")==TRUE())
+  (
+    &internal_type=&PM_BOB_PERIPH_INTERNAL_TYPE 
+    &periph_id_str=string.scanandextract("&periph_name","bob","")
+  )
+  else if (string.compare("&periph_name","xoclk*")==TRUE())
+  (
+    &internal_type=&PM_XO_PERIPH_INTERNAL_TYPE 
+    &periph_id_str=string.scanandextract("&periph_name","xoclk","")
+  )
+  else if (string.compare("&periph_name","xo*")==TRUE())
+  (
+    &internal_type=&PM_XO_PERIPH_INTERNAL_TYPE 
+    &periph_id_str=string.scanandextract("&periph_name","xo","")
+  )
+  else if (string.compare("&periph_name","lnbbclk")==TRUE())
+  (
+    &internal_type=&PM_PMX_LNBBCLK_PERIPH_INTERNAL_TYPE 
+    &periph_id_str="1"
+  )
+  else if (string.compare("&periph_name","lnbbclk*")==TRUE())
+  (
+    &internal_type=&PM_LNBBCLK_PERIPH_INTERNAL_TYPE 
+    &periph_id_str=string.scanandextract("&periph_name","lnbbclk","")
+  )
+  else if (string.compare("&periph_name","lnbclk*")==TRUE())
+  (
+    &internal_type=&PM_LNBBCLK_PERIPH_INTERNAL_TYPE 
+    &periph_id_str=string.scanandextract("&periph_name","lnbclk","")
+  )
+  else if (string.compare("&periph_name","bbclk*")==TRUE())
+  (
+    &internal_type=&PM_LNBBCLK_PERIPH_INTERNAL_TYPE 
+    &periph_id_str=string.scanandextract("&periph_name","bbclk","")
+  )
+  else if (string.compare("&periph_name","bb*")==TRUE())
+  (
+    &internal_type=&PM_LNBBCLK_PERIPH_INTERNAL_TYPE 
+    &periph_id_str=string.scanandextract("&periph_name","bb","")
+  )
+  else if (string.compare("&periph_name","rfclk*")==TRUE())
+  (
+    &internal_type=&PM_RFCLK_PERIPH_INTERNAL_TYPE 
+    &periph_id_str=string.scanandextract("&periph_name","rfclk","")
+  )
+  else if (string.compare("&periph_name","rf*")==TRUE())
+  (
+    &internal_type=&PM_RFCLK_PERIPH_INTERNAL_TYPE 
+    &periph_id_str=string.scanandextract("&periph_name","rf","")
+  )
+  else if (string.compare("&periph_name","clkdist*")==TRUE())
+  (
+    &internal_type=&PM_CLKDIST_PERIPH_INTERNAL_TYPE 
+    &periph_id_str=string.scanandextract("&periph_name","clkdist","")
+  )
+  else if (string.compare("&periph_name","distclk*")==TRUE())
+  (
+    &internal_type=&PM_CLKDIST_PERIPH_INTERNAL_TYPE 
+    &periph_id_str=string.scanandextract("&periph_name","distclk","")
+  )
+  else if (string.compare("&periph_name","dist*")==TRUE())
+  (
+    &internal_type=&PM_CLKDIST_PERIPH_INTERNAL_TYPE 
+    &periph_id_str=string.scanandextract("&periph_name","dist","")
+  )
+  else if (string.compare("&periph_name","slpclk*")==TRUE())
+  (
+    &internal_type=&PM_SLPCLK_PERIPH_INTERNAL_TYPE 
+    &periph_id_str=string.scanandextract("&periph_name","slpclk","")
+  )
+  else if (string.compare("&periph_name","slp*")==TRUE())
+  (
+    &internal_type=&PM_SLPCLK_PERIPH_INTERNAL_TYPE 
+    &periph_id_str=string.scanandextract("&periph_name","slp","")
+  )
+  else if (string.compare("&periph_name","divclk*")==TRUE())
+  (
+    &internal_type=&PM_DIVCLK_PERIPH_INTERNAL_TYPE 
+    &periph_id_str=string.scanandextract("&periph_name","divclk","")
+  )
+  else if (string.compare("&periph_name","div*")==TRUE())
+  (
+    &internal_type=&PM_DIVCLK_PERIPH_INTERNAL_TYPE 
+    &periph_id_str=string.scanandextract("&periph_name","div","")
+  )
+  else if (string.compare("&periph_name","l*")==TRUE())
+  (
+    &internal_type=&PM_LDO_PERIPH_INTERNAL_TYPE 
+    &periph_id_str=string.scanandextract("&periph_name","l","")
+  )
+  else if (string.compare("&periph_name","b*")==TRUE())
+  (
+    &internal_type=&PM_BOB_PERIPH_INTERNAL_TYPE 
+    &periph_id_str=string.scanandextract("&periph_name","b","")
+  )
+  else if (string.compare("&periph_name","s*")==TRUE())
+  (
+    &internal_type=&PM_SMPS_PERIPH_INTERNAL_TYPE 
+    &periph_id_str=string.scanandextract("&periph_name","s","")
+  )
+  else if (string.compare("&periph_name","v*")==TRUE())
+  (
+    &internal_type=&PM_VS_PERIPH_INTERNAL_TYPE 
+    &periph_id_str=string.scanandextract("&periph_name","v","")
+  )
+
+  if ("&periph_id_str"=="")
+  (
+    &pmic_index=0.
+    &periph_id=0.
+  )
+  else if (&internal_type!=&PM_RAIL_PERIPH_UNKNOWN_TYPE)
+  (
+    &index=string.length("&periph_id_str")-1.
+    &dec_multiplier=1.
+    while (&index>=0.)
+    (
+      &char_value=string.char("&periph_id_str",&index)
+      if ((&char_value>=97.)&&(&char_value<=122.))
+      (
+        &pmic_index=&char_value-97.
+      )
+      else if ((&char_value>=48.)&&(&char_value<=57.))
+      (
+        &periph_id=&periph_id+((&char_value-48.)*&dec_multiplier)
+        &dec_multiplier=&dec_multiplier*10.
+      )
+      &index=&index-1.
+    )
+  )
+)
+
+if (&internal_type!=&PM_RAIL_PERIPH_UNKNOWN_TYPE)
+(
+  &periph_baseaddr=VAR.VALUE(\periph_base_addr_arr[&internal_type])
+)
+
+enddo &pmic_index &periph_baseaddr &periph_id

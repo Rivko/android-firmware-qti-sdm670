@@ -1,0 +1,317 @@
+#===========================================================================
+#                               bcm_seq.rinit
+#
+#  DESCRIPTION:
+#    This file contains BCM sequencer instructions.
+#
+#  Copyright (c) 2017 QUALCOMM Technologies, Inc. (QTI). All Rights Reserved.  
+#  QUALCOMM Proprietary.  Export of this technology or software is regulated 
+#  by the U.S. Government. Diversion contrary to U.S. law prohibited.
+#===========================================================================
+
+module : { name = RPMH_BCM_BCM_SEQ_CFG, group = BCM }
+vars:
+  br_addrs = [0x37, 0x42, 0x4f, 0x5c, 0xff, 0xff, 0x52, 0x5f, 0x3b, 0xff, 0x55, 0xff, 0x3e, 0x45, 0x59, 0x62]
+#==============
+# 0x37 ,  // TCS_START = 55 + BRANCH_ADDR: 0x0  BRANCH_REG: 0
+# 0x42 ,  // END = 66 + BRANCH_ADDR: 0x0  BRANCH_REG: 1
+# 0x4f ,  // CLK_ON = 79 + BRANCH_ADDR: 0x0  BRANCH_REG: 2
+# 0x5c ,  // PWR_ON = 92 + BRANCH_ADDR: 0x0  BRANCH_REG: 3
+# 0x52 ,  // CLK_OFF = 82 + BRANCH_ADDR: 0x0  BRANCH_REG: 6
+# 0x5f ,  // PWR_OFF = 95 + BRANCH_ADDR: 0x0  BRANCH_REG: 7
+# 0x3b ,  // IS_IPA_ON = 59 + BRANCH_ADDR: 0x0  BRANCH_REG: 8
+# 0x55 ,  // IPA_ON = 85 + BRANCH_ADDR: 0x0  BRANCH_REG: 10
+# 0x3e ,  // INTR_AOP = 62 + BRANCH_ADDR: 0x0  BRANCH_REG: 12
+# 0x45 ,  // CLK_CHG = 69 + BRANCH_ADDR: 0x0  BRANCH_REG: 13
+# 0x59 ,  // IS_IPA_OFF = 89 + BRANCH_ADDR: 0x0  BRANCH_REG: 14
+# 0x62 ,  // IPA_OFF = 98 + BRANCH_ADDR: 0x0  BRANCH_REG: 15
+#==============
+  
+regs:
+  RPMH_BCM_SEQ_CFG_HW_START_ADDR_CDm = [0x15, 0x15, 0x0, 0x0, 0x0, 0x0, 0x0,  0x0, 0x0, 0x0, 0x15, 0x15, 0x0, 0x0, 0x0, 0x0] ## Put AOPA for MC/SHUB/ACV/ALC, MMNoCWA for MMNOC
+  RPMH_BCM_SEQ_CFG_SW_START_ADDR_CDm = [0x15, 0x15, 0x0, 0x0, 0x21, 0x0, 0x0, 0x21, 0x0, 0x0, 0x15, 0x15, 0x0, 0x0, 0x0, 0x0]  ## Put initsequence for IPA = CD7
+
+  RPMH_BCM_SEQ_CFG_BRANCH_ADDR_CDm_BRb[0,] = br_addrs
+  RPMH_BCM_SEQ_CFG_BRANCH_ADDR_CDm_BRb[1,] = br_addrs
+  RPMH_BCM_SEQ_CFG_BRANCH_ADDR_CDm_BRb[2,] = br_addrs
+  RPMH_BCM_SEQ_CFG_BRANCH_ADDR_CDm_BRb[3,] = br_addrs
+  RPMH_BCM_SEQ_CFG_BRANCH_ADDR_CDm_BRb[4,] = br_addrs
+  RPMH_BCM_SEQ_CFG_BRANCH_ADDR_CDm_BRb[5,] = br_addrs
+  RPMH_BCM_SEQ_CFG_BRANCH_ADDR_CDm_BRb[6,] = br_addrs
+  RPMH_BCM_SEQ_CFG_BRANCH_ADDR_CDm_BRb[7,] = br_addrs
+  RPMH_BCM_SEQ_CFG_BRANCH_ADDR_CDm_BRb[8,] = br_addrs
+  RPMH_BCM_SEQ_CFG_BRANCH_ADDR_CDm_BRb[9,] = br_addrs
+  RPMH_BCM_SEQ_CFG_BRANCH_ADDR_CDm_BRb[10,] = br_addrs
+  RPMH_BCM_SEQ_CFG_BRANCH_ADDR_CDm_BRb[11,] = br_addrs
+  RPMH_BCM_SEQ_CFG_BRANCH_ADDR_CDm_BRb[12,] = br_addrs
+  RPMH_BCM_SEQ_CFG_BRANCH_ADDR_CDm_BRb[13,] = br_addrs
+  RPMH_BCM_SEQ_CFG_BRANCH_ADDR_CDm_BRb[14,] = br_addrs
+  RPMH_BCM_SEQ_CFG_BRANCH_ADDR_CDm_BRb[15,] = br_addrs
+
+module : { name = RPMH_BCM_BCM_SEQ_MEM, group = BCM }
+regs:
+  RPMH_BCM_SEQ_MEMq = [
+        0xa77f7055,     #0x0       : 0x55     CombinedSequence:               BEQ same_cp=1 END
+                        #0x1       : 0x70                   BEQR dir=1 TCS_START
+                        #0x2       : 0x7f                   BEQR restore_valid=1 PWR_ON
+                        #0x3       : 0xa7                   SET1 mux_sel_for_branch1_input
+        0xa57ca666,     #0x4       : 0x66                   BEQR cp_is_zero=0 CLK_ON
+                        #0x5       : 0xa6                   SET1 branch_addr_sel[1]
+                        #0x6       : 0x7c                   BEQR restore_valid=1 IS_IPA_ON
+                        #0x7       : 0xa5                   SET1 branch_addr_sel[0]
+        0x867a9139,     #0x8       : 0x39                   CALL CLK_CHG
+                        #0x9       : 0x91                   SET0 mux_sel_for_branch2_input
+                        #0xa       : 0x7a                   BEQR pc_valid=1 IS_IPA_OFF
+                        #0xb       : 0x86                   SET0 branch_addr_sel[1]
+        0xa2767b91,     #0xc       : 0x91                   SET0 mux_sel_for_branch2_input
+                        #0xd       : 0x7b                   BEQR pc_valid=1 PWR_OFF
+                        #0xe       : 0x76                   BEQR cp_is_zero=1 CLK_OFF
+                        #0xf       : 0xa2                   SET1 sw_change_done
+        0x60858782,     #0x10      : 0x82                   SET0 sw_change_done
+                        #0x11      : 0x87                   SET0 mux_sel_for_branch1_input
+                        #0x12      : 0x85                   SET0 branch_addr_sel[0]
+                        #0x13      : 0x60                   BEQR dir=0 TCS_START
+        0xac385520,     #0x14      : 0x20                   RETURN
+                        #0x15      : 0x55     AOPASequence:               BEQ same_cp=1 END
+                        #0x16      : 0x38                   CALL TCS_START
+                        #0x17      : 0xac                   SET1 seq_generic_int_a
+        0x7031e88c,     #0x18      : 0x8c                   SET0 seq_generic_int_a
+                        #0x19      : 0xe8                   WAIT1 sw_override_seq_unblock_a
+                        #0x1a      : 0x31                   JMP END
+                        #0x1b      : 0x70     AOPBSequence:               BEQR dir=1 TCS_START
+        0x60e98dad,     #0x1c      : 0xad                   SET1 seq_generic_int_b
+                        #0x1d      : 0x8d                   SET0 seq_generic_int_b
+                        #0x1e      : 0xe9                   WAIT1 sw_override_seq_unblock_b
+                        #0x1f      : 0x60                   BEQR dir=0 TCS_START
+        0xa2aea431,     #0x20      : 0x31                   JMP END
+                        #0x21      : 0xa4     InitSequence:               SET1 pwr_collapse_req
+                        #0x22      : 0xae                   SET1 clk_disable_req
+                        #0x23      : 0xa2                   SET1 sw_change_done
+        0x70552082,     #0x24      : 0x82                   SET0 sw_change_done
+                        #0x25      : 0x20                   RETURN
+                        #0x26      : 0x55     MMNoCWASequence:              BEQ same_cp=1 END
+                        #0x27      : 0x70                   BEQR dir=1 TCS_START
+        0xa5a666a7,     #0x28      : 0xa7                   SET1 mux_sel_for_branch1_input
+                        #0x29      : 0x66                   BEQR cp_is_zero=0 CLK_ON
+                        #0x2a      : 0xa6                   SET1 branch_addr_sel[1]
+                        #0x2b      : 0xa5                   SET1 branch_addr_sel[0]
+        0x8678397c,     #0x2c      : 0x7c                   BEQR restore_valid=1 INTR_AOP
+                        #0x2d      : 0x39                   CALL CLK_CHG
+                        #0x2e      : 0x78                   BEQR pc_valid=1 INTR_AOP
+                        #0x2f      : 0x86                   SET0 branch_addr_sel[1]
+        0x8782a276,     #0x30      : 0x76                   BEQR cp_is_zero=1 CLK_OFF
+                        #0x31      : 0xa2                   SET1 sw_change_done
+                        #0x32      : 0x82                   SET0 sw_change_done
+                        #0x33      : 0x87                   SET0 mux_sel_for_branch1_input
+        0xa0206085,     #0x34      : 0x85                   SET0 branch_addr_sel[0]
+                        #0x35      : 0x60                   BEQR dir=0 TCS_START
+                        #0x36      : 0x20                   RETURN
+                        #0x37      : 0xa0     TCS_START:              SET1 seq_tcs_start
+        0xb12080e0,     #0x38      : 0xe0                   WAIT1 tcs_seq_cmp
+                        #0x39      : 0x80                   SET0 seq_tcs_start
+                        #0x3a      : 0x20                   RETURN
+                        #0x3b      : 0xb1     IS_IPA_ON:              SET1 mux_sel_for_branch2_input
+        0x8dad207a,     #0x3c      : 0x7a                   BEQR is_ipa_cd=1 IPA_ON
+                        #0x3d      : 0x20                   RETURN
+                        #0x3e      : 0xad     INTR_AOP:               SET1 seq_generic_int_b
+                        #0x3f      : 0x8d                   SET0 seq_generic_int_b
+        0x82a220e9,     #0x40      : 0xe9                   WAIT1 sw_override_seq_unblock_b
+                        #0x41      : 0x20                   RETURN
+                        #0x42      : 0xa2     END:              SET1 sw_change_done
+                        #0x43      : 0x82                   SET0 sw_change_done
+        0x88e6a820,     #0x44      : 0x20                   RETURN
+                        #0x45      : 0xa8     CLK_CHG:              SET1 clock_prework_req
+                        #0x46      : 0xe6                   WAIT1 clock_prework_done
+                        #0x47      : 0x88                   SET0 clock_prework_req
+        0xa983e2a3,     #0x48      : 0xa3                   SET1 clock_change_req
+                        #0x49      : 0xe2                   WAIT1 clock_change_done
+                        #0x4a      : 0x83                   SET0 clock_change_req
+                        #0x4b      : 0xa9                   SET1 clock_postwork_req
+        0x8e2089e7,     #0x4c      : 0xe7                   WAIT1 clock_postwork_done
+                        #0x4d      : 0x89                   SET0 clock_postwork_req
+                        #0x4e      : 0x20                   RETURN
+                        #0x4f      : 0x8e     CLK_ON:               SET0 clk_disable_req
+        0xe1ae2008,     #0x50      : 0x8                  DELI 15028ns
+                        #0x51      : 0x20                   RETURN
+                        #0x52      : 0xae     CLK_OFF:              SET1 clk_disable_req
+                        #0x53      : 0xe1                   WAIT1 clk_disable_done
+        0x8bebab20,     #0x54      : 0x20                   RETURN
+                        #0x55      : 0xab     IPA_ON:               SET1 ipa_restore_req
+                        #0x56      : 0xeb                   WAIT1 ipa_restore_ack
+                        #0x57      : 0x8b                   SET0 ipa_restore_req
+        0x207bb120,     #0x58      : 0x20                   RETURN
+                        #0x59      : 0xb1     IS_IPA_OFF:               SET1 mux_sel_for_branch2_input
+                        #0x5a      : 0x7b                   BEQR is_ipa_cd=1 IPA_OFF
+                        #0x5b      : 0x20                   RETURN
+        0xa420c484,     #0x5c      : 0x84     PWR_ON:               SET0 pwr_collapse_req
+                        #0x5d      : 0xc4                   WAIT0 pwr_collapse_done
+                        #0x5e      : 0x20                   RETURN
+                        #0x5f      : 0xa4     PWR_OFF:              SET1 pwr_collapse_req
+        0xeaaa20e4,     #0x60      : 0xe4                   WAIT1 pwr_collapse_done
+                        #0x61      : 0x20                   RETURN
+                        #0x62      : 0xaa     IPA_OFF:              SET1 ipa_pc_req
+                        #0x63      : 0xea                   WAIT1 ipa_pc_ack
+        0x0000208a,     #0x64      : 0x8a                 SET0 ipa_pc_req
+                         #0x65      : 0x20                   RETURN
+ ]                       
+
+ 
+ module : { name = RPMH_BCM_BCM_AU_CFG, group = BCM }
+regs:
+  RPMH_BCM_ALGO_ADDRg = [0x0,  0x1,  0x6,  0xB,  0x11, 0x17, 0x1D, 0x23,
+                         0x29, 0x2F, 0x35, 0x3B, 0x41, 0x47, 0x4D, 0x4F,
+                         0x51, 0x52, 0x54, 0x56, 0x57, 0x5C, 0x61, 0x67,
+                         0x6D, 0x73, 0x75, 0x7B, 0x81, 0x87, 0x8D, 0x8F]
+  RPMH_BCM_AU_CFG_SCALARk = [0x20, 0x2E, 0xC0, 0xB7, 0x49, 0x31, 0x17, 0x31,
+                             0x41, 0x5C, 0x2B, 0xAC, 0x80, 0x10, 0x40, 0x20,
+                             0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20,
+                             0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20, 0x20]
+  RPMH_BCM_AU_CFG_SCALAR_FORMAT = 0x5
+
+module : { name = RPMH_BCM_BCM_AU_MEM, group = BCM }
+regs:
+  RPMH_BCM_AU_INST_MEMa[0] = 0x00002201
+  RPMH_BCM_AU_INST_MEMa[1] = 0x00000080
+  RPMH_BCM_AU_INST_MEMa[2] = 0x00052288
+  RPMH_BCM_AU_INST_MEMa[3] = 0x47600094
+  RPMH_BCM_AU_INST_MEMa[4] = 0x4F60F89C
+  RPMH_BCM_AU_INST_MEMa[5] = 0x13200005
+  RPMH_BCM_AU_INST_MEMa[6] = 0x00000080
+  RPMH_BCM_AU_INST_MEMa[7] = 0x00061288
+  RPMH_BCM_AU_INST_MEMa[8] = 0x0F28128C
+  RPMH_BCM_AU_INST_MEMa[9] = 0x4F600894
+  RPMH_BCM_AU_INST_MEMa[10] = 0x02000005
+  RPMH_BCM_AU_INST_MEMa[11] = 0x000000B2
+  RPMH_BCM_AU_INST_MEMa[12] = 0x000522A8
+  RPMH_BCM_AU_INST_MEMa[13] = 0x776000A4
+  RPMH_BCM_AU_INST_MEMa[14] = 0x6F6000B4
+  RPMH_BCM_AU_INST_MEMa[15] = 0x262000AC
+  RPMH_BCM_AU_INST_MEMa[16] = 0x6F6000A5
+  RPMH_BCM_AU_INST_MEMa[17] = 0x000000B0
+  RPMH_BCM_AU_INST_MEMa[18] = 0x000522A8
+  RPMH_BCM_AU_INST_MEMa[19] = 0x776008A4
+  RPMH_BCM_AU_INST_MEMa[20] = 0x6F6000B4
+  RPMH_BCM_AU_INST_MEMa[21] = 0x262000AC
+  RPMH_BCM_AU_INST_MEMa[22] = 0x6F6000A5
+  RPMH_BCM_AU_INST_MEMa[23] = 0x000000B0
+  RPMH_BCM_AU_INST_MEMa[24] = 0x000522A8
+  RPMH_BCM_AU_INST_MEMa[25] = 0x776048A4
+  RPMH_BCM_AU_INST_MEMa[26] = 0x6F6070B4
+  RPMH_BCM_AU_INST_MEMa[27] = 0x262000AC
+  RPMH_BCM_AU_INST_MEMa[28] = 0x6F6000A5
+  RPMH_BCM_AU_INST_MEMa[29] = 0x000000B0
+  RPMH_BCM_AU_INST_MEMa[30] = 0x000522A8
+  RPMH_BCM_AU_INST_MEMa[31] = 0x776048A4
+  RPMH_BCM_AU_INST_MEMa[32] = 0x6F6070B4
+  RPMH_BCM_AU_INST_MEMa[33] = 0x262000AC
+  RPMH_BCM_AU_INST_MEMa[34] = 0x6F6050A5
+  RPMH_BCM_AU_INST_MEMa[35] = 0x000000B0
+  RPMH_BCM_AU_INST_MEMa[36] = 0x000522A8
+  RPMH_BCM_AU_INST_MEMa[37] = 0x776030A4
+  RPMH_BCM_AU_INST_MEMa[38] = 0x6F6068B4
+  RPMH_BCM_AU_INST_MEMa[39] = 0x262000AC
+  RPMH_BCM_AU_INST_MEMa[40] = 0x6F6028A5
+  RPMH_BCM_AU_INST_MEMa[41] = 0x000000B0
+  RPMH_BCM_AU_INST_MEMa[42] = 0x000522A8
+  RPMH_BCM_AU_INST_MEMa[43] = 0x776008A4
+  RPMH_BCM_AU_INST_MEMa[44] = 0x6F6000B4
+  RPMH_BCM_AU_INST_MEMa[45] = 0x262000AC
+  RPMH_BCM_AU_INST_MEMa[46] = 0x6F6040A5
+  RPMH_BCM_AU_INST_MEMa[47] = 0x000000B0
+  RPMH_BCM_AU_INST_MEMa[48] = 0x000522A8
+  RPMH_BCM_AU_INST_MEMa[49] = 0x776048A4
+  RPMH_BCM_AU_INST_MEMa[50] = 0x6F6070B4
+  RPMH_BCM_AU_INST_MEMa[51] = 0x262000AC
+  RPMH_BCM_AU_INST_MEMa[52] = 0x6F6040A5
+  RPMH_BCM_AU_INST_MEMa[53] = 0x000000B0
+  RPMH_BCM_AU_INST_MEMa[54] = 0x000522A8
+  RPMH_BCM_AU_INST_MEMa[55] = 0x776018A4
+  RPMH_BCM_AU_INST_MEMa[56] = 0x6F6060B4
+  RPMH_BCM_AU_INST_MEMa[57] = 0x262000AC
+  RPMH_BCM_AU_INST_MEMa[58] = 0x6F6040A5
+  RPMH_BCM_AU_INST_MEMa[59] = 0x000000B0
+  RPMH_BCM_AU_INST_MEMa[60] = 0x000522A8
+  RPMH_BCM_AU_INST_MEMa[61] = 0x776008A4
+  RPMH_BCM_AU_INST_MEMa[62] = 0x6F6000B4
+  RPMH_BCM_AU_INST_MEMa[63] = 0x262000AC
+  RPMH_BCM_AU_INST_MEMa[64] = 0x6F6020A5
+  RPMH_BCM_AU_INST_MEMa[65] = 0x000000B0
+  RPMH_BCM_AU_INST_MEMa[66] = 0x000522A8
+  RPMH_BCM_AU_INST_MEMa[67] = 0x776018A4
+  RPMH_BCM_AU_INST_MEMa[68] = 0x6F6060B4
+  RPMH_BCM_AU_INST_MEMa[69] = 0x262000AC
+  RPMH_BCM_AU_INST_MEMa[70] = 0x6F6020A5
+  RPMH_BCM_AU_INST_MEMa[71] = 0x000000B0
+  RPMH_BCM_AU_INST_MEMa[72] = 0x000522A8
+  RPMH_BCM_AU_INST_MEMa[73] = 0x776048A4
+  RPMH_BCM_AU_INST_MEMa[74] = 0x6F6070B4
+  RPMH_BCM_AU_INST_MEMa[75] = 0x262000AC
+  RPMH_BCM_AU_INST_MEMa[76] = 0x6F6058A5
+  RPMH_BCM_AU_INST_MEMa[77] = 0x00052288
+  RPMH_BCM_AU_INST_MEMa[78] = 0x4F603805
+  RPMH_BCM_AU_INST_MEMa[79] = 0x00052288
+  RPMH_BCM_AU_INST_MEMa[80] = 0x4F600005
+  RPMH_BCM_AU_INST_MEMa[81] = 0x00055589
+  RPMH_BCM_AU_INST_MEMa[82] = 0x00055580
+  RPMH_BCM_AU_INST_MEMa[83] = 0x47609005
+  RPMH_BCM_AU_INST_MEMa[84] = 0x00053380
+  RPMH_BCM_AU_INST_MEMa[85] = 0x47600005
+  RPMH_BCM_AU_INST_MEMa[86] = 0x00000081
+  RPMH_BCM_AU_INST_MEMa[87] = 0x00000080
+  RPMH_BCM_AU_INST_MEMa[88] = 0x00052288
+  RPMH_BCM_AU_INST_MEMa[89] = 0x47601894
+  RPMH_BCM_AU_INST_MEMa[90] = 0x4F60309C
+  RPMH_BCM_AU_INST_MEMa[91] = 0x13200006
+  RPMH_BCM_AU_INST_MEMa[92] = 0x00000080
+  RPMH_BCM_AU_INST_MEMa[93] = 0x00061288
+  RPMH_BCM_AU_INST_MEMa[94] = 0x0F28128C
+  RPMH_BCM_AU_INST_MEMa[95] = 0x4F600894
+  RPMH_BCM_AU_INST_MEMa[96] = 0x02000005
+  RPMH_BCM_AU_INST_MEMa[97] = 0x000000B0
+  RPMH_BCM_AU_INST_MEMa[98] = 0x000522A8
+  RPMH_BCM_AU_INST_MEMa[99] = 0x776018A4
+  RPMH_BCM_AU_INST_MEMa[100] = 0x6F6060B4
+  RPMH_BCM_AU_INST_MEMa[101] = 0x262000AC
+  RPMH_BCM_AU_INST_MEMa[102] = 0x6F6010A5
+  RPMH_BCM_AU_INST_MEMa[103] = 0x000000B2
+  RPMH_BCM_AU_INST_MEMa[104] = 0x000522A8
+  RPMH_BCM_AU_INST_MEMa[105] = 0x776008A4
+  RPMH_BCM_AU_INST_MEMa[106] = 0x6F6000B4
+  RPMH_BCM_AU_INST_MEMa[107] = 0x262000AC
+  RPMH_BCM_AU_INST_MEMa[108] = 0x6F6000A5
+  RPMH_BCM_AU_INST_MEMa[109] = 0x000000B0
+  RPMH_BCM_AU_INST_MEMa[110] = 0x000522A8
+  RPMH_BCM_AU_INST_MEMa[111] = 0x776090A4
+  RPMH_BCM_AU_INST_MEMa[112] = 0x6F6038B4
+  RPMH_BCM_AU_INST_MEMa[113] = 0x262000AC
+  RPMH_BCM_AU_INST_MEMa[114] = 0x6F6050A5
+  RPMH_BCM_AU_INST_MEMa[115] = 0x00052288
+  RPMH_BCM_AU_INST_MEMa[116] = 0x4F604005
+  RPMH_BCM_AU_INST_MEMa[117] = 0x000000B0
+  RPMH_BCM_AU_INST_MEMa[118] = 0x000522A8
+  RPMH_BCM_AU_INST_MEMa[119] = 0x776030A4
+  RPMH_BCM_AU_INST_MEMa[120] = 0x6F6000B4
+  RPMH_BCM_AU_INST_MEMa[121] = 0x262000AC
+  RPMH_BCM_AU_INST_MEMa[122] = 0x6F6058A5
+  RPMH_BCM_AU_INST_MEMa[123] = 0x000000B0
+  RPMH_BCM_AU_INST_MEMa[124] = 0x000522A8
+  RPMH_BCM_AU_INST_MEMa[125] = 0x776090A4
+  RPMH_BCM_AU_INST_MEMa[126] = 0x6F6038B4
+  RPMH_BCM_AU_INST_MEMa[127] = 0x262000AC
+  RPMH_BCM_AU_INST_MEMa[128] = 0x6F6000A5
+  RPMH_BCM_AU_INST_MEMa[129] = 0x000000B0
+  RPMH_BCM_AU_INST_MEMa[130] = 0x000522A8
+  RPMH_BCM_AU_INST_MEMa[131] = 0x776030A4
+  RPMH_BCM_AU_INST_MEMa[132] = 0x6F6000B4
+  RPMH_BCM_AU_INST_MEMa[133] = 0x262000AC
+  RPMH_BCM_AU_INST_MEMa[134] = 0x6F6050A5
+  RPMH_BCM_AU_INST_MEMa[135] = 0x000000B0
+  RPMH_BCM_AU_INST_MEMa[136] = 0x000522A8
+  RPMH_BCM_AU_INST_MEMa[137] = 0x776090A4
+  RPMH_BCM_AU_INST_MEMa[138] = 0x6F6038B4
+  RPMH_BCM_AU_INST_MEMa[139] = 0x262000AC
+  RPMH_BCM_AU_INST_MEMa[140] = 0x6F6068A5
+  RPMH_BCM_AU_INST_MEMa[141] = 0x00003380
+  RPMH_BCM_AU_INST_MEMa[142] = 0x47600005
+  RPMH_BCM_AU_INST_MEMa[143] = 0x000000B0
+  RPMH_BCM_AU_INST_MEMa[144] = 0x776000A5

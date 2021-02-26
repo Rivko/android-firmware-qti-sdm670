@@ -1,0 +1,73 @@
+#===============================================================================
+#
+# Island library
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2016-2018 by Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Id: //components/rel/ssc.slpi/3.2/utils/island/build/island.scons#2 $
+#  $DateTime: 2018/03/16 13:01:12 $
+#  $Change: 15701548 $
+#
+#===============================================================================
+Import('env')
+import inspect
+import os, inspect
+import platform
+
+
+#-------------------------------------------------------------------------------
+# External dependencies
+#-------------------------------------------------------------------------------
+CBSP_API = [
+  'DAL',        # for DALSys.h included in npa.h
+  'SERVICES',   # SERVICES followed by POWER make npa.h available outside of CoreBSP
+  'POWER',      # POWER preceeded by SERVICES make npa.h available outside of CoreBSP
+  'DEBUGTOOLS',
+  'KERNEL',
+  ]
+island_flavor = ["x86"]
+if 'USES_ISLAND' in env:
+  island_flavor = ["hexagon"]
+
+if ('SSC_TARGET_HEXAGON_MDSP' in env['CPPDEFINES']):
+  island_flavor = ["hexagon_mdsp"]
+
+if 'SNS_ISLAND_ENABLE_DEBUG' in env:
+  env.Append(CPPDEFINES = ['SNS_ISLAND_ENABLE_DEBUG'])
+
+#-------------------------------------------------------------------------------
+# Adds self
+#-------------------------------------------------------------------------------
+#sections = ['.text.SNS', '.data.SNS', '.rodata.SNS']
+if 'SENSORS_DD_DEV_FLAG' not in env:
+  clean_pck= []
+  binlib=False
+else:
+  clean_pck=['*.c','*.h']
+  binlib=True
+
+if 'USES_SSC_STATIC_LIB_BUILDER' in env:
+  env.AddSSCSU(inspect.getfile(inspect.currentframe()),
+             flavor = island_flavor,
+             core_public_api = CBSP_API,
+             ssc_protected_api = ['SNS_INTERNAL_INCLUDES', 'SNS_FRAMEWORK'],
+             clean_pack_list = clean_pck,
+             binary_lib=binlib,
+             island_sections = ['*'])
+
+if 'USES_QDSS_SWE' in env:
+  QDSS_IMG = ['QDSS_EN_IMG']
+  events = [
+            ['SNS_ISLAND_EXIT_START', '', 'F'],
+            ['SNS_ISLAND_EXIT_END', '', 'F'],
+            ['SNS_ISLAND_CALLBACK_START', 'New state :0x%x', 'F'],
+            ['SNS_ISLAND_CALLBACK_END', '', 'F'],
+           ]
+  env.AddSWEInfo(QDSS_IMG, events)

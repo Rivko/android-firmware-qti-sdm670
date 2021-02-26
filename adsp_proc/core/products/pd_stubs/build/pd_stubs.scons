@@ -1,0 +1,90 @@
+#===============================================================================
+#	Title: Sconscript
+#
+#	License: License
+#	Copyright 2016 Qualcomm Technologies Inc
+#
+#	Description: 
+#	Sconscript for CoreBSP Products Spawn USER PD for core only build
+#
+#	Team: 
+#	CoreBSP Products team
+#
+#
+#	Location: Perforce Revision
+#  $Header: //components/rel/core.qdsp6/2.1/products/pd_stubs/build/pd_stubs.scons#2 $
+#
+#
+# edits
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# ajabbar	: Initial version 			: 05/08/16
+#===============================================================================
+import os
+Import('env')
+env = env.Clone()
+
+if not (env['CHIPSET'] in ['sdm670'] and 'BUILD_BAREBONE' in env):
+    Return()
+
+SRCPATH = "${BUILD_ROOT}/core/products/pd_stubs/src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'DEBUGTOOLS',
+   'MPROC',
+   'POWER',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'KERNEL', #needs to be last
+]
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+env.Append(CPPPATH=" ${BUILD_ROOT} ")
+
+PD_STUBS_SOURCES = [
+        '${BUILDPATH}/pd_stubs.c'
+        ]
+
+if env.get('AUDIO_IMG_NAME'):
+    env.Append(CPPDEFINES="AUDIO_IMG_NAME=\\\"audio_process\\\"")
+else:
+    env.Append(CPPDEFINES="AUDIO_IMG_NAME=\\\"M${BUILD_ASIC}${BUILD_ID}${BUILD_VER}_AUDIO.pbn\\\"")
+if env.get('SENSOR_IMG_NAME'):
+    env.Append(CPPDEFINES="SENSOR_IMG_NAME=\\\"sensor_process\\\"")
+else:
+    env.Append(CPPDEFINES="SENSOR_IMG_NAME=\\\"M${BUILD_ASIC}${BUILD_ID}${BUILD_VER}_SENSOR.pbn\\\"")
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+if 'BUILD_BAREBONE' in env :
+    env.AddLibrary(
+       ['CORE_ADSP_ROOT', 'CORE_SLPI_ROOT', 'CORE_ADSP_SLPI_ROOT', ],
+       '${BUILDPATH}/pd_stubs',
+       PD_STUBS_SOURCES)
+       
+    if 'USES_RCINIT' in env:
+
+        env.AddRCInitFunc(              
+            ['CORE_ADSP_ROOT', 'CORE_SLPI_ADSP_ROOT'],
+            {
+                  'sequence_group' : 'RCINIT_GROUP_7',               # required
+                  'init_name'      : 'pd_audio',                     # required
+                  'init_function'  : 'pd_mon_audio_core',            # required
+             })
+
+        env.AddRCInitFunc(              
+            ['CORE_SLPI_ROOT','CORE_SLPI_ADSP_ROOT'],
+            {
+                  'sequence_group' : 'RCINIT_GROUP_7',               # required
+                  'init_name'      : 'pd_sensors',                   # required
+                  'init_function'  : 'pd_mon_sensors_core',          # required
+             })
+             
+             

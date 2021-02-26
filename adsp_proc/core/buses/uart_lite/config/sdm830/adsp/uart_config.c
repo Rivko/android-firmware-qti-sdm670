@@ -1,0 +1,69 @@
+/*==================================================================================================
+
+FILE: uart_slpi_uimage_[target].c
+
+DESCRIPTION: This module provides the os based functionalities for the UART.
+
+Copyright (c) 2009-2015 Qualcomm Technologies, Inc.
+        All Rights Reserved.
+Qualcomm Technologies, Inc. Confidential and Proprietary.
+
+==================================================================================================*/
+/*==================================================================================================
+                                            DESCRIPTION
+====================================================================================================
+
+
+==================================================================================================*/
+/*==================================================================================================
+Edit History
+
+$Header: //components/rel/core.qdsp6/2.1/buses/uart_lite/config/sdm830/adsp/uart_config.c#1 $
+
+when       who     what, where, why
+--------   --------     --------------------------------------------------------
+08/12/15   stranche     Added irq numbers to structs
+01/26/15   VV      Initial revision.
+
+==================================================================================================*/
+
+/*-------------------------------------------------------------------------
+* Include Files
+* ----------------------------------------------------------------------*/
+#include "uart.h"
+#include "uart_defs.h"
+
+UART_PROPERTIES devices[UART_MAX_PORTS] =
+{
+   {
+      // MAIN_PORT
+      0xA88000,    // uart_base
+      0x2001C0C1,  // gpio_tx_config
+      0x200080D1,  // gpio_rx_config
+      0,           // gpio_cts_config
+      0,           // gpio_rfr_config
+      0,           // clock_id_index
+      (void*)0,        // bus_clock_id
+      (void*)0, // core_clock_id
+      100000000,   // base_freq;
+      64,          // irq number
+      0x1FC0000,   //TCSR base
+      0x0000B060,  // TCSR offset
+      0xFFFF,           // TCSR value
+
+   },
+   {
+      // SECOND_PORT
+      0x5A84000,  // uart_base
+      0x2001C0E1,  // gpio_tx_config
+      0x200080F1,  // gpio_rx_config
+      0,           // gpio_cts_config
+      0,           // gpio_rfr_config
+      0,           // clock_id_index
+      (void*)0,        // bus_clock_id
+      (void*)0, // core_clock_id
+      100000000,   // base_freq;
+      32,          // irq number
+   },
+
+};

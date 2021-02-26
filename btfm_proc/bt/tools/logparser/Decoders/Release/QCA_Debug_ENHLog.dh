@@ -1,0 +1,184 @@
+/************************************************
+ * File: QCA_Debug_ENHLog.dh
+ * QCA Bluetooth Firmware Logging Parser.  
+ * 
+ * Copyright (c) 2015, 2017 Qualcomm Atheros, Inc.
+ * All Rights Reserved. 
+ * Qualcomm Atheros Confidential and Proprietary.
+************************************************/
+
+
+/* Table with list of Log Modules */
+TABLE tQca_EnhLogModule
+    {0 "SLC"}
+    {1 "HIF"}
+    {2 "LLM"}
+    {3 "OTA"}
+    {4 "CxM"}
+    {5 "APP"}
+    {6 "STATS"} 
+    {7 "PFAL"} 
+    {9 "A2DP"}
+    {Default "Invalid"}
+ENDTABLE
+
+/* Table with list of Log IDs */
+TABLE tQca_EnhLogID
+    //{0x0000 "LOG_ID_SLC_DATA" "LOG_ID_SLC_DATA" 0 gQca_SLCPktParse}
+    //{0x00FF "SLC End"}
+    
+    {0x0100 "HIF Start"}
+    {0x0101 "LOG_ID_HIF_BT_CMD_PKT"}
+    {0x0102 "LOG_ID_HIF_BT_EVT_PKT"}
+	{0x0103 "LOG_ID_HIF_PROFILE_DETECTION_COLLISION" "LOG_ID_HIF_PROFILE_DETECTION_COLLISION" 0 gQca_DetectionCollision}
+	{0x0104 "LOG_ID_HIF_PROFILE_DETECTION" "LOG_ID_HIF_PROFILE_DETECTION" 0 gQca_ProfileDetection}
+    {0x01FF "HIF End"}
+
+    //{0x0200 "LLM Start"}
+    //{0x02FF "LLM End"}
+    
+    //{0x0300 "OTA Start"}
+    {0x03FF "OTA End"}
+    
+    //{0x0400 "CxM Start"}
+    //{0x04FF "CxM End"}
+    
+    {0x0500 "APP Start"}
+    {0x05FF "APP End"}
+
+    
+    //{0x0900 "A2DP Start"}
+    //{0x09FF "A2DP End"}
+    
+    {Default "RawData" "RawData" 0 gQca_DefaultPrint}
+ENDTABLE
+
+/* Table with list of Log Levels */
+TABLE tQca_EnhLogLevel
+    {0 "LOG_ERROR"}
+    {1 "LOG_HIGH"}
+    {2 "LOG_MED"}
+    {3 "LOG_LOW"}
+    {Default "Invalid"}
+ENDTABLE
+
+/* Table with list of Log Formats */
+TABLE tQca_EnhLogFormat
+    {0 "FMT_PACKET"}
+    {1 "FMT_HEXDUMP"}
+    {2 "FMT_HEXINT"}
+    {3 "FMT_UNSIGNED"}
+    {4 "FMT_SIGNED"}
+    {5 "FMT_STRING"}
+    {Default "Invalid"}
+ENDTABLE
+
+/* Unknown field for Generic usage */
+FIELD fQca_Unknown      (Fixed 0) (Hex)  "UnKnown" NO_MOVE
+
+/* Group of Fields for Packet Info Header */
+GROUP gQca_PktHeader
+{
+    FIELD fQca_Pkt_LogID        (Fixed 2 Bytes)     (TABLE tQca_EnhLogID)       IN_SUMMARY "Log ID"     "Log ID"
+    FIELD fQca_Pkt_LogFmt       (Fixed 4 Bits)      (TABLE tQca_EnhLogFormat)                           "Log Format"
+    RESERVED                    (Fixed 2 Bits)
+    FIELD fQca_Pkt_LogLvl       (Fixed 2 Bits)      (TABLE tQca_EnhLogLevel)    IN_SUMMARY "Log Level"  "Log Level"
+    RESERVED                    (Fixed 1 Byte)
+    GROUP gQca_TimeStamp;
+    FIELD fQca_Pkt_Len          (Fixed 2 Bytes)     (Decimal)                   IN_SUMMARY "Length"     "Length"
+
+    BRANCH (FromTable   tQca_EnhLogID   fQca_Pkt_LogID)
+}
+
+/* Time Stamp Information Group */
+GROUP gQca_TimeStamp Timestamp
+{
+    FIELD fQca_Pkt_TsRaw        (Fixed  4 Bytes)                               (Hex)                         "Raw TimeStamp"   NO_MOVE
+    FIELD fQca_TsCLKN           (Fixed  4 Bytes)  RETRIEVE (SplitField 28 4)   (Hex) IN_SUMMARY "TimeStamp"  "CLKN(312.5usec)" NO_MOVE
+    FIELD fQca_TsFRAC           (Fixed  4 Bytes)  RETRIEVE (ShiftRight 28  )   (Hex)                         "FRAC(32usec)" 
+}
+
+/* Start of Parsing the Packet Info:
+ * Loop until End of the Frame to capture multiple Log packets in one Frame 
+ * Included the Loop Counter to display in Decode Pane. */
+GROUP gQca_LogPktParse //"Log Packet Info"
+{
+    FIELD fQca_sMainVer (Fixed 0) RETRIEVE (IntraframeField sQcaMainVer) (Hex) SUPPRESS_DETAIL
+    /* Init the Counter to 1 */
+    FIELD fQca_PktCntr  (Fixed 0)   RETRIEVE (StoreInteger 1)   (Hex)   SUPPRESS_DETAIL STORE PktCntr
+    /* Loop through the end of the frame to capture all the Log Packets in the Frame */
+    GROUP gQca_LogPktLoop   //REPEAT SIZE (ToEndOfLayer)
+    {
+        /* Parse the Packet Header and Data */
+        GROUP gQca_PktHeaderInfo //LABEL(LabelCount "Debug PacketInfo #" PktCntr)
+        {
+            GROUP gQca_PktHeader;
+        }
+        /* Increment the Counter */
+        FIELD fQca_PktCntrIncr (Fixed 0) RETRIEVE (StoreField PktCntr) ALSO (AddInteger 1) (Decimal) SUPPRESS_DETAIL STORE PktCntr
+    }
+}
+
+GROUP gQca_DefaultPrint "Debug data"
+{
+    FIELD fQca_FmtPacket         (FromField Bytes fQca_Pkt_Len)     IF (FieldIs EqualTo 0x00 fQca_Pkt_LogFmt)    (StringOfHex)       "HexDump"
+    FIELD fQca_FmtHexDump        (FromField Bytes fQca_Pkt_Len)     IF (FieldIs EqualTo 0x01 fQca_Pkt_LogFmt)    (StringOfHex)       "HexDump"
+    FIELD fQca_FmtHexInt         (FromField Bytes fQca_Pkt_Len)     IF (FieldIs EqualTo 0x02 fQca_Pkt_LogFmt)    (Hex)               "HexInt"
+    FIELD fQca_FmtUnsigned       (FromField Bytes fQca_Pkt_Len)     IF (FieldIs EqualTo 0x03 fQca_Pkt_LogFmt)    (Decimal)           "Unsigned"
+    FIELD fQca_FmtSigned         (FromField Bytes fQca_Pkt_Len)     IF (FieldIs EqualTo 0x04 fQca_Pkt_LogFmt)    (Decimal)           "Signed"
+    FIELD fQca_FmtString         (FromField Bytes fQca_Pkt_Len)     IF (FieldIs EqualTo 0x05 fQca_Pkt_LogFmt)    (StringOfAscii)     "String"
+    FIELD fQca_FmtLineno         (FromField Bytes fQca_Pkt_Len)     IF (FieldIs EqualTo 0x06 fQca_Pkt_LogFmt)    (Decimal)           "Line No"
+}
+
+/* Fields Format for LOG_ID_HIF_PROFILE_DETECTION_COLLISION */
+GROUP gQca_DetectionCollision
+{    
+    FIELD fQca_Conn_Handle     (Fixed 1 Byte)      (Decimal)       "ConnHandle"
+}
+/* Fields Format for LOG_ID_HIF_PROFILE_DETECTION */
+GROUP gQca_ProfileDetection "Profile Change"
+{
+	GROUP gQca_L2CAP_LastProfilelist;
+	GROUP gQca_L2CAP_NewProfilelist;
+    FIELD fQca_Conn_Handle;
+}
+
+TABLE Existed
+{ 0 "No"}
+{ 1 "Yes"}
+ENDTABLE
+
+TABLE StartStop
+{ 0 "Stop"}
+{ 1 "Start"}
+ENDTABLE
+
+GROUP gQca_L2CAP_Profilelist
+{
+	FIELD fQca_ProfileList_0_7 (Fixed 1 Bit) (TABLE Existed) "BNEP"
+	FIELD fQca_ProfileList_0_6 (Fixed 1 Bit) (Hex) "reserved"
+	FIELD fQca_ProfileList_0_5 (Fixed 1 Bit) (TABLE Existed) "RFCOMM"
+	FIELD fQca_ProfileList_0_4 (Fixed 1 Bit) (Hex) "reserved"
+	FIELD fQca_ProfileList_0_3 (Fixed 1 Bit) (TABLE Existed) "HID"
+	FIELD fQca_ProfileList_0_2 (Fixed 1 Bit) (Hex) "reserved"
+	FIELD fQca_ProfileList_0_1 (Fixed 1 Bit) (TABLE StartStop) "A2DP"
+	FIELD fQca_ProfileList_0_0 (Fixed 1 Bit) (Hex) "reserved"	
+	FIELD fQca_ProfileList_1_7 (Fixed 1 Bit) (TABLE Existed) "RFCOMM_X"
+	FIELD fQca_ProfileList_1_6_2 (Fixed 5 Bit) (Hex) "reserved"
+	FIELD fQca_ProfileList_1_1 (Fixed 1 Bit) (TABLE Existed) "GOEP"
+	FIELD fQca_ProfileList_1_0 (Fixed 1 Bit) (TABLE Existed) "reserved"	
+	FIELD fQca_ProfileList_2_7 (Fixed 1 Bit) (TABLE Existed) "OBEX"
+	FIELD fQca_ProfileList_2_6_1 (Fixed 6 Bit) (Hex) "reserved"
+	FIELD fQca_ProfileList_2_0 (Fixed 1 Bit) (TABLE Existed) "A2DP"
+	FIELD fQca_ProfileList_3_7_0 (Fixed 8 Bit) (Hex) "reserved"
+}
+
+GROUP gQca_L2CAP_LastProfilelist "LastProfileList"
+{
+	GROUP gQca_L2CAP_Profilelist;
+}
+
+GROUP gQca_L2CAP_NewProfilelist "NewProfileList"
+{
+	GROUP gQca_L2CAP_Profilelist;
+}

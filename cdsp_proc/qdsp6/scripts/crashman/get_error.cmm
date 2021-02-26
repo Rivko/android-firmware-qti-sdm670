@@ -1,0 +1,328 @@
+errordescription:
+ENTRY &tcb
+
+
+Area.Create err_info
+Area.Select err_info
+Area.Clear  err_info
+Area err_info
+
+
+if "&tcb"==""
+(
+   print "pls. provide the TCB address, you can get it by double click <task name> in task list"
+   print "..."
+   enddo
+)
+
+&Cause=v.value(((QURTK_thread_context*)&tcb)->error.cause)
+
+if &Cause==0x0
+(
+   print "No error occurred in this thread"
+   enddo
+)
+
+print "Exception detected in thread with TCB:&tcb "
+
+&ver= v.value(QURT_error_info.globregs.rev)
+&isa_ver=&ver&0xFF
+
+&value=v.value(((QURTK_thread_context*)&tcb)->ssrelr)
+&PCvalue=&value&0xFFFFFFFF
+&SSRvalue=&value>>0x20
+
+&BADVAvalue=v.value(((QURTK_thread_context*)&tcb)->error.badva)
+&Causevalue=v.value(((QURTK_thread_context*)&tcb)->error.cause)
+&diag=v.value(QURT_error_info.globregs.diag)
+
+
+if (&isa_ver>=0x4)
+  GOSUB PrintErrorDescription_v4 &Causevalue &SSRvalue &BADVAvalue &PCvalue &diag
+else
+  GOSUB PrintErrorDescription &Causevalue &SSRvalue &BADVAvalue &PCvalue &diag
+  
+enddo
+
+
+PrintErrorDescription:
+ENTRY &loc_cause &loc_ssr &loc_badva &loc_elr &loc_diag
+  &precise_reason=&loc_ssr&0xFF
+  print "---------------------------"
+  if (&loc_cause==0x1) ; QURT_ERR_PRECISE
+  (
+     if (&precise_reason==0x1)
+        print "Precise BIU error (bus error, timeout, L2 parity error, etc.)"
+     else if (&precise_reason==0x3)
+        print "Double Excepiton (exception occurs while SSR[EX]=1)"
+     else if (&precise_reason==0x11)
+        print "Privilege violation: User mode execute to page with no execute permissions"
+     else if (&precise_reason==0x15)
+     (
+        print "Invalid Packet. This can happen from one of:"
+        print "   - Packet of more than one instruction in uncacheable memory."
+        print "   - Invalid opcode or reserved instruction"
+        print "   - Bad packet parse bits (packet too long, or using reserved pattern)"
+     )
+     else if (&precise_reason==0x1B)
+        print "Privilege violation: Executing a supervisor instruction in user mode"
+     else if (&precise_reason==0x1C)
+        print "Program Counter values that are not properly aligned"
+     else if (&precise_reason==0x20)
+        print "Load to misaligned address - &loc_badva"
+     else if (&precise_reason==0x21)
+        print "Store to misaligned address - &loc_badva"
+     else if (&precise_reason==0x22)
+        print "Privilege violation: User mode Read to page with no read permission, address - &loc_badva"
+     else if (&precise_reason==0x23)
+        print "Privilege violation: User mode Write to page with no write permission, address - &loc_badva"
+     else if (&precise_reason==0x28)
+     (
+        print "Bad cacheability type, one of:"
+        print "   - Packet with multiple memory operations, and one or more of them is to uncached memory."
+        print "   - DCZEROA to a page that is not write-back"
+        print "   - LL/SC to a write-through page"
+     )
+     else if (&precise_reason==0x29)
+     (
+        print "Packet with multiple writes to the same destination register. The following rules apply to this exception:"
+        print "Refer HEXAGON System Architecture"
+     )
+     else
+        print "Undefined Error by Hexagon processor"
+  )
+  else if &loc_cause==0x2 
+  (
+     &nmi_reason=(&loc_diag&0xF0)>>4
+     &nmi_hw_thread=&loc_diag&0xF
+     if (&nmi_reason==0x3)
+        print "NMI Exception occurred"
+     else if (&nmi_reason==0x2)
+        print "Imprecise Data abort on HW thread - &nmi_hw_thread"
+     else if (&nmi_reason==0x4)
+        print "Imprecise Multiple TLB match"
+     else
+        print "Unknown Imprecise Error by HEXAGON processor"
+  )
+  else if &loc_cause==0x3
+  (
+     print "TLB Miss R/W occurred"
+     print "address - &loc_badva, pc - &loc_elr"
+  )
+  else if &loc_cause==0x4
+     print "Reseved Vector handler called"
+  else if &loc_cause==0x5
+     print "SW Assert"
+  else if &loc_cause==0x6
+     print "Bad Trap"
+  else if &loc_cause==0x7
+     print "Trap1 called. Not supported"
+  else if &loc_cause==0x8
+     print "Exit from user"
+  else if &loc_cause==0x9
+     print "SW error, Scheduler Sanity error"
+  else if &loc_cause==0xA
+     print "TLB Miss X occurred"
+  else if &loc_cause==0xB
+     print "SW error, Stopped error"
+  else if &loc_cause==0xC
+     print "SW error, fatal exit error"
+  else
+     print "Undefined Error by QURT"
+  print "---------------------------"
+RETURN
+
+
+PrintPreciseError:
+  ENTRY &db_reason &rec_badva  &rec_diag &rec_count
+  if &rec_count<0x2
+  (
+       &rec_count=&rec_count+1
+       if (&db_reason==0x1)
+          print "&db_reason: Precise BIU error (bus error, timeout, L2 parity error, etc.)"
+       else if (&db_reason==0x3)
+       (
+          print "Double Excepiton (exception occurs while SSR[EX]=1)"
+          print "Cause code &db_reason"
+          &db_reason=&rec_diag&0xff
+          GOSUB PrintPreciseError &db_reason &rec_badva &rec_diag &rec_count
+       )
+       else if (&db_reason==0x11)
+          print "&db_reason: Privilege violation: User mode execute to page with no execute permissions"
+       else if (&db_reason==0x15)
+       (
+          print "Invalid Packet. This can happen from one of:"
+          print "   - Packet of more than one instruction in uncacheable memory."
+          print "   - Invalid opcode or reserved instruction"
+          print "   - Bad packet parse bits (packet too long, or using reserved pattern)"
+       )
+       else if (&db_reason==0x1A)
+          print "Privilege violation: Executing a Guest mode instruction in user mode"
+       else if (&db_reason==0x1B)
+          print "Privilege violation: Executing a supervisor instruction in user/Guest mode"
+       else if (&db_reason==0x1C)
+          print "Program Counter values that are not properly aligned"
+       else if (&db_reason==0x1D)
+         print "Packet with multiple writes to the same destination"
+       else if (&db_reason==0x20)
+          print "Load to misaligned address - &rec_badva"
+       else if (&db_reason==0x21)
+          print "Store to misaligned address - &rec_badva"
+       else if (&db_reason==0x22)
+          print "Privilege violation: User/Guest mode Read to page with no read permission, address - &rec_badva"
+       else if (&db_reason==0x23)
+          print "Privilege violation: User/Guest mode Write to page with no write permission, address - &rec_badva"
+       else if (&db_reason==0x24)
+          print "Privilege violation: User mode Read to page with no read permission, address - &rec_badva"
+       else if (&db_reason==0x25)
+          print "Privilege violation: User mode Write to page with no write permission, address - &rec_badva"
+       else if (&db_reason==0x70)
+          print "TLB Miss RW occurred at address - &rec_badva"
+        else if (&db_reason==0x71)
+          print "TLB Miss Write occurred at address - &rec_badva"
+        else if (&db_reason==0x60)
+          print "TLB Miss X - Due to Missing Fetch address on &rec_badva"
+        else if (&db_reason==0x61)
+          print "TLB Miss X - Due to Missing Fetch address on subsequent &rec_badva" 
+        else if (&db_reason==0x62)
+          print "TLB Miss X - Due to ICINVA at address &rec_badva"
+        else if (&db_reason==0x80)
+          print "Single-step debug exception"
+        else
+           print "Unknown Error by HEXAGON processor &db_reason"
+     )
+RETURN
+
+PrintErrorDescription_v4:
+ENTRY &loc_cause &loc_ssr &loc_badva &loc_elr &loc_diag
+  &precise_reason=&loc_ssr&0xFF
+  print "---------------------------"
+  if (&loc_cause==0x1) ; QURT_ERR_PRECISE
+  (
+       if (&precise_reason==0x1)
+        print "Precise BIU error (bus error, timeout, L2 parity error, etc.)"
+       else if (&precise_reason==0x3)
+       (
+          &count=0
+        print "Double Excepiton (exception occurs while SSR[EX]=1)"
+          print "Cause code &precise_reason"
+          &db_reason=&loc_diag&0xff
+          GOSUB PrintPreciseError &db_reason &loc_badva  &loc_diag &count
+       )
+       else if (&precise_reason==0x11)
+	print "Privilege violation: User mode execute to page with no execute permissions"
+       else if (&precise_reason==0x12)
+	print "Privilege violation: User mode execute to a page with no user permissions (X=1, U=0)."
+       else if (&precise_reason==0x15)
+     (
+        print "Invalid Packet. This can happen from one of:"
+        print "   - Packet of more than one instruction in uncacheable memory."
+        print "   - Invalid opcode or reserved instruction"
+        print "   - Bad packet parse bits (packet too long, or using reserved pattern)"
+     )
+       else if (&precise_reason==0x16)
+	print "Illegal Execution of Coprocessor Instruction."
+       else if (&precise_reason==0x1A)
+	print "Privilege violation: Executing a Guest mode instruction in user mode"
+       else if (&precise_reason==0x1B)
+	print "Privilege violation: Executing a supervisor instruction in user/Guest mode"
+       else if (&precise_reason==0x1C)
+	print "Program Counter values that are not properly aligned"
+       else if (&precise_reason==0x1D)
+       print "Packet with multiple writes to the same destination"
+       else if (&precise_reason==0x1E)
+       print "Program counter values that are not properly aligned."
+       else if (&precise_reason==0x20)
+        print "Load to misaligned address - &loc_badva"
+       else if (&precise_reason==0x21)
+        print "Store to misaligned address - &loc_badva"
+       else if (&precise_reason==0x22)
+        print "Privilege violation: User/Guest mode Read to page with no read permission, address - &loc_badva"
+       else if (&precise_reason==0x23)
+        print "Privilege violation: User/Guest mode Write to page with no write permission, address - &loc_badva"
+       else if (&precise_reason==0x24)
+        print "Privilege violation: User mode Read to page with no read permission, address - &loc_badva"
+       else if (&precise_reason==0x25)
+	print "Privilege violation: User mode Write to page with no write permission, address - &loc_badva"
+       else if (&precise_reason==0x26)
+	print "Coprocessor VMEM address error."
+       else if (&precise_reason==0x27)
+	print "Stack overflow: An allocframe instruction was executed that exceeded the bounds determined by FRAMELIMIT."
+     else
+        print "Undefined Error by Hexagon processor"
+    
+  )
+  else if &loc_cause==0x2
+  (
+     &nmi_reason=(&loc_diag&0xF0)>>4
+     &nmi_hw_thread=&loc_diag&0xF
+     if (&nmi_reason==0x3)
+        print "NMI Exception occurred"
+     else if (&nmi_reason==0x2)
+        print "Imprecise Data abort on HW thread - &nmi_hw_thread"
+     else if (&nmi_reason==0x4)
+        print "Imprecise Multiple TLB match on HW thread - &nmi_hw_thread "
+      else if (&nmi_reason==0xf)
+        print "Livelock exception on HW thread - &nmi_hw_thread "
+     else
+        print "Unknown Imprecise Error by HEXAGON processor"
+  )
+  else if &loc_cause==0x3
+     (
+     &tlbrw_reason=&loc_ssr&0xFF
+     if (&tlbrw_reason==0x70)
+       print "TLB Miss Read occurred at address - &loc_badva, pc - &loc_elr"
+     else if (&tlbrw_reason==0x71)
+       print "TLB Miss Write occurred at address - &loc_badva, pc - &loc_elr"
+     else
+       print "Unknown TLB Miss-RW Error by HEXAGON processor badva &loc_badva, elr &loc_elr"
+  )
+  else if &loc_cause==0x4
+     print "Reseved Vector handler called"
+  else if &loc_cause==0x5
+     print "SW Assert"
+  else if &loc_cause==0x6
+     print "Bad Trap"
+  else if &loc_cause==0x7
+     (
+     &trap1_op=&loc_ssr&0xFF
+     print "Trap1 called - operand &trap1_op, next PC &loc_elr"
+  )
+  else if &loc_cause==0x8
+     print "Exit from user"
+  else if &loc_cause==0x9
+     print "SW error, Scheduler Sanity error"
+  else if &loc_cause==0xA
+  (
+     &tlbx_reason=&loc_ssr&0xff
+     if (&tlbx_reason==0x60)
+     (
+       print "TLB Miss X - Due to Missing Fetch address on &loc_elr Page"
+     )  
+     else if (&tlbx_reason==0x61)
+     (
+       print "TLB Miss X - Due to Missing Fetch address on subsequent &loc_elr Page badva &loc_badva"  
+     )  
+     else if (&tlbx_reason==0x62)
+     ( 
+       &fault_page=(&loc_badva>>12)&0xfffff
+       print "TLB Miss X - Due to ICINVA at address &loc_elr, faulting page &fault_page badva &loc_badva"
+     )
+     else
+     (
+        print "Unknown TLB Miss X  Error by HEXAGON processor badva &loc_badva"
+     )   
+  )
+  else if &loc_cause==0xB
+     print "SW error, Stopped error"
+  else if &loc_cause==0xC
+     print "SW error, fatal exit error"
+  else if &loc_cause==0xE
+  (
+     &fp_cause=&loc_ssr&0xff
+     print "Floating Point Error : cause &fp_cause"
+  )
+  else
+     print "Undefined Error by QURT"
+  print "---------------------------"
+RETURN

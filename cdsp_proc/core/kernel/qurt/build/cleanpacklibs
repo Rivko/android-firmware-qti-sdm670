@@ -1,0 +1,71 @@
+#===============================================================================
+#                    Copyright (c) 2014  by Qualcomm Technologies, Inc.  All Rights Reserved.
+#                         QUALCOMM Proprietary/GTDR
+#===============================================================================
+import SCons
+import os
+import re
+	
+def publish(name, node):
+   qurt_lib_dict[name] = node        # Store node in dictionary under the given name
+   qlibs.append(node)                # and add it to the unlabeled list
+
+Import('qurtenv')
+env = qurtenv.Clone()
+if 'QURT_SCONS_GLOBALS' in qurtenv:
+   qurt_lib_dict = qurtenv['QURT_SCONS_GLOBALS']
+else:
+   qurt_lib_dict = dict()        # Just make an empty dictionary; we won't use it but it's harmless
+
+#setup target
+env.Tool('target_tools',toolpath=['..'])
+
+#setup builders
+env.Tool('qurt_builders',toolpath=['..'])
+
+result=[]
+f=open(env.subst('${INSTALL_DIR}')+"/scripts/Input/build_params.txt")
+p = re.compile('(.*)(%s)(\s*=\s*)(.*?)(\s*^)' % "BUILD_CONFIG_FLAGS", re.M | re.S)
+m = re.match(p, f.read())
+if m:
+   result = re.split('\s+', m.group(4))
+env.Replace(BUILD_CCFLAGS = result)
+
+install_lib = env.subst('${INSTALL_DIR}') + '/lib'
+qlibs = []
+
+#libqurtcfs.a
+publish('cfsnode',env.File(install_lib+"/libqurtcfs.a"))
+
+#libposix.a
+publish('posixnode',env.File(install_lib+"/libposix.a"))
+
+#libqube_compat.a
+publish('compatnode',env.File(install_lib+"/libqube_compat.a"))
+
+#libqurt.a
+publish('qurtnode',env.File(install_lib+"/libqurt.a"))
+
+#libtimer.a
+publish('timernode',env.File(install_lib+"/libtimer.a"))
+
+#libqurtkernel.a
+publish('qurtkernelnode',env.File(install_lib+"/libqurtkernel.a"))
+
+#libqurtkernel_island.a
+publish('qurtkernel_islandnode',env.File(install_lib+"/libqurtkernel_island.a"))
+
+#libqurtkernel_main.a
+publish('qurtkernel_mainnode',env.File(install_lib+"/libqurtkernel_main.a"))
+
+#crt0.o
+publish('crt0node',env.File(install_lib+"/crt0.o"))
+
+#libqurtdebugger.a
+publish('qurtdebuggernode',env.File(install_lib+"/libqurtdebugger.a"))
+
+#crt1.o
+publish('crt1node',env.File(install_lib+"/crt1.o"))
+
+publish('qurtenv',env)
+Return('qlibs')

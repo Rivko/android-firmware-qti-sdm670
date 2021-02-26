@@ -1,0 +1,81 @@
+#===============================================================================
+#
+# TLMM Settings
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2016-2017 QUALCOMM Technologies Incorporated.
+#  All Rights Reserved.
+#  QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1.c4/settings/systemdrivers/tlmm/build/tlmm.scons#1 $
+#  $DateTime: 2018/07/30 01:21:36 $
+#  $Author: pwbldsvc $
+#  $Change: 16759227 $
+#
+#===============================================================================
+
+import os
+
+Import('env')
+
+SRCPATH = "../config"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'DAL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(['TLMM_DEVCFG_INTERFACE'])
+
+TLMM_IMAGES = ['CORE_Q6_ROOT','CORE_CDSP_ROOT','CORE_ADSP_ROOT']
+
+#---------------------------------------------------------------------------
+# Add DAL XML file
+#---------------------------------------------------------------------------
+
+if 'USES_DEVCFG' in env:
+   DEVCFG_IMG = ['DAL_DEVCFG_IMG']
+   env.AddDevCfgInfo(DEVCFG_IMG, 
+   {
+    '670_xml' : ['../config/sdm670/TLMMChipset.xml',
+                 '../config/sdm670/plat_io_cdp670.xml',
+                 '../config/sdm670/plat_io_mtp670.xml',
+                 '../config/sdm670/plat_io_qrd670.xml'],
+    '845_xml' : ['../config/sdm845/TLMMChipset.xml',
+                 '../config/sdm845/plat_io_cdp845.xml',
+                 '../config/sdm845/plat_io_mtp845.xml',
+                 '../config/sdm845/plat_io_qrd845.xml'],
+    '855_xml' : ['../config/sdm855/TLMMChipset.xml',
+                 '../config/sdm855/plat_io_cdp845.xml',
+                 '../config/sdm855/plat_io_mtp845.xml',
+                 '../config/sdm855/plat_io_qrd845.xml'],
+   })
+
+
+#---------------------------------------------------------------------------
+# Pack out target specific files not needed
+#---------------------------------------------------------------------------
+
+# Remove target config files
+ALL_CONFIG_FILES = env.FindFiles(
+  ['*'],
+  '../config/')
+SHARED_CONFIG_FILES = env.FindFiles(
+  ['DALTLMMPropDef.h'],
+  '../interface/')
+MY_CONFIG_FILES = env.FindFiles(
+  ['*'],
+  '../config/${CHIPSET}')
+PACK_CONFIG_FILES = list(set(ALL_CONFIG_FILES) - set(SHARED_CONFIG_FILES) - set(MY_CONFIG_FILES))
+env.CleanPack(TLMM_IMAGES, PACK_CONFIG_FILES)
+

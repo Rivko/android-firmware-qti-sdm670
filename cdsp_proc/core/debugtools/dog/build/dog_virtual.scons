@@ -1,0 +1,135 @@
+# vi: tw=128 ts=3 sw=3 et
+# @file dog_virtual.scons
+# @brief This file contains the API details for the Dog Services (Hardware/Software)
+#===============================================================================
+# NOTE: The @brief description above does not appear in the PDF.
+# The tms_mainpage.dox file contains the group/module descriptions that
+# are displayed in the output PDF generated using Doxygen and LaTeX. To
+# edit or update any of the group/module text in the PDF, edit the
+# tms_mainpage.dox file or contact Tech Pubs.
+#===============================================================================
+#===============================================================================
+# Copyright (c) 2015-2016 Qualcomm Technologies Incorporated.
+# All Rights Reserved.
+# Qualcomm Confidential and Proprietary.
+#===============================================================================
+#===============================================================================
+# Edit History
+# $Header: //components/rel/core.qdsp6/2.1.c4/debugtools/dog/build/dog_virtual.scons#1 $
+# $DateTime: 2018/07/30 01:21:36 $
+# $Change: 16759227 $
+# $Author: pwbldsvc $
+#===============================================================================
+
+Import('env')
+
+BUILD_TAGS_ROOT = [
+
+   'CORE_APPS',                  # Domain(REX + TN)
+   'CORE_EOS',                   # Domain(REX + EOS)
+   'CORE_GSS',                   # Domain(REX + GSS)
+   'CORE_IMC',                   # Domain(??? + IMC)
+   'CORE_MODEM',                 # Domain(Root + Modem)
+   'CORE_RPM',                   # Domain(REX + RPM)
+   'CORE_VPU',                   # Domain(REX + VPU)
+   'CORE_WCN',                   # Domain(REX + WCN)
+   'CORE_ROOT_PD',               # Domain(Qurt Root, Generic)
+   'CORE_ARMV8_ROOT_PD',         # Domain(Qurt Root, Generic, ARMV8)
+   'CORE_QDSP6_ROOT_PD',         # Domain(Qurt Root, Generic, QDSP6)
+   'CORE_QDSP6_SW',              # Domain(Qurt Root + Audio)
+   'MODEM_MODEM',                # Domain(Qurt Root + Modem)
+   'CNSS_IMAGE',                 # Domain(REX + EOS)
+]
+
+BUILD_TAGS_USER = [
+
+   'CORE_USER_PD',               # Domain(Qurt User, Generic)
+   'CORE_ARMV8_USER_PD',         # Domain(Qurt User, Generic, ARMV8)
+   'CORE_QDSP6_USER_PD',         # Domain(Qurt User, Generic, QDSP6)
+   'CORE_ARMV8_IMC_SW',          # Domain(Qurt User, IMC)
+   'CORE_QDSP6_AUDIO_SW',        # Domain(Qurt User, Audio)
+   'CORE_QDSP6_MODEM_SW',        # Domain(Qurt User, Modem)
+   'CORE_QDSP6_SENSOR_SW',       # Domain(Qurt User, Sensors)
+   'CORE_QDSP6_WCN_SW',          # Domain(Qurt User, Wireless)
+]
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+
+env.VariantDir('${BUILDPATH}', '../src', duplicate=0)
+
+#-------------------------------------------------------------------------------
+# External Dependency
+#-------------------------------------------------------------------------------
+
+
+#-------------------------------------------------------------------------------
+# Internal Dependency
+#-------------------------------------------------------------------------------
+
+env.RequirePublicApi([
+   'DAL',
+   'TMS',
+   'DEBUGTOOLS', # alias to TMS
+   'DEBUGTRACE',
+   'SERVICES',
+   'STORAGE',
+   'SYSTEMDRIVERS',
+   'KERNEL', # needs to be last (also contains wrong comdef.h)
+])
+
+env.RequireRestrictedApi([
+   'TMS_RESTRICTED',
+   'DEBUGTOOLS', # alias to TMS
+])
+
+#-------------------------------------------------------------------------------
+# Sources
+#-------------------------------------------------------------------------------
+
+DOG_ROOT = [
+      '${BUILDPATH}/dog_virtual_root.c',
+   ]
+
+DOG_USER = [
+   '${BUILDPATH}/dog_virtual_user.c',
+]
+
+#-------------------------------------------------------------------------------
+# Libraries
+#-------------------------------------------------------------------------------
+
+env.AddLibrary(BUILD_TAGS_ROOT, '${BUILDPATH}/dog_virtual_root', DOG_ROOT)
+
+env.AddLibrary(BUILD_TAGS_USER, '${BUILDPATH}/dog_virtual_user', DOG_USER)
+
+#-------------------------------------------------------------------------------
+# Task Provisioning Information
+#-------------------------------------------------------------------------------
+
+if 'USES_RCINIT' in env:
+
+   env.AddRCInitFunc(
+      BUILD_TAGS_ROOT,
+      {
+         'sequence_group'             : 'RCINIT_GROUP_0',
+         'init_name'                  : 'dog_qdi',
+         'init_function'              : 'dog_qdi_init',
+         'dependencies'               : [ 'dog_hal_root', ],
+      })
+
+   env.AddRCInitFunc(
+      BUILD_TAGS_USER,
+      {
+         'sequence_group'             : 'RCINIT_GROUP_0',
+         'init_name'                  : 'dog_qdi',
+         'init_function'              : 'dog_qdi_init',
+         'dependencies'               : ['dalsys', 'timer_client', 'timer_init'],
+      })
+
+#-------------------------------------------------------------------------------
+# DALCFG Image "Static" Configuration Items
+#-------------------------------------------------------------------------------
+
+# NONE

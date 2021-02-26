@@ -1,0 +1,305 @@
+//============================================================================
+//  Name:                                                                     
+//    std_trace.cmm 
+//
+//  Description:                                                              
+//    Top level tracing script
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who             what, where, why
+// --------   ---             ---------------------------------------------------------
+// 09/14/2015 JBILLING      Changes made for automation
+// 05/09/2014 JBILLING        moved to common/ directory. Acts as wrapper to other trace functions
+// 01/07/2014 JBILLING        Major Logic Update
+// 07/10/2012 AJCheriyan        Created for B-family.
+
+// Following arguments are supported. 
+// ARG0 - Processor to debug. 
+// ARG1 - Tracing Type . Currently supports TPIU, ETB
+// ARGn - n > 1 - Any other arguments to be passed to the script 
+
+//####################Declarations#######################
+
+LOCAL &ArgumentLine
+LOCAL &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+LOCAL &TargetProcessor
+
+//###################Arguments passed #####################
+ENTRY %LINE &ArgumentLine
+ENTRY &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+
+//##################Defaults##########################
+
+
+//#####################Select Subroutine###################
+// Name of the utility we are calling
+LOCAL &SUBROUTINE
+// Any subroutine specific options
+// Default exists for each subroutine
+LOCAL &OPTION
+
+// Input Argument 0 is the name of the utility
+&SUBROUTINE="&UTILITY"
+IF ("&SUBROUTINE"!="SETUPGPIOS")
+(
+    &SUBROUTINE="MAIN"
+)
+
+    // This should be created by some top level script. The setupenv for each proc would
+    // set this up
+     AREA.SELECT
+    // Call the required utility
+    GOSUB &SUBROUTINE &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    
+
+    GOSUB EXIT &rvalue
+
+
+
+
+SETUPGPIOS:
+    LOCAL &ACTION &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5 &ARG6 &ARG7 &ARG8 &ARG9 &ARG10 &ARG11
+    
+    ENTRY &ACTION &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5 &ARG6 &ARG7 &ARG8 &ARG9 &ARG10 &ARG11
+    LOCAL &Loc_ARG0 &Loc_ARG1 &Loc_ARG2 &Loc_ARG3 &Loc_ARG4 &Loc_ARG5 &Loc_ARG6 &Loc_ARG7 &Loc_ARG8 &Loc_ARG9 &Loc_ARG10 &Loc_ARG11
+    LOCAL &TraceSink
+            //attach and halt if not already done so
+            do std_utils ATTACHPROC dontgo
+            
+            // We always need HWIO    
+            IF !y.exist(HWIO_QDSS_CTI0_CTICONTROL_ADDR)
+            (
+                do hwio
+            )
+            
+            &TraceSink="&ARG0"
+            do std_trace_&CHIPSET SETUPGPIOS &ACTION &TraceSink
+            
+RETURN SUCCESS
+
+
+
+////////////////////////////////////////
+//
+//            MAIN
+//            std_trace logic
+//          just parses inputs and passes control to std_debug
+//
+/////////////////////////////////////////
+MAIN:
+    LOCAL &TraceSink &TraceSource &CycleAccurate &PortSize
+    
+    //FIXME - optextract only returns specific number of args. 
+    
+    //right now what works:
+    //do std_trace TraceSource=ADSP TraceSink=ETB CycleAccurate=False PortSize=16bits
+    //do std_trace sbl1 etb
+    //need that to be fixed so that input line can vary.
+    do optextract TraceSource,TraceSink,CycleAccurate,PortSize &ArgumentLine
+        entry &TraceSource &TraceSink &CycleAccurate &PortSize
+        
+    //do optextract CycleAccurate,PortSize &ArgumentLine
+    //   entry &CycleAccurate &PortSize
+
+        
+    //if they've specified cycleaccurate or portsize, 
+    //assume it's not the simple command line and pass it on to std_debug
+    //FIXME - remove 'main' as teh breakpoint. only applies to certain processors
+    LOCAL &NewArgumentLine
+    &NewArgumentLine=" SubSystem=&TraceSource LPM_Option=lpm_enable BreakPoints=main TraceSource=&TraceSource TraceSink=&TraceSink CycleAccurate=&CycleAccurate PortSize=&PortSize"
+    do std_debug &NewArgumentLine
+    RETURN SUCCESS
+    
+    //FIXME - input sanitization once optextract works well
+    if (("&CycleAccurate"!="True")||("&CycleAccurate"!="False")||("&PortSize"!="True")||("&PortSize"!="False")&&((&"TraceSink"=="ETB")||(&"TraceSink"=="TPIUA")||(&"TraceSink"=="TPIUB")))
+    (
+        do std_debug &ArgumentLine
+    )
+    else if ((&"TraceSink"=="ETB")||(&"TraceSink"=="TPIUA")||(&"TraceSink"=="TPIUB"))
+    (
+     
+        &NewArgumentLine = "TraceSource=&TraceSource TraceSink=&TraceSink"
+        do std_debug &NewArgumentLine
+    )
+    else
+    (
+        PRINT %ERROR "Error! Unrecognized std_trace input parameters"
+        do std_fatalexit USER "Error! Unrecognized std_trace input parameters"
+    )
+      
+
+    
+    RETURN SUCCESS
+
+    
+    LOCAL &TraceSink &TraceSource &CycleAccurateCommand &CycleAccurate &TraceConfiguration &PortSizeCommand &PortSize    
+    LOCAL &Image &LPM_Option &CTI_enabled &Qurt_Breakpoints &PDOPTION 
+    
+    print "std_trace main. not implemented yet"
+    LOCAL &NewArgumentLine
+    
+    do optextract TraceSink,TraceSource,CycleAccurate,TraceConfiguration,Portsize &ArgumentLine
+        entry &TraceSink &TraceSource &CycleAccurate &TraceConfiguration &Portsize 
+
+    do optextract SubSystem,LPM_Option,BreakPoint,CTI_Enable
+        entry &Image &LPM_Option &BreakPoint &ARGstuff &argstuff2 &argstuff3
+
+    do std_debug GetDebugConfiguration &CHIPSET &Image &LPM_Option &CTI_Enable &QurtBP &PDOption
+        entry &TargetProcessor &LPM_Option &CTI_Enable &QurtBP &PDOption &TargetProcessorPort
+
+    &NewArgumentLine= " SubSystem="+"&Image"+" LPM_Option="+"&LPM_Option"+" BreakPoints="+"&BreakPoints"+" TraceSink="+"&TraceSink"+" TraceSource="+"&TraceSource"+" CycleAccurate="+"&CycleAccurate"+" TraceConfiguration="+"&TraceConfiguration"+" PortSize="+"&PortSize"
+    
+    do std_debug &NewArgumentLine
+        
+RETURN SUCCESS
+
+SAVEETB:
+SaveETB:
+        // There is nothing image specific here
+        IF ("&ARG2"=="")
+        (
+            PRINT %ERROR "Invalid arguments. Provide path to save ETB"
+            do std_fatalexit USER "Invalid arguments. Provide path to save ETB"
+        )
+        
+        &FILENAME="&ARG2/"+"ETBDump.bin"
+        // Find the size of the ETB buffer
+        do std_utils HWIO_IN QDSS_ETFETB_RSZ
+        ENTRY &SIZE
+        // Access ETB by unlocking it
+        do std_utils HWIO_OUT QDSS_ETFETB_LAR 0xC5ACCE55
+        // Flush the system
+        do std_utils HWIO_OUTF QDSS_ETFETB_FFCR FLUSHMAN_W 0x1
+        // Disable ETB
+        do std_utils HWIO_OUT QDSS_ETFETB_CTL 0x0
+        // Not sure if we need to save other ETB regs here
+        // Right now, save mode and write PTR
+        // Set it to circular mode
+        do std_utils HWIO_IN QDSS_ETFETB_MODE
+        ENTRY &MODE
+        do std_utils HWIO_IN QDSS_ETFETB_RRP
+        ENTRY &READPTR
+        do std_utils HWIO_IN QDSS_ETFETB_RWP
+        ENTRY &WRITEPTR
+        // Check if the ETB has overflowed using the status bit
+        do std_utils HWIO_INF QDSS_ETFETB_STS FULL
+        ENTRY &FULL
+        // Set the head to start from top
+        &HEAD=0x0
+        IF (&FULL==0x1)
+        (
+            &TAIL=&SIZE
+        )
+        ELSE
+        (
+            &TAIL=&WRITEPTR
+        )
+
+        // Set the read pointer to the head
+        do std_utils HWIO_OUT QDSS_ETFETB_RRP &HEAD
+
+        // Loop until it reaches the write pointer
+        WHILE (&HEAD!=&TAIL)
+        (
+            // Read the data
+            do std_utils HWIO_IN QDSS_ETFETB_RRD
+            ENTRY &DATA
+            DATA.SET VM:(&HEAD) %LONG &DATA
+            &HEAD=&HEAD+0x4
+        )
+        // Check to make sure there is something in the buffer
+        IF (&TAIL!=0x0)
+        (
+            D.SAVE.BINARY &FILENAME (VM:0x0--(&TAIL))
+        )
+        ELSE
+        (
+            PRINT "No binary to write"
+        )
+        // Restore the read pointer 
+        do std_utils HWIO_OUT QDSS_ETFETB_RRP &READPTR
+        // Lock ETB now
+        do std_utils HWIO_OUT QDSS_ETFETB_LAR 0xF00DD00D
+    
+    
+    // Done. Exit    
+    RETURN SUCCESS
+
+printhelpwindow:
+    WinPOS 2. 3. 165. 15. 0. 0. W0002
+    area
+    area.clear
+    PRINT "                               ========&CHIPSET ETM Script=========== "
+
+    IF (("&ARG1"=="TPIU")||("&ARG1"=="tpiu"))
+    (
+        IF (("&CHIPSET"=="8084")||("&CHIPSET"=="8092")||("&CHIPSET"=="8x10"))
+        (
+            PRINT "                *use TPIU Port B "
+            PRINT "                *Set Rotary Switch to setting 2"    
+        )
+        ELSE IF ("&CHIPSET"=="8974")
+        (
+            PRINT "                *use TPIU Port A "
+            PRINT "                *Set Rotary Switch to setting 1"
+        )
+        ELSE IF ("&CHIPSET"=="8x26")
+        (
+            PRINT "                *use TPIU Port B "
+            PRINT "                *Set Rotary Switch to setting B"    
+            PRINT "                *Make sure to run setup script before turning on the TPIU: "
+        PRINT "                    \\qcdfs\QCT\qctdata\CoreBSPTarget\8x26\std_trace_8x26_setup.cmm"
+        )
+        
+    
+        PRINT "                *Make sure to engage TPIU portion of script ***after*** system has fully booted up"
+    )
+    ELSE
+    (
+        PRINT "  =======Using ETB Configuration==========="
+        PRINT "  *Make sure to use a recent version of T32. "
+        PRINT "      can be found at \\tex\qdsp6_sw_release\TRACE32\Run\latest"
+        PRINT " "
+        PRINT "  *T32 will attempt to attach and halt the Q6. You may need to do something "
+        PRINT "     externally to make the processor wakeup (e.g. plug in usb, run a diag command etc."
+        PRINT "     However - certain behaviors are time-sensitive and the jtag's interference may cause a crash"
+        PRINT "     Behaviors found to be useful: run a diag command."
+
+    )    
+    
+    
+    RETURN SUCCESS
+    
+
+    
+//    Function: Exit
+//    Return with return values    
+EXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    ENDDO &rvalue
+    
+FATALEXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    IF STRING.SCAN("&FAILUREKEYWORD","FAILUREKEYWORD",0)==-1
+    (
+        GOSUB EXIT &FAILUREKEYWORD - &rvalue
+    )
+    ELSE
+    (
+        GOSUB EXIT &rvalue
+    )
+    
+//Should never get here
+    END

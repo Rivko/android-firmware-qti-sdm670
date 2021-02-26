@@ -1,0 +1,54 @@
+#===============================================================================
+#
+# AVS AU
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2010, 2012-2016 Qualcomm Technologies, Inc.  All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: $
+#  $DateTime: $
+#  $Author:  $
+#  $Change:  $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+import os
+
+#Disable werror for mdsp mode for sim alone
+if "MDSPMODE" in env and "USES_AVS_TEST" in env:
+    pass
+else: #Enable werror for all variants
+    env.Append(CFLAGS = ' -Werror ')
+    env.Append(CPPFLAGS = ' -Werror ')
+    env.Append(ASMFLAGS = ' -Werror ')
+
+tool_version=int(os.environ.get('HEXAGON_RTOS_RELEASE').split()[0][0])
+gcc_tools = [5]  #Add applicable tools here. ex: gcc_tools = [5,x,y,z]
+if tool_version in gcc_tools:
+   if 'USES_AVS_SHARED_LIBS' in env:
+       env.Append(SHLINK_FLAG = ' --gc-sections ')
+       env.Append(SHLINK_FLAG = '-T ${AVS_ROOT}/aud/build/linker_script_PHDRS_Modified.lcs ')
+
+
+env.PublishProtectedApi('AVS',[
+   '${AVS_ROOT}/aud/services/dynamic_svcs/audio_proc_svc/inc',
+   '${AVS_ROOT}/aud/services/static_svcs/audio_dev_mgr/inc',
+   '${AVS_ROOT}/aud/services/static_svcs/audio_stream_mgr/inc',
+   ])
+   
+if env.get('hy22') != True:
+   env.PublishProtectedApi('AVS',['${AVS_ROOT}/aud/services/static_svcs/audio_stream_mgr/inc/prop'])
+
+env.LoadSoftwareUnits()

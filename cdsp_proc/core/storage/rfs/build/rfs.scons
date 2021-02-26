@@ -1,0 +1,169 @@
+#============================================================================
+#
+# RFS Lib
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2014-2015,2017 by QUALCOMM Technologies, Inc.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#----------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1.c4/storage/rfs/build/rfs.scons#1 $  $DateTime: 2018/07/30 01:21:36 $  $Author: pwbldsvc $
+#  $Change: 16759227 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when        who  what, where, why
+# ----------  ---  ----------------------------------------------------------
+# 2017-05-31  rp   Port to SLPI image.
+# 2015-09-11  mj   Change to compile RFS module as PIC.
+# 2015-05-06  dks  Add OS abstraction layer
+# 2015-01-05  vm   Compiling server for TN Apps
+# 2015-01-05  dks  Build cpp flags
+# 2014-10-29  dks  Move descriptor allocation logic to rfs_api layer.
+# 2014-08-26  rp   Bring in changes from target-unit-testing.
+# 2014-08-04  rp   Add rfs-utils module.
+# 2014-05-30  dks  Enable compilation for MPSS.
+# 2014-05-27  dks  Remove compilation for MPSS.
+# 2014-04-30  dks  Featurize compilation of RFS for ADSP.
+# 2014-04-04  dks  Add RFS on top of RFSA support.
+# 2014-01-27  dks  Create
+#
+#============================================================================
+Import('env')
+env = env.Clone()
+
+#----------------------------------------------------------------------------
+# Source PATH
+#----------------------------------------------------------------------------
+SRCDIR = "${BUILD_ROOT}/core/storage/rfs/src"
+
+env.VariantDir('${BUILDPATH}', SRCDIR, duplicate=0)
+
+#----------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#----------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'DEBUGTOOLS',
+   'MPROC',
+   'SERVICES',
+   'STORAGE',
+   'SYSTEMDRIVERS',
+   # needs to be last as it may contain wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+
+#----------------------------------------------------------------------------
+# Sources, libraries
+#----------------------------------------------------------------------------
+RFS_SOURCES = [
+         '${BUILDPATH}/rfs_api.c',
+         '${BUILDPATH}/rfs_desc.c',
+         '${BUILDPATH}/rfs_efs.c',
+         '${BUILDPATH}/rfs_nodev.c',
+         '${BUILDPATH}/rfs_rfsa.c',
+         '${BUILDPATH}/rfs_rmts.c',
+         '${BUILDPATH}/rfs_tftp.c',
+         '${BUILDPATH}/rfs_utils.c'
+        ]
+
+rfs_obj = env.Object(RFS_SOURCES)
+
+#----------------------------------------------------------------------------
+# Get the build configuration flags and add them to the environment
+#----------------------------------------------------------------------------
+cpp_flags = []
+
+if 'USES_RFS_USE_NO_DEV' in env:
+  cpp_flags += ['FEATURE_RFS_USE_NO_DEV']
+
+if 'USES_RFS_USE_TFTP' in env:
+  cpp_flags += ['FEATURE_RFS_USE_TFTP']
+
+if 'USES_RFS_USE_RMTS' in env:
+  cpp_flags += ['FEATURE_RFS_USE_RMTS']
+
+if 'USES_RFS_USE_EFS' in env:
+  if env.IsTargetEnable (['CORE_MODEM']):
+    cpp_flags += ['FEATURE_RFS_USE_EFS']
+  else:
+    cpp_flags += ['FEATURE_RFS_USE_TFTP']
+
+if 'USES_RFS_USE_RFSA' in env:
+  cpp_flags += ['FEATURE_RFS_USE_RFSA']
+  if env.IsTargetEnable (['CORE_MODEM']):
+    cpp_flags += ['FEATURE_RFSA_ON_MPSS']
+  if env.IsTargetEnable (['CORE_QDSP6_AUDIO_SW']):
+    env.Append(CPPDEFINES = ['FEATURE_RFSA_ON_ADSP'])
+
+env.Append (CPPDEFINES = cpp_flags);
+env.LoadToolScript('${BUILD_ROOT}/core/storage/fs_osal/build/' \
+                   'fs_write_list_builder.py')
+rfs_cpp_flags = env.FsWriteList ('${BUILDPATH}/rfs_cpp_flags.txt',
+                                 RFS_SOURCES, FS_WRITE_LIST=cpp_flags)
+env.Depends (rfs_obj, rfs_cpp_flags);
+
+
+if 'USES_RFS_USE_RMTS' in env:
+  RCINIT_STARTUP_GRP = 'RCINIT_GROUP_3'
+else:
+  RCINIT_STARTUP_GRP = 'RCINIT_GROUP_1'
+
+
+#----------------------------------------------------------------------------
+# Add Libraries to image
+#----------------------------------------------------------------------------
+RFS_DEST_IMAGES = [
+   'CORE_APPS',                  # Domain(REX + TN)
+   'CORE_MODEM',                 # Domain(Root + Modem)
+   'MODEM_MODEM',                # Domain(Root + Modem)
+   'CORE_QDSP6_MODEM_SW',        # Domain(User Modem)
+   'CORE_QDSP6_SW',              # Domain(Root + Audio)
+   'CORE_ROOT_PD',               # Domain(Root)
+   'CORE_ADSP_ROOT',             # Domain(Audio Root)
+   'CORE_SLPI_ROOT',
+]
+RFS_DEST_USER_IMAGES = [
+   'CORE_QDSP6_AUDIO_SW',        # Domain(User Audio)
+   'CORE_QDSP6_SENSOR_SW',       # Domain(User Sensors)
+   'CORE_USER_PD',               # Domain(User)
+   
+]
+
+if 'USES_WLAN_PD' not in env:
+    if (env["BUILD_ID"] not in ['ACIMAAAZA']):
+     env.AddLibrary (RFS_DEST_IMAGES,'${BUILDPATH}/rfs', RFS_SOURCES)
+     if 'USES_GEN_SHARED_OBJECT' in env:
+       env.AddPicObjs(RFS_DEST_USER_IMAGES, '${BUILDPATH}/rfs', RFS_SOURCES)
+     else:
+       env.AddLibrary(RFS_DEST_USER_IMAGES, '${BUILDPATH}/rfs', RFS_SOURCES)
+    #----------------------------------------------------------------------------
+    # RCINIT Initialization of RFS
+    #----------------------------------------------------------------------------
+    if (env["BUILD_ID"] not in ['ACIMAAAZA']):
+      RCINIT_RFS_IMG = RFS_DEST_IMAGES + RFS_DEST_USER_IMAGES
+      env.AddRCInitFunc(
+      RCINIT_RFS_IMG,
+      {
+        'sequence_group'      : RCINIT_STARTUP_GRP,
+        'init_name'           : 'rfs',
+        'init_function'       : 'rfs_init',
+        'dependencies'        : ['fs_os_init']
+      })
+
+#-----------------------------------------------------------
+# Pack rules. Remove sources when not needed.
+#-----------------------------------------------------------
+RFS_PACK_SRC = env.FindFiles("*", "${BUILD_ROOT}/core/storage/rfs/")
+if 'USES_NO_RFS_SRC' in env:
+  env.CleanPack(RFS_DEST_IMAGES + RFS_DEST_USER_IMAGES,RFS_PACK_SRC)

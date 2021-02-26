@@ -1,0 +1,85 @@
+;--------------------------------------------------------------
+; KBurke 9/18/07 - changed check for quotes in arguemnts
+; KBurke 7/12/07 - moved entry passed LOCAL macro statements to prepare for Lauterbach change
+;--------------------------------------------------------------
+local &arg_node
+local &arg_ipc_port
+local &arg_corenum
+local &arg_cmm_id
+local &arg_opt_use_cmd
+ENTRY &arg_cmm_id &arg_node &arg_ipc_port &arg_corenum &arg_opt_use_cmd
+local &cmm_file_id
+local &cmm_dir
+local &save_current_dir
+
+;--------------------------------------------------------------
+; This script was intended to be called from the T32 shortcut
+; &arg_cmm_id = file name of a test case to run from the working directory
+; valid arg1 settings could be:
+;       QSD8650_DC1_mARM        (daisychain mode 1)
+;       QSD8650_DC1_aARM        (daisychain mode 1)
+;       QSD8650_DC2_mARM        (daisychain mode 2)
+;       QSD8650_DC2_aARM        (daisychain mode 2)
+;       QSD8650_DC2_DSP         (daisychain mode 2)
+;       QSD8650_aARM            (jtag connection to Application ARM only)
+;       QSD8650_mARM            (jtag connection to Modem ARM only) 
+;       QSD8650_DSP             (jtag connection to QDSP only) 
+; This script will attempt to execute 
+; T32_&arg_cmm_id.cmm 
+; from the cmm_dir directory
+;--------------------------------------------------------------
+
+&cmm_dir=os.ppd()         ; directory where this script is running from
+
+&save_current_dir=os.pwd()
+
+if (string.scan("&arg_cmm_id","""",0)!=-1)  
+(                                     ; quote found in argument (old T32 code stripped the quotes)
+  &arg_cmm_id=&arg_cmm_id             ; whacky way to get rid of quotes on input arg when using pedit or newer code
+  &arg_node=&arg_node
+  &arg_ipc_port=&arg_ipc_port
+  &arg_corenum=&arg_corenum
+  &arg_opt_use_cmd=&arg_opt_use_cmd
+)
+
+;Default startup program for TRACE32
+;
+;This startup program can be modified according to your needs.
+
+;choose hex mode for input
+ radix hex
+
+;Add some extra buttons to the toolbar
+
+ menu.rp
+ (
+  add
+  toolbar
+  (
+   separator
+   toolitem "Source/List" "list" "Data.List"
+   toolitem "Memory Dump" "dump" "Data.dump"
+   toolitem "Register" "reg" "Register"
+   separator
+   toolitem "Watch" ":varwatch" "Var.Watch"
+   toolitem "Stack" ":varframe" "Var.Frame /l /c"
+   toolitem "Automatic Watch" ":varref" "Var.Ref"
+   separator
+   toolitem "List Breakpoints" "break" "Break.List"
+   toolitem "List Symbols" "symbols" "sYmbol.Browse"
+   separator
+  )
+ )
+
+ if language()!=""
+ (
+  local &menuname
+  &menuname="~~/t32"+language()
+  menu.rp &menuname
+ )
+
+;Recall and Define History File
+ autostore , history bookmark
+
+
+

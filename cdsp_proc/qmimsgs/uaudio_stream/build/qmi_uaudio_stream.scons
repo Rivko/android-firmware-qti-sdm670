@@ -1,0 +1,75 @@
+#===============================================================================
+#
+# UAUDIO_STREAM (USB Audio Stream) QMI APIs
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2016 Qualcomm Technologies, Inc.  All Rights Reserved.
+# Qualcomm Technologies Proprietary and Confidential.
+#
+#-------------------------------------------------------------------------------
+#                      EDIT HISTORY FOR FILE
+#
+#  $Header: //components/rel/qmimsgs.adsp/2.6/uaudio_stream/build/qmi_uaudio_stream.scons#1 $
+#  $DateTime: 2016/07/19 17:52:56 $
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 07/18/16   jvo     Baseline version
+#===============================================================================
+Import('env')
+env = env.Clone()
+from glob import glob
+from os.path import join, basename, exists
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "../src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+# ------------------------------------------------------------------------------
+# Include Paths
+#---------------------------------------------------------------------------------
+
+
+#-------------------------------------------------------------------------------
+# APIs needed to build the QMI_USB_AUDIO_STREAM APIs
+#-------------------------------------------------------------------------------
+
+# Should be first
+if exists(env.subst("${BUILD_ROOT}/interfaces")):
+   env.RequirePublicApi([
+     'QMI_COMMON',
+     'QMI_UAUDIO_STREAM',
+     ])
+else:
+   env.RequirePublicApi([
+     'COMMON',
+     'UAUDIO_STREAM',
+     ])
+
+env.RequirePublicApi([
+  'MPROC',
+  ], area='CORE')
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+# Construct the list of source files by looking for *.c
+UAUDIO_STREAM_C_SOURCES = ['${BUILDPATH}/' + basename(fname)
+                 for fname in glob(join(env.subst(SRCPATH), '*.c'))]
+
+# Add our library to the following build tags:
+#   QMIMSGS_ADSP for ADSP / LPASS images
+env.AddLibrary (['QMIMSGS_ADSP'], 
+                 '${BUILDPATH}/qmimsgs_uaudio_stream', [UAUDIO_STREAM_C_SOURCES])
+
+# Load test units
+env.LoadSoftwareUnits()

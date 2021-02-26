@@ -1,0 +1,224 @@
+; writen by Waleed Eshmawy
+area
+area.select
+entry &build &loc
+if "&build"==""
+(
+&build="."
+)
+if "&loc"==""
+(
+&loc="c:\temp"
+)
+&count=0
+&fc=0
+&elfname="&build\M8994AAAAAAAAQ1234.elf"
+&elfname1="&build\M8994AAAAAAAAQ1234_SENSOR.elf"
+&badaddr=0
+printer.filetype ASCII 
+printer.size 0xfa, 0xfa
+os.command hexagon-readelf -l &elfname > &loc\DSP_load_sections.txt
+wait 1s
+os.command hexagon-readelf -l &elfname1 >> &loc\DSP_load_sections.txt
+printer.file &loc\badout-&fc.txt
+wait 2s
+ON ERROR goto OpenFileError
+open #1 &loc\DSP_load_sections.txt
+ON ERROR default
+frombegining:
+open #2 &loc\DSP_compare_output.txt /Create
+open #3 &loc\DSP_compare_errors.txt /Create
+write #3 "Error_Range Error_Address Error_info"
+start:
+ON ERROR goto ignore
+read #1 &Type &Offset &VirtAddr &PhysAddr &FileSiz &MemSiz &Flg 
+ignore:
+ON ERROR default
+if "&Type"=="LOAD"
+(
+if "&Flg"=="R" 
+(
+print "&Type &Offset &VirtAddr &PhysAddr &FileSiz &MemSiz &Flg"
+goto process_section
+)
+)
+cont_start:
+if !file.eof(1) 
+(
+goto start
+)
+done_reading:
+write #2 "Done"
+write #3 "Done"
+print "Done"
+close #1
+close #2
+close #3
+print "output in "+"&loc"+"\DSP_compare_errors.txt"
+type &loc\DSP_compare_errors.txt
+enddo
+
+
+
+process_section:
+&psend=&MemSiz
+&count=&count+1
+if  &VirtAddr<0xf0000000
+(
+&elfname="&build\M8994AAAAAAAAQ1234_SENSOR.elf"
+)
+else
+(
+&elfname="&build\M8994AAAAAAAAQ1234.elf"
+)
+area.clear
+area.select
+ON ERROR goto ErrorElf
+d.load.elf "&elfname" a:&PhysAddr++&psend /compare /NosYmbol
+ON ERROR default
+;print "OK for Section:"
+write #2 "OK for Section:"
+;print "&count &elfname a:&PhysAddr++&psend"
+write #2 "&count &elfname a:&PhysAddr++&psend"
+;print "------------------------------------------------"
+write #2 "------------------------------------------------"
+goto cont_start
+
+
+ErrorElf:
+ON ERROR default
+goto Readbadaddr
+contErrorElf:
+print "ERRORS in comparing"
+write #2 "Errors in comparing"
+;print "&count &elfname a:&PhysAddr++&psend"
+write #2 "&count &elfname a:&PhysAddr++&psend"
+print "d.load.elf &elfname a:&PhysAddr++&psend /compare /NosYmbol"
+write #2 "d.load.elf &elfname a:&PhysAddr++&psend /compare /NosYmbol"
+print "badaddr=0x&badaddr"
+write #2 "badaddr=0x&badaddr"
+&func=sYmbol.FUNCTION(MMU.LOGICAL(a:0x&badaddr))
+&sourcef=sYmbol.sourcefile(MMU.LOGICAL(a:0x&badaddr))
+&symname=sYmbol.name(MMU.LOGICAL(a:0x&badaddr))
+write #2 "a:&PhysAddr++&psend 0x&badaddr &symname &func &sourcef "
+if string.scan("&symname","QURT_system_state",0)>-1.0
+(
+goto no_write
+)
+if string.scan("&symname","ELF_INFO_PATCH",0)>-1.0
+(
+goto no_write
+)
+if string.scan("&symname","QURTK_etm_cfg_phys_base",0)>-1.0
+(
+goto no_write
+)
+if string.scan("&symname","QURTK_tlb_dump_relocs",0)>-1.0
+(
+goto no_write
+)
+if string.scan("&symname","image_pstart",0)>-1.0
+(
+goto no_write
+)
+if string.scan("&symname","image_end",0)>-1.0
+(
+goto no_write
+)
+if string.scan("&symname","image_vend",0)>-1.0
+(
+goto no_write
+)
+if string.scan("&symname","image_vend",0)>-1.0
+(
+goto no_write
+)
+if string.scan("&symname","QURTK_reset_reason",0)>-1.0
+(
+goto no_write
+)
+if string.scan("&symname","QURTK_quick_load_MMU",0)>-1.0
+(
+goto no_write
+)
+if string.scan("&symname","QURTK_tlb_dump",0)>-1.0
+(
+goto no_write
+)
+if string.scan("&symname","QURTK_phys_island",0)>-1.0
+(
+goto no_write
+)
+write #3 "a:&PhysAddr++&psend 0x&badaddr &symname &func &sourcef "
+no_write:
+&new_PhysAddr=0x&badaddr+1
+&new_psend=&psend-(&new_PhysAddr-&PhysAddr)
+if (&new_psend>&psend)
+(
+print "Issue with comparing "
+goto ErrorCannotProcess
+)
+&psend=&new_psend
+&PhysAddr=&new_PhysAddr
+;print "------------------------------------------------"
+goto Reloading
+
+Reloading:
+area.clear
+area.select
+ON ERROR goto ErrorElf
+d.load.elf "&elfname" a:&PhysAddr++&psend /compare /NosYmbol
+ON ERROR default
+print "following range was ok"
+write #2 "following range was ok"
+;print "&count &elfname a:&PhysAddr++&psend"
+write #2 "&count &elfname a:&PhysAddr++&psend"
+write #2 "------------------------------------------------"
+goto cont_start
+
+
+Readbadaddr:
+wp.area
+&sscnt=1
+open #4 &loc\badout-&fc.txt
+&fc=&fc+1
+if (&fc>9) 
+(
+&fc=0
+)
+start_error:
+read #4 %line &linelst
+&sscnt=&sscnt+1
+&ss=string.mid("&linelst", 0, 0x1f)
+if &sscnt>0x64
+(
+print "Error: Cannot find the bad address in file -- exiting"
+write #3 "Error: Cannot find the bad address in file -- exiting"
+goto ErrorCannotProcess
+)
+if "&ss"=="verify error at address   A:00:"
+(
+&badaddr=string.mid("&linelst", 0x1f, 8)
+close #4
+; printer.file &loc\info_0x&badaddr.txt
+; wp.symbol.info MMU.LOGICAL(a:&badaddr) 
+; printer.file &loc\badout-&fc.txt
+goto contErrorElf
+) 
+goto start_error
+
+
+ErrorCannotProcess:
+print "Error please review the output"
+close #1
+close #2
+close #3
+close #4
+enddo
+
+OpenFileError:
+wait 60s
+ON ERROR default
+open #1 &loc\DSP_load_sections.txt
+goto frombegining
+

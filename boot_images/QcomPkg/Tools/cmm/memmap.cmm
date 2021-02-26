@@ -1,0 +1,143 @@
+;============================================================================
+; Name: memmap.cmm
+;
+; Description: Dump current GCD memory map entries, symbols should be loaded
+;     
+; Copyright (c) 2012-2015 Qualcomm Technologies, Inc.
+; All Rights Reserved. 
+; Qualcomm Technologies Proprietary and Confidential. 
+;
+;----------------------------------------------------------------------------
+
+;============================================================================
+;
+;                        EDIT HISTORY FOR MODULE
+;
+;
+;
+;  when         who     what, where, why
+;  ----------   ---     -----------------------------------------------------
+
+;  2015-06-25   bh      Fix UEFI_Logs area issues
+;  2015-15-04   vk      Support 64 bit addresses
+;  2015-02-12   bh      Change RD: to A:
+;  2015-01-27   bh      Unify Scripts for 32/64-bit 
+;  2013-06-03   vk      Initial version
+;============================================================================;
+
+;
+;NOTE:  symbols should be loaded
+;
+
+; ---------------------------------------------------------
+; Script entry point
+; ---------------------------------------------------------
+  area.create UEFI_Logs 1000. 8192.
+  area.view UEFI_Logs
+  print "+-----------------+"
+  print "|UEFI Memmap Dump |"
+  print "+-----------------+"
+  print " "
+  print "Memory Types"
+  print " 0 EfiReservedMemoryType"
+  print " 1 EfiLoaderCode"
+  print " 2 EfiLoaderData"
+  print " 3 EfiBootServicesCode"
+  print " 4 EfiBootServicesData"
+  print " 5 EfiRuntimeServicesCode"
+  print " 6 EfiRuntimeServicesData"
+  print " 7 EfiConventionalMemory"
+  print " 8 EfiUnusableMemory"
+  print " 9 EfiACPIReclaimMemory"
+  print " A EfiACPIMemoryNVS"
+  print " B EfiMemoryMappedIO"
+  print " C EfiMemoryMappedIOPortSpace"
+  print " D EfiPalCode"
+  print " E EfiMaxMemoryType"
+
+
+  local &Mem_Map_ptr
+  local &NextPtr
+  local &Count
+
+  &Count=0
+
+  local &MemmapList
+  
+  do ../InitOffsets.cmm
+   
+  &MemmapList=address.offset(gMemoryMap)
+  ;print "&MemmapList"
+  &Memmap_start_ptr=&MemmapList
+  
+  if (&ARCHState==1)
+  (
+    &Mem_Map_ptr=data.long(A:&Memmap_start_ptr)
+  )
+  else 
+  (
+    &Mem_Map_ptr=data.quad(A:&Memmap_start_ptr)
+  )
+
+  ;print "MT = Memory Type"
+  print "--------------------------------------------------------------------------------------------"
+  print "AddressRange                         Size                  Pages       Type  Attribute"
+  print "--------------------------------------------------------------------------------------------"
+
+  while (&Mem_Map_ptr!=&Memmap_start_ptr)
+  (
+    gosub print_gcd &Mem_Map_ptr+&MemMapGcdOffset
+    if (&ARCHState==1)
+    (
+      &NextPtr=data.long(A:&Mem_Map_ptr)
+    )
+    else
+    (
+      &NextPtr=data.quad(A:&Mem_Map_ptr)
+    )
+    &Mem_Map_ptr=&NextPtr
+  )
+
+  print "--------------------------------------------------------------------------"
+  print "Count = " %Decimal &Count
+  print "--------------------------------------------------------------------------"
+enddo
+
+print_gcd:
+  entry &gcd_ptr
+
+  local &BaseAddr
+  local &EndAddr
+  local &MemType
+  local &Attribute
+
+  &MemType=data.long(A:&gcd_ptr)
+  
+  if (&ARCHState==1)
+  (
+    &BaseAddr=data.long(A:&gcd_ptr+&GcdBaseOffset)
+    &EndAddr=data.long(A:&gcd_ptr+&GcdEndOffset)     
+  )
+  else
+  (
+    &BaseAddr=data.quad(A:&gcd_ptr+&GcdBaseOffset)
+    &EndAddr=data.quad(A:&gcd_ptr+&GcdEndOffset)
+  )
+  
+  &EndAddr=&EndAddr+1
+  ;print &gcd_ptr
+  ;print &gcd_ptr+&GcdBaseOffset
+  ;print &gcd_ptr+&GcdAttribOffset
+
+  &Attribute=data.quad(A:&gcd_ptr+&GcdAttribOffset)
+
+  &Size=&EndAddr-&BaseAddr
+  &SizeStr=FORMAT.HEX(16.,&Size)
+  &Pages=(&Size/4096)
+  &PagesStr=FORMAT.HEX(8.,&Pages)
+
+  print FORMAT.HEX(16.,&BaseAddr), "--" FORMAT.HEX(16.,(&EndAddr-1)), "   0x&SizeStr", "    &PagesStr", "    &MemType   " , FORMAT.HEX(16.,&Attribute) 
+  &Count=&Count+1
+  return
+
+enddo

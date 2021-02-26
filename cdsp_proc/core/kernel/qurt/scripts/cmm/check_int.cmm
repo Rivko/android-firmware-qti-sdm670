@@ -1,0 +1,87 @@
+;=============================================================================
+;
+;                                    check_int.cmm
+;
+; GENERAL DESCRIPTION
+;
+; EXTERNAL FUNCTIONS
+;        None.
+;
+; INITIALIZATION AND SEQUENCING REQUIREMENTS
+;        None.
+;
+;             Copyright (c) 2013  by Qualcomm Technologies, Inc.  All Rights Reserved.
+;=============================================================================
+// check_int.cmm is used for checking the interrupt status from the QURTK_l2vic_enable_table_dump
+// and QURTK_l2vic_pending_table_dump to see if it enabled/disabled and pending/not pending
+//
+// Usage:
+//
+// do <path>/check_int.cmm <interrupt number> 
+//
+// where <interrupt number> is the interrupt number in decimal
+//
+
+Area.Create IO 80. 100.
+Area.Select IO
+Area IO
+
+
+global &int_enabled
+global &int_pending
+
+ENTRY &InterruptNumber 
+
+if ("&InterruptNumber"=="")
+(
+  print "Enter Interrupt Number in Hex"
+  print ""
+
+  ENTER &InterruptNumber 
+)
+
+print "Interrupt Number " &InterruptNumber
+
+if (&InterruptNumber<=0)||(&InterruptNumber>245)
+(
+   print "Not a valid interrupt!"
+   enddo
+)
+
+global &hex_int
+&hex_int=(((&InterruptNumber&0xf00)>>8)*0x64)+(((&InterruptNumber&0xf0)*0xa)>>4)+((&InterruptNumber&0x0f)*1)
+print "Int in hex " &hex_int
+
+&InterruptNumber=&hex_int
+
+global &int_byte
+global &int_bit
+
+&int_byte=&InterruptNumber/20
+&int_bit=&InterruptNumber%20
+
+print "Interrupt byte " &int_byte
+print "Interrupt bit " &int_bit
+
+&int_enabled=Data.long(QURTK_l2vic_enable_table_dump+(&int_byte*4))
+&int_pending=Data.long(QURTK_l2vic_pending_table_dump+(&int_byte*4))
+
+//print &int_enabled
+//print &int_pending
+
+LOCAL &i
+&i=1
+
+LOCAL &mask
+&mask=1<<&int_bit
+
+//print "Mask " &mask
+
+&int_enabled=(&int_enabled)&(&mask)
+&int_pending=(&int_pending)&(&mask)
+
+print "Enabled value " &int_enabled>>&int_bit
+print "Pending value " &int_pending>>&int_bit
+
+d.dump QURTK_l2vic_pending_table_dump
+d.dump QURTK_l2vic_enable_table_dump

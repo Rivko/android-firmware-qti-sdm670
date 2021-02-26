@@ -1,0 +1,69 @@
+#----------------------------------------------------------------------------
+# Copyright (c) 2015 Qualcomm Technologies Incorporated. All Rights Reserved.
+#
+# FILE:            core/debugtrace/tpdm/hal/build/tpdmhal.scons
+#
+# DESCRIPTION:     SCons for TPDM HAL Interface.
+#
+#
+# EDIT HISTORY FOR MODULE
+# ---------------------------------------------------------------------------
+#
+# when         who         what, where, why
+# ----------   -------     -----------------
+# 2015-09-01   ps     Initial revision.
+#
+#----------------------------------------------------------------------------
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 09/07/17   rs      Warlock specific changes
+#===============================================================================
+Import('env')
+import qdss
+
+# TPDM in ADSP is only for warlock as per its design
+if env['MSM_ID'] not in ['670']:
+  Return()
+  
+# No replicator in CDSP
+if 'USES_CDSP_IMG' in env:
+  Return()
+  
+#----------------------------------------------------------------------------
+# Source PATH
+#----------------------------------------------------------------------------
+SRCPATH = "../src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_APIS = [
+   'DEBUGTRACE',
+   'SERVICES',
+   'HAL',
+   'DAL',
+   'SYSTEMDRIVERS',
+   'KERNEL'
+]
+
+
+env.RequirePublicApi(CBSP_APIS)
+env.RequireRestrictedApi(CBSP_APIS)
+env.RequireProtectedApi(['DEBUGTRACE'])
+
+
+#----------------------------------------------------------------------------
+# Sources, libraries
+#----------------------------------------------------------------------------
+
+TPDM_LPA_HAL_SRC = ['${BUILDPATH}/halqdss_tpdm.c']
+
+env.AddLibrary(qdss.BuildTags(['adsp']),
+   '${BUILDPATH}/tpdm_lpa_hal',TPDM_LPA_HAL_SRC)
+

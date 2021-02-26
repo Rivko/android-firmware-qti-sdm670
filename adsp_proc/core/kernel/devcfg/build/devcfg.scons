@@ -1,0 +1,60 @@
+Import('env')
+import os, glob
+env = env.Clone()
+
+#bail out if this image doesn't use Devcfg
+if not env.GetUsesFlag('USES_DEVCFG'):
+    Return()
+    
+if 'USES_DEVCFG_STRICT_XML' not in env:
+    Return()
+#need to find a method to switch this    
+env.Replace(THIS_CORE_ROOT = "${COREROM_ROOT}")
+env.Replace(THIS_CORE_ROOT = "${BUILD_ROOT}/core")
+    
+env.Replace(DEVCFG_SYSAPI = "${THIS_CORE_ROOT}/api/systemdrivers/")
+env.Append(CPPPATH = '${DEVCFG_ROOT}/service/inc')
+
+#-------------------------------------------------------------------------------
+# External paths, NOTE: DALConfig is a special case as it may require any
+# ".h" file which may not be a public API
+#-------------------------------------------------------------------------------
+
+EXTERNAL_API = [
+   'MODEM_PMIC',                  #pm.h
+   'MODEM_API',
+]
+env.RequireExternalApi(EXTERNAL_API)
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'HAL',
+   'BUSES',
+   'HWENGINES',
+   'SYSTEMDRIVERS',
+   'SYSTEMDRIVERS_DALCONFIG',
+   'DEBUGTOOLS',
+   'SERVICES',
+   'APTTESTS',
+   'KERNEL_MEMORYMANAGER',
+   'KERNEL'
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+env.Append(CPPPATH = '${THIS_CORE_ROOT}/debugtools/eic/src/')
+env.Append(CPPPATH = '${THIS_CORE_ROOT}/systemdrivers/InterruptController/src/qurt/kernel')
+env.Append(CPPPATH = '${THIS_CORE_ROOT}/systemdrivers/InterruptController/inc')
+
+#Uncomment the line below to disable compiler optimisation
+#env.Replace(DISABLE_COMPILER_OPTIMISATION = 'yes')
+if 'DISABLE_COMPILER_OPTIMISATION' in env:
+    env['HEXAGON_OPT_S'] = '-O0'        
+
+script_fname = "../SConscript"
+
+obj_nodes = env.SConscript(script_fname, exports='env')

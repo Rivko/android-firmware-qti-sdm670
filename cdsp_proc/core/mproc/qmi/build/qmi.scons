@@ -1,0 +1,251 @@
+#===============================================================================
+#
+# QMI Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009-2014,2017 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: $
+#  $DateTime: 2010/09/22 18:42:11 $
+#  $Author: coresvc $
+#  $Change: 1450404 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 06/02/14    aj     Added TISE image support.  Note that 'USES_MSVC' and
+#                    'USES_TISE' are used to specify a subset of files from this
+#                    driver to compile for the Windows (MSVC) compiler.  Please
+#                    do not remove these definitions from this file.
+#===============================================================================
+import os.path
+Import('env')
+env = env.Clone()
+
+# This is to remove any -Werror declarations in the environmnent for the MSVC
+# compiler.
+if 'USES_MSVC' in env:
+    env.Replace(CFLAGS= '-Dinline="__inline"')
+    env.Append(CPPDEFINES = [
+        'CUST_H=custaaaaaaaaq.h',
+        'MY_GCC_FILE=__FILE__',
+        '__FILENAME__=__FILE__',
+      ])
+
+env.Append(CPPDEFINES=['MSG_BT_SSID_DFLT=MSG_SSID_ONCRPC'])
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/mproc/qmi/src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+env.PublishPrivateApi('MPROC_QMI_PRIVATE', [
+    '${BUILD_ROOT}/core/mproc/qmi/src/qcci',
+    '${BUILD_ROOT}/core/mproc/qmi/src/qcsi',
+    '${BUILD_ROOT}/core/mproc/qmi/src/common',
+    '${BUILD_ROOT}/core/mproc/qmi/src/core_server',
+    '${BUILD_ROOT}/core/mproc/qmi/src/encdec',
+    '${BUILD_ROOT}/core/mproc/qmi/src/qmi_si',
+    '${BUILD_ROOT}/core/mproc/qmi/src/qmb',
+])
+
+#-------------------------------------------------------------------------------
+# External depends within CoreBSP
+#-------------------------------------------------------------------------------
+env.RequireExternalApi([
+])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DEBUGTOOLS',
+   'DAL',
+   'MPROC',
+   'DIAG',
+   'STORAGE',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'MPROC_QMI_PRIVATE',
+   'WIREDCONNECTIVITY',
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequirePublicApi(['TEST','COMMON'], area='QMIMSGS')
+env.RequireRestrictedApi(CBSP_API)
+
+if env['MPROC_PROC_NAME'] == 'adsp':
+  if 'USES_SENSOR_IMG' in env:
+    env.Append(CPPDEFINES=['QMI_PING_SERVICE_INSTANCE=34'])
+  elif 'USES_AUDIO_IMG' in env:
+    env.Append(CPPDEFINES=['QMI_PING_SERVICE_INSTANCE=33'])
+  elif 'USES_QURTOS_IMG' in env:
+    env.Append(CPPDEFINES=['QMI_PING_SERVICE_INSTANCE=32'])
+
+if env['MPROC_PROC_NAME'] == 'slpi':
+  if 'USES_SENSOR_IMG' in env:
+    env.Append(CPPDEFINES=['QMI_PING_SERVICE_INSTANCE=49'])
+  elif 'USES_QURTOS_IMG' in env:
+    env.Append(CPPDEFINES=['QMI_PING_SERVICE_INSTANCE=48'])
+  
+if env['MPROC_PROC_NAME'] == 'cdsp':
+  env.Append(CPPDEFINES=['QMI_PING_SERVICE_INSTANCE=64'])
+
+if env['MPROC_PROC_NAME'] == 'modem':
+  if 'USES_WLAN_PD' in env:
+    env.Append(CPPDEFINES=['QMI_PING_SERVICE_INSTANCE=1'])
+  else:
+    env.Append(CPPDEFINES=['QMI_PING_SERVICE_INSTANCE=0'])
+
+if 'USES_SENSOR_IMG' in env:
+   env.Append(CPPDEFINES=['FEATURE_QMI_LOOPBACK_TRANSPORT'])
+
+# TODO When there are users, add FEATURE_QMI_MESSAGE_BUS to CPPDEFINES
+
+if 'USES_QURTOS_IMG' in env:
+   env.Append(CPPDEFINES=['FEATURE_QMI_SMEM_LOG', 'FEATURE_QMI_MSG', 'FEATURE_QMI_NATIVE_IPC_ROUTER'])
+
+if not('USES_MEMOPT' in env and 'USES_MDM9X35_VOCODER' in env):
+   env.Append(CPPDEFINES=['FEATURE_QMI_TEST_SERVICE_COMPONENTS'])
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+QMI_QCCI_SOURCES  =  [
+  '${BUILDPATH}/qcci/qmi_cci_common.c',
+]
+
+if os.path.isfile("../src/qcci/qmi_cci_target.c") :
+   QMI_QCCI_SOURCES += ['${BUILDPATH}/qcci/qmi_cci_target.c']
+
+QMI_QCCI_IPC_XPORT_SOURCES = [
+  '${BUILDPATH}/qcci/qmi_cci_xport_ipc.c',
+]
+
+QMI_PING_CLIENT_SOURCES = [
+  '${BUILDPATH}/qcci/qmi_ping_clnt.c',
+]
+
+QMI_QCSI_SOURCES = [
+  '${BUILDPATH}/qcsi/qmi_csi_common.c',
+]
+
+if os.path.isfile("../src/qcsi/qmi_csi_target.c") :
+   QMI_QCSI_SOURCES += ['${BUILDPATH}/qcsi/qmi_csi_target.c']
+
+QMI_QCSI_IPC_XPORT_SOURCES = [
+  '${BUILDPATH}/qcsi/qmi_csi_xport_ipc.c',
+]
+
+QMI_PING_SERVICE_SOURCES = [
+  '${BUILDPATH}/qcsi/qmi_ping_svc.c',
+  '${BUILDPATH}/qcsi/qmi_ping_svc_main.c',
+]
+
+QMI_FW_INIT_SOURCES = [
+  '${BUILDPATH}/common/qmi_fw_init.c',
+]
+
+QMI_LOOPBACK_SOURCES = [
+  '${BUILDPATH}/common/qmi_loopback.c',
+]
+
+QMI_ENCDEC_SOURCES = [
+  '${BUILDPATH}/encdec/qmi_idl_accessor.c',
+  '${BUILDPATH}/encdec/qmi_idl_lib.c',
+]
+
+QMI_SI_SOURCES = [
+  '${BUILDPATH}/qmi_si/qmi_si_database.c',
+]
+
+QMI_CORE_SERVER_SOURCES = [
+    '${BUILDPATH}/core_server/qmi_container_service.c',
+    '${BUILDPATH}/core_server/qmi_dispatch_service.c',
+    '${BUILDPATH}/core_server/qmi_indication_service.c',
+    '${BUILDPATH}/core_server/qmi_task_service.c',
+    '${BUILDPATH}/core_server/qmi_task_service_qurt.c',
+    '${BUILDPATH}/core_server/qmi_core_server.c',
+    '${BUILDPATH}/core_server/qmi_ping_server_qurt.c',
+    '${BUILDPATH}/core_server/qmi_ping_server.c',
+]
+
+QMI_MB_COMMON_SOURCES = [
+    '${BUILDPATH}/qmb/qmi_mb_common.c',
+]
+
+QMI_MB_IPC_XPORT_SOURCES = [
+    '${BUILDPATH}/qmb/qmi_mb_xport_ipc.c',
+]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+GUEST_OS_IMAGES = ['QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE','CORE_QDSP6_SW', 'CORE_TISE_SW']
+SENSOR_IMAGES = ['CORE_QDSP6_SENSOR_SW']
+AUDIO_IMAGES = ['CORE_QDSP6_AUDIO_SW','CORE_SLPI_ADSP_ROOT']
+USER_IMAGES = SENSOR_IMAGES + AUDIO_IMAGES
+ALL_IMAGES = GUEST_OS_IMAGES + USER_IMAGES
+
+# QMI Loopback, useful only for sensor PDs.
+env.AddLibrary(SENSOR_IMAGES, '${BUILDPATH}/qmi_common', QMI_LOOPBACK_SOURCES)
+
+# Encdec
+env.AddLibrary(ALL_IMAGES, '${BUILDPATH}/encdec', QMI_ENCDEC_SOURCES)
+
+# QCCI
+env.AddLibrary(ALL_IMAGES, '${BUILDPATH}/qcci_common', QMI_QCCI_SOURCES + QMI_QCCI_IPC_XPORT_SOURCES)
+
+# QCSI
+env.AddLibrary(ALL_IMAGES, '${BUILDPATH}/qcsi_common', QMI_QCSI_SOURCES + QMI_QCSI_IPC_XPORT_SOURCES)
+
+# FW Init
+env.AddLibrary(ALL_IMAGES, '${BUILDPATH}/qmi_fw_init', QMI_FW_INIT_SOURCES)
+
+# QMI SI TODO Enable when there are users.
+#env.AddLibrary(ALL_IMAGES, '${BUILDPATH}/qmi_si', QMI_SI_SOURCES)
+
+# TODO Core Server Enable when there are users
+#env.AddLibrary(GUEST_OS_IMAGES, '${BUILDPATH}/qmi_core_server', QMI_CORE_SERVER_SOURCES)
+
+# Ping service and client. Disabled in memory restricted builds.
+if not('USES_MEMOPT' in env and 'USES_MDM9X35_VOCODER' in env):
+   env.AddLibrary(ALL_IMAGES, '${BUILDPATH}/ping_service', QMI_PING_SERVICE_SOURCES)
+   env.AddLibrary(ALL_IMAGES, '${BUILDPATH}/ping_client', QMI_PING_CLIENT_SOURCES)
+
+# QMB -- TODO Enable when there are users
+#env.AddLibrary(ALL_IMAGES, '${BUILDPATH}/qmb_common', QMI_MB_COMMON_SOURCES + QMI_MB_IPC_XPORT_SOURCES)
+
+#-------------------------------------------------------------------------------
+
+if 'USES_RCINIT' in env:
+   RCINIT_IMG = ['CORE_MODEM', 'CORE_QDSP6_SW', 'CORE_GSS']
+   env.AddRCInitFunc(           # Code Fragment in TMC: NO
+    RCINIT_IMG,                 # define TMC_RCINIT_INIT_QMI_FW_INIT
+    {
+     'sequence_group'             : 'RCINIT_GROUP_0',                   # required
+     'init_name'                  : 'qmi_fw',                           # required
+     'init_function'              : 'qmi_fw_init',                      # required
+     'dependencies'               : ['smd','ipc_router',]
+    })
+   env.AddRCInitFunc(           # Code Fragment in TMC: NO
+    USER_IMAGES,                # define TMC_RCINIT_INIT_QMI_FW_INIT
+    {
+     'sequence_group'             : 'RCINIT_GROUP_0',                   # required
+     'init_name'                  : 'qmi_fw_user',                      # required
+     'init_function'              : 'qmi_fw_init',                      # required
+     'dependencies'               : ['ipc_router_user']
+    })

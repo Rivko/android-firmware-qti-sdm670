@@ -1,0 +1,43 @@
+#===============================================================================
+# Copyright (c) 2012 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===============================================================================
+Import('env')
+
+platform_root = '${BUILD_ROOT}/platform'
+env.Replace(ADSP_PLATFORM_ROOT = platform_root)
+env.Append(HEXAGON_WARN = " -Werror")
+
+if env['PLATFORM_SUBSYSTEM'] in ['mdsp']:
+   env.Append(CFLAGS = '-DDSP_IMAGE=1')
+elif env['PLATFORM_SUBSYSTEM'] in ['slpi']:
+   env.Append(CFLAGS = '-DDSP_IMAGE=2')
+elif env['PLATFORM_SUBSYSTEM'] in ['cdsp']:
+   env.Append(CFLAGS = '-DDSP_IMAGE=3')
+elif env['PLATFORM_SUBSYSTEM'] in ['adsp']:
+   env.Append(CFLAGS = '-DDSP_IMAGE=0')
+else:
+   env.Append(CFLAGS = '-DDSP_IMAGE=-1')
+
+if env.subst('$CHIPSET') in ['qcs405']:
+   env.Append(CFLAGS = '-DDISABLE_VAPPS_APIS')
+   env.Append(CFLAGS = '-DDISABLE_HLOS_PHYSPOOL_DYNAMIC_LOADING')
+   env.Append(CFLAGS = '-DREMOTE_HEAP_XPU')
+   env.AddUsesFlags('USES_DISABLE_HLOS_PHYSPOOL_DYNAMIC_LOADING')
+   env.AddUsesFlags('USES_REMOTE_HEAP_XPU')
+if env.subst('$CHIPSET') in ['sdm1000']:
+   env.Append(CFLAGS = '-DENABLE_GUESTOS_AUDIOPD_SUPPORT')
+   env.AddUsesFlags('USES_ENABLE_GUESTOS_AUDIOPD_SUPPORT')
+if env.subst('$CHIPSET') in ['sdm855']:
+   env.Append(CFLAGS = '-DVAPSS_SPLIT_CORE')
+
+env.LoadSoftwareUnits()
+
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*txt', '*.html'], '${ADSP_PLATFORM_ROOT}/qaic'))
+CLEAN_LIST.extend(env.FindFiles('*', '${ADSP_PLATFORM_ROOT}/qaic/Linux_DoNotShip'))
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.cpp', '*.h'], '${ADSP_PLATFORM_ROOT}/pls'))
+CLEAN_LIST.extend(env.FindFiles(['dynsymbols.lst', 'externs.lst'], '${ADSP_PLATFORM_ROOT}/exports'))
+
+env.CleanPack(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE','QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE'], CLEAN_LIST)

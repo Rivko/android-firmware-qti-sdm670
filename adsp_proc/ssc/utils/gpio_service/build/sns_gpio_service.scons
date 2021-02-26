@@ -1,0 +1,52 @@
+#===============================================================================
+#
+# GPIO Service
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2017 by Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#  $Id: //components/rel/ssc.slpi/3.2/utils/gpio_service/build/sns_gpio_service.scons#1 $
+#  $DateTime: 2018/02/01 03:15:18 $
+#  $Change: 15367748 $
+#
+#===============================================================================
+Import('env')
+import inspect
+
+#-------------------------------------------------------------------------------
+# External dependencies
+#-------------------------------------------------------------------------------
+CBSP_API = [
+  'DAL',
+  'DEBUGTOOLS',
+  'SYSTEMDRIVERS',
+]
+
+sns_gpio_service_flavor = ["hexagon"]
+if 'SSC_TARGET_X86' in env['CPPDEFINES']:
+  sns_gpio_service_flavor = ["x86"]
+elif 'SSC_TARGET_HEXAGON_MDSP' in env['CPPDEFINES']:
+  sns_gpio_service_flavor = ["hexagon_mdsp"]  
+if 'SENSORS_DD_DEV_FLAG' not in env: 
+  gpio_cleanpack= []
+  binlib=False
+else:
+  gpio_cleanpack=['*.c','*.h']
+  binlib=True
+#-------------------------------------------------------------------------------
+# Adds self
+#-------------------------------------------------------------------------------
+if 'USES_SSC_STATIC_LIB_BUILDER' in env:
+  env.AddSSCSU(inspect.getfile(inspect.currentframe()),
+             core_public_api = CBSP_API,
+             flavor = sns_gpio_service_flavor,
+             ssc_protected_api = ['SNS_FRAMEWORK','SNS_INTERNAL_INCLUDES'],
+             clean_pack_list = gpio_cleanpack,
+             binary_lib=binlib,
+             island_sections = ['.text.sns', '.data.sns','.rodata.sns'])
+

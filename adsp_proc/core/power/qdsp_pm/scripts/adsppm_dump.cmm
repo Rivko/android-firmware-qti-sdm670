@@ -1,0 +1,1920 @@
+;====================================================================
+; Copyright (c) 2015 Qualcomm Technologies, Inc.
+; All Rights Reserved.
+; Qualcomm Technologies, Inc. Confidential and Proprietary.
+;====================================================================
+
+;===================================================================
+; Name:  adsppm_dump.cmm
+;
+; Description:
+;   Print out all the outstanding client requests of all types
+;   either to STDOUT or to the specified log file.
+;
+;   Internally, run the script with the -v option to print out
+;   ADSPPM type names and some additional info that might be useful
+;   for debugging. Use the -d option to debug this script
+;
+; $Header: //components/rel/core.qdsp6/2.1/power/qdsp_pm/scripts/adsppm_dump.cmm#3 $
+;====================================================================
+
+LOCAL &MainOutput &SecondaryOutput
+LOCAL &startdate
+&startdate=STRING.Replace(STRING.Replace(STRING.Replace(CLOCK.DATE()+"_"+CLOCK.TIME()," ","_",0),":","-",0),".","",0)    ; remove '.', ' ', and ':'
+
+&MainOutput="adsppm_client_requests_&startdate"
+&SecondaryOutput=""
+&MainOutput="DSP"
+&SecondaryOutput="DSP"
+
+;ON ERROR JUMPTO end_of_adsppm_dump
+;AREA.RESet
+
+AREA.CREATE &MainOutput 200. 1000.
+WINPOS 50% 0. 50% 103% 0. 0. &MainOutput
+AREA.VIEW &MainOutput
+AREA.SELECT &MainOutput
+
+&dbg "Primary output: &MainOutput"
+&dbg "Secondary output: &SecondaryOutput"
+
+ENTRY %Line &argv
+
+;logPath is either a folder on disk, an empty string, or stdout (if not provided, use stdout).
+;output is the command to write to that output location
+LOCAL &logDir
+PRIVATE &logPath
+
+LOCAL &dbgLvl &err &dbg &info   ; dbgLvl 0, 1, or 2
+LOCAL &output                   ; PRINT or WRITE
+LOCAL &logName &openMode
+
+LOCAL &AdspVersion
+
+LOCAL &clientNode &client &clientName &clientId &coreId &numClients &numClientsPrint &clientType
+LOCAL &clientClass &bwActiveFlag &mipsActiveFlag &useCaseActiveFlag &cacheLockParam &cacheLockStart &cacheLockSize
+LOCAL &reqArray &RscId &reqNode
+LOCAL &index &rscIdx &counter &nRscClients &curClientId
+
+; MSB => Adsppm_Rsc_Id_Max, LSB => Adsppm_Rsc_Id_None. Defaults to all OFF, interactively
+; enabling one or more turns the specified ones ON.
+LOCAL &typeFlag &supportedFlag &typeList
+LOCAL &selected &supported      ; Recursive boolean macros used to check if a rscId needs to be printed. We need an extra one because typeflag&rscId needs to be
+                                ; evaluated recursively
+LOCAL &nTypes   ; of AdsppmRscIds
+
+LOCAL &dumpClients
+LOCAL &dumpClientId_str &dumpClientId_menu &typeFlag_menu &logDir_menu &dumpMgrs &mgrsToDump ; From Menu
+
+&dbgLvl=0.
+&err="GOSUB debug 0"
+&dbg="GOSUB debug 1"
+&info="GOSUB debug 2"
+&logPath="stdout"
+
+&nTypes=0
+WHILE (VAR.STRING((AdsppmRscIdType)&nTypes)!="Adsppm_Rsc_Id_Max")
+(
+    &nTypes=&nTypes+1
+)
+
+&supportedFlag=0y010111110
+&typeFlag=&supportedFlag
+&firstRun=1
+&typeList=":core_clk:sleep_latency:mips:bw:mempower:core_clk_domain:power:"
+&typeFlag_menu=0x0
+
+;
+; Initialize optional variables set by the main menu
+;
+&dumpClientId=-1
+&dumpClientId_str="_AllClients_" ; Used in the log file name
+&dumpClients=1  ; Enable client dump by default
+&dumpMgrs=0     ; Disable resource mgr dump by default
+
+&dumpRscIdx=-1
+
+&verboseOutput=0
+
+&mgrsToDump=":cache:mips:dcvs:adspclk:extbw:bus:ahb:syscache"
+
+;
+; Parse the command line for the supported args
+; The corresponding vars are automatically set there.
+;
+GOSUB parseCMDLine &argv
+
+ENTRY &help_cmd &verbose_cmd &interactive_cmd &logdir_cmd &demo_cmd
+
+; Do the demo setup first, to capture ALL output
+IF (&demo_cmd==1)
+(
+    GOSUB setupDemo
+)
+
+IF (&help_cmd==1)
+(
+    GOSUB printHelp
+    ENDDO
+)
+
+IF (&verbose_cmd==1)
+(
+    &verboseOutput=1
+    &dbg "Verbose output selected. Typenames will be output along with the dump"
+)
+
+IF ("&logdir_cmd"!="")
+(
+    &logDir="&logdir_cmd"
+)
+
+IF (&interactive_cmd==1)
+(
+
+    &dbg "Interactive mode"
+    &dbg "Pre-menu typeflag_menu: &typeFlag_menu"
+    GOSUB Main_Menu &supportedFlag &nTypes &logDir
+    ENTRY &dumpClientId_str &typeFlag_menu &typeList_menu &logDir_menu &dbgLvl_menu &dumpMgrs &dumpClients
+
+    &dbg "Received clientid &dumpClientId_str, typeflag &typeFlag_menu, typelist '&typeList_menu', logdir &logDir_menu, dumpMgrs &dumpMgrs, dumpClients &dumpClients"
+
+    IF (("&typeList_menu"!="_")&&("&typeList_menu"!=""))
+    (
+        ; it's set to _ on the first entry to the typelist menu, if nothing was entered. Empty if the type menu wasn't entered
+        &typeList="&typeList_menu"
+    )
+
+    IF ("&dumpClientId_str"!="_AllClients_")
+    (
+        &dumpClientId_str="&(dumpClientId_str)_"  ; to work with the main loop selection logic
+    )
+    IF (&typeFlag_menu==0x0)
+    (
+        PRINT "Not dumping request-type information"
+    )
+    ELSE
+    (
+        &typeFlag=&(typeFlag_menu)
+    )
+
+    &logDir="&logDir_menu"
+    &dbg "Main Menu: Set logDir to logDir_menu = &logDir_menu"
+
+    &dbgLvl=&dbgLvl_menu
+
+    &dbg "DumpMgrs from menu: &dumpMgrs"
+)
+
+&logPath="&logDir"
+&info "logPath = &logPath"
+
+IF (("&logPath"=="")||("&logPath"=="stdout"))
+(
+    &dbg "Empty LogPath"
+    &logPath="stdout"
+    &output="PRINT"
+)
+ELSE
+(
+    &dbg "Not-empty logPath: &logPath"
+
+    ; Trim trailing "\" if necessary
+    IF (string.char("&(logPath)", string.len("&(logPath)")-1)=='\')
+    (
+        &logPath=string.cut("&(logPath)", -1)
+    )
+
+    &logName="adsppm_dump_&(startdate).txt"
+
+    IF OS.FILE("&(logPath)\&(logName)")==TRUE()
+    (
+        &dbg "&(logPath)\&(logName) already exists. Appending to file."
+        &openMode="/Append"
+    )
+    ELSE
+    (
+        &dbg "Creating new file &(logPath)\&(logName)"
+        &openMode="/Create"
+    )
+
+        OPEN #1 "&(logPath)\&(logName)" &openMode
+        &output="WRITE #1 "
+        &output "================================================================================"
+        &output "Session Start: "+CLOCK.TIME()
+
+        ; Add dump info to the top of the file
+        &output "Dump Info: "
+        &output FORMAT.STRING("ClientIDs          (enabled    : &dumpClients)",45.,' ')+":"+STRing.Replace("&dumpClientId_str","_"," ",0.)
+        &output FORMAT.STRING("Resource types     (flags      : &typeFlag)",45.,' ')+":"+STRing.Replace("&typeList",":"," ",0.)
+        &output FORMAT.STRING("Resource Managers  (enabled    : &dumpMgrs)",45.,' ')+":"+STRing.Replace("&mgrsToDump",":"," ",0.)
+        IF &verboseOutput==1
+        (
+            &output ""
+            &output FORMAT.STRING("VERBOSE OUTPUT ENABLED",45.,' ')
+        )
+        &output "================================================================================"
+        &output ""
+        &output ""
+
+    PRINT "outputting to &logPath\&(logName)"
+)
+
+; Set the correct Core.ADSP branch
+; Add more versions here, as necessary. Use the branch versions, without the '.'s
+&dbg "Checking if ACM_GetMipsFromMpps exists, to differentiate between branches"
+IF sYmbol.EXIST("ACM_GetMipsFromMpps")
+(
+    &err "Using ADSP 2.7"
+    &AdspVersion=27.
+)
+ELSE
+(
+    &err "Using ADSP 2.6.x"
+    &AdspVersion=262.
+)
+
+;========================
+;   Main processing loop
+;========================
+
+&err "Starting Dump, typeList = &typeList"
+
+LOCAL &useClientManager &clientNodeType
+IF (sYmbol.EXIST("gAdsppmClientManager"))
+    &useClientManager=1
+ELSE
+    &useClientManager=0
+
+IF (&useClientManager==1)
+(
+    &err "Using Client Manager for client info"
+    &clientNode=VAR.VALUE(gAdsppmClientManager.clients.link.pNext)
+    &clientNodeType="(AdsppmClientType *)"
+    &numClients=VAR.VALUE(gAdsppmClientManager.clients.nCnt)
+)
+ELSE
+(
+    &err "Using AdsppmCoreCtx for client info"
+    &clientNode=VAR.VALUE(gAdsppmCoreCtx.adsppmHandleQ.link.pNext)
+    &clientNodeType="(AdsppmHandleType *)"
+    &numClients=VAR.VALUE(gAdsppmCoreCtx.adsppmHandleQ.nCnt)
+)
+
+&numClientsPrint=FORMAT.DECIMAL(0,&numClients)
+
+IF (&dumpMgrs==1)
+(
+    ; Each mgr is in a separate subroutine to make it easier to add a user-specified-manager feature
+    &output  FORMAT.STRING("=",31.,'=')+"+"
+    &output  FORMAT.STRING("Dumping Resource Managers",31.,' ')+"|"
+    IF (STRing.SCAN("&mgrsToDump","cache",0.)!=-1)
+        GOSUB printCachePartMgr
+    IF (STRing.SCAN("&mgrsToDump","mips",0.)!=-1)
+        GOSUB printMIPSMgr
+    IF (STRing.SCAN("&mgrsToDump","dcvs",0.)!=-1)
+        GOSUB printDCVSMgr
+    IF (STRing.SCAN("&mgrsToDump","adspclk",0.)!=-1)
+        GOSUB printAdspClkMgr
+    IF (STRing.SCAN("&mgrsToDump","extbw",0.)!=-1)
+        GOSUB printExtBwMgr
+    IF (STRing.SCAN("&mgrsToDump","bus",0.)!=-1)
+        GOSUB printBusMgr
+    IF (STRing.SCAN("&mgrsToDump","ahb",0.)!=-1)
+        GOSUB printAhbMgr
+    IF (STRing.SCAN("&mgrsToDump","syscache",0.)!=-1)
+        GOSUB printSysCacheMgr	
+    &output "================================================================================"
+    &output ""
+    &output ""
+)
+
+IF (&dumpClients==1)
+(
+    &output  FORMAT.STRING("=",31.,'=')+"+"
+    &output  FORMAT.STRING("Dumping Client Info",31.,' ')+"|"
+    &output  FORMAT.STRING("Number of Clients: &numClientsPrint.",31.,' ')+"|"
+    &index=0
+
+    WHILE (&index<&numClients)
+    (
+        ; Print the client info first
+        &dbg "Index = "+FORMAT.Decimal(0.,&index)
+        IF (&useClientManager==1)
+        (
+            &client=&clientNode+8
+            &clientId=FORMAT.DECIMAL(0,VAR.VALUE((&clientNodeType&client)->clientId))
+            &clientName=DATA.STRING(D:VAR.VALUE((&clientNodeType&client)->clientName))
+            &coreId=VAR.STRING((&clientNodeType&client)->coreId)
+
+            &clientType=VAR.STRING((AdsppmClientPeriodicityType)(((AdsppmClientType *)&client)->periodicityType))
+            &clientClass=VAR.STRING((MmpmClientClassType)(((AdsppmClientType *)&client)->clientClass))
+            &bwActiveFlag=VAR.STRING(((AdsppmClientType *)&client)->bwActiveFlag)
+            &mipsActiveFlag=VAR.STRING(((AdsppmClientType *)&client)->mipsActiveFlag)
+            &useCaseActiveFlag=VAR.STRING(((AdsppmClientType *)&client)->useCaseActiveFlag)
+            &cacheLockStart=VAR.VALUE(((MmpmL2CacheLineLockParameterType)((AdsppmClientType *)&client)->cacheLockParam).startAddress)
+            &cacheLockSize=VAR.VALUE(((MmpmL2CacheLineLockParameterType)((AdsppmClientType *)&client)->cacheLockParam).size)
+        )
+        ELSE
+        (
+            &clientId=FORMAT.DECIMAL(0,V.VALUE(((AdsppmHandleType *)&clientNode)->clientId))
+            &clientName=DATA.STRING(D:V.VALUE(((AdsppmHandleType *)&clientNode)->clientName))
+            &coreId=VAR.STRING(((AdsppmHandleType *)&clientNode)->coreId)
+            &clientType=VAR.STRING(((AdsppmHandleType *)&clientNode)->clientType)
+        )
+
+        IF (("&dumpClientId_str"=="_AllClients_")||(STRing.SCAN("&dumpClientId_str","_&(clientId)_",0)>=0))
+        (
+            LOCAL   &printTypeName
+
+            &output "================================================================================"
+            &output "client ID &clientId - &clientName:"
+            &output "   Periodicity     : &clientType"
+            &printTypeName=""
+            IF &verboseOutput==1
+                &output "   Client Info     : &clientNodeType&client"
+
+            &output "   Core Id         : &coreId"
+            IF (&useClientManager==1)
+            (
+                &output "   Flags           : mipsActive = &mipsActiveFlag, bwActive = &bwActiveFlag, useCaseActive = &useCaseActiveFlag"
+                IF ((&cacheLockStart!=0x0)&&(&cacheLockSize!=0x0))
+                (
+                    &output "   cacheLockStart  : &cacheLockStart"
+                    &output "   cacheLockSize   : &cacheLockSize"
+                )
+                ELSE
+                    &output "   CacheLock       : Not Initialized"
+            )
+
+            &output "----+---------------------------------------------------------------------------"
+
+            ; Process and print the outstanding BW requests for this client
+            &reqArray=VAR.VALUE(gAdsppmCoreCtx.rscReqQ)
+            &rscIdx=0
+
+            PRIVATE &shortTypeName
+
+            ;&dbg "  typeList = &typeList"
+            WHILE (&rscIdx<&nTypes)
+            (
+                &shortTypeName=STRING.LoWeR(STRING.MID(VAR.STRING((AdsppmRscIdType)&rscIdx),14.,100.))  ; e.g. power, mips, bw
+                &dbg "  shortTypeName = &shortTypeName"
+                IF (STRing.SCAN("&typeList","&shortTypeName",0)>=0)
+                (
+                    ; Process and print each request type
+                    ; Traverse the linked list from the rscReqQ entry for this rscIdx
+                    ; and call the processing subroutines for each entry for the current
+                    ; clientId
+                    &reqNode=VAR.VALUE(gAdsppmCoreCtx.rscReqQ[&rscIdx-1].link.pNext)        ; Head of the list of clients for the current resource type
+                    &nRscClients=VAR.VALUE(((coreUtils_Q_Type *)&reqArray)[&rscIdx-1].nCnt) ; number of clients for the current resource type
+                    &counter=0
+
+                    WHILE (&counter<&nRscClients)
+                    (
+                        IF (&counter==&index)
+                        (
+                            IF ("&shortTypeName"=="power")
+                            (
+                                GOSUB printPwrDomain &clientId &reqNode
+                            )
+                            ELSE IF ("&shortTypeName"=="core_clk")
+                            (
+                                GOSUB printCoreClock &clientId &reqNode
+                            )
+                            ELSE IF ("&shortTypeName"=="sleep_latency")
+                            (
+                                GOSUB printLatency &clientId &reqNode
+                            )
+                            ELSE IF ("&shortTypeName"=="mips")
+                            (
+                                GOSUB printMIPS &clientId &reqNode
+                            )
+                            ELSE IF ("&shortTypeName"=="bw")
+                            (
+                                GOSUB printBW &clientId &reqNode
+                            )
+                            ELSE IF ("&shortTypeName"=="mempower")
+                            (
+                                GOSUB printMemPower &clientId &reqNode
+                            )
+                        )    ; if counter == index
+                        &reqNode=VAR.VALUE(((coreUtils_Q_LinkType *)&reqNode)->pNext)
+                        &counter=&counter+1
+                    )   ; counter < nRscClients loop
+                )
+
+                &rscIdx=&rscIdx+1
+            ) ; rscIdx loop
+
+            &output   ""
+        )   ; If current clientId need to be printed
+
+        &clientNode=VAR.VALUE(((coreUtils_Q_LinkType *)&clientNode)->pNext)
+        &index=&index+1
+    )   ; index loop
+)
+
+IF "&logPath"!="stdout"
+(
+  CLOSE #1
+)
+
+PRINT "Completed"
+
+GOSUB cleanup_exit
+
+;=============================================================
+;   Subroutines to print each of the resource managers
+;=============================================================
+
+printCachePartMgr:
+    PRIVATE &resMgr &activeClientClasses &mainPartitionSize
+
+    IF (sYmbol.EXIST("gAdsppmCachePartitionManager"))
+    (
+        &output  "================================================================================"
+        &output  "Cache Partition Manager"
+        &output  "----+---------------------------------------------------------------------------"
+        &activeClientClasses=FORMAT.DECIMAL(0.,VAR.VALUE(((AdsppmCachePartitionManagerType)gAdsppmCachePartitionManager).activeClientClasses))
+        &mainPartitionSize=FORMAT.DECIMAL(0.,VAR.VALUE(((AdsppmCachePartitionManagerType)gAdsppmCachePartitionManager).mainPartitionSize))
+        &output  "    |-> Active Client Classes  : &activeClientClasses"
+        &output  "    |-> Main Partition Size    : &mainPartitionSize"
+    )
+    ELSE
+    (
+        &err "Ignoring gAdsppmCachePartitionManager dump: no such symbol"
+    )
+
+RETURN
+
+printMIPSMgr:
+    PRIVATE &numClients &mipsTotal &mipsPerThread &numPeriodicClients &qdsp6Clk &numClasses
+    IF (sYmbol.EXIST("mipsMgrCtx"))
+    (
+        &output  "================================================================================"
+        &output  "MIPS Manager"
+        &output  "----+---------------------------------------------------------------------------"
+        IF (&AdspVersion==27.)
+            &numClients=FORMAT.DECIMAL(0.,VAR.VALUE(mipsMgrCtx.numOfClients))   ; Differs from 2.6 branch, which uses the old method (see ELSE)
+        ELSE
+            &numClients=FORMAT.DECIMAL(0.,VAR.VALUE(mipsMgrCtx.preMipsAggregateData.mipsToClockData.numOfClients))
+
+        IF (&AdspVersion==27.)
+            &numPeriodicClients=FORMAT.DECIMAL(0.,VAR.VALUE(mipsMgrCtx.numOfPeriodicClients))   ; Differs from 2.6 branch, which uses the old method (see ELSE)
+        ELSE
+            &numPeriodicClients=FORMAT.DECIMAL(0.,VAR.VALUE(mipsMgrCtx.preMipsAggregateData.mipsToClockData.numOfPeriodicClients))
+
+        IF (&AdspVersion==27.)
+        (
+            PRIVATE &arraysize &typesize &vartype &numelems
+            &arraysize=Var.SIZEOF(mipsMgrCtx.mppsAggregateData.mppsPerClientClass)
+            &vartype=Var.TYPEOF(mipsMgrCtx.mppsAggregateData.mppsPerClientClass[0])
+            &typesize=Var.SIZEOF("&vartype")
+            &numelems=&arraysize/Var.SIZEOF("&vartype")
+            &dbg "Num of client class elements = &numelems"
+
+            &numClasses=FORMAT.Decimal(0.,&numelems)
+        )
+
+        &output  "    |-> Number of clients          : &numClients"
+        &output  "    |-> Number of Periodic Clients : &numPeriodicClients"
+        &output  "    |"
+
+        ; MIPS Aggregate Data
+        IF (&AdspVersion==27.)
+        (
+            &mipsTotal=FORMAT.DECIMAL(0.,VAR.VALUE(mipsMgrCtx.mipsAggregateData.mipsTotal))
+            &mipsPerThread=FORMAT.DECIMAL(0.,VAR.VALUE(mipsMgrCtx.mipsAggregateData.mipsPerThread))
+        )
+        ELSE
+        (
+            &mipsTotal=FORMAT.DECIMAL(0.,VAR.VALUE(mipsMgrCtx.preMipsAggregateData.mipsToClockData.mipsTotal))
+            &mipsPerThread=FORMAT.DECIMAL(0.,VAR.VALUE(mipsMgrCtx.preMipsAggregateData.mipsToClockData.mipsPerThread))
+        )
+
+        &output  "    |-> MIPS Aggregate Data:"
+        &output  "    +---+-----------------------------------------------------------------------"
+        &output  "    |   |-> Total MIPS                 : &mipsTotal"
+        &output  "    |   |-> MIPS per Thread            : &mipsPerThread"
+        &output  "    |   |-> QDSP6 Clock                : &qdsp6Clk"
+        &output  "    |   +-----------------------------------------------------------------------"
+        &output  "    |"
+
+        ; MPPS Aggregate Data
+        IF (&AdspVersion==27.)
+        (
+            PRIVATE &totalMPPS &nDominantThreads &maxMppsVote &secondMaxMppsVote &adspFloorClock
+            PRIVATE &idx &mppsForCurClass
+            ;&totalMPPS=FORMAT.Decimal(0.,VAR.VALUE(mipsMgrCtx.mppsAggregateData.mppsPerClientClass[0] + mipsMgrCtx.mppsAggregateData.mppsPerClientClass[1] + mipsMgrCtx.mppsAggregateData.mppsPerClientClass[2]))
+            ;&nDominantThreads=FORMAT.Decimal(0.,VAR.VALUE(mipsMgrCtx.mppsAggregateData.numDominantThreads))
+            ;&maxMppsVote=FORMAT.Decimal(0.,VAR.VALUE(mipsMgrCtx.mppsAggregateData.maxMppsVote))
+            ;&secondMaxMppsVote=FORMAT.Decimal(0.,VAR.VALUE(mipsMgrCtx.mppsAggregateData.secondMaxMppsVote))
+            &mipsTotal=FORMAT.DECIMAL(0.,VAR.VALUE(mipsMgrCtx.mppsAggregateData.mipsTotal))
+            ;&adspFloorClock=FORMAT.Decimal(0.,VAR.VALUE(mipsMgrCtx.mppsAggregateData.adspFloorClock))
+
+            &output  "    |-> MPPS Aggregate Data"
+            &output  "    +---+-----------------------------------------------------------------------"
+            ;&output  "    |   |-> Total MPPS                    : &totalMPPS"
+            ;&output  "    |   |-> Number of Dominant Threads    : &nDominantThreads"
+            ;&output  "    |   |-> Max MPPS Vote                 : &maxMppsVote"
+            ;&output  "    |   |-> Second-highest MPPS Vote      : &secondMaxMppsVote"
+            &output  "    |   |-> Total MIPS                    : &mipsTotal"
+            ;&output  "    |   |-> ADSP Floor Clock              : &adspFloorClock"
+            &output  "    |   |"
+            &output  "    |   |-> MPPS per Client Class (&numClasses classes):"
+
+            ; Loop through the mppsPerClientClass array
+            &idx=0
+
+            &dbg "Starting While Loop"
+            WHILE (&idx<&numClasses)
+            (
+                &mppsForCurClass=FORMAT.Decimal(0.,VAR.VALUE(mipsMgrCtx.mppsAggregateData.mppsPerClientClass[&idx]))
+                &output  "    |   |---+-------------------------------------------------------------------"
+                &output  "    |   |   |-> Client Class "+FORMAT.Decimal(0.,&idx)+": "
+                &output  "    |   |   +-----+-------------------------------------------------------------"
+                &output  "    |   |   |     |-> MPPS  : &mppsForCurClass"
+                &output  "    |   |   |     +-------------------------------------------------------------"
+                &output  "    |   |   +-------------------------------------------------------------------"
+                &output  "    |   |"
+
+                &idx=&idx+1
+            )
+            &dbg "Done"
+            &output  "    |   +-----------------------------------------------------------------------"
+            &output  "    |"
+        )
+
+        ; Previous MIPS Aggregate Data
+        IF (&AdspVersion==27.)
+        (
+            &mipsTotal=FORMAT.DECIMAL(0.,VAR.VALUE(mipsMgrCtx.previousAggregateData.mipsToClockData.mipsData.mipsTotal))
+            &mipsPerThread=FORMAT.DECIMAL(0.,VAR.VALUE(mipsMgrCtx.previousAggregateData.mipsToClockData.mipsData.mipsPerThread))
+            &qdsp6Clk=FORMAT.DECIMAL(0.,VAR.VALUE(mipsMgrCtx.previousAggregateData.mipsToClockData.qDSP6Clock))
+        )
+        ELSE
+        (
+            &mipsTotal=FORMAT.DECIMAL(0.,VAR.VALUE(mipsMgrCtx.preMipsAggregateData.mipsToClockData.mipsTotal))
+            &mipsPerThread=FORMAT.DECIMAL(0.,VAR.VALUE(mipsMgrCtx.preMipsAggregateData.mipsToClockData.mipsPerThread))
+            &qdsp6Clk=FORMAT.DECIMAL(0.,VAR.VALUE(mipsMgrCtx.preMipsAggregateData.mipsToClockData.qDSP6Clock))
+        )
+
+        &output  "    |-> Previous MIPS Aggregate Data: "
+        &output  "    +---+-----------------------------------------------------------------------"
+        &output  "    |   |-> MIPS-to-Clock Data: "
+        &output  "    |   +---+-------------------------------------------------------------------"
+        &output  "    |   |   |-> Total MIPS                 : &mipsTotal"
+        &output  "    |   |   |-> MIPS per Thread            : &mipsPerThread"
+        &output  "    |   |   |-> QDSP6 Clock                : &qdsp6Clk"
+        &output  "    |   |   +-------------------------------------------------------------------"
+        &output  "    |   +-----------------------------------------------------------------------"
+        &output  "    |"
+
+        ; Current MIPS Aggregate Data
+        IF (&AdspVersion==27.)
+        (
+            &mipsTotal=FORMAT.DECIMAL(0.,VAR.VALUE(mipsMgrCtx.currentAggregateData.mipsToClockData.mipsData.mipsTotal))
+            &mipsPerThread=FORMAT.DECIMAL(0.,VAR.VALUE(mipsMgrCtx.currentAggregateData.mipsToClockData.mipsData.mipsPerThread))
+            &qdsp6Clk=FORMAT.DECIMAL(0.,VAR.VALUE(mipsMgrCtx.currentAggregateData.mipsToClockData.qDSP6Clock))
+
+            &output  "    |-> Current Aggregate Data: "
+            &output  "    +---+-----------------------------------------------------------------------"
+            &output  "    |   |-> MIPS-to-Clock Data: "
+            &output  "    |   +---+-------------------------------------------------------------------"
+            &output  "    |   |   |-> Total MIPS                 : &mipsTotal"
+            &output  "    |   |   |-> MIPS per Thread            : &mipsPerThread"
+            &output  "    |   |   |-> QDSP6 Clock                : &qdsp6Clk"
+            &output  "    |   |   +-------------------------------------------------------------------"
+            &output  "    |   +-----------------------------------------------------------------------"
+            &output  "    |"
+        )
+    )
+    ELSE
+    (
+        &err "Ignoring mipsMgrCtx dump: no such symbol"
+    )
+RETURN
+
+
+printDCVSMgr:
+    PRIVATE &nBwActiveDCVSClients &nMIPSActiveDCVSClients &dcvsEnabledDisabledFlag &Adsp2DdrAb &Adsp2DdrIb &dcvsAdspClockVote
+
+    IF (sYmbol.EXIST("gAdsppmDcvsManager"))
+    (
+        &output  "================================================================================"
+        &output  "DCVS Manager"
+        &output  "----+---------------------------------------------------------------------------"
+        &nBwActiveDCVSClients=FORMAT.DECIMAL(0.,VAR.VALUE(gAdsppmDcvsManager.clientsDcvsParticipation.numOfAdspDdrBwActiveDcvsClients))
+        &nMIPSActiveDCVSClients=FORMAT.DECIMAL(0.,VAR.VALUE(gAdsppmDcvsManager.clientsDcvsParticipation.numOfMipsActiveDcvsClients))
+        &dcvsEnabledDisabledFlag=VAR.STRING(gAdsppmDcvsManager.dcvsEnabledDisabledFlag)
+        &Adsp2DdrAb=FORMAT.DECIMAL(0.,VAR.VALUE(gAdsppmDcvsManager.dcvsAdsp2DdrBwVote.Ab))
+        &Adsp2DdrIb=FORMAT.DECIMAL(0.,VAR.VALUE(gAdsppmDcvsManager.dcvsAdsp2DdrBwVote.Ib))
+        &dcvsAdspClockVote=VAR.STRING(gAdsppmDcvsManager.dcvsAdspClockVote)
+
+        &output  "    |-> DCVS Participation:"
+        &output  "    +---+-----------------------------------------------------------------------"
+        &output  "    |   |-> Number of BW-Active DCVS clients    : &nBwActiveDCVSClients"
+        &output  "    |   |-> Number of MIPS-Active DCVS Clients  : &nMIPSActiveDCVSClients"
+        &output  "    |   +-----------------------------------------------------------------------"
+        &output  "    |"
+        &output  "    |-> DCVS Enabled/Disabled  : &dcvsEnabledDisabledFlag"
+        &output  "    |"
+        &output  "    |-> DCVS ADSP-to-DDR BW vote: "
+        &output  "    +---+-----------------------------------------------------------------------"
+        &output  "    |   |-> AB  : &Adsp2DdrAb"
+        &output  "    |   |-> IB  : &Adsp2DdrIb"
+        &output  "    |   +-----------------------------------------------------------------------"
+        &output  "    |"
+        &output  "    |-> DCVS ADSP Clock Vote   : &dcvsAdspClockVote"
+    )
+    ELSE
+    (
+        &err "Ignoring gAdsppmDcvsManager dump: No such symbol"
+    )
+
+RETURN
+
+
+printAdspClkMgr:
+    PRIVATE &enableDisableFlag &dcvsVote &floorVote &finalVote &finalNPAVote
+
+    IF (sYmbol.EXIST("gAdsppmAdspClkManager"))
+    (
+        &output  "================================================================================"
+        &output  "ADSPClk Manager"
+        &output  "----+---------------------------------------------------------------------------"
+
+        &enableDisableFlag=FORMAT.DECIMAL(0.,VAR.VALUE(gAdsppmAdspClkManager.dcvsEnabledDisabledFlag))
+        &dcvsVote=FORMAT.DECIMAL(0.,VAR.VALUE(gAdsppmAdspClkManager.dcvsVote))
+        &floorVote=FORMAT.DECIMAL(0.,VAR.VALUE(gAdsppmAdspClkManager.clientsFloorVote))
+        &finalVote=FORMAT.DECIMAL(0.,VAR.VALUE(gAdsppmAdspClkManager.clientsFinalVote))
+        &finalNPAVote=FORMAT.DECIMAL(0.,VAR.VALUE(gAdsppmAdspClkManager.finalVoteToNpa))
+
+        &output  "    |-> DCVS Enable/Disable Flag   : &enableDisableFlag"
+        &output  "    |-> DCVS Vote                  : &dcvsVote"
+        &output  "    |-> Client Floor Vote          : &floorVote"
+        &output  "    |-> Client Final Vote          : &finalVote"
+        &output  "    |-> Final vote to NPA          : &finalNPAVote"
+    )
+    ELSE
+    (
+        &err "Ignoring gAdsppmAdspClkManager dump: No such symbol"
+    )
+
+RETURN
+
+
+printExtBwMgr:
+    PRIVATE &enableDisableFlag &dcvsAb &dcvsIb &floorAb &floorIb &finalAb &finalIb &finalNPAAb &finalNPAIb
+
+    IF (sYmbol.EXIST("gAdsppmExtBwManager"))
+    (
+        &output  "================================================================================"
+        &output  "Ext. BW Manager"
+        &output  "----+---------------------------------------------------------------------------"
+
+        &enableDisableFlag=FORMAT.DECIMAL(0.,VAR.VALUE(gAdsppmExtBwManager.dcvsEnabledDisabledFlag))
+        &dcvsAb=FORMAT.DECIMAL(0.,VAR.VALUE(gAdsppmExtBwManager.dcvsVote[0].Ab))
+        &dcvsIb=FORMAT.DECIMAL(0.,VAR.VALUE(gAdsppmExtBwManager.dcvsVote[0].Ib))
+        &floorAb=FORMAT.DECIMAL(0.,VAR.VALUE(gAdsppmExtBwManager.clientsFloorVote[0].Ab))
+        &floorIb=FORMAT.DECIMAL(0.,VAR.VALUE(gAdsppmExtBwManager.clientsFloorVote[0].Ib))
+        &finalAb=FORMAT.DECIMAL(0.,VAR.VALUE(gAdsppmExtBwManager.clientsFinalVote[0].Ab))
+        &finalIb=FORMAT.DECIMAL(0.,VAR.VALUE(gAdsppmExtBwManager.clientsFinalVote[0].Ib))
+        &finalNPAAb=FORMAT.DECIMAL(0.,VAR.VALUE(gAdsppmExtBwManager.finalVoteToNpa[0].Ab))
+        &finalNPAIb=FORMAT.DECIMAL(0.,VAR.VALUE(gAdsppmExtBwManager.finalVoteToNpa[0].Ib))
+
+        &output  "    |-> DCVS Enable/Disable Flag   : &enableDisableFlag"
+        &output  "    |"
+        &output  "    |-> DCVS Vote: "
+        &output  "    +---+-----------------------------------------------------------------------"
+        &output  "    |   |-> AB  : &dcvsAb"
+        &output  "    |   |-> IB  : &dcvsIb"
+        &output  "    |   +-----------------------------------------------------------------------"
+        &output  "    |"
+        &output  "    |-> Client Floor Vote: "
+        &output  "    +---+-----------------------------------------------------------------------"
+        &output  "    |   |-> AB  : &floorAb"
+        &output  "    |   |-> IB  : &floorIb"
+        &output  "    |   +-----------------------------------------------------------------------"
+        &output  "    |"
+        &output  "    |-> Client Final Vote: "
+        &output  "    +---+-----------------------------------------------------------------------"
+        &output  "    |   |-> AB  : &finalAb"
+        &output  "    |   |-> IB  : &finalIb"
+        &output  "    |   +-----------------------------------------------------------------------"
+        &output  "    |"
+        &output  "    |-> Final vote to NPA: "
+        &output  "    +---+-----------------------------------------------------------------------"
+        &output  "    |   |-> AB  : &finalNPAAb"
+        &output  "    |   |-> IB  : &finalNPAIb"
+        &output  "    |   +-----------------------------------------------------------------------"
+    )
+    ELSE
+    (
+        &err "Ignoring gAdsppmExtBwManager dump: No such symbol"
+    )
+RETURN
+
+;
+;   Bus Manager info
+;
+printBusMgr:
+    PRIVATE &preCurrentIndex &indexToDump
+    PRIVATE &masterPort &slavePort
+    PRIVATE &abVal &ibVal
+    PRIVATE &genericReq &compensatedReq &busRoute
+    PRIVATE &curAhbAb &curAhbIb &nonSuppressibleAhbAb &nonSuppressibleAhbIb &periodicClientBw2DDR
+    PRIVATE &internalAggClientClass  
+    PRIVATE &externalAggClientClass  
+	
+    IF (sYmbol.EXIST("gBusMgrCtx"))
+    (
+        ; General Info
+
+        &output  "================================================================================"
+        &output  "Bus Manager"
+        &output  "----+---------------------------------------------------------------------------"
+        &preCurrentIndex=VAR.VALUE(gBusMgrCtx.preCurrentIndex)
+        &indexToDump=&preCurrentIndex^1
+
+        &masterPort=VAR.STRING((gBusMgrCtx.pExtBwAggregateData[&indexToDump])->busRoute.masterPort)
+        &slavePort=VAR.STRING((gBusMgrCtx.pExtBwAggregateData[&indexToDump])->busRoute.slavePort)
+        &abVal=FORMAT.DECIMAL(0.,VAR.VALUE((gBusMgrCtx.pExtBwAggregateData[&indexToDump])->bwValue.busBwAbIb.Ab))
+        &ibVal=FORMAT.DECIMAL(0.,VAR.VALUE((gBusMgrCtx.pExtBwAggregateData[&indexToDump])->bwValue.busBwAbIb.Ib))
+        &output  "    |-> MasterPort : &masterPort"
+        &output  "    |-> SlavePort  : &slavePort"
+        &output  "    |-> AB         : &abVal"
+        &output  "    |-> IB         : &ibVal"
+        &output  "    |"
+        ; Info from busMgrExtPreAggregateData   extPreAggregateData
+        &output  "    |-> Generic:"
+        &output  "    +---+-----------------------------------------------------------------------"
+;        IF &verboseOutput==1
+;        (
+;            &genericReq=VAR.VALUE(((busMgrExtPreAggregateData)gBusMgrCtx.extPreAggregateData).pGeneric)
+;            &output  "    |   |-> pGeneric    : (AdsppmBusBWRequestValueType *)&genericReq"
+;        )
+
+        &masterPort=VAR.STRING(gBusMgrCtx.extPreAggregateData.pGeneric->busRoute.masterPort)
+        &slavePort=VAR.STRING(gBusMgrCtx.extPreAggregateData.pGeneric->busRoute.slavePort)
+        &abVal=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.extPreAggregateData.pGeneric->bwValue.busBwAbIb.Ab))
+        &ibVal=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.extPreAggregateData.pGeneric->bwValue.busBwAbIb.Ib))
+        &output  "    |   |-> MasterPort  : &masterPort"
+        &output  "    |   |-> SlavePort   : &slavePort"
+        &output  "    |   |-> AB          : &abVal"
+        &output  "    |   |-> IB          : &ibVal"
+        &output  "    |   +-----------------------------------------------------------------------"
+        &output  "    |"
+        &output  "    |-> Compensated:"
+        &output  "    +---+-----------------------------------------------------------------------"
+        IF &verboseOutput==1
+        (
+            &compensatedReq=VAR.VALUE(((busMgrExtPreAggregateData)gBusMgrCtx.extPreAggregateData).pCompensated)
+            &output     "    |   |-> pCompensated: (AdsppmBusBWRequestValueType *)&compensatedReq"
+        )
+        &masterPort=VAR.STRING(gBusMgrCtx.extPreAggregateData.pCompensated->busRoute.masterPort)
+        &slavePort=VAR.STRING(gBusMgrCtx.extPreAggregateData.pCompensated->busRoute.slavePort)
+        &abVal=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.extPreAggregateData.pCompensated->bwValue.busBwAbIb.Ab))
+        &ibVal=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.extPreAggregateData.pCompensated->bwValue.busBwAbIb.Ib))
+        &output  "    |   |-> MasterPort  : &masterPort"
+        &output  "    |   |-> SlavePort   : &slavePort"
+        &output  "    |   |-> AB          : &abVal"
+        &output  "    |   |-> IB          : &ibVal"
+        &output  "    |   +-----------------------------------------------------------------------"
+        &output  "    |"
+
+        &curAhbAb=VAR.STRING(gBusMgrCtx.curAHBBwData.Ab)
+        &curAhbIb=VAR.STRING(gBusMgrCtx.curAHBBwData.Ib)
+        &nonSuppressibleAhbAb=VAR.STRING(gBusMgrCtx.nonSuppressibleAhbBW.Ab)
+        &nonSuppressibleAhbIb=VAR.STRING(gBusMgrCtx.nonSuppressibleAhbBW.Ib)
+        &periodicClientBw2DDR=VAR.STRING(gBusMgrCtx.bPeriodicClientBW2DDR)
+        &internalAggClientClass=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.systemCacheConfig[0][0].AggregatedClientClass))		
+        ;&internalAggPriorityId=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.systemCacheConfig[0][0].AggregatedPriority))		
+        &externalAggClientClass=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.systemCacheConfig[1][0].AggregatedClientClass))		
+        ;&externalAggPriorityId=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.systemCacheConfig[1][0].AggregatedPriority))		
+		
+        &output  "    |-> current AHB BW Data: "
+        &output  "    +---+-----------------------------------------------------------------------"
+        &output  "    |   |-> AB  : &curAhbAb "
+        &output  "    |   |-> IB  : &curAhbIb "
+        &output  "    |   +-----------------------------------------------------------------------"
+        &output  "    |"
+        &output  "    |-> Non-Suppressible AHB BW data: "
+        &output  "    +---+-----------------------------------------------------------------------"
+        &output  "    |   |-> AB  : &nonSuppressibleAhbAb"
+        &output  "    |   |-> IB  : &nonSuppressibleAhbIb"
+        &output  "    |   +-----------------------------------------------------------------------"
+        &output  "    |"
+        &output  "    |"
+        &output  "    |-> System Cache BW data: "
+        &output  "    +---+-----------------------------------------------------------------------"
+        &output  "    |   |-> Internal Class  : &internalAggClientClass"
+        &output  "    |   |-> External Class  : &externalAggClientClass"
+        &output  "    |   +-----------------------------------------------------------------------"
+        &output  "    |"
+        &output  "    |-> Periodic Client BW to DDR: &periodicClientBw2DDR"
+    )
+    ELSE
+    (
+        &err "Ignoring gBusMgrCtx dump: No such symbol"
+    )
+RETURN
+
+
+printAhbMgr:
+    PRIVATE &preAhbClk &activeAhbClk &aggregatedAhbClk &nonSuppressibleAhbClk
+
+    IF (sYmbol.EXIST("gAhbMgrCtx"))
+    (
+        &preAhbClk=FORMAT.DECIMAL(0.,VAR.VALUE(gAhbMgrCtx.preAHBClock))
+        &activeAhbClk=FORMAT.DECIMAL(0.,VAR.VALUE(gAhbMgrCtx.activeAHBClock))
+        &aggregatedAhbClk=FORMAT.DECIMAL(0.,VAR.VALUE(gAhbMgrCtx.aggregatedAHBClock))
+        &nonSuppressibleAhbClk=FORMAT.DECIMAL(0.,VAR.VALUE(gAhbMgrCtx.nonSuppressibleAHBClock))
+
+        &output  "================================================================================"
+        &output  "AHB Manager"
+        &output  "----+---------------------------------------------------------------------------"
+        &output  "    |-> Previous AHB Clock         : &preAhbClk"
+        &output  "    |-> Active AHB Clock           : &activeAhbClk"
+        &output  "    |-> Aggregate AHB Clock        : &aggregatedAhbClk"
+        &output  "    |-> Non-Suppressible AHB Clk   : &nonSuppressibleAhbClk"
+    )
+    ELSE
+    (
+        &err "Ignoring gAhbMgrCtx dump: No such symbol"
+    )
+RETURN
+
+printSysCacheMgr:
+    PRIVATE &resMgr &internalScid &externalScid
+
+    IF (sYmbol.EXIST("gSyscacheMgrScCtxt"))
+    (
+        &output  "================================================================================"
+        &output  "System Cache Manager"
+        &output  "----+---------------------------------------------------------------------------"
+        &internalScid=FORMAT.DECIMAL(0.,VAR.VALUE(((SysCacheMgrCtxt)gSyscacheMgrScCtxt).streamIdCountArray[0][0]))
+        &externalScid=FORMAT.DECIMAL(0.,VAR.VALUE(((SysCacheMgrCtxt)gSyscacheMgrScCtxt).streamIdCountArray[1][0]))
+        &output  "    |-> Internal SCID    : &internalScid"
+        &output  "    |-> External SCID    : &externalScid"
+    )
+    ELSE
+    (
+        &err "Ignoring gSyscacheMgrScCtxt dump: no such symbol"
+    )
+
+RETURN
+;=============================================================
+;   Subroutines to print each of the request types,
+;   in ascending order of their corresponding AdsppmRscIds
+;=============================================================
+
+;
+;   ADSPPM Power Domain requests
+;
+printPwrDomain:
+    ENTRY &clientId &reqNode
+
+    LOCAL   &validFlag &validFlagExt
+    LOCAL   &reqData &pwrDomain &coreId
+
+    ;&dbg "  printPwrDomain"
+    &printTypeName=""
+
+    &validFlag=VAR.VALUE(((RMHandleType *)&reqNode)->validFlag)
+    IF &validFlag==1
+    (
+        &validFlagExt=VAR.VALUE(((RMHandleType *)&reqNode)->validFlag_Ext)
+        &reqData=VAR.VALUE(((RMHandleType *)&reqNode)->pRequestData)
+        IF (sYmbol.EXIST("gAdsppmClientManager"))
+        (
+            &coreId=VAR.VALUE(((RMHandleType *)&reqNode)->pClient->coreId)
+        )
+    ELSE
+    (
+            &coreId=VAR.VALUE(((RMHandleType *)&reqNode)->pAdsppmHandle->coreId)
+    )
+        &pwrDomain=VAR.STRING(g_AsicConfig.cores->pCores[&coreId].pwrDomain)
+
+        &output  "    |   [Outstanding PowerDomain requests]"
+        &output  "    |---+-----------------------------------------------------------------------"
+        IF &verboseOutput==1
+        (
+            &output "    |   |-> ReqNode         : (RMHandleType *)&reqNode"
+        )
+        &output  "    |   |-> validFlag       : "+VAR.STRING((RMValidFlagType)&validFlag)
+        &output  "    |   |-> validFlag_Ext   : "+VAR.STRING((RMValidFlagType)&validFlagExt)
+        &output  "    |   |-> core ID         : "+VAR.STRING((AdsppmCoreIdType)&coreId)
+        &output  "    |   |-> Power Domain    : &pwrDomain"
+        IF &verboseOutput==1
+        (
+            &output  "    |   |-> reqData         : (void *)&reqData"
+        )
+    )
+    ELSE
+    (
+        &output  "    |   [No Power Domain requests]"
+    )
+
+    &output  "    |---------------------------------------------------------------------------"
+
+    RETURN
+
+
+;
+;   ADSPPM Core Clock frequency requests
+;
+printCoreClock:
+    ENTRY   &clientId &reqNode
+    LOCAL   &numClkReq &numClkReqPrint &reqArray &clkReq &clkIndex &clkIndexPrint
+    LOCAL   &clkId &clkFreqHz &freqMatch &validFlag &validFlagExt
+
+    ;&dbg "  printCoreClock"
+    &printTypeName=""
+
+    &reqData=VAR.VALUE(((RMHandleType *)&reqNode)->pRequestData)
+    &clientId=FORMAT.DECIMAL(0,VAR.VALUE(((RMHandleType *)&reqNode)->clientId))
+    &validFlag=FORMAT.DECIMAL(0,VAR.VALUE(((RMHandleType *)&reqNode)->validFlag))
+    &validFlagExt=FORMAT.DECIMAL(0,VAR.VALUE(((RMHandleType *)&reqNode)->validFlag_Ext))
+
+    IF &validFlag==1
+    (
+        &numClkReq=VAR.VALUE(((AdsppmClkRequestType *)&reqData)->numOfClk)
+        &numClkReqPrint=FORMAT.DECIMAL(0,&numClkReq)
+
+        &output  "    |   [Outstanding CoreClock requests]"
+        &output  "    |---+-----------------------------------------------------------------------"
+        IF &verboseOutput==1
+        (
+            &output  "    |   |-> reqNode                   : (RMHandleType *)&reqNode"
+        )
+        &output  "    |   |-> validFlag                 : "+VAR.STRING((RMValidFlagType)&validFlag)
+        &output  "    |   |-> validFlag_Ext             : "+VAR.STRING((RMValidFlagType)&validFlagExt)
+        IF &verboseOutput==1
+        (
+            &output  "    |   |-> reqData                   : (AdsppmClkRequestType)&printTypeName&reqData"
+        )
+        &output  "    |   |-> Number of Clock requests  : &numClkReqPrint"
+        &output  "    |   +------+----------------------------------------------------------------"
+        &clkIndex=0
+        &clkIndexPrint=FORMAT.DECIMAL(0,&clkIndex)
+        &reqArray=VAR.VALUE(((AdsppmClkRequestType *)&reqData)->pClkArray)
+        WHILE &clkIndex<&numClkReq
+        (
+            &clkReq=VAR.VALUE((AdsppmClkValType *)&reqArray)+4*4*&clkIndex
+            &clkId=FORMAT.DECIMAL(0,VAR.VALUE(((AdsppmClkValType *)&clkReq)->clkId))
+            &clkFreqHz=FORMAT.DECIMAL(0,VAR.VALUE(((AdsppmClkValType *)&clkReq)->clkFreqHz))
+            &freqMatch=FORMAT.DECIMAL(0,VAR.VALUE(((AdsppmClkValType *)&clkReq)->freqMatch))
+            &output  "    |   |      |-> Clock request &clkIndexPrint"
+            &output  "    |   |      |------+---------------------------------------------------------"
+            &output  "    |   |      |      |-> clkId     : &clkId ("+VAR.STRING((AdsppmClkIdType)&clkId)+")"
+            &output  "    |   |      |      |-> clkFreqHz : &clkFreqHz"
+            &output  "    |   |      |      |-> freqMatch : &freqMatch ("+VAR.STRING((AdsppmFreqMatchType)&freqMatch)+")"
+            &output  "    |   |      |      +---------------------------------------------------------"
+            &output  "    |   |      |"
+            &clkIndex=&clkIndex+1
+            &clkIndexPrint=FORMAT.DECIMAL(0,&clkIndex)
+        )
+    )
+    ELSE
+    (
+        &output  "    |   [No CoreClock request]"
+    )
+
+    &output  "    |---------------------------------------------------------------------------"
+
+
+    RETURN
+
+
+;
+;   ADSPPM Sleep Latency requests
+;
+printLatency:
+    ENTRY   &clientId &reqNode
+    LOCAL   &validFlag &validFlagExt &reqData &latencyVote
+
+    ;&dbg "  printLatency"
+    &printTypeName=""
+
+    &validFlag=VAR.VALUE(((RMHandleType *)&reqNode)->validFlag)
+    &validFlagExt=VAR.VALUE(((RMHandleType *)&reqNode)->validFlag_Ext)
+    &reqData=VAR.VALUE(((RMHandleType *)&reqNode)->pRequestData)
+    &latencyVote=FORMAT.DECIMAL(0,VAR.VALUE(*((uint32 *)(&reqData))))
+
+    IF &validFlag==1
+    (
+        &output  "    |   [Outstanding Latency requests]"
+        &output  "    |---+-----------------------------------------------------------------------"
+        IF &verboseOutput==1
+        (
+            &output  "    |   |-> Node              : (RMHandleType *)&reqNode"
+        )
+        &output  "    |   |-> validFlag         : "+VAR.STRING((RMValidFlagType)&validFlag)
+        &output   "    |   |-> validFlag_Ext     : "+VAR.STRING((RMValidFlagType)&validFlagExt)
+        IF &verboseOutput==1
+        (
+            &output  "    |   |-> reqData           : (void *)&reqData"
+        )
+        &output  "    |   |-> latencyVote       : &latencyVote"
+    )
+    ELSE
+    (
+        &output  "    |   [No Latency request]"
+    )
+
+    &output  "    |---------------------------------------------------------------------------"
+
+    RETURN
+
+
+;
+;   ADSPPM MIPS requests
+;
+printMIPS:
+    ENTRY   &clientId &reqNode
+    LOCAL   &validFlag &validFlagExt &reqData &mipsTotal &mipsPerThread &codeLocation &codeLocationName &reqOp
+    PRIVATE &usageType &mppsTotal &adspFloorClock
+
+    ;&dbg "  printMIPS"
+    &printTypeName=""
+
+    &validFlag=VAR.VALUE(((RMHandleType *)&reqNode)->validFlag)
+    &validFlagExt=VAR.VALUE(((RMHandleType *)&reqNode)->validFlag_Ext)
+    &reqData=VAR.VALUE(((RMHandleType *)&reqNode)->pRequestData)
+
+    IF &validFlag==1
+    (
+        &output  "    |   [Outstanding MIPS/MPPS requests]"
+        &output  "    |---+-----------------------------------------------------------------------"
+        IF &verboseOutput==1
+        (
+            &output  "    |   |-> Node              : (RMHandleType *)&reqNode"
+        )
+        &output  "    |   |-> validFlag         : "+VAR.STRING((RMValidFlagType)&validFlag)
+        &output  "    |   |-> validFlag_Ext     : "+VAR.STRING((RMValidFlagType)&validFlagExt)
+        IF &verboseOutput==1
+        (
+            IF (&AdspVersion==27.||&AdspVersion==262.)
+                &printTypeName="AdsppmQ6ClockRequestInfoType"
+            ELSE
+                &printTypeName="AdsppmMipsRequestType"
+            &output  "    |   |-> reqData:          : (&printTypeName)&reqData"
+        )
+
+        &output  "    |   |"
+        &output  "    |   |-> Usage Info: "
+        &output  "    |   +------+----------------------------------------------------------------"
+
+        IF (&AdspVersion==27.||&AdspVersion==262.)
+        (
+            &usageType=VAR.VALUE(((AdsppmQ6ClockRequestInfoType *)&reqData)->usageType)
+            &mipsTotal=FORMAT.DECIMAL(0,VAR.VALUE(((AdsppmQ6ClockRequestInfoType *)&reqData)->AdsppmQ6ClockRequestType.mipsRequestData.mipsTotal))
+            &mipsPerThread=FORMAT.DECIMAL(0,VAR.VALUE(((AdsppmQ6ClockRequestInfoType *)&reqData)->AdsppmQ6ClockRequestType.mipsRequestData.mipsPerThread))
+            &codeLocation=FORMAT.DECIMAL(0,VAR.VALUE(((AdsppmQ6ClockRequestInfoType *)&reqData)->AdsppmQ6ClockRequestType.mipsRequestData.codeLocation))
+            &codeLocationName=VAR.STRING(((AdsppmQ6ClockRequestInfoType *)&reqData)->AdsppmQ6ClockRequestType.mipsRequestData.codeLocation)
+            &reqOp=FORMAT.DECIMAL(0,VAR.VALUE(((AdsppmQ6ClockRequestInfoType *)&reqData)->AdsppmQ6ClockRequestType.mipsRequestData.reqOperation))
+            &mppsTotal=FORMAT.DECIMAL(0,VAR.VALUE(((AdsppmQ6ClockRequestInfoType *)&reqData)->AdsppmQ6ClockRequestType.mppsRequestData.mppsTotal))
+            &adspFloorClock=FORMAT.DECIMAL(0,VAR.VALUE(((AdsppmQ6ClockRequestInfoType *)&reqData)->AdsppmQ6ClockRequestType.mppsRequestData.adspFloorClock))
+
+            &output  "    |   |      |-> Usage type          : &usageType ("+VAR.STRING((AdsppmQ6ClockRequestUsageType)&usageType)+")"
+            IF &usageType==0
+            (
+                &output  "    |   |      |-> MIPS total          : &mipsTotal"
+                &output  "    |   |      |-> MIPS per Thread     : &mipsPerThread"
+                &output  "    |   |      |-> Code Location       : &codeLocationName (&codeLocation)"
+                &output  "    |   |      |-> Requested Operation : &reqOp ("+VAR.STRING((AdsppmMipsOperationType)&reqOp)+")"
+            )
+            ELSE IF &usageType==1
+            (
+                &output  "    |   |      |-> MPPS total          : &mppsTotal"
+                &output  "    |   |      |-> ADSP floor clock    : &adspFloorClock"
+            )
+        )
+        ELSE
+        (
+            &dbg "Using AdsppmMipsRequestType for MIPS info"
+            &mipsTotal=FORMAT.DECIMAL(0,VAR.VALUE(((AdsppmMipsRequestType *)&reqData).mipsTotal))
+            &mipsPerThread=FORMAT.DECIMAL(0,VAR.VALUE(((AdsppmMipsRequestType *)&reqData).mipsPerThread))
+            &codeLocation=FORMAT.DECIMAL(0,VAR.VALUE(((AdsppmMipsRequestType *)&reqData).codeLocation))
+            &codeLocationName=DATA.STRING(D:VAR.VALUE(AdsppmBusPortName[&codeLocation]))
+            &reqOp=FORMAT.DECIMAL(0,VAR.VALUE(((AdsppmMipsRequestType *)&reqData).reqOperation))
+
+            &output  "    |   |      |-> MIPS total          : &mipsTotal"
+            &output  "    |   |      |-> MIPS per Thread     : &mipsPerThread"
+            &output  "    |   |      |-> Code Location       : &codeLocationName (&codeLocation)"
+            &output  "    |   |      |-> Requested Operation : &reqOp ("+VAR.STRING((AdsppmMipsOperationType)&reqOp)+")"
+        )
+        &output  "    |   |      +----------------------------------------------------------------"
+        &output  "    |   |"
+    )
+    ELSE
+    (
+        &output  "    |   [No MIPS request]"
+    )
+
+    &output  "    |---------------------------------------------------------------------------"
+
+    RETURN
+
+
+;
+;   ADSPPM Bandwidth requests
+;
+printBW:
+    ENTRY   &clientId &reqNode
+    LOCAL   &validFlag &validFlagExt &reqData &numBwReq &numBwReqPrint &bwReq &AbVal &IbVal
+    LOCAL   &bwIndex &bwIndexPrint &reqArray &bwReqClass
+    LOCAL   &masterPort &masterPortName &slavePort &slavePortName
+    LOCAL   &bytesPerSec &usagePercentage &usageType &operation
+    LOCAL   &scpriorityId  &scstreamId
+
+    ;&dbg "  printBW"
+    &printTypeName=""
+
+    &validFlag=VAR.VALUE(((RMHandleType *)&reqNode)->validFlag)
+    &validFlagExt=VAR.VALUE(((RMHandleType *)&reqNode)->validFlag_Ext)
+    &reqData=VAR.VALUE(((RMHandleType *)&reqNode)->pRequestData)
+    &numBwReq=VAR.VALUE(((AdsppmBwReqType *)&reqData)->numOfBw)
+    &numBwReqPrint=FORMAT.DECIMAL(0,&numBwReq)
+
+    &bwReq=FORMAT.DECIMAL(0,VAR.VALUE(((AdsppmBwReqType *)&reqData)->pBwArray))
+    &AbVal=FORMAT.DECIMAL(0,VAR.VALUE(((AdsppmBusBWRequestValueType *)&bwReq)->bwValue.busBwAbIb.Ab))
+    &IbVal=FORMAT.DECIMAL(0,VAR.VALUE(((AdsppmBusBWRequestValueType *)&bwReq)->bwValue.busBwAbIb.Ib))
+    IF &validFlag==1
+    (
+        &output  "    |   [Outstanding BW requests]"
+        &output  "    |---+-----------------------------------------------------------------------"
+        IF &verboseOutput==1
+        (
+            &output  "    |   |-> ReqNode       : (RMHandleType *)&reqNode"
+        )
+        &output  "    |   |-> validFlag     : "+VAR.STRING((RMValidFlagType)&validFlag)
+        &output  "    |   |-> validFlag_Ext : "+VAR.STRING((RMValidFlagType)&validFlagExt)
+        IF &verboseOutput==1
+        (
+            &output  "    |   |-> reqData       : (AdsppmBwReqType)&reqData"
+        )
+        IF (&AdspVersion==27.||&AdspVersion==262.)
+        (
+            &bwReqClass=VAR.STRING(((AdsppmBwReqType *)&reqData)->requestClass)
+            &output  "    |   |-> Request Class : &bwReqClass"
+        )
+
+        &output  "    |   |-> num Requests  : &numBwReqPrint"
+        &output  "    |   +------+----------------------------------------------------------------"
+        &bwIndex=0
+        &bwIndexPrint=FORMAT.DECIMAL(0,&bwIndex)
+        &reqArray=VAR.VALUE(((AdsppmBwReqType *)&reqData)->pBwArray)
+
+        WHILE (&bwIndex<&numBwReq)
+        (
+            &bwReq=VAR.VALUE((AdsppmBusBWRequestValueType *)&reqArray)+8*4*&bwIndex
+            &masterPort=FORMAT.DECIMAL(0,VAR.VALUE(((AdsppmBusBWRequestValueType *)&bwReq)->busRoute.masterPort))
+            &slavePort=FORMAT.DECIMAL(0,VAR.VALUE(((AdsppmBusBWRequestValueType *)&bwReq)->busRoute.slavePort))
+            &masterPortName=DATA.STRING(D:VAR.VALUE(AdsppmBusPortName[&masterPort]))
+            &slavePortName=DATA.STRING(D:VAR.VALUE(AdsppmBusPortName[&slavePort]))
+            &bytesPerSec=FORMAT.UDECIMAL(0,VAR.VALUE(((AdsppmBusBWRequestValueType *)&bwReq)->bwValue.busBwValue.bwBytePerSec))
+            &usagePercentage=FORMAT.DECIMAL(0,VAR.VALUE(((AdsppmBusBWRequestValueType *)&bwReq)->bwValue.busBwValue.usagePercentage))
+            &usageType=VAR.STRING(((AdsppmBusBWRequestValueType *)&bwReq)->bwValue.busBwValue.usageType)
+            &operation=VAR.STRING(((AdsppmBusBWRequestValueType *)&bwReq)->bwOperation)
+            ;&scpriorityId=FORMAT.DECIMAL(0,VAR.VALUE(((AdsppmBusBWRequestValueType *)&bwReq)->bwScPriorityId))
+            ;&scstreamId=FORMAT.DECIMAL(0,VAR.VALUE(((AdsppmBusBWRequestValueType *)&bwReq)->streamId))
+            &output  "    |   |      |-> BW request &bwIndexPrint"
+            &output  "    |   |      |------+---------------------------------------------------------"
+            &output  "    |   |      |      |-> Master Port      : &masterPortName (&masterPort)"
+            &output  "    |   |      |      |-> Slave Port       : &slavePortName (&slavePort)"
+            &output  "    |   |      |      |-> Bytes per second : &bytesPerSec"
+            &output  "    |   |      |      |-> Usage percentage : &usagePercentage"
+            &output  "    |   |      |      |-> Usage type       : &usageType"
+            &output  "    |   |      |      |-> BW operation     : &operation"
+            ;&output  "    |   |      |      |-> SC Priority Id   : &scpriorityId"
+            ;&output  "    |   |      |      |-> SC Stream Id     : &scstreamId"			
+            &output  "    |   |      |      +---------------------------------------------------------"
+            &output  "    |   |      |"
+            &bwIndex=&bwIndex+1
+            &bwIndexPrint=FORMAT.DECIMAL(0,&bwIndex)
+        )
+    )
+    ELSE
+        (
+        &output  "    |   [No BW request]"
+    )
+
+    &output  "    |---------------------------------------------------------------------------"
+
+    RETURN
+
+;
+;   ADSPPM Memory Power requests
+;
+printMemPower:
+    ENTRY   &clientId &reqNode
+    LOCAL   &validFlag &validFlagExt &reqData &coreId
+    LOCAL   &memIdType &pwrDomain &pwrDomainDescriptor &memPwrType &memory &reqState
+
+    ;&dbg "  printMemPower"
+    &printTypeName=""
+
+    &validFlag=VAR.VALUE(((RMHandleType *)&reqNode)->validFlag)
+    &validFlagExt=VAR.VALUE(((RMHandleType *)&reqNode)->validFlag_Ext)
+    &reqData=VAR.VALUE(((RMHandleType *)&reqNode)->pRequestData)
+    IF (sYmbol.EXIST("gAdsppmClientManager"))
+        &coreId=VAR.VALUE(((RMHandleType *)&reqNode)->pClient->coreId)
+    ELSE
+        &coreId=VAR.VALUE(((RMHandleType *)&reqNode)->pAdsppmHandle->coreId)
+
+    IF &validFlag==1
+    (
+        &memIdType=VAR.VALUE(((AdsppmMemPowerReqParamType *)&reqData).memory)
+        &pwrDomain=VAR.VALUE(g_AsicConfig.memories.pMemories[&memIdType].pDescriptor.pwrDomain)
+        &pwrDomainDescriptor=VAR.VALUE(g_AsicConfig.pwrDomains.pPwrDomains[&pwrDomain])
+        IF &pwrDomainDescriptor==0x0
+        (
+            &memPwrType=0
+            &memory=-1
+            &reqState=-1
+        )
+        ELSE
+        (
+            &memPwrType=VAR.VALUE(((AsicPowerDomainDescriptorType *)&pwrDomainDescriptor).pwrDomainType)
+            &memory=VAR.VALUE(((AdsppmMemPowerReqParamType *)&reqData).memory)
+            &reqState=VAR.VALUE(((AdsppmMemPowerReqParamType *)&reqData).pwrState)
+        )
+
+        &output  "    |   [Outstanding Memory Power requests]"
+        &output  "    |---+-----------------------------------------------------------------------"
+        IF &verboseOutput==1
+        (
+            &output "    |   |-> Node                    : (RMHandleType *)&reqNode"
+        )
+        &output  "    |   |-> validFlag               : "+VAR.STRING((RMValidFlagType)&validFlag)
+        &output  "    |   |-> validFlag_Ext           : "+VAR.STRING((RMValidFlagType)&validFlagExt)
+        &output  "    |   |-> core ID                 : "+VAR.STRING((AdsppmCoreIdType)&coreId)
+        IF &verboseOutput==1
+        (
+            &output  "    |   |-> reqData                 : (AdsppmMemPowerReqParamType)&reqData"
+        )
+        &output  "    |   |-> MemID Type              : "+VAR.STRING((AdsppmMemIdType)&memIdType)
+        &output  "    |   |-> Power Domain            : "+VAR.STRING((AsicPowerDomainType)&pwrDomain)
+        &output  "    |   |-> Power Domain Descriptor : "+VAR.STRING((AsicPowerDomainDescriptorType)&pwrDomainDescriptor)
+        &output  "    |   |-> Memory                  : &memory"
+        &output  "    |   |-> Requested State         : "+VAR.STRING(&reqState)
+
+    )
+    ELSE
+        &output  "    |   [No Memory Power request]"
+
+    &output  "    |---------------------------------------------------------------------------"
+
+    RETURN
+
+
+;============================================================
+;  Subroutines to handle command line arguments
+;============================================================
+
+printHelp:
+    PRINT ""
+    PRINT "================================"
+    PRINT "ADSPPM Debug Script Help"
+    PRINT "================================"
+    PRINT "Usage: "
+    PRINT "    cd.do <adsp_proc>/core/power/adsppm/scripts/adsppm_dump.cmm [options] [args]"
+    PRINT ""
+    PRINT "Options:"
+    PRINT "    -demo   : Enable demo mode - Capture all window output to a file"
+    PRINT "                -> This option sets it to :"
+    PRINT "                   "+OS.PPD()+"\AreaOutputs"
+    PRINT "    -debug  : Show debug logs in a second window"
+    PRINT "    -h      : This help screen"
+    PRINT "    -i      : Interactive mode - display a main menu to select clients and resource request types"
+    PRINT "    -v      : Verbose mode - print out additional information useful for debugging"
+    PRINT ""
+    PRINT "Arguments:"
+    PRINT "    -logdir=<path_to_output_directory>"
+    PRINT "        -> NOTE: No whitespace allowed on either side of the '='. See below."
+    PRINT ""
+    PRINT "Input constraints:"
+    PRINT "    1. If a specific restriction is to be placed while selecting "
+    PRINT "            (e.g. 'all', '*', 'd', etc.), the restriction should be at the FRONT"
+    PRINT "             of the input string"
+    PRINT "    2. When going back or quitting, 'x' or 'q' should be at the FRONT of the"
+    PRINT "             input string"
+    PRINT "    3. When entering log directories, paths with spaces need to be enclosed in"
+    PRINT "            quotes, whether entered from the command line or from the main menu."
+    PRINT ""
+
+    RETURN
+
+
+;
+; Print out the Main Menu and obtain user input
+;
+Main_Menu:
+
+    ENTRY &supportedFlag &nTypes &logPath
+    PRIVATE &choice &choiceInvalid
+    PRIVATE &startDump
+    PRIVATE &mgrFirstRun    ; flag to reset the dump-managers string on the first run
+    PRIVATE &typesFirstRun  ; flag to reset the typeflag on the first entry to the type-selection menu
+    PRIVATE &typeList_menu
+
+    &typeList_menu="&typeList"
+
+    &mgrFirstRun=1
+    &typesFirstRun=1
+
+    IF ("&supportedFlag"=="")
+    (
+        &supportedFlag=0x0
+    )
+    IF ("&nTypes"=="")
+    (
+        &nTypes=0x0
+    )
+    IF ("&logPath"=="")
+    (
+        &logPath="stdout"
+    )
+
+    &choice=""
+    &choiceInvalid=1
+    &startDump=0x0
+    &typeFlag=&supportedFlag
+    &typeFlag_menu=&typeFlag
+
+    ;&dbg "typeList = &typeList"
+    &dbg "mgrs = &mgrsToDump"
+
+    WHILE (&startDump==0)
+    (
+        PRINT "------------------------ADSPPM Debug Script - Main Menu-------------------------"
+        ; Output customization
+        PRINT "c[lientid]   : Client ID to dump (Defaults to ALL)"
+        PRINT "o[utput]       : Select a log file to output to (overrides any path provided as a"
+        PRINT "                command-line argument."
+        PRINT "                Currently: &logDir"
+        PRINT "l[ist]       : List out all ADSPPM clients and their IDs"
+        PRINT "m[anagers]   : Dump info from the resource managers (Defaults to All)"
+        PRINT "t[ype]       : Type of request to dump (Defaults to All)"
+        ; General Commands
+        PRINT "h[elp]       : Display usage info"
+        PRINT "q[uit]       : Quit"
+        PRINT "s[tart]      : Start Dump"
+        PRINT ""
+        PRINT "Select an option: "
+        ENTER &choice
+        PRINT "Selected: &choice"
+
+        &dbg "Main menu: received choice = &choice"
+
+        ;
+        ; Process output customizations
+        ;
+        IF (("&choice"=="c")||("&choice"=="clientid"))
+        (
+            &dbg "Choice: Select clientIds"
+            ; Set the client id
+            PRINT "Enter client IDs in decimal (x to go back, 'none' to disable client info dump): "
+            ENTER %Line &dumpClientId_menu_untrimmed
+
+            &dumpClientId_menu=STRing.Replace(STRing.TRIM("&dumpClientId_menu_untrimmed")," ","_",0.)
+            IF ("&dumpClientId_menu"!="x")
+            (
+                IF ("&dumpClientId_menu"=="none")
+                (
+                    PRINT "Disabling client info dump"
+                    &dbg "Disabling client info dump"
+                    &dumpClients=0
+                )
+                ELSE IF ("&dumpClientId_menu"=="all")
+                (
+                    &dumpClientId_str="_AllClients_"    ; replace any previous entry with ALL
+                )
+                ELSE
+                (
+                    PRINT "Selected client IDs &dumpClientId_menu for dump"
+                    IF ("&dumpClientId_str"=="_AllClients_")
+                    (
+                        &dumpClientId_str="_&dumpClientId_menu"  ; first client ID
+                    )
+                    ELSE
+                    (
+                        &dumpClientId_str="&(dumpClientId_str)_&dumpClientId_menu"
+                    )
+                )
+            )
+        )
+
+        ELSE IF (("&choice"=="o")||("&choice"=="output"))
+        (
+            &dbg "Choice: Select logDir"
+            &dbg "Currently logging to &logDir"
+            PRINT "Enter output directory (empty to log to stdout): "
+            ENTER %Line &logDir_Menu
+            IF ("&logDir_Menu"!="")
+                &logDir="&logDir_Menu"
+            ELSE
+                &logDir="stdout"
+            &dbg "New log dir: &logDir"
+        )
+
+        ELSE IF (("&choice"=="l")||("&choice"=="list"))
+        (
+            &dbg "Choice: list out clients"
+
+            PRINT "Listing out ADSPPM clients in &SecondaryOutput"
+            AREA.SELECT &SecondaryOutput
+
+            GOSUB printClients
+
+            AREA.SELECT &MainOutput
+        )
+
+        ELSE IF (("&choice"=="m")||("&choice"=="managers"))
+        (
+            &dbg "Choice: dump resMgrs info"
+
+            PRINT "Resource manager dump enabled"
+            PRINT "Resource Managers available for dump:"
+            PRINT "cache    : Cache Partition Manager"
+            PRINT "mips     : MIPS Manager"
+            PRINT "dcvs     : DCVS Manager"
+            PRINT "adspclk  : ADSP Clk Manager"
+            PRINT "extbw    : Ext. BW Manager"
+            PRINT "bus      : Bus Manager"
+            PRINT "ahb      : AHB Manager"
+            PRINT "disable  : Disable manager info dump (Set by default)"
+            PRINT "all      : Dump info for all managers"
+            PRINT "Currently selected manager(s): "+STRing.REPLACE("&mgrsToDump",":"," ",0.)
+            PRINT "Enter the keywords for the manager(s) to dump, separated by spaces: "
+            ENTER %Line &mgrsToDump_raw
+
+            &dbg "Received mgrs to dump: &mgrsToDump_raw"
+
+            PRIVATE &startIndex &endIndex &tokenStart &tokenEnd &prevTokenEnd &token &cutString &validMgrs
+            &cutString=STRing.REPLACE(STRing.LoWeR(STRing.TRIM("&mgrsToDump_raw"))," ",":",0.)
+
+            &startIndex=0
+            &tokenStart=0
+            &endIndex=STRing.LENgth("&mgrsToDump_raw")
+            &validMgrs="&mgrsToDump"
+            &dbg "Valid managers: '&validMgrs'"
+
+            &err "Starting loop"
+            IF ("&mgrsToDump_raw"!="")
+            (
+                ;WHILE ((&tokenStart!=-1)&&(&startIndex<&endIndex))
+                WHILE ("&cutString"!="")
+                (
+                    &dbg "startIndex: &startIndex"
+                    &dbg "endIndex: &endIndex"
+                    &dbg "tokenStart: &tokenStart"
+                    &dbg "Mgrs dumped: &mgrsToDump"
+                    &dbg "cutString: &cutString"
+
+                    &tokenEnd=STRing.SCAN("&cutString",":",0)-1
+                    IF ((&tokenEnd<0)&&("&cutString"!=""))
+                    (
+                        ; Last token
+                        &tokenEnd=&endIndex-1
+                    )
+
+                    IF (&tokenEnd!=-1)
+                    (
+                        ; at least one word was entered
+                        &dbg "Received at least one word"
+                        &tokenStart=0
+                        &token=STRing.MID("&cutString",&tokenStart,&tokenEnd+1)
+                        &dbg "Retrieved token '&token'"
+
+                        IF ((STRing.SCAN("&mgrsToDump","&token",0.)!=-1)&&(&mgrFirstRun==0))
+                        (
+                            ; Already added
+                            &err "Manager &token already selected"
+                            PRINT "Manager &token is already selected for dump"
+                        )
+                        ELSE IF (("&token"=="disable")||("&token"=="cache")||("&token"=="mips")||("&token"=="dcvs")||("&token"=="adspclk")||("&token"=="extbw")||("&token"=="bus")||("&token"=="ahb"))
+                        (
+                            IF (&mgrFirstRun!=0)
+                            (
+                                &dbg "First invocation of manager-select menu. Resetting managers list."
+                                &dbg "Original list: '&mgrsToDump'"
+                                &mgrsToDump=""
+                                &mgrFirstRun=0
+                                &dbg "New list: '&mgrsToDump'"
+                            )
+
+                            IF ("&token"=="disable")
+                            (
+                                &dbg "Disable manager dump"
+                                PRINT "Disabling manager dump"
+                                &dumpMgrs=0
+                            )
+                            ELSE
+                            (
+                                &dbg "Token &token is valid, adding to string."
+                                &mgrsToDump="&(mgrsToDump):&token"  ; Use :, because it's guaranteed to not be in a Mgr name, unlike '_'
+                                &dbg "Setting dumpMgrs to 1"
+                                &dumpMgrs=1
+                                PRINT "Added manager &token to dump selection"
+                            )
+                        )
+                        ELSE IF ("&token"=="all")
+                        (
+                            &dbg "Select ALL managers"
+                            &mgrsToDump="&validMgrs"
+                            &dbg "Set mgrsToDump to '&mgrsToDump'"
+                            &dumpMgrs=1
+                            PRINT "Selecting All managers for dump"
+                        )
+                        ELSE
+                        (
+                            PRINT %ERROR "Ignoring '&(token)': No such resource manager."
+                            &err "Invalid token &token"
+                        )
+                    )
+                    ELSE
+                    (
+                        &err "No input"
+                    )
+
+                    ; Go to the next token
+                    &cutString=STRing.CUT("&cutString",&tokenEnd+2) ; +2, because 0-index, and because tokenEnd points to ':'
+                )
+            )
+            ELSE
+            (
+                &err "No input"
+                PRINT %ERROR "No resource managers entered."
+            )
+        )
+
+        ELSE IF (("&choice"=="t")||("&choice"=="type"))
+        (
+            &dbg "Choice: select types"
+            ; Obtain the request type
+            PRINT ""
+            PRINT "Supported request types: "
+
+            ; Dynamically read the AdsppmRscIdType enum, and print out the required IDs and names
+            LOCAL &typeIndex &typeName &shiftedIndex &validTypeNames
+            &typeIndex=0
+            &typeName=VAR.STRING((AdsppmRscIdType)&typeIndex)
+            &validTypeNames=""
+
+            WHILE (&typeIndex<&nTypes)
+            (
+                &shiftedIndex=1<<&typeIndex
+                &&supported=&shiftedIndex&&supportedFlag
+                IF (&supported!=0)
+                (
+                    ; RscIds follow the format Adsppm_Rsc_Id_<typeName>. Retrieve the typeName from this string, and pad it with ' ' until it's 16 chars.
+                    &validTypeNames="&(validTypeNames):"+STRING.LoWeR(STRING.MID("&typeName",14.,100.))
+                    PRINT FORMAT.STRING(STRING.LoWeR(STRING.MID("&typeName",14.,100.)),16.,' ')+"- &typeName Requests"
+                )
+                &typeIndex=&typeIndex+1
+                &typeName=VAR.STRING((AdsppmRscIdType)&typeIndex)
+            )
+
+            PRINT FORMAT.STRING("all or *",16.,' ')+"- All request types"
+            PRINT FORMAT.STRING("d[isable]",16.,' ')+"- Disable request type printing"
+            PRINT FORMAT.STRING("x",16.,' ')+"- Go back"
+            PRINT FORMAT.STRING("q",16.,' ')+"- Quit"
+            &validTypeNames_menu="&validTypeNames:all:*:disable:x:q"
+
+            &dbg "Populated valid type names as: '&validTypeNames_menu'"
+            &choiceInvalid=1
+            PRINT "Enter the request types, separated by spaces (e.g. bw latency mips coreclk): "
+            WHILE (&choiceInvalid==1)
+            (
+                ENTER %Line &dumpRequest_menu
+                &dbg "Received '&dumpRequest_menu'"
+
+                ; Validate the requested types
+                ;   Valid types are lowercase versions of the last word in the AdsppmRscIdType
+                ;   E.g. BW or bw for Adsppm_Rsc_Id_BW
+                ;
+                LOCAL &dumpRequest_menu_raw &strlen &firstChar
+
+                &dumpRequest_menu_raw=STRING.LoWeR(STRING.TRIM("&dumpRequest_menu"))
+                &strlen=STRING.LENGTH("&dumpRequest_menu_raw")
+
+                ; Parse each of the tokens, and add them to the typeList
+                PRIVATE &token &tokenEnd &cutString
+
+                &cutString="&dumpRequest_menu_raw"
+
+                WHILE ("&cutString"!="")
+                (
+                    &tokenEnd=STRing.SCAN("&cutString"," ",0.)-1
+                    IF ((&tokenEnd<0)&&("&dumpRequest_menu_raw"!=""))
+                    (
+                        &dbg "Exactly one word"
+                        &tokenEnd=&strlen-1
+                        &dbg "Setting token end to &tokenEnd"
+                    )
+
+                    IF (&tokenEnd>=0)
+                    (
+                        &dbg "At least one word received."
+                        &dbg "cutString = &cutString"
+                        &dbg "tokenEnd = &tokenEnd"
+                        &dbg "strlen = &strlen"
+
+                        &token=STRing.MID("&cutString",0.,&tokenEnd+1)
+
+                        &dbg "Retrieved token: '&token'"
+
+                        ; Check if this token is one of the valid request types
+                        IF (STRing.SCAN(":&validTypeNames_menu","&token",0.)>=0)
+                        (
+                            &dbg "Token &token is a valid type entry. Adding to typeList."
+
+                            IF (&typesFirstRun==1)
+                            (
+                                &dbg "First run, setting typelist_menu to ''"
+                                &typeList_menu=""
+                                &typesFirstRun=0
+                            )
+
+                            &dbg "Current Typeflag: &typeFlag; typeFlag_menu: &typeFlag_menu"
+                            &typeList_menu="&(typeList_menu):&token"
+                            &dbg "TypeList_menu = &typeList_menu"
+
+                            IF (("&token"=="all")||("&token"=="*"))
+                            (
+                                &dbg "Selected ALL requests"
+                                &typeList_menu="&validTypeNames"    ; not validTypeNames_menu, since that has stuff like "all", "disable", etc
+                                &cutString=""
+                            )
+                            ELSE IF ("&token"=="x")
+                            (
+                                &dbg "Go Back"
+                                PRINT "Going back..."
+                                &cutString=""
+                            )
+                            ELSE IF (("&token"=="d")||("&token"=="disable"))
+                            (
+                                &dbg "Disable type printing"
+                                PRINT "Disabling dump of request-type info"
+                                &typeList_menu=""
+                                &cutString=""
+                            )
+                            ELSE
+                            (
+                                ; Move to the next token only if we actually need to
+                                &cutString=STRing.CUT("&cutString",&(tokenEnd)+2)
+                            )
+
+                            &choiceInvalid=0    ; At least one valid choice
+                        )
+                        ELSE
+                        (
+                            &err "Invalid token: '&token'"
+                            PRINT %ERROR "Ignoring invalid type '&token'"
+                            &cutString=STRing.CUT("&cutString",&(tokenEnd)+2)
+                            &choiceInvalid=0    ; Consider it valid user input
+                        )
+                    )
+                )
+                ELSE
+                (
+                    &err "No input: tokenEnd = &tokenEnd")
+                    PRINT %ERROR "No input received. Please enter valid request type(s):"
+                )
+            )
+        )
+
+        ;
+        ; Process general commands
+        ;
+        ELSE IF (("&choice"=="help")||("&choice"=="h"))
+        (
+            GOSUB printHelp
+        )
+
+        ELSE IF (("&choice"=="q")||("&choice"=="quit"))
+        (
+            &dbg "Choice: Quit"
+            IF ("&logPath"!="stdout")
+            (
+                CLOSE #1
+            )
+
+            PRINT "Exiting"
+            ENDDO
+        )
+
+        ELSE IF (("&choice"=="s")||("&choice"=="start"))
+        (
+            &dbg "Choice: Start dump"
+            &startDump=1
+            PRINT "Starting Dump"
+            &dbg "Starting dump using client_id &dumpClientId_str and request types &typeList_menu"
+        )
+
+    )
+
+    RETURN &dumpClientId_str &typeFlag_menu "&typeList_menu" &logDir &dbgLvl &dumpMgrs &dumpClients
+
+
+;
+; Print all clients and their names
+;
+printClients:
+    PRIVATE &clientList &client &clientType &numClients &index &clientId &clientName
+    PRIVATE &useClientManager
+
+    PRINT ""
+    PRINT "---------------------------------- Client List ---------------------------------"
+
+    IF (sYmbol.EXIST("gAdsppmClientManager"))
+    (
+        &clientList=VAR.VALUE(gAdsppmClientManager.clients.link.pNext)
+        &numClients=VAR.VALUE(gAdsppmClientManager.clients.nCnt)
+        &clientType="(AdsppmClientType *)"
+        &useClientManager=1
+    )
+    ELSE
+    (
+        &clientList=VAR.VALUE(gAdsppmCoreCtx.adsppmHandleQ.link.pNext)
+        &numClients=VAR.VALUE(gADsppmCoreCtx.adsppmHandleQ.nCnt)
+        &clientType="(AdsppmHandleType *)"
+        &useClientManager=0
+    )
+
+    &index=0
+    WHILE (&index<&numClients)
+    (
+        IF (&useClientManager==1)
+        (
+            &client=&clientList+8
+        )
+        ELSE
+        (
+            &client=VAR.VALUE(&clientType&clientList)
+        )
+
+        &clientId=FORMAT.DECIMAL(0.,VAR.VALUE((&clientType&client)->clientId))
+        &clientName=DATA.STRING(D:VAR.VALUE((&clientType&client).clientName))
+        PRINT FORMAT.STRING("Client Id &clientId",16.,' ')+": ""&clientName"""
+
+        &index=&index+1
+        &clientList=VAR.VALUE(((coreUtils_Q_LinkType *)&clientList).pNext)
+    )
+    PRINT "--------------------------------------------------------------------------------"
+    PRINT ""
+
+
+    RETURN
+
+;==========================
+;   General subroutines
+;==========================
+
+debug:
+    ENTRY %Line &message
+    LOCAL &level &outstr
+
+    &level=FORMAT.Decimal(0,(STRing.CHAR(STRing.TRIM("&message"),0)-STRing.CHAR("0",0)))    ; STRing.CHAR returns the ASCII value of the char, subtract ASCII(0) to convert to a debug lvl
+
+    IF ((&dbgLvl>=&level)&&("&SecondaryOutput"!=""))
+    (
+        &outstr=STRing.CUT("&message",2.)   ; char1: debuglvl, char2: ' '
+        AREA.SELECT &SecondaryOutput
+        PRINT "log level &level: "
+        IF (&level==0)
+            PRINT %CONTinue %ERROR &outstr
+        ELSE
+            PRINT %CONTinue &outstr
+    )
+    AREA.SELECT &MainOutput
+    RETURN
+
+
+parseCMDLine:
+    ENTRY %Line &argv
+    LOCAL &arg
+    LOCAL &argStart
+
+    &dbg "Received argv = &argv"
+
+    ; Declare retvals
+    LOCAL &interactive_set &verbose_set &help_set &logdir_cmdline &demo_cmdline
+    &interactive_set=0
+    &verbose_set=0
+    &help_set=0
+    &logdir_cmdline=""
+
+    &argStart=STRING.SCAN("&argv","-h",0)
+    IF (&argStart==-1)
+    (
+        &help_set=0
+    )
+    ELSE
+    (
+        &help_set=1
+    )
+
+    &argStart=STRING.SCAN("&argv","-v",0)
+    IF &argStart==-1
+    (
+        &verbose_set=0
+    )
+    ELSE
+    (
+        &verbose_set=1
+    )
+
+    &argStart=STRING.SCAN("&argv","-i",0)
+    IF &argStart==-1
+    (
+        &interactive_set=0
+    )
+    ELSE
+    (
+        &interactive_set=1
+    )
+
+    &argStart=STRING.SCAN("&argv","-debug",0)
+    IF &argStart>=0
+    (
+        &SecondaryOutput="adsppm_client_requests_secondary_&startdate"
+
+        WINPOS 50% 0. 50% 100%
+        AREA.CREATE &SecondaryOutput 256. 1024. ; 256 cols, 1024 rows
+        AREA.VIEW &SecondaryOutput
+    )
+
+
+    &argStart=STRING.SCAN("&argv","-demo",0)
+    IF &argStart==-1
+    (
+        &demo_cmdline=0
+    )
+    ELSE
+    (
+        &demo_cmdline=1
+    )
+
+    &logdir_cmdline=STRING.SCANAndExtract("&argv","-logdir=","stdout")
+
+    &dbg "help: &help_set, verbose: &verbose_set, interactive: &interactive_set, logdir: &logdir_cmdline, demo: &demo_cmdline"
+
+    RETURN &help_set &verbose_set &interactive_set &logdir_cmdline &demo_cmdline
+
+setupDemo:
+    ENTRY %Line &areaOutDir
+    LOCAL &outfileDir &areaopenmode &SecondaryOutfileName &MainOutfileName
+
+    PRINT "PPD="+OS.PPD()
+    IF ("&areaOutDir"!="")
+    (
+        &outfileDir="&areaOutDir"
+    )
+    ELSE
+    (
+        &outfileDir=OS.PPD()+"\AreaOutputs"
+        IF (OS.DIR("&outfileDir")==FALSE())
+        (
+            &dbg "Creating new AreaOutput dir"
+            MKDIR &outfileDir
+        )
+        ELSE
+            &dbg "Using Existing AreaOutput Dir"
+    )
+
+    &err "Moving demo directory to &outfileDir. Current output will not be transferred."
+    AREA.CLOSE &SecondaryOutput
+    AREA.CLOSE &MainOutput
+
+    &SecondaryOutfileName="&(SecondaryOutput)_&startdate"
+    &MainOutfileName="&(MainOutput)_&startdate"
+
+    IF (OS.FILE("&outfileDir\&outfileName"))
+    (
+        &areaopenmode="/Append" ; Assume that if one file exists, the other one does as well
+    )
+    ELSE
+    (
+        &areaopenmode="/Create"
+    )
+
+    AREA.OPEN &SecondaryOutput "&(outfileDir)\&(SecondaryOutfileName).txt"
+    AREA.OPEN &MainOutput "&(outfileDir)\&(MainOutfileName).txt" &areaopenmode
+
+    RETURN
+
+cleanup_exit:
+    AREA.CLOSE  ; close everything since we're exiting
+
+    IF ("&output"!="PRINT")
+    (
+        CLOSE #1
+    )
+
+    PRINT "Exiting."
+    ENDDO

@@ -1,0 +1,49 @@
+#===============================================================================
+#
+# LSM6DS3 sensor implementation
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2016-2017 by Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Id: //components/rel/ssc.slpi/3.2/sensors/lsm6ds3/build/sns_lsm6ds3.scons#1 $
+#  $DateTime: 2018/02/01 03:15:18 $
+#  $Change: 15367748 $
+#
+#===============================================================================
+Import('env')
+import inspect
+
+# To add island support for drivers:
+# 1. Refactor driver files to separate all island mode functions in a separate
+#    file(s) with filenames ending in "_island". See 80-P9361-1 for details.
+#    Example: sns_lsm6ds3_hal_island.c
+# 2. Use a dedicated environment flag to check if island mode is enabled for the
+#    driver. Use format SNS_ISLAND_INCLUDE_<sensor_name>
+#    Example: SNS_ISLAND_INCLUDE_LSM6DS3.
+# 3. Use this flag to decide whether add_island_files is set to True ot False
+#    when env.AddSSCSU() is called.
+# 4. Include the flag in build flag options (-f) to enable island mode for
+#    the driver.
+
+if 'SSC_TARGET_HEXAGON_MDSP' in env['CPPDEFINES']:
+  Return()
+lsm6ds3_island_enable = False
+
+if 'SNS_ISLAND_INCLUDE_LSM6DS3' in env:
+  lsm6ds3_island_enable = True
+
+if 'USES_SSC_STATIC_LIB_BUILDER' in env:
+  if 'SSC_TARGET_HEXAGON' in env['CPPDEFINES']:
+    env.AddSSCSU(inspect.getfile(inspect.currentframe()),
+               flavor = ["hexagon"],
+               register_func_name = "sns_register_lsm6ds3",
+               binary_lib = False,
+               add_island_files = lsm6ds3_island_enable,
+               diag_ssid = "MSG_SSID_SNS_SENSOR_EXT")
+

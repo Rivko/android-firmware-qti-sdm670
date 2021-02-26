@@ -1,0 +1,66 @@
+#===============================================================================
+#
+# Low Latency Client Manager
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2017 - 2018 by Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#===============================================================================
+Import('env')
+import inspect, os
+
+if 'SSC_TARGET_HEXAGON_CORE_QDSP6_2_0' not in env['CPPDEFINES']:
+  # Module not compiled. Clean all files.
+  ME = inspect.getfile(inspect.currentframe())
+  MY_ROOT = os.path.dirname(os.path.dirname(ME))
+  REMOVE_FILES =  env.FindFiles(['*.*'], MY_ROOT)
+  env.CleanPack(env['SSC_BUILD_TAGS'], REMOVE_FILES)
+  Return()
+
+#-------------------------------------------------------------------------------
+# External dependencies
+#-------------------------------------------------------------------------------
+env.RequirePublicApi([ 'COMMON', 'QDSSC', 'KERNEL'], area='core')
+
+#-------------------------------------------------------------------------------
+# Adds self
+#-------------------------------------------------------------------------------
+
+sections = []
+
+if "SENSORS_DD_DEV_FLAG" in env:
+  clean_pack_sections = ['*.c','*.h','*.idl','*.json']
+else:
+  clean_pack_sections = ['*.pb.c','*.pb.h','*.json']
+
+is_binary_lib = True
+if 'SENSORS_DD_DEV_FLAG' not in env:
+  is_binary_lib = False
+
+if 'USES_SSC_STATIC_LIB_BUILDER' in env:
+  env.AddSSCSU(inspect.getfile(inspect.currentframe()),
+             core_public_api = ['MPROC','KERNEL', 'SYSTEMDRIVERS','DAL'],
+             clean_pack_list = clean_pack_sections ,
+             binary_lib = is_binary_lib,
+             register_func_name = "sns_register_llcm",
+             island_sections = sections)
+#-------------------------------------------------------------------------------
+# QDSS profiling events
+#-------------------------------------------------------------------------------
+if 'USES_QDSS_SWE' in env:
+  QDSS_IMG = ['QDSS_EN_IMG']
+  events = [
+            ['SNS_LLCM_CONFIG_START', 'handle: 0x%x', 'F'],
+            ['SNS_LLCM_CONFIG_END_ERROR', '', 'F'],
+            ['SNS_LLCM_CONFIG_END', '', 'F'],
+            ['SNS_LLCM_NOTIFY_EVENT_START', '', 'F'],
+            ['SNS_LLCM_NOTIFY_DATA_READY', 'D|%d|sns_llcm_notify_data_ready|index=%u, imu_ts_lsw=%u, counter=%u', 'F'],
+            ['SNS_LLCM_NOTIFY_EVENT_END', '', 'F'],
+          ]
+  env.AddSWEInfo(QDSS_IMG, events)
+

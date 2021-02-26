@@ -1,0 +1,70 @@
+#===============================================================================
+#
+# Timer library
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2016-2017 by Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Id: //components/rel/ssc.slpi/3.2/utils/timer/build/timer.scons#1 $
+#  $DateTime: 2018/02/01 03:15:18 $
+#  $Change: 15367748 $
+#
+#===============================================================================
+Import('env')
+import inspect
+import os, inspect
+#-------------------------------------------------------------------------------
+# External dependencies
+#-------------------------------------------------------------------------------
+CBSP_API = [
+  'DAL',
+  'DEBUGTOOLS',
+  'KERNEL',
+  'SERVICES',
+  'SYSTEMDRIVERS',
+  ]
+
+#TODO: Remove this after August 1 2017.
+env.Append(CFLAGS = '-Wno-unused-parameter')
+
+if 'SSC_TARGET_X86' in env['CPPDEFINES']:
+  timer_flavor = ["x86"]
+elif 'SSC_TARGET_HEXAGON_MDSP' in env['CPPDEFINES']:
+  timer_flavor = ["hexagon_mdsp"]
+else:
+  timer_flavor = ["hexagon"]
+
+me = inspect.getfile(inspect.currentframe())
+my_root = os.path.dirname(os.path.dirname(me))
+utils_timer_mdsp_dir = os.path.join(my_root,'hexagon_mdsp')
+utils_timer_mdsp_sns_c_file= env.FindFiles(['sns_time.c'], utils_timer_mdsp_dir)
+if 'SENSORS_DD_DEV_FLAG' not in env: 
+  timer_cleanpack= []
+  if 'SSC_TARGET_HEXAGON_MDSP' not in env['CPPDEFINES']: 
+    timer_cleanpack += utils_timer_mdsp_sns_c_file
+  binlib=False
+else:
+  timer_cleanpack=['*.c','*.h']
+  binlib=True
+
+#-------------------------------------------------------------------------------
+# Adds self
+#-------------------------------------------------------------------------------
+sections = ['.text.sns_time', '.data.sns_time']
+if 'USES_SSC_STATIC_LIB_BUILDER' in env:
+  env.AddSSCSU(inspect.getfile(inspect.currentframe()),
+             flavor = timer_flavor,
+             core_public_api = CBSP_API,
+             ssc_protected_api = ['SNS_INTERNAL_INCLUDES', 'SNS_FRAMEWORK'],
+             clean_pack_list = timer_cleanpack,
+             binary_lib=binlib,
+             island_sections = sections)
+
+REMOVE_FILES =  timer_cleanpack
+env.CleanPack(env['SSC_BUILD_TAGS'], REMOVE_FILES)

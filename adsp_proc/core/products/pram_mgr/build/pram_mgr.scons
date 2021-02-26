@@ -1,0 +1,138 @@
+#===============================================================================
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009-2017 by QUALCOMM Technologies Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1/products/pram_mgr/build/pram_mgr.scons#2 $
+#  $DateTime: 2017/10/25 10:03:42 $
+#  $Author: pwbldsvc $
+#  $Change: 14688937 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Build options
+#-------------------------------------------------------------------------------
+#Required for island build
+env.Append(CCFLAGS = "-G0")
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/products/pram_mgr/src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DEBUGTOOLS',
+   'SERVICES',
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+   'PRODUCTS'
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Feature Definitions
+#-------------------------------------------------------------------------------
+
+#env.Append(CPPDEFINES=["FEATURE_PRAM_MGR_CLNT_TEST"])
+
+
+#-------------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+PRAM_MGR_SOURCES = [
+   '${BUILDPATH}/pram_mgr_drv.c', 
+   '${BUILDPATH}/pram_mgr_qdi.c',
+]
+
+PRAM_MGR_ISLAND_SOURCES = [
+   '${BUILDPATH}/pram_mgr_drv_island.c', 
+]
+PRAM_MGR_CLNT_SOURCES = [
+   '${BUILDPATH}/pram_mgr_clnt.c', 
+]
+
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+if 'SLPI_PROC' in env or ('ADSP_PROC' in env and env['CHIPSET'] in ['sdm670']):
+  pram_mgr = env.AddLibrary(['CORE_SLPI_ROOT','CORE_SLPI_ADSP_ROOT'],'${BUILDPATH}/pram_mgr', PRAM_MGR_SOURCES)
+  pram_mgr_island = env.AddLibrary(['CORE_SLPI_ROOT','CORE_SLPI_ADSP_ROOT'],'${BUILDPATH}/pram_mgr_island', PRAM_MGR_ISLAND_SOURCES)
+  pram_mgr_clnt = env.AddLibrary(['CORE_SSC_SLPI_USER','CORE_SLPI_ROOT','CORE_SLPI_USER','CORE_SLPI_ADSP_ROOT'], '${BUILDPATH}/pram_mgr_clnt', PRAM_MGR_CLNT_SOURCES)
+
+  if 'USES_ISLAND' in env:
+    env.AddIslandLibrary(['CORE_SLPI_ROOT','CORE_SLPI_ADSP_ROOT'], pram_mgr_island)
+
+
+  if 'USES_RCINIT' in env:
+    RCINIT_IMG = ['CORE_SLPI_ROOT','CORE_SLPI_ADSP_ROOT']
+    env.AddRCInitFunc(           
+    RCINIT_IMG,                 
+    {
+     'sequence_group'             : 'RCINIT_GROUP_0',                   # required
+     'init_name'                  : 'pram_mgr',                       # required
+     'init_function'              : 'pram_mgr_init',                  # required
+     'dependencies'               : ['err_init',]
+    })
+    if 'FEATURE_PRAM_MGR_CLNT_TEST' in env['CPPDEFINES']:
+        env.AddRCInitFunc(           
+        RCINIT_IMG,                 
+        {
+        'sequence_group'             : 'RCINIT_GROUP_1',                   # required
+        'init_name'                  : 'pram_mgr_root_test',                       # required
+        'init_function'              : 'pram_mgr_clnt_rootpd_test',                  # required
+        'dependencies'               : ['pram_mgr',]
+        })
+
+if 'USES_SENSOR_IMG' in env:
+
+  if 'USES_RCINIT' in env:
+    RCINIT_IMG = ['CORE_SSC_SLPI_USER','CORE_SLPI_USER']
+    env.AddRCInitFunc(           
+    RCINIT_IMG,                 
+    {
+     'sequence_group'             : 'RCINIT_GROUP_0',                   # required
+     'init_name'                  : 'pram_mgr_clnt',                        # required
+     'init_function'              : 'pram_mgr_clnt_init',             # required
+     'dependencies'               : ['err_init',]
+    })
+
+  if 'FEATURE_PRAM_MGR_CLNT_TEST' in env['CPPDEFINES']:
+    RCINIT_IMG = ['CORE_SSC_SLPI_USER','CORE_SLPI_USER']
+    env.AddRCInitFunc(           
+    RCINIT_IMG,                 
+    {
+     'sequence_group'             : 'RCINIT_GROUP_0',                   # required
+     'init_name'                  : 'pram_mgr_clnt_test',                        # required
+     'init_function'              : 'pram_mgr_clnt_test_init',             # required
+     'dependencies'               : ['pram_mgr_clnt',]
+    })
+
+

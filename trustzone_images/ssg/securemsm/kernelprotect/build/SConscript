@@ -1,0 +1,127 @@
+#===============================================================================
+#
+# Kernel Protect HYP
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2014 Qualcomm Technologies, Inc. 
+# All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: 
+#  $DateTime: 2018/02/06 03:00:17 $
+#  $Author: pwbldsvc $
+#  $Change: 15399933 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#===============================================================================
+
+import os
+
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Publish Private APIs
+#-------------------------------------------------------------------------------
+
+env.PublishPrivateApi('KP', [
+   '${BUILD_ROOT}/ssg/securemsm/kernelprotect/inc',
+])
+
+#-------------------------------------------------------------------------------
+# Internal dependencies within CoreBSP
+#-------------------------------------------------------------------------------
+
+env.RequirePublicApi([
+   'SERVICES',           #< comdef.h
+   'KERNEL',
+   'KERNEL_API',
+   'DAL',
+   'SYSTEMDRIVERS',      #< busywait.h
+], area='core')
+
+env.RequirePublicApi([
+   'AC',
+   'SECUREMSM',
+   'KP',
+   'SSGPLATFORM',             #< tzbsp_sys.h
+], area='ssg')
+
+env.RequireRestrictedApi([
+   'AC',
+   'SECUREMSM',
+   'KP',
+])
+
+env.RequirePrivateApi([
+   'AC',
+   'SECUREMSM',
+   'KP',
+   'CEML',
+])
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/ssg/securemsm/kernelprotect/src/"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+if env['CHIPSET'] in ['sdm845', 'sdm670' , 'qcs6200', 'sdm640']:
+  KP_SOURCES = [
+    '${BUILDPATH}/kp.c',
+    '${BUILDPATH}/kp_pt_protect.c',
+    '${BUILDPATH}/kp_smc.c',
+    '${BUILDPATH}/kp_report.c',
+    '${BUILDPATH}/kp_util.s',
+    '${BUILDPATH}/kp_mp.c'
+  ]
+  KP_SYSCALL_SOURCES = [
+    '${BUILDPATH}/kp_smc.c',
+  ]
+else:
+  KP_SOURCES = [
+    '${BUILDPATH}/kp_stub.c'
+  ]
+
+#-------------------------------------------------------------------------------
+# Device config
+#-------------------------------------------------------------------------------
+
+if os.path.isfile(env.subst('../cfg/${CHIPSET}/kp_config.xml')):
+  env.Replace(KP_CHIPSET = '${CHIPSET}')
+else:
+  env.Replace(KP_CHIPSET = 'stubs')
+
+#KP_CONFIG_FILE_XML = env.GlobFiles('${BUILD_ROOT}/ssg/securemsm/kernelprotect/cfg/kp_config.xml', posix=True)
+#KP_CONFIG_FILE_XML = ', '.join(KP_CONFIG_FILE_XML) #convert list to string
+if 'USES_DEVCFG' in env:
+  DEVCFG_IMG = ['DAL_DEVCFG_HYP_IMG']
+  env.AddDevCfgInfo(DEVCFG_IMG,
+  {
+    'devcfg_xml' : ['${BUILD_ROOT}/ssg/securemsm/kernelprotect/cfg/${KP_CHIPSET}/kp_config.xml']
+  })
+
+#-------------------------------------------------------------------------------
+# Add Libraries to QHEE image
+#-------------------------------------------------------------------------------
+
+env.AddBinaryLibrary(['HYPERVISOR_IMAGE'],
+  '${BUILDPATH}/KP_HYP',
+  KP_SOURCES)
+ 
+if env['CHIPSET'] in ['sdm845', 'sdm670', 'sdm640' ]:
+  env.AddBinaryObject(['HYPERVISOR_IMAGE'], KP_SYSCALL_SOURCES)

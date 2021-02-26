@@ -1,0 +1,84 @@
+#===============================================================================
+#
+# HAP AU
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2015 by Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/opendsp.adsp/3.0/oem/audio/dummy_ecns/build/dummy_ecns.scons#1 $
+#  $DateTime: 2017/08/31 23:46:43 $
+#  $Author: pwbldsvc $
+#  $Change: 14245673 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+
+
+Import('env')
+import os
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+LIBNAME = 'capi_v2_dummy_ecns'
+SRCPATH = '..'
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+    
+items = env.GetSoftwareUnits()
+
+x = items.get('LIBS')
+
+avs_reg_sources = []
+avs_stub_sources = []
+avs_prop_sources = list(x)
+
+
+for i in x:
+    print 'Debug message : ', i.name
+    if i.name == 'capi_v2_wrapper_dummy_ecns.lib':
+        avs_reg_sources.append(i)
+        avs_prop_sources.remove(i)
+    if "_stub" in i.name:
+        avs_stub_sources.append(i)
+        avs_prop_sources.remove(i)
+    if i.name == 'dummy_ecns_lib.lib' :
+        avs_reg_sources.append(i)
+        avs_prop_sources.remove(i)
+
+core_public_apis = [
+    'DEBUGTOOLS',
+    'SERVICES',
+    'KERNEL',
+]
+
+env.RequirePublicApi(core_public_apis, area='core')
+env.RequireRestrictedApi(['SHARED_LIBRARY_INC_PATHS'])
+
+#This flag will be set if shared libraries generation is needed.
+#Use this flag for shared library generation. 
+#Comment it for static library generation.
+#env.Replace(USES_AVS_CUSTOM_SHARED_LIBS = 'yes')
+
+#import pdb; pdb.set_trace()
+bucket = ['HAP_AVS_ADSP']
+
+if 'USES_AVS_SHARED_LIBS' in env:
+## for shared library
+   if 'USES_AVS_CUSTOM_SHARED_LIBS' in env:
+       env.AddAvsSharedLibrary(bucket, '${BUILDPATH}/'+LIBNAME,
+                            [avs_reg_sources, avs_stub_sources, avs_prop_sources], build_type='MOD')
+else:
+## for static library
+   if not 'USES_AVS_CUSTOM_SHARED_LIBS' in env:
+       env.LoadSoftwareUnits()

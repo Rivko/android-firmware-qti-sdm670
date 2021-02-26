@@ -1,0 +1,80 @@
+///////////////////////////////////////////////////
+//
+// When AOP  is de-attached, execute the  following.
+//
+//  To be  used with 'GLOBALON SYSDOWN DO aop_deattach_actions.cmm'
+//  command within T32.
+//
+///////////////////////////////////////////////////
+
+LOCAL &accessmode
+&accessmode="EDAP"
+
+//////////////////////
+///
+/// @brief Main functionality. Writes cookie to wdog location for software to track
+///
+//////////////////////
+MAIN:
+    
+    GLOBAL &AOP_ATTACH_ACTION_DONE
+    IF "&AOP_ATTACH_ACTION_DONE"=="1."
+    (
+        &AOP_ATTACH_ACTION_DONE=0
+        GOSUB ASSERT_AOSSPWRUPREQ deassert
+    )
+    
+    ENDDO
+
+//////////////////////
+///
+/// @brief Asserts/Deasserts AOSSPWRUPREQ
+///
+//////////////////////
+ASSERT_AOSSPWRUPREQ:
+    LOCAL &assertflag
+    ENTRY &assertflag
+    LOCAL &value 
+    
+    ON ERROR GOSUB
+    (
+        ON ERROR DEFAULT
+        ENDDO
+    )
+    
+    IF "&assertflag"=="deassert"
+    (
+        &value=0x0
+    )
+    ELSE
+    (
+        &value=0x1
+    )
+    
+    //Assert AOSSPWRUPREQ
+    //&AOSSPWRUPREQ_Addr=0x06B0E064
+    IF  !Y.EXIST(HWIO_QDSS_SWAO_SWAOCSR_CS_SWAOCSR_AOSSPWRUPREQ_ADDR)
+    (
+        y.create.l HWIO_QDSS_SWAO_SWAOCSR_CS_SWAOCSR_AOSSPWRUPREQ_ADDR 0x06B0E064
+        y.create.done
+    )
+    IF  !Y.EXIST(HWIO_QDSS_SWAO_SWAOCSR_CS_SWAOCSR_LOCKACCESS_ADDR)
+    (
+        y.create.l HWIO_QDSS_SWAO_SWAOCSR_CS_SWAOCSR_LOCKACCESS_ADDR 0x06B0EFB0
+        y.create.done
+    )
+    IF (0x0B!=SYS.MODE())
+    (
+        SYS.M.PREPARE
+    )
+    
+    DATA.SET &accessmode:HWIO_QDSS_SWAO_SWAOCSR_CS_SWAOCSR_LOCKACCESS_ADDR %LONG %LE 0xC5ACCE55
+    DATA.SET &accessmode:HWIO_QDSS_SWAO_SWAOCSR_CS_SWAOCSR_AOSSPWRUPREQ_ADDR %LONG %LE &value
+    
+    IF (&value==0x0)
+    (
+        SYS.M.NODEBUG
+        SYS.M.DOWN
+    )
+
+RETURN SUCCESS

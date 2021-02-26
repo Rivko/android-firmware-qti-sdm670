@@ -1,0 +1,647 @@
+//============================================================================
+//  Name:                                                                     
+//    std_cti_cdsp.cmm 
+//
+//  Description:                                                              
+//    Wakes processor by sending CTI pulse
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who     		what, where, why
+// --------   ---     		---------------------------------------------------------
+// 10/30/2017 JBILLING      Minor EUD modifications
+// 07/05/2017 JBILLING      Update to ATTACHPROC call 
+// 02/01/2017 JBILLING      Created for SDM845
+//
+//  Usage:
+//      do std_cti_cdsp <Subroutine>
+//
+//  Where Subroutines is one of the following:
+//      WAKEPROCESSOR  //Q6 will wakeup for 10 second via busywait in workloop
+//      HALTPROCESSOR  //Q6 will execute BRKPT instruction in interrupt handler
+//      WARMBOOTWAKE   //Set debug register to wake in early stages of warmboot
+//      CRASHPROCESSOR //Q6 will call inject error fatal
+//      SETCOREASCTIMASTER //sets up CTI framework to break other cores
+//      SENDCTIBREAKTOALLCORES //Sends CTI pulse to break all cores
+//      SENDCTIGOTOALLCORES     //Acks all cores and sends CTI "go" command
+//      CTI_GUI     //GUI to make CTI commands available
+//
+//  Dependencies
+//  This script is expected to be run from within context of metabuild scripts.
+//  It needs the following scripts in support 
+//      (and the scripts below have their own dependencies)
+//       - q6 startup scripts, which set initial macros, T32 settings, paths etc.
+//       - std_debug_<CHIPSET>
+//       - std_cti
+//
+//####################Declarations#######################
+
+//###################Arguments passed #####################
+ENTRY %LINE &ArgumentLine
+ENTRY &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+
+//##################Defaults##########################
+do std_memorymap
+LOCAL &MPSS_COOKIE_ADDRESS &ADSP_COOKIE_ADDRESS &CDSP_COOKIE_ADDRESS &MBA_COOKIE_ADDRESS &WCNSS_COOKIE_ADDRESS &DEBUG_COOKIE_ADDRESS &INSTRUCTION_COOKIE_ADDRESS
+
+//Definitions from std_memorymap
+&MPSS_COOKIE_ADDRESS=&MPSS_DEBUG_COOKIE
+&ADSP_COOKIE_ADDRESS=&ADSP_DEBUG_COOKIE
+&SLPI_COOKIE_ADDRESS=&SLPI_DEBUG_COOKIE
+&MBA_COOKIE_ADDRESS=&MBA_DEBUG_COOKIE
+&WCNSS_COOKIE_ADDRESS=&WCNSS_DEBUG_COOKIE
+
+
+LOCAL &INSTRUCTION_COOKIE_BUSYWAIT &INSTRUCTION_COOKIE_BKRPT &INSTRUCTION_COOKIE_CRASH &DEBUG_COOKIE_VALUE
+LOCAL &COOKIE_BUSYWAIT &COOKIE_BKRPT &COOKIE_CRASH &MODEM_SELECT_MASK &ADSP_SELECT_MASK &PROCESSOR_SELECT_MASK
+LOCAL &PROC_SELECT_SHIFT_VALUE
+IF "&CHIPSET"!="sdm845"
+(
+    &COOKIE_BUSYWAIT=0x03444248
+    &COOKIE_BKRPT=0x03444249
+    &COOKIE_CRASH=0x0344424A
+    &MPSS_SELECT_MASK=0X8
+    &ADSP_SELECT_MASK=0X4
+    &SLPI_SELECT_MASK=0X2
+
+    &DEBUG_COOKIE_VALUE="0x53444247"
+
+    &PROCESSOR_SELECT_MASK=&CDSP_SELECT_MASK
+    &PROC_SELECT_SHIFT_VALUE=28.
+    &INSTRUCTION_COOKIE_BUSYWAIT=&PROCESSOR_SELECT_MASK<<&PROC_SELECT_SHIFT_VALUE+&COOKIE_BUSYWAIT
+    &INSTRUCTION_COOKIE_BUSYWAIT="&INSTRUCTION_COOKIE_BUSYWAIT"
+    &INSTRUCTION_COOKIE_BKRPT=&PROCESSOR_SELECT_MASK<<&PROC_SELECT_SHIFT_VALUE+&COOKIE_BKRPT
+    &INSTRUCTION_COOKIE_BKRPT="&INSTRUCTION_COOKIE_BKRPT"
+    &INSTRUCTION_COOKIE_CRASH=&PROCESSOR_SELECT_MASK<<&PROC_SELECT_SHIFT_VALUE+&COOKIE_CRASH
+    &INSTRUCTION_COOKIE_CRASH="&INSTRUCTION_COOKIE_CRASH"
+)
+ELSE
+(
+    &CDSP_COOKIE_ADDRESS=&CDSP_DEBUG_COOKIE
+    &COOKIE_BUSYWAIT=0x00444248
+    &COOKIE_BKRPT=0x00444249
+    &COOKIE_CRASH=0x0044424A
+    &COOKIE_DEVOTE_DAP_CLK=0x0044424F
+    &MPSS_SELECT_MASK=0X1
+    &ADSP_SELECT_MASK=0X2
+    &CDSP_SELECT_MASK=0X3
+    &SLPI_SELECT_MASK=0X4
+    &SSCM3_SELECT_MASK=0X5
+    &SHRM_SELECT_MASK=0X6
+
+    &DEBUG_COOKIE_VALUE="0x53444247"
+
+    &PROCESSOR_SELECT_MASK=&CDSP_SELECT_MASK
+    
+    &PROC_SELECT_SHIFT_VALUE=24.
+    &INSTRUCTION_COOKIE_BUSYWAIT=&PROCESSOR_SELECT_MASK<<&PROC_SELECT_SHIFT_VALUE+&COOKIE_BUSYWAIT
+    &INSTRUCTION_COOKIE_BUSYWAIT="&INSTRUCTION_COOKIE_BUSYWAIT"
+    &INSTRUCTION_COOKIE_BKRPT=&PROCESSOR_SELECT_MASK<<&PROC_SELECT_SHIFT_VALUE+&COOKIE_BKRPT
+    &INSTRUCTION_COOKIE_BKRPT="&INSTRUCTION_COOKIE_BKRPT"
+    &INSTRUCTION_COOKIE_CRASH=&PROCESSOR_SELECT_MASK<<&PROC_SELECT_SHIFT_VALUE+&COOKIE_CRASH
+    &INSTRUCTION_COOKIE_CRASH="&INSTRUCTION_COOKIE_CRASH"
+)
+
+LOCAL &dbg_register_value &warmboot_dbg_value
+&dbg_register_value=0x20
+&warmboot_dbg_value=0x08
+&warmboot_dbg_value=&dbg_register_value+&warmboot_dbg_value //value needs to be 0x28
+
+LOCAL &FAILURE &SUCCESS
+&FAILURE="failure"
+&SUCCESS="success"
+
+//################Configurations for this script######################//
+&DEBUG_COOKIE_ADDRESS=&SLPI_COOKIE_ADDRESS
+&INSTRUCTION_COOKIE_ADDRESS=&WCNSS_COOKIE_ADDRESS
+
+//#################Other misc variables#############################///
+LOCAL &targetprocessor &string_length
+
+
+//##################Get configurations for this target###############//
+LOCAL &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+
+&image="cdsp"
+
+    do std_debug_&CHIPSET GETDEBUGDEFAULTS NONE &image &lpm_option &cti_enable &alternateelf &extraoption
+        ENTRY &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+
+        
+//#####################Select Subroutine###################
+// Name of the utility we are calling
+LOCAL &SUBROUTINE
+// Any subroutine specific options
+// Default exists for each subroutine
+LOCAL &OPTION
+
+// Input Argument 0 is the name of the utility
+&SUBROUTINE="&UTILITY"
+IF !(("&SUBROUTINE"=="WAKEPROCESSOR")||("&SUBROUTINE"=="HALTPROCESSOR")||("&SUBROUTINE"=="WARMBOOTWAKE")||("&SUBROUTINE"=="CRASHPROCESSOR")||("&SUBROUTINE"=="WAKE_DEVOTE_DAP_QDSS_CLK")||("&SUBROUTINE"=="SETCOREASCTIMASTER")||("&SUBROUTINE"=="SENDCTIBREAKTOALLCORES")||("&SUBROUTINE"=="SENDCTIGOTOALLCORES")||("&SUBROUTINE"=="CTI_GUI")||("&SUBROUTINE"=="HELP")||("&SUBROUTINE"=="help"))
+(
+    &SUBROUTINE="HELP"
+    PRINT %ERROR "std_cti_&image: Subroutine not found! Printing Help Window"
+)
+
+    // This should be created by some top level script. The setupenv for each proc would
+    // set this up
+    AREA.SELECT
+    // Call the required utility
+    GOSUB &SUBROUTINE &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    IF "&rvalue"==""
+    (
+        &rvalue="NONE"
+    )
+    do std_results std_cti_cdsp &rvalue "&SUBROUTINE"
+    GOTO EXIT
+    
+////////////////////////////////////////
+//
+//          WAKEPROCESSOR
+//
+//          Just sends a CTI pulse to Q6. 
+//          Software on target should busywait for 10 seconds
+//          Additionally, if VTLB is enabled on target, software will vote for QDSS_DAP high frequency.
+//
+///////////////////////////////////////// 
+WAKEPROCESSOR:
+LOCAL &break
+ENTRY &break
+
+    WINPOS 75. 0. 40. 20. 0. 0. 
+    AREA
+
+    //attach to bootprocessor and load hwio
+    IF "&EUD"=="TRUE"
+    (
+        do std_utils MAKE_SURE_BOOT_PROCESSOR_ATTACHED
+    )
+    ELSE
+    (
+        do std_utils MAKE_SURE_BOOT_PROCESSOR_ATTACHED prepare
+    )
+    //Run HWIO if needed
+    PRINT "Loading  HWIO"
+    do std_intercom_do &targetprocessorport hwio
+    
+    do std_utils EVALUATE_INTERCOM_ATTACH_STATE &targetprocessorport
+    LOCAL &attachstate
+    ENTRY &attachstate
+    IF ("&attachstate"!="ATTACHED")
+    (
+        INTERCOM.EXECUTE &targetprocessorport SYSTEM.MODE.PREPARE
+    )
+    
+    do std_debug_&CHIPSET DISABLE_CLOCK_GATING &image &targetprocessorport
+    //disable clock gating
+    
+    INTERCOM.EXECUTE &targetprocessorport D.S E&ACCESS:&DEBUG_COOKIE_ADDRESS %LONG %LE &DEBUG_COOKIE_VALUE
+    INTERCOM.EXECUTE &targetprocessorport D.S E&ACCESS:&INSTRUCTION_COOKIE_ADDRESS %LONG %LE &INSTRUCTION_COOKIE_BUSYWAIT
+    
+    do std_intercom_do &targetprocessorport std_utils HWIO_OUTF TURING_QDSP6SS_DBG_CFG DBG_SW_REG &dbg_register_value
+
+    wait.200ms    
+    GOSUB SEND_CTI_PULSE
+    
+
+    do std_utils EVALUATE_INTERCOM_ATTACH_STATE &targetprocessorport
+    LOCAL &attachstate
+    ENTRY &attachstate
+    IF "&EUD"=="TRUE"
+    (
+        INTERCOM.EXECUTE &targetprocessorport sys.down
+        do std_intercom_do &targetprocessorport std_utils ATTACHPROC DONTGO FALSE
+    )
+    IF ("&attachstate"!="ATTACHED")
+    (
+        do std_intercom_do &targetprocessorport std_utils ATTACHPROC DONTGO FALSE
+    )
+    do std_utils EVALUATE_INTERCOM_ATTACH_STATE &targetprocessorport
+    LOCAL &attachstate
+    ENTRY &attachstate
+    IF ("&attachstate"!="ATTACHED")
+    (
+        RETURN FAILURE
+    )
+    ELSE
+    (
+        RETURN SUCCESS
+    )
+   
+
+////////////////////////////////////////
+//
+//          HALTPROCESSOR
+//
+//          Just sends a CTI pulse to Q6. 
+//          Software on target should busywait for 10 seconds
+//
+///////////////////////////////////////// 
+HALTPROCESSOR:
+LOCAL &break
+ENTRY &break
+
+    GOSUB ATTACH_TO_PROCESSOR
+    LOCAL &result
+    ENTRY &result
+    
+    do std_utils EVALUATE_INTERCOM_STOP_STATE &targetprocessorport
+    LOCAL &stopstate
+    ENTRY &stopstate
+    
+    IF "&stopstate"=="FALSE"
+    (
+        GOSUB FAILED_TO_BREAK
+    )
+    ELSE IF "&stopstate"=="RUNNING"
+    (
+        do std_utils BREAKPROC &targetprocessorport
+    )
+    
+    do std_utils EVALUATE_INTERCOM_STOP_STATE &targetprocessorport
+    LOCAL &stopstate
+    ENTRY &stopstate
+    IF "&stopstate"!="RUNNING"
+    (
+        GOSUB FAILED_TO_BREAK
+    )
+
+    do std_utils DISABLE_CLOCK_GATING &image &targetprocessorport ENABLE
+    
+    //return cookie to original value
+    WAIT.500ms //to ensure handler has time to read cookie before clearing it
+    INTERCOM.EXECUTE &targetprocessorport D.S E&ACCESS:&INSTRUCTION_COOKIE_ADDRESS %LONG %LE 0x0
+    
+    RETURN SUCCESS
+    
+
+////////////////////////////////////////
+//
+//          WARMBOOTWAKE
+//
+//          Just sends a CTI pulse to Q6. 
+//          Software on target should busywait for 10 seconds
+//          Needs the ability to be run from a remote processor for TPIU calibration.
+//
+///////////////////////////////////////// 
+WARMBOOTWAKE:
+LOCAL &break
+ENTRY &break
+    
+    PRINT "std_cti_mpss WARMBOOTWAKE: Disabling QuRT OSAM menu for warmboot wakeup"
+    TASK.RESET
+    
+    WINPOS 75. 0. 40. 20. 0. 0. 
+    AREA
+
+    //attach to bootprocessor and load hwio
+    GOSUB MAKE_SURE_BOOT_PROCESSOR_ATTACHED
+    
+    do std_intercom_do &targetprocessorport hwio
+    
+    INTERCOM.EVALUATE &targetprocessorport SYSTEM.MODE()
+        &temp=EVAL()
+    IF ("&temp"!="0x0B")
+    (
+        INTERCOM.EXECUTE &targetprocessorport SYSTEM.MODE.PREPARE
+    )
+
+    do std_utils DISABLE_CLOCK_GATING &image &targetprocessorport
+    
+    INTERCOM.EXECUTE &targetprocessorport D.S E&ACCESS:&DEBUG_COOKIE_ADDRESS %LONG %LE &DEBUG_COOKIE_VALUE
+    INTERCOM.EXECUTE &targetprocessorport D.S E&ACCESS:&INSTRUCTION_COOKIE_ADDRESS %LONG %LE &INSTRUCTION_COOKIE_BUSYWAIT
+    
+    do std_intercom_do &targetprocessorport std_utils HWIO_OUTF TURING_QDSP6SS_DBG_CFG DBG_SW_REG &warmboot_dbg_value
+    
+
+    wait.200ms    
+    GOSUB SEND_CTI_PULSE
+    
+
+
+    //if we're not already attached, attach.
+    IF !(SYSTEM.MODE()==0x0B)
+    (
+        GOSUB ATTACH_TO_PROCESSOR
+    )
+    IF !(SYSTEM.MODE()==0x0B)
+    (
+        RETURN FAILURE
+    )
+    ELSE
+    (
+        IF STATE.RUN()==TRUE()
+        (
+            RETURN FAILURE
+        )
+        ELSE
+        (
+            RETURN SUCCESS
+        )
+    )
+    
+    RETURN //returns success
+////////////////////////////////////////
+//
+//          CRASHPROCESSOR
+//
+//          Sets cookie value to crash.
+//          Upon receiving CTI Interrupt, 
+//          Q6 should call inject err fatal.
+//
+///////////////////////////////////////// 
+CRASHPROCESSOR:
+LOCAL &break
+ENTRY &break
+
+    WINPOS 75. 0. 40. 20. 0. 0. 
+    AREA
+
+
+    do std_utils MAKE_SURE_BOOT_PROCESSOR_ATTACHED prepare
+    
+    do std_intercom_do &targetprocessorport hwio
+    
+    INTERCOM.EVALUATE &targetprocessorport SYSTEM.MODE()
+        &temp=EVAL()
+    IF ("&temp"!="0x0B")
+    (
+        INTERCOM.EXECUTE &targetprocessorport SYSTEM.MODE.PREPARE
+    )
+    INTERCOM.EXECUTE &targetprocessorport D.S E&ACCESS:&DEBUG_COOKIE_ADDRESS %LONG %LE &DEBUG_COOKIE_VALUE
+    INTERCOM.EXECUTE &targetprocessorport D.S E&ACCESS:&INSTRUCTION_COOKIE_ADDRESS %LONG %LE &INSTRUCTION_COOKIE_CRASH
+
+
+    wait.200ms
+    GOSUB SEND_CTI_PULSE
+    
+
+    RETURN SUCCESS //returns success
+    
+  
+    
+////////////////////////////////////////
+//
+//          SETCOREASCTIMASTER
+//  
+//          Sets up this core as master on CTI network, 
+//
+///////////////////////////////////////// 
+SETCOREASCTIMASTER:
+
+        do std_utils MAKE_SURE_BOOT_PROCESSOR_ATTACHED prepare
+        do std_intercom_do &bootprocessorport do std_cti masters=&targetprocessor slaves=allapps,aotimer extraoption=use_level_trigger
+
+    
+GOTO EXIT
+////////////////////////////////////////
+//
+//          SENDCTIBREAKTOALLCORES
+//
+//          Sets up this core as master on CTI network, 
+//          then sends a pulse to break
+//
+///////////////////////////////////////// 
+SENDCTIBREAKTOALLCORES:
+
+    GOSUB MAKE_SURE_BOOT_PROCESSOR_ATTACHED
+    
+    do std_intercom_do &bootprocessorport std_cti masters=&targetprocessor slaves=allcores,aotimer extraoption=use_level_trigger
+    do std_intercom_do &bootprocessorport std_cti TRIGSETCHANNEL &targetprocessor 0
+
+    wait.500ms
+    do std_intercom_do &bootprocessorport std_cti TRIGCLEARCHANNEL &targetprocessor 0
+
+RETURN
+
+
+////////////////////////////////////////
+//
+//          SENDCTIGOTOALLCORES
+//          
+//          Sets up this core as master on CTI network
+//          Then sends a pulse to go.
+//          This core must be halted
+//
+///////////////////////////////////////// 
+SENDCTIGOTOALLCORES:
+
+    GOSUB MAKE_SURE_BOOT_PROCESSOR_ATTACHED
+    do std_intercom_do &bootprocessorport std_cti_apps SENDCTIGOTOALLCORES cdsp
+    RETURN 
+   
+  
+////////////////////////////////////////
+//
+//      CTI_GUI
+//          
+//      Print GUI for CIT functions
+//
+///////////////////////////////////////// 
+CTI_GUI:
+
+    WINPOS 80. 0. 47. 14.
+    
+    DIALOG
+    (
+        HEADER "CTI MENU"
+        //POS width, height, length
+        POS 1. 0. 35.
+         TEXT "Use the below button to resume the core. "
+        POS 1. 1. 35.
+         TEXT "This ensures that other processors resume as well."
+        POS 1. 2. 45.
+         TEXT "However, system stability is not guaranteed when using CTI"
+        POS 1. 3. 40.
+         TEXT "Below actions will not work if CDSP is crashed or in reset"
+         
+
+        POS 1. 4. 14. 2.
+        DEFBUTTON "Resume All Cores" "GOSUB SENDCTIGOTOALLCORES"
+        POS 1. 7. 14. 2.
+        DEFBUTTON "Force HALT on all cores" "GOSUB HALTALLCORES"
+        POS 1. 9. 14. 2.
+        DEFBUTTON "Clear CTI network" "GOSUB CLEAR_CTI_NETWORK"
+        POS 1. 11. 14. 2.
+        DEFBUTTON "Reconfigure CTI network" "GOSUB RESET_CTI_NETWORK"
+        POS 18. 9. 12. 2.
+        DEFBUTTON "EXIT" "GOSUB dialogexit"
+    )
+    STOP
+
+    DIALOG.END
+
+RETURN
+
+dialogexit:
+    dialog.end
+    GOTO EXIT
+
+CLEAR_CTI_NETWORK:
+    do std_intercom_do &bootprocessorport std_cti CLEARCTI allcores
+    RETURN
+    
+HALTALLCORES:
+    GOSUB WAKEPROCESSOR
+    GOSUB SENDCTIBREAKTOALLCORES
+    RETURN
+    
+RESET_CTI_NETWORK:
+    do std_intercom_do &bootprocessorport std_cti CLEARCTI allcores
+    do std_intercom_do &bootprocessorport std_cti masters=&targetprocessor slaves=allcores,aotimer extraoption=use_level_trigger
+    RETURN
+    
+////////////////////////////////////////
+//
+//      FAILED_TO_BREAK
+//          
+//      Print error on failed to break.
+//
+///////////////////////////////////////// 
+FAILED_TO_BREAK:
+    //remove Error handler
+    ON ERROR
+
+    WINPOS 5. 39. 90. 5.
+    AREA
+    PRINT %ERROR "Error! std_cti_&targetprocessor - Could not break processor. "
+    PRINT %ERROR " This could be a Trace32 version issue "
+    PRINT %ERROR "  (please ensure your T32 installation is up to date)"
+    PRINT %ERROR " Or this could be a software issue "
+    PRINT %ERROR " (e.g. QuRT or CTI driver on target has malfunctioned)"
+    
+    ENDDO &FAILURE //fail
+
+
+
+
+////////////////////////////////////////
+//
+//          ATTACH_TO_PROCESSOR
+//
+//          Attempts to attach to target processor.
+//          Tries twice as on Q6 sometimes debug registers
+//              need to be asserted then one can attach
+//
+///////////////////////////////////////// 
+ATTACH_TO_PROCESSOR:
+
+        ON ERROR GOTO SECONDATTACH
+        sys.m.a
+        ON ERROR
+
+        RETURN
+
+
+////////////////////////////////////////
+//
+//      SECONDATTACH
+//          
+//      Usually necessary for Q6 as the first attach
+//      asserts debug registers, and then the second will 
+//      be successful. Should eventually be fixed by JTag provider
+//
+///////////////////////////////////////// 
+SECONDATTACH:
+        ON ERROR
+
+        ON ERROR GOTO CONTINUE
+        sys.m.a
+CONTINUE:
+        ON ERROR
+
+        IF (SYSTEM.MODE()==0x0B)
+        (
+            print "attached successfully"
+        )
+        ELSE
+        (
+            winclear
+            WINPOS 0. 0. 60. 15. 0. 0. 
+            area.reset
+            area
+            PRINT %ERROR " std_cti_&targetprocessor - could not attach"
+            PRINT %ERROR " Please ensure the following:"  
+            PRINT %ERROR "     - Device is not in XO Shutdown"
+            PRINT %ERROR "     - &targetprocessor has booted up"
+            PRINT %ERROR "     - T32 installation is up to date."
+            PRINT %ERROR "     - &targetprocessor build is CTI compliant."
+            PRINT %ERROR " "
+            
+            ENDDO &FAILURE
+            
+        )
+    
+    
+    IF "&break"=="break"
+    (
+        RETURN
+    )
+    ELSE
+    (
+        GOTO EXIT
+    )
+        
+        
+////////////////////////////////////////
+//
+//          SEND_CTI_PULSE
+//          
+//          Sends CTI pulse to target processor
+//
+/////////////////////////////////////////   
+SEND_CTI_PULSE:
+    //cause CTI pulse to wakeup Q6
+    
+    do std_intercom_do &targetprocessorport std_cti CTI_TRIGGER_RECEIVE &targetprocessor 3 3
+    do std_intercom_do &targetprocessorport std_cti INSERTAPPULSE &targetprocessor 3
+    RETURN
+    
+    
+help:
+HELP:    
+
+    AREA.RESET
+    AREA.CREATE std_cti_cdsp_help 125. 23.
+    AREA.SELECT std_cti_cdsp_help
+    WINPOS 5. 39. 125. 23.
+    AREA.VIEW std_cti_cdsp_help
+    
+    PRINT " Usage:"
+    PRINT "     do std_cti_cdsp <Subroutine>"
+    PRINT " "
+    PRINT " Where Subroutines is one of the following:"
+    PRINT "     WAKEPROCESSOR  //Q6 will wakeup for 10 second via busywait in workloop"
+    PRINT "     HALTPROCESSOR  //Q6 will execute BRKPT instruction in interrupt handler"
+    PRINT "     WARMBOOTWAKE   //Q6 will halt in early warmboot stages. Needs to be woken up externally, however"
+    PRINT "     CRASHPROCESSOR //Q6 will call inject error fatal"
+    PRINT "     SETCOREASCTIMASTER //sets up CTI framework to break other cores"
+    PRINT "     SENDCTIBREAKTOALLCORES //Sends CTI pulse to break all cores"
+    PRINT "     SENDCTIGOTOALLCORES     //Acks all cores and sends CTI GO command"
+    PRINT " "
+    PRINT " Dependencies"
+    PRINT " This script is expected to be run from within context of metabuild scripts."
+    PRINT " It needs the following scripts in support "
+    PRINT "     (and the scripts below have their own dependencies)"
+    PRINT "      - q6 startup scripts, which set initial macros, T32 settings, paths etc."
+    PRINT "      - std_debug_<CHIPSET>"
+    PRINT "      - std_cti"
+    PRINT " "
+
+    ENDDO &FAILURE
+    
+EXIT:
+    ENDDO &SUCCESS
+    
+FATALEXIT:
+    END
+   

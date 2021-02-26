@@ -1,0 +1,59 @@
+#===============================================================================
+#
+# Asynchronous Com Port
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2016-2017 by Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Id: //components/rel/ssc.slpi/3.2/sensors/async_com_port/build/sns_async_com_port.scons#1 $
+#  $DateTime: 2018/02/01 03:15:18 $
+#  $Change: 15367748 $
+#
+#===============================================================================
+Import('env')
+import inspect
+
+async_clean_pack_list = []
+async_binary_lib = False
+
+if 'SSC_TARGET_HEXAGON_MDSP' in env['CPPDEFINES']:
+  Return()
+if 'SENSORS_DD_DEV_FLAG' in env:
+  async_clean_pack_list = ['*.c','*.h','*.idl']
+  async_binary_lib = True
+
+if 'SSC_TARGET_HEXAGON_CORE_QDSP6_2_0' in env['CPPDEFINES']:
+  async_flavor = ["hexagon", "hexagon_core_qdsp6_2.0"]
+else:
+  async_flavor = ["hexagon", "uart_stubs"]
+
+if 'USES_SSC_STATIC_LIB_BUILDER' in env:
+  if 'SSC_TARGET_HEXAGON' in env['CPPDEFINES']:
+    env.AddSSCSU(inspect.getfile(inspect.currentframe()),
+                 flavor = async_flavor,
+                 ssc_protected_api = ['SNS_INTERNAL_INCLUDES'],
+                 clean_pack_list = async_clean_pack_list,
+                 binary_lib = async_binary_lib,
+                 register_func_name = "sns_async_com_port_register",
+                 island_sections = ['.text.sns', '.data.sns', '.rodata.sns'])
+
+
+if 'USES_QDSS_SWE' in env:
+  QDSS_IMG = ['QDSS_EN_IMG']
+  events = [
+            ['SNS_ASCP_TX_START', 'Number of vectors in tx: %u', 'F'],
+            ['SNS_ASCP_TX_END', '', 'F'],
+            ['SNS_ASCP_CALLBACK_START', 'Bytes tx: %u, Error: 0x%x', 'F'],
+            ['SNS_ASCP_CALLBACK_END', '', 'F'],
+            ['SNS_ASCP_HANDLE_SIGNAL_EVENT_START', '', 'F'],
+            ['SNS_ASCP_HANDLE_SIGNAL_EVENT_END', '', 'F'],
+           ]
+  env.AddSWEInfo(QDSS_IMG, events)
+
+

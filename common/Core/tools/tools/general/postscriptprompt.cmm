@@ -1,0 +1,175 @@
+//============================================================================
+//  Name:                                                                     
+//    postscriptprompt.cmm 
+//
+//  Description:                                                              
+//    Prompts to user between script sequences.
+//                                                                            
+// Copyright (c) 2012 - 2016 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who           what, where, why
+// --------   ---           ---------------------------------------------------------
+// 04/06/2016 JBILLING      DIALOGMESSAGE routine added
+// 03/28/2016 JBILLING      Initial creation
+//
+//  Usage:
+//      do postscriptprompt <display text>
+//
+//  Where <display text> is displayed on the prompt
+//
+//  Dependencies
+//  This script is expected to be run from within context of metabuild scripts.
+//  It needs the following scripts in support 
+//      to be filled..
+//
+//####################Declarations#######################
+
+//###################Arguments passed #####################
+LOCAL &ArgumentLine &UTILITY &OPTION &therest 
+ENTRY %LINE &ArgumentLine
+ENTRY &UTILITY &OPTION %LINE &therest 
+
+
+//##################Defaults##########################
+
+
+//#################Other misc variables#############################///
+LOCAL &targetprocessor &string_length
+
+
+//##################Get configurations for this target###############//
+
+        
+//#####################Select Subroutine###################
+// Name of the utility we are calling
+LOCAL &SUBROUTINE
+
+
+// Input Argument 0 is the name of the utility
+&SUBROUTINE="&UTILITY"
+IF !(("&SUBROUTINE"=="DIALOGMESSAGE")||("&SUBROUTINE"=="HELP")||("&SUBROUTINE"=="help"))
+(
+    GOSUB MAIN &ArgumentLine
+)
+ELSE
+(
+    GOSUB &SUBROUTINE &therest
+)
+    ENTRY %LINE &rvalue
+
+    //Remove error handler if it was set
+    ON ERROR
+    
+    GOSUB EXIT &rvalue
+
+////////////////////////////////////////
+//
+//          MAIN
+//
+//          dialog prompt
+//          
+//          
+//
+///////////////////////////////////////// 
+MAIN:
+    LOCAL &ArgumentLine
+    ENTRY %LINE &ArgumentLine
+    
+    WINPOS 10. 5. 40. 11.
+    DIALOG
+    (&
+        POS 1. 1. 37.
+        TEXT "For &ArgumentLine"
+        POS 1. 3. 37.
+        TEXT "Script sequence prescribes a pause before continuing"
+        TEXT "Please select OK when you want sequence to continue"
+        POS 12. 6. 14. 2.
+        button1: DEFBUTTON "CONTINUE" "CONTinue"
+        
+    )
+    STOP
+    DIALOG.END
+    ENDDO
+
+////////////////////////////////////////
+//
+//          DIALOGMESSAGE
+//
+//          Load symbols
+//          
+//          
+//
+///////////////////////////////////////// 
+DIALOGMESSAGE:
+    LOCAL &ArgumentLine
+    ENTRY %LINE &ArgumentLine
+
+    LOCAL &length
+    &length=STRING.LENGTH("&ArgumentLine")
+    &length=&length+10.
+    WINPOS 10. 5. &length 11.
+    
+    DIALOG
+    (&
+        HEADER "Script Dialog"
+        
+        POS 1. 1. 37.
+        TEXT "Message to user:"
+        POS 3. 3. 100.
+        TEXT "&ArgumentLine"
+        POS 12. 6. 14. 2.
+        button2: DEFBUTTON "CONTINUE" "CONTINUE"
+    
+    )
+    STOP
+    DIALOG.END
+    ENDDO
+    
+
+    
+help:
+HELP:    
+
+    AREA.RESET
+    AREA.CREATE postscriptprompt_help 125. 23.
+    AREA.SELECT postscriptprompt_help
+    WINPOS 5. 39. 125. 23.
+    AREA.VIEW postscriptprompt_help
+    
+    PRINT " Usage:"
+    PRINT "     do postscriptprompt <display text>"
+    PRINT " "
+    PRINT " Where <display text> is the text to be displayed on the prompt"
+    PRINT "     This script is a simple dialog for a user to be prompted in the middle of a script sequence"
+    PRINT " "
+    PRINT " Dependencies"
+    PRINT " This script is expected to be run from within context of metabuild scripts."
+    PRINT " "
+
+    ENDDO FAILURE
+    
+EXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    ENDDO &rvalue
+    
+
+
+FATALEXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    IF STRING.SCAN("&FAILUREKEYWORD","FAILUREKEYWORD",0)==-1
+    (
+        GOSUB EXIT &FAILUREKEYWORD - &rvalue
+    )
+    ELSE
+    (
+        GOSUB EXIT &rvalue
+    )

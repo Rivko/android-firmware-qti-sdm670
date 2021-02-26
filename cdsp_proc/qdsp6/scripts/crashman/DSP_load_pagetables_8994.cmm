@@ -1,0 +1,146 @@
+; writen by Waleed Eshmawy
+entry &loc
+ON ERROR JUMPTO pgt_end
+open #1 &loc\DSP_pgt.txt
+loop:
+read #1 %line &linelst
+&check32bit=string.mid("&linelst", 0, 2)
+&enable36bit=0
+if "&check32bit"=="0x"
+(
+    &bit20=string.mid("&linelst", 0x11, 1)
+    if "&bit20"!=" "
+    (
+        &enable36bit="1"
+    )
+    else
+    (
+        &enable36bit="0"
+    )
+    goto done
+)
+goto loop
+done:
+close #1
+
+if "&enable36bit"=="0"
+(
+    open #1 &loc\DSP_pgt.txt
+    read #1 %line &linelst
+    read #1 %line &linelst
+    mmu.reset
+start:
+    read #1 %line &linelst 
+    &vpage=string.mid("&linelst", 0, 7)
+    if "&vpage"=="B::task"
+    (
+        goto start
+    )
+    if "&vpage"=="Pagetab"
+    (
+        goto start
+    )
+    if "&vpage"=="VPage  "
+    (
+    goto start
+    )
+    if "&vpage"=="PPage  "
+    (
+        goto start
+    )
+    if "&vpage"=="       "
+    (
+        goto done_reading
+    )
+    if "&vpage"==""
+    (
+        goto done_reading
+    )
+    &ppage=string.mid("&linelst",0xa, 7)
+    if "&ppage"==""
+    (
+        goto done_reading
+    )
+    &size=string.mid("&linelst", 0x14, 8)
+    if "&size"==""
+    (
+        goto done_reading
+    )
+    &vpage=&vpage<<0xc
+    &ppage=&ppage<<0xc
+    &vend=&vpage+&size
+    &pend=&ppage+&size
+    mmu.create &vpage--&vend &ppage--&pend
+    goto start
+done_reading:
+    close #1
+    mmu.format QURT QURTK_pagetables
+    mmu.on
+    mmu.autoscan on
+    mmu.tablewalk on
+    enddo
+)
+else
+(
+    open #1 &loc\DSP_pgt.txt
+    read #1 %line &linelst
+    read #1 %line &linelst
+    mmu.reset
+start_1:
+    read #1 %line &linelst 
+    &vpage=string.mid("&linelst", 0, 7)
+    if "&vpage"=="B::task"
+    (
+        goto start_1
+    )
+    if "&vpage"=="Pagetab"
+    (
+        goto start_1
+    )
+    if "&vpage"=="VPage  "
+    (
+        goto start_1
+    )
+    if "&vpage"=="PPage  "
+    (
+        goto start_1
+    )
+    if "&vpage"=="       "
+    (
+        goto done_reading_1
+    )
+    if "&vpage"==""
+    (
+        goto done_reading_1
+    )
+    &ppage=string.mid("&linelst",0xa, 8)
+    if "&ppage"==""
+    (
+        goto done_reading_1
+    )
+    &size=string.mid("&linelst", 0x14, 8)
+    if "&size"==""
+    (
+        goto done_reading_1
+    )
+    &vpage=&vpage<<0xc
+    &ppage=&ppage<<0xc
+    &vend=&vpage+&size
+    &pend=&ppage+&size
+    mmu.create &vpage--&vend &ppage--&pend
+    goto start_1
+done_reading_1:
+    close #1
+    mmu.format QURT QURTK_pagetables
+    mmu.on
+    mmu.autoscan on
+    mmu.tablewalk on
+    enddo
+)
+
+
+
+enddo
+pgt_end:
+do &CurrentDirectory\cmm_error.cmm "DSP_load_pagetables_8994.cmm"
+enddo

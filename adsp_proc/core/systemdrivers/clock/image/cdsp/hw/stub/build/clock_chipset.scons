@@ -1,0 +1,103 @@
+#===============================================================================
+#
+# CLOCK DRIVER HW (CHIPSET) LIBRARY
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2012-2017 QUALCOMM Technologies Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1/systemdrivers/clock/image/cdsp/hw/stub/build/clock_chipset.scons#1 $
+#  $DateTime: 2017/07/21 22:10:47 $
+#  $Author: pwbldsvc $
+#  $Change: 13907704 $
+#
+#===============================================================================
+
+import os
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Add API folders
+#-------------------------------------------------------------------------------
+
+CLOCK_BUILD_ROOT = os.getcwd();
+
+#-------------------------------------------------------------------------------
+# Define paths
+#-------------------------------------------------------------------------------
+
+SRCPATH = "../"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Define any features or compiler flags
+#-------------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+CBSP_API = [
+   'DAL',
+   'HAL',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'POWER',
+   'KERNEL',
+   'DEBUGTRACE'
+]
+ 	 
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Define sources
+#-------------------------------------------------------------------------------
+
+CLOCK_HW_SOURCES = [
+   '${BUILDPATH}/ClockBSP.c',
+   '${BUILDPATH}/ClockTarget.c',
+   '${BUILDPATH}/ClockCDSPLite.c',
+]
+
+#-------------------------------------------------------------------------------
+# Add libraries to image
+#-------------------------------------------------------------------------------
+
+env.AddLibrary(
+   ['CORE_CDSP_ROOT'],
+   '${BUILDPATH}/ClockHW',
+   CLOCK_HW_SOURCES)
+
+#-------------------------------------------------------------------------------
+# Register initialization function and dependencies
+#-------------------------------------------------------------------------------
+
+if 'USES_RCINIT' in env:
+  RCINIT_IMG = ['CORE_CDSP_ROOT']
+  env.AddRCInitFunc(              # Code Fragment in TMC: NO
+    RCINIT_IMG,                   # 
+    {
+      'sequence_group' : 'RCINIT_GROUP_1',                       # required
+      'init_name'      : 'clk_regime_init_nv',                   # required
+      'init_function'  : 'clk_regime_init_nv',                   # required
+      'dependencies'   : ['vcs_efs']
+    })
+
+#-------------------------------------------------------------------------------
+# SWEvent processing
+#-------------------------------------------------------------------------------
+
+if 'USES_QDSS_SWE' in env:
+  env.Append(CPPDEFINES = ["CLOCK_TRACER_SWEVT"])
+
+if 'QDSS_TRACER_SWE' in env:
+  env.Append(CPPPATH = ['${BUILD_ROOT}/core/systemdrivers/clock/build/${BUILDPATH}/src'])
+

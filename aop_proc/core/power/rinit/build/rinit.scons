@@ -1,0 +1,71 @@
+#===========================================================================
+# R-Init build script
+#
+# Copyright (c) 2016-2017 by Qualcomm Technologies, Incorporated
+# All Rights Reserved
+# Qualcomm Proprietary/GTDR
+#===========================================================================
+
+Import('env')
+
+env = env.Clone()
+SRCPATH = '../src'
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+# APIs
+CBSP_API = [
+    'DAL',
+    'POWER',
+    'POWER_UTILS',
+    'SERVICES',
+    'SYSTEMDRIVERS',
+    'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+env.RequireProtectedApi(CBSP_API)
+env.PublishPrivateApi('RINIT', [
+    '${BUILD_ROOT}/core/power/rinit/inc'
+])
+
+
+# Compilation flags and Defines
+env.Append(CFLAGS = '${ARMCC_STDC99_CMD}')
+env.Append(CPPDEFINES = '-DTCSR_SOC_HW_VERSION=0x61FC8000')   # Can be per target
+
+env.Append(CFLAGS = '-DRINIT_IN_DDR')
+
+# Sources
+RINIT_SOURCES = [
+    '${BUILDPATH}/rinit.c',
+]
+
+if 'USES_RINIT_PARSER' in env:
+    target_list = [			# list of auto_generated files
+        '${BUILDPATH}/${CHIPSET_PMIC}/rinit_vals.c'
+    ]
+    rinit_out = env.RinitBuilder(target_list, None)
+
+    RINIT_SOURCES.append(rinit_out)
+
+    # Do not clean the auto_generated file for the external build
+    # since we cannot deliver .FLAT file and cannot run RINIT builder after packing out .FLAT file.
+    # We need to disable RINIT builder and deliver the auto_generated file.
+    if env['BUILD_ID'] in ['AAAAANAZO']:
+        env.NoClean(rinit_out)
+
+elif env['BUILD_ID'] in ['AAAAANAZO']:
+    import os, sys
+
+    rinit_out = '${BUILDPATH}/${CHIPSET_PMIC}/rinit_vals.c'
+
+    # Check if the auto_generated file exists.
+    if not os.path.isfile(env.RealPath(rinit_out)):
+        env.PrintError('Missing the auto_generated file: %s' % env.RealPath(rinit_out))
+        sys.exit(1)
+
+    RINIT_SOURCES.append(rinit_out)
+
+# Add sources to compile
+env.AddLibrary(['CORE_AOP'], '${BUILDPATH}/rinit', RINIT_SOURCES)

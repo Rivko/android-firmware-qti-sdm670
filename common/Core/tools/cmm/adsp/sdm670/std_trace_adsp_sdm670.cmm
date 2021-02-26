@@ -1,0 +1,323 @@
+//============================================================================
+//  Name:                                                                     
+//    std_trace_adsp_sdm845.cmm 
+//
+//  Description:                                                              
+//    Trace setup script for ADSP
+//                                                                            
+// Copyright (c) 2012 - 2017 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who             what, where, why
+// --------   ---             ---------------------------------------------------------
+// 05/16/2017 JBILLING        Created and updated for sdm845
+
+//####################Declarations#######################
+
+LOCAL &ArgumentLine
+LOCAL &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+LOCAL &TargetProcessor &Default_TPIU_Sink
+
+//###################Arguments passed #####################
+ENTRY %LINE &ArgumentLine
+ENTRY &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+
+//##################Defaults##########################
+&TargetProcessor="adsp"
+&Default_TPIU_Sink="tpiub" 
+&Default_TraceSource="adsp"
+
+
+
+
+//#####################Select Subroutine###################
+// Name of the utility we are calling
+LOCAL &SUBROUTINE
+// Any subroutine specific options
+// Default exists for each subroutine
+LOCAL &OPTION
+
+// Input Argument 0 is the name of the utility
+&SUBROUTINE="&UTILITY"
+IF !(("&SUBROUTINE"!="GETTRACEDEFAULTS")||("&SUBROUTINE"!="STARTTRACING"))
+(
+    PRINT %ERROR "WARNING: UTILITY &UTILITY DOES NOT EXIST."
+    GOTO EXIT
+)
+
+
+    // This should be created by some top level script. The setupenv for each proc would
+    // set this up
+     AREA.SELECT
+    // Call the required utility
+    GOSUB &SUBROUTINE &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+    ENTRY &PASS &RVAL0 &RVAL1 &RVAL2
+
+    GOTO EXIT
+    
+
+//////////////////////////////////////////////
+//
+//    GETTRACEDEFAULTS
+//    Returns Trace default parameters for this target processor
+//
+//  assumed/example call:
+//  do std_trace_adsp_&CHIPSET  GETTRACEDEFAULTS &tracesink &tracesource &CycleAccurate &traceconfiguration &Portsize 
+//  where 
+//      &tracesink="etb" 
+//      &tracesource="adsp" 
+//      &CycleAccurate="cycleaccurate" 
+//      &traceconfiguration="fromcoldboot" 
+//      &Portsize=="16bit" 
+//////////////////////////////////////////////
+GETTRACEDEFAULTS:
+    LOCAL &ACTION &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5 &ARG6 &ARG7 &ARG8 &ARG9 &ARG10 &ARG11
+    ENTRY &ACTION &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5 &ARG6 &ARG7 &ARG8 &ARG9 &ARG10 &ARG11
+
+    LOCAL &given_tracesource &given_tracesink &given_cycleaccurate &given_traceconfiguration &given_portsize
+    
+    &given_tracesource=            string.lwr("&ARG0")
+    &given_tracesink=           string.lwr("&ARG1")
+    &given_cycleaccurate=       string.lwr("&ARG2")
+    &given_traceconfiguration=  string.lwr("&ARG3")
+    &given_portsize=            string.lwr("&ARG4")
+    
+    LOCAL &rvalue_tracesource &rvalue_tracesink &rvalue_tpiusink &rvalue_portsize &rvalue_cycleaccuratecommand &rvalue_traceconfiguration &rvalue_portsizecommand 
+    
+    
+    //Set Defaults
+    &rvalue_tracesource=            "&Default_TraceSource"    
+    &rvalue_tracesink=              "none"
+    &rvalue_tpiusink=                "&Default_TPIU_Sink" 
+    &rvalue_portsize=               "16bit"
+    &rvalue_cycleaccuratecommand=    "off"
+    &rvalue_traceconfiguration=        "fromcoldboot"
+    &rvalue_portsizecommand=        "16."
+
+                            
+        //###########Trace sink configuration######
+        IF ("&given_tracesink"=="etb")
+        (
+            &rvalue_tracesink="etb"
+        )
+        ELSE IF ("&given_tracesink"=="tpiua")
+        (
+            &rvalue_tracesink="tpiua"
+        )
+        ELSE IF ("&given_tracesink"=="tpiu_a")
+        (
+            &rvalue_tracesink="tpiua"
+        )
+        ELSE IF ("&given_tracesink"=="tpiub")
+        (
+            &rvalue_tracesink="tpiub"
+        )
+        ELSE IF ("&given_tracesink"=="tpiu_b")
+        (
+            &rvalue_tracesink="tpiub"
+        )
+        ELSE IF ("&given_tracesink"=="tpiu")
+        (
+            //do nothing. Default TPIU port should be set in GETTRACEDEFAULTS above
+        )
+        ELSE //TraceSink not specified. No tracing should occur
+        (
+            &rvalue_tracesink="none"
+        )
+
+        //################Other trace configurations###################
+        IF (("&given_cycleaccurate"=="true")||("&given_cycleaccurate"=="on"))
+        (
+            &rvalue_cycleaccuratecommand="on"
+        )
+        
+        IF ("&given_traceconfiguration"=="hotattach")
+        (
+            &rvalue_traceconfiguration=    "HOTATTACH"
+        )
+        IF ("&given_traceconfiguration"=="fromcoldboot")
+        (
+            &rvalue_traceconfiguration=    "fromcoldboot"
+        )
+        
+        IF ("&given_portsize"=="4bit")
+        (
+            &rvalue_portsizecommand=4
+        )
+        IF ("&given_portsize"=="8bit")
+        (
+            &rvalue_portsizecommand=8
+        )
+        IF ("&given_portsize"=="16bit")
+        (
+            &rvalue_portsizecommand=16
+        )
+
+    ENDDO &rvalue_tracesource &rvalue_tracesink &rvalue_tpiusink &rvalue_portsize &rvalue_cycleaccuratecommand &rvalue_traceconfiguration &rvalue_portsizecommand 
+        
+
+    
+    
+    
+//////////////////////////////////////////////
+//
+//    Main Tracing Functionality
+//    assumes to be run on target processor's Jtag window
+//    CPU doesn't need to be halted, but ETM must be accessible
+//    (i.e. not in power collapse or clock gated)
+//
+//////////////////////////////////////////////
+STARTTRACING:
+    LOCAL &ACTION &ARG0 &ARG1 &ARG2 &ARG3 &ARG4
+    ENTRY &ACTION &ARG0 &ARG1 &ARG2 &ARG3 &ARG4
+    LOCAL &tracesource &tracesink &cycleaccuratecommand &traceconfiguration &portsizecommand
+
+    &tracesource=              "&ARG0"
+    &tracesink=                "&ARG1"
+    &cycleaccuratecommand=     "&ARG2"
+    &traceconfiguration=       "&ARG3"
+    &portsizecommand=          "&ARG4"
+            
+    do hwio
+
+    IF (("&tracesink"=="tpiua")||("&tracesink"=="tpiub"))
+    (
+	 //General
+        SYStem.CONFIG ETMBASE APB:(0x80000000+ADSP_ETM_BASE)
+
+        SYStem.CONFIG.FUNNEL8.BASE APB:(0x80000000+ADSP_FUN0_BASE)
+        SYStem.CONFIG.FUNNEL8.ATBSource ETM 0
+
+        //non-SSC ETB
+        SYStem.CONFIG.ETF1.BASE APB:(0x80000000+ADSP_ETFETB_BASE)
+        SYStem.CONFIG.ETF1.ATBSOURCE FUNNEL8
+        SYStem.CONFIG.FUNNEL7.BASE APB:(0x80000000+ADSP_SWAO_FUN0_BASE)
+        SYStem.CONFIG.FUNNEL7.ATBSource ETF1 6
+        //non  swaoetb
+        SYStem.CONFIG.FUNNEL3.BASE APB:(0x80000000+IN_FUN2_BASE)
+        SYStem.CONFIG.FUNNEL3.ATBSOURCE ETF2 1
+        SYStem.CONFIG.FUNNEL1.BASE APB:(0x80000000+MERG_FUN_BASE)
+        SYStem.CONFIG.FUNNEL1.ATBSOURCE FUNNEL3 2
+        //TPIU
+        SYStem.CONFIG.ETF3.BASE APB:(0x80000000+ETBETF_BASE)
+        SYStem.CONFIG.ETF3.ATBSOURCE FUNNEL1
+        SYStem.CONFIG.TPIU.BASE APB:(0x80000000+TPIU_BASE)
+        SYStem.CONFIG.TPIU.ATBSOURCE ETF3
+        
+        //default is off unless specified
+        ETM.CYCLEACCURATE &cycleaccuratecommand
+        
+        ETM.PORTSIZE &portsizecommand
+        ETM.PORTMODE CONTINUOUS
+        ETB.ATBSIZE 32
+        
+        
+        ETM.TRACEID 4.
+        ETM.STALL OFF
+        //ETM.IGNORESYNCOVERFLOW ON
+        //ETM.ETBBYPASS ON
+        ETM.ON
+        ETM.CLEAR
+        
+        TRACE.METHOD ANALYZER
+        TRACE.CLOCK 10.MHz
+        TRACE.INIT
+        TRACE.LIST
+        
+        TRACE
+        
+        ON ERROR GOSUB autofocusErrorHandler
+            TRACE.AUTOFOCUS
+        ON ERROR
+        
+        //if it's already running, start tracing.
+        IF (STATE.RUN()==TRUE())
+        (
+            TRACE.ARM
+        )
+
+
+    )    
+
+    ELSE IF ("&tracesink"=="etb")
+    (
+
+        PRINT "Routing traces to SWAON ETB"
+        SYStem.CONFIG ETMBASE APB:(0x80000000+ADSP_ETM_BASE)
+
+        SYStem.CONFIG.FUNNEL8.BASE APB:(0x80000000+ADSP_FUN0_BASE)
+        SYStem.CONFIG.FUNNEL8.ATBSource ETM 0
+        SYStem.CONFIG.ETF1.BASE APB:(0x80000000+ADSP_ETFETB_BASE)
+        SYStem.CONFIG.ETF1.ATBSOURCE FUNNEL8
+        SYStem.CONFIG.FUNNEL7.BASE APB:(0x80000000+QDSS_SWAO_FUN0_BASE)
+        SYStem.CONFIG.FUNNEL7.ATBSource ETF1 6
+        //for SWAON ETB.
+        SYStem.CONFIG.ETB.BASE APB:(0x80000000+QDSS_SWAO_ETBETF_BASE)
+        SYStem.CONFIG.ETB.ATBSOURCE FUNNEL7
+            
+        ETM.RESET    
+        ETM.ATBSIZE 32        
+        //default is off unless specified
+        ETM.CYCLEACCURATE &cycleaccuratecommand
+        
+        ETM.TRACEID 4.
+        ETM.STALL OFF
+        //ETM.IGNORESYNCOVERFLOW ON
+        //ETM.ETBBYPASS ON
+        
+        ETM.ON
+        ETM.CLEAR
+
+        TRACE.METHOD ONCHIP
+        TRACE.CLOCK 10.MHz
+        TRACE.INIT 
+        
+        IF ("&traceconfiguration"!="fromcoldboot")
+        (
+            TRACE.LIST
+        )
+        
+        TRACE
+        
+        
+        //if it's already running, start tracing.
+        IF (STATE.RUN()==TRUE())
+        (
+            TRACE.ARM
+        )
+
+    )
+    ELSE 
+    (
+        PRINT %ERROR "Error! std_trace_adsp_&CHIPSET - Unknown TraceSink Value: &tracesink"
+        GOTO FATALEXIT
+    )
+
+
+RETURN
+  
+
+autofocusErrorHandler:
+    ON ERROR
+    area
+    print %error " Autofocus Error indicate that Trace signal lines likely have some physical path problem."
+    print %error " Make sure that TPIU cable is plugged in, and that the appropriate ETM switch below the CDP"
+    print %error "     is set to on."
+    RETURN
+
+       
+
+
+EXIT:
+    ENDDO
+
+FATALEXIT:
+    END
+
+ 

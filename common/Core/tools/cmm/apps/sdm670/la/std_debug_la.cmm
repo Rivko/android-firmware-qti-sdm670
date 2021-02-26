@@ -1,0 +1,128 @@
+//============================================================================
+//  Name:                                                                     
+//    std_debug_la.cmm 
+//
+//  Description:                                                              
+//    Boot debug script
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who             what, where, why
+// --------   ---             ---------------------------------------------------------
+// 07/07/2017 JBILLING        KASLR updates
+// 11/23/2015 JBILLING        Use logic from std_debug_&CHIPSET instead
+// 09/14/2015 JBILLING        Updated for latest scripts and error handling
+// 02/04/2014 JBILLING        Ported for Istari, PBL workaround added for UFS
+// 07/09/2014 AJCheriyan      Created for Elessar.
+
+
+//####################Declarations#######################
+
+LOCAL &ArgumentLine
+LOCAL &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+LOCAL &targetprocessor &string_length
+
+//###################Arguments passed #####################
+ENTRY %LINE &ArgumentLine
+LOCAL &SubRoutine &Port
+ENTRY &SubRoutine %LINE &remainder
+LOCAL &TargetProcessor &TargetProcessorPort  &BootProc &BootProcPort &UsesCTI &ProcessorTimeoutValue &DebugScript &SymbolLoadScript &BuildPath &EntryBkpt &ErrBkpts &LpmOpt &SleepDisableCmd &extraoption &Unused1 &Unused2 &Unused3
+
+//* Check if we need to call for help or do some work *//
+IF ("&ArgumentLine"=="")
+(
+    &SubRoutine="HELP"
+)
+ELSE IF ("&SubRoutine"=="GETAPPSENTRYBREAKPOINT")
+(
+    &SubRoutine="GETAPPSENTRYBREAKPOINT"
+)
+ELSE
+(
+    &SubRoutine="MAIN"
+)
+
+GOSUB &SubRoutine
+    LOCAL &Rvalue
+    ENTRY %LINE &Rvalue
+
+    GOSUB EXIT &Rvalue
+
+
+
+
+////////////////////////////////////////
+//
+//          MAIN
+//          Main std_debug_la logic
+//
+/////////////////////////////////////////
+MAIN:
+    //note that optextract has a limit of 10 entries
+    do optextract Img,Lpm,Bkpts,CTI_Enable,alternateelf,extraoption &ArgumentLine
+    LOCAL &image &lpm_option &user_defined_bkpts &cti_enable &alternateelf &extraoption
+    ENTRY &image &lpm_option &user_defined_bkpts &cti_enable &alternateelf &extraoption //expect 6 returns from optextract
+    
+    do std_debug_&CHIPSET GETDEBUGDEFAULTS NONE &image &lpm_option &cti_enable &alternateelf &extraoption
+    LOCAL        &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+    ENTRY &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+
+    // Get the target processor for this port
+    //do std_debug_&CHIPSET GETDEBUGDEFAULTS NONE &image
+    //ENTRY &Unused1 &TargetProcessor &TargetProcessorPort &BootProc &BootProcPort &UsesCTI &Peripheral_Processor &ProcessorTimeoutValue &DebugScript &SymbolLoadScript &BuildPath &EntryBkpt &ErrBkpts &LpmOpt &SleepDisableCmd  &extraoption &Unused2 &Unused3
+    B.S 0x80080000 /o
+    Go
+    do std_utils WAIT_TO_STOP 0x80080000 10000000. &targetprocessorport
+    
+    IF "&APPS_ELFFILE"!=""&&OS.FILE("&APPS_ELFFILE")
+    (
+        &alternateelf="&APPS_ELFFILE"
+    )
+    do &symbolloadscript &imagebuildroot remotely notliveattach nosecondelf &alternateelf &extraoption,kaslr
+    //Work is already done in std_debug_&CHIPSET
+    IF ("&user_defined_bkpts"!="entry")
+    (
+        b.s &entry_bkpt
+    )
+
+GETAPPSENTRYBREAKPOINT:
+
+RETURN start_kernel
+
+HELP:
+    AREA
+    PRINT "This is helpful"
+    RETURN SUCCESS
+    
+EXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    ENDDO &rvalue
+    
+
+//Should never get here. 
+FATALEXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    IF STRING.SCAN("&FAILUREKEYWORD","FAILUREKEYWORD",0)==-1
+    (
+        GOSUB EXIT &FAILUREKEYWORD - &rvalue
+    )
+    ELSE
+    (
+        GOSUB EXIT &rvalue
+    )
+    
+//Should never get here
+    END
+
+
+    
+        

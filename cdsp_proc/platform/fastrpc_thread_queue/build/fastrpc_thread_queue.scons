@@ -1,0 +1,77 @@
+#===============================================================================
+# Copyright (c) 2012 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===============================================================================
+Import('env')
+
+env = env.Clone()
+
+platform_root = '${BUILD_ROOT}/platform'
+env.Replace(ADSP_PLATFORM_ROOT = platform_root)
+
+APIS=[
+  'FASTRPC_THREAD_QUEUE',
+  'FASTRPC_PROCESS',
+  'FASTRPC_PORT',
+  'QDI_PORTAL',
+  'PLATFORM_LIBS',
+  'HAPSDK',
+  'REMOTE',
+  'STDDEF',
+  'A1STD',
+  'ATOMIC',
+  'UTILS',
+  'QLIST',
+  'HAP',
+  'QI',
+  ]
+env.RequireRestrictedApi(APIS)
+env.RequirePublicApi(APIS)
+
+if env.GetUsesFlag('USES_SLPI_ADSP_IMG') and not env.GetUsesFlag('USES_DISABLE_SENSORS'):
+  env.Append(CFLAGS='-DSLPI_ADSP_IMG')
+
+if env.subst('$CHIPSET') in ['sdm670']:
+	env.Append(CFLAGS='-DSDM670')
+if env.subst('$CHIPSET') in ['sdm855']:
+  env.Append(CFLAGS='-DSDM855')
+if env.subst('$CHIPSET') in ['sdm640']:
+  env.Append(CFLAGS='-DSDM640')
+if env.subst('$CHIPSET') in ['sdm1000']:
+  env.Append(CFLAGS='-DSDM1000')
+
+core_public_apis = [
+   'KERNEL',
+   ]
+
+env.RequirePublicApi(core_public_apis, area='core')
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${ADSP_PLATFORM_ROOT}/fastrpc_thread_queue/src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+SOURCES =  [
+  '${BUILDPATH}/fastrpc_thread_queue.c',
+  '${BUILDPATH}/fastrpc_thread_queue_qdi.c',
+  ]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+pls_lib = env.AddBinaryLibrary(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+ 'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'CORE_QDSP6_SENSOR_SW', 'SSC_ADSP_USER'],'${BUILDPATH}/fastrpc_thread_queue', SOURCES)
+
+#-------------------------------------------------------------------------------
+# Load Subunits (sys)
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+# Clean / pack rules
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.cpp', '*.h', '*.s'], '${ADSP_PLATFORM_ROOT}/fastrpc_thread_queue/src'))
+
+env.CleanPack(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+     'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'CORE_QDSP6_SENSOR_SW', 'SSC_ADSP_USER'], CLEAN_LIST)

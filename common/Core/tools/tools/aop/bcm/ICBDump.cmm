@@ -1,0 +1,135 @@
+; ICBDump.cmm
+; ------------------------------------------------------------------
+;
+; Copyright (c) 2013-2015 QUALCOMM Technologies, Incorporated.
+; All Rights Reserved.
+; QUALCOMM Proprietary/GTDR
+; $Header: //components/rel/core.glue/1.2/tools/tools/aop/bcm/ICBDump.cmm#1 $
+;
+; When to use this script 
+; -----------------------
+; This script should be used to dump ICB state from T32.
+; 
+; How to use this script
+; ----------------------
+; After after breaking, retrieve ICB state by running
+;
+; do ICBDump <logPath>
+;
+; If <logPath> is given, a "ICBDump.ulog" file will be created in the given directory
+; If <logPath> is not given, the output will be dumped to the screen.
+;
+ENTRY &logPath
+LOCAL &link &dump &link_name &resource &resource_name &definition
+
+if "&logPath"==""
+(
+  &logPath="stdout"
+  ; Select the output area for messages
+  AREA.SELECT A000
+
+  &dump="PRINT"
+)
+
+; Check the logPath string for validity
+IF string.char("&(logPath)", string.len("&(logPath)")-1)=='\'
+(
+  &logPath=string.cut("&(logPath)", -1)
+)
+
+; Search for the "/icb/arbiter" node.
+if "&logPath"!="stdout"
+(
+  OPEN #1 "&(logPath)\ICB Log.ulog" /Create
+  PRINT "Dumping ICB state"
+  &dump="WRITE #1"
+)
+  
+y.fe "GOSUB FoundNPA *" npa
+
+if "&logPath"!="stdout"
+(
+  CLOSE #1
+  PRINT "ICB Dump Complete"
+)
+ENDDO
+
+FoundNPA:
+  ENTRY &npa
+  &dump "For &npa"
+  &link=V.VALUE(&npa.resources)
+
+  WHILE &link!=0
+  (
+    &link_name=DATA.STRING(D:V.VALUE(((npa_link *)&link)->name))
+    &resource=V.VALUE(((npa_link *)&link)->resource)
+    &definition=V.VALUE(((npa_resource *)&resource)->definition)
+    IF &definition!=0
+    (
+      &resource_name=DATA.STRING(D:V.VALUE(((npa_resource_definition *)&definition)->name))
+      IF STRING.SCAN("&resource_name","/icb/arbiter",0)==0
+      (
+        GOSUB ICBDump &link &definition
+      )
+    )
+    &link=V.VALUE(((npa_link *)&link)->next)
+  )
+  PRINT
+  RETURN
+
+ICBDump:
+  ENTRY &link &definition
+  &resource=V.VALUE(((npa_link *)&link)->resource)
+  &resource_name=DATA.STRING(D:V.VALUE(((npa_resource_definition *)&definition)->name))
+  GOSUB DumpResourceState &resource "&resource_name"
+  GOSUB DumpResourceClients &resource
+  RETURN
+
+DumpResourceState:
+  ENTRY &resource &resource_name
+
+  PRINT "npa_resource (name: &(resource_name)) (handle: &(resource))"
+  RETURN
+
+DumpResourceClients:
+  ENTRY &resource
+  LOCAL &client &client_name &client_type
+
+  &client=V.VALUE(((npa_resource *)&resource)->clients)
+
+  WHILE 0!=&client
+  (
+    &client_name=DATA.STRING(D:V.VALUE(((npa_client *)&client)->name))
+    &client_type=V.STRING(((npa_client *)&client)->type)
+
+    &dump "  npa_client (name: &(client_name)) (handle: &(client)) (type: &(client_type))"
+
+    GOSUB DumpClientRequest &client
+
+    &client=V.VALUE(((npa_client *)&client)->next)
+  )
+  RETURN
+
+DumpClientRequest:
+  ENTRY &client
+  LOCAL &resource_data &vector_len &bw_req &i &route &master &slave &ib &ab
+
+  &resource_data=V.VALUE(((npa_client *)&client)->resource_data) 
+  &vector_len=V.VALUE(((icb_vector_type *)&resource_data)->num_pairs)
+
+  &i=0
+  WHILE &i<&vector_len
+  (
+    &route=V.VALUE(&(((icb_vector_type *)(((npa_client *)&client)->resource_data)))->routes[&i])
+    &master=V.STRING(((icb_route_type *)&route)->master_id)
+    &slave=V.STRING(((icb_route_type *)&route)->slave_id)
+    &bw_req=V.VALUE(&(((icb_vector_type *)(((npa_client *)&client)->resource_data)))->requests[&i])
+    &ib=FORMAT.DECIMAL(0,V.VALUE(((icb_bw_request_type *)&bw_req)->ib))
+    &ab=FORMAT.DECIMAL(0,V.VALUE(((icb_bw_request_type *)&bw_req)->ab))
+    &lat=FORMAT.DECIMAL(0,V.VALUE(((icb_bw_request_type *)&bw_req)->latency_ns))
+
+    &dump "    (master: &(master)) (slave: &(slave)) (ib: &(ib)) (ab: &(ab)) (lat: &(lat))"
+    &i=&i+1
+  )
+
+  RETURN

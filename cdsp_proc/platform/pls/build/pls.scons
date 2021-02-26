@@ -1,0 +1,60 @@
+#===============================================================================
+# Copyright (c) 2012 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===============================================================================
+Import('env')
+import os
+env = env.Clone()
+
+platform_root = '${BUILD_ROOT}/platform'
+env.Replace(ADSP_PLATFORM_ROOT = platform_root)
+
+env.RequirePublicApi([
+    'A1STD',
+    'PLS',
+    'STDDEF',
+    'UTILS',
+    'HAPSDK',
+    'PLATFORM_LIBS',
+    'APPS_STD',
+    'FASTRPC_HEAP',
+])
+
+env.RequireRestrictedApi([
+    'ATOMIC',
+    'QLIST',
+    'PLS',
+    'FASTRPC_SMD',
+    'FASTRPC_HEAP',
+])
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${ADSP_PLATFORM_ROOT}/pls"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+gpls_SOURCES =  [
+  '${BUILDPATH}/src/gpls.c',
+ ]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+gpls_lib = env.AddBinaryLibrary(['FASTRPC_SHELL_IMG','AVS_ADSP_USER'],'${BUILDPATH}/pls', gpls_SOURCES)
+
+#-------------------------------------------------------------------------------
+# Load Subunits (sys)
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.cpp', '*.h'], '${ADSP_PLATFORM_ROOT}/pls'))
+for x in env.FindFiles(['pls.h'], '${ADSP_PLATFORM_ROOT}/pls'):
+    CLEAN_LIST.remove(x)
+for x in env.FindFiles(['*.c', '*.cpp','*.h'], '${ADSP_PLATFORM_ROOT}/pls/build'):
+    CLEAN_LIST.remove(x)
+
+env.CleanPack(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+     'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'CORE_QDSP6_SENSOR_SW', 'FASTRPC_SHELL_IMG','AVS_ADSP_USER'], CLEAN_LIST)

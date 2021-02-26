@@ -1,0 +1,104 @@
+#=============================================================================
+#
+#                                    SConstruct
+#
+# GENERAL DESCRIPTION
+#
+# EXTERNAL FUNCTIONS
+#        None.
+#
+# INITIALIZATION AND SEQUENCING REQUIREMENTS
+#        None.
+#
+#             Copyright (c) 2013  by Qualcomm Technologies, Inc.  All Rights Reserved.
+#=============================================================================
+import os
+
+AddOption('--target',
+          dest='target',
+          default=ARGUMENTS.get('TARGET', ''),
+          type='string',
+          nargs=1,
+          action='store',
+          metavar='TRGT',
+          help='Initialize Target')
+
+AddOption('--build_dir',
+          dest='blddir',
+          default='build',
+          type='string',
+          nargs=1,
+          action='store',
+          metavar='BUILD_DIR',
+          help='Initialize Build directory')
+
+AddOption('--no_reloc',
+          dest='noreloc',
+          default=False,
+          action='store_true',
+          help='no relocation')
+
+env=Environment(ENV = {'PATH' : os.environ['PATH']}, 
+                TRGT = GetOption('target'),
+                BUILD_DIR = os.path.realpath(GetOption('blddir')),
+                NO_RELOC = GetOption('noreloc'),
+                USE_LLVM = False)
+
+env.Replace(Q6_RTOS_ROOT=os.environ['Q6_RTOS_ROOT'])
+env.VariantDir('${BUILD_DIR}', '.', duplicate=0)
+
+env.Tool('target_tools', toolpath=["${Q6_RTOS_ROOT}/${TRGT}/scripts"])
+env.Tool('qurt_builders', toolpath = ["${Q6_RTOS_ROOT}/scripts"])
+
+env.Replace(CCFLAGS=['-m${Q6VERSION}','-g','-O2'])
+env.Replace(CPPPATH=['.','${Q6_RTOS_ROOT}/include/qurt'])
+
+#Generate custconfig source and object
+cust_config_objname = "${BUILD_DIR}/cust_config"
+cust_config_xml = "qdsp6_qurt_v5"
+cust_config_obj = env.CustConfigObj(cust_config_objname, cust_config_xml)
+
+#Generate example object from c files in current directory
+example_obj = env.Object('${BUILD_DIR}/app1', Glob('*.c'))
+
+#Generate PBN
+image_orig = env.Program("${BUILD_DIR}/bootimg_org", [cust_config_obj, example_obj])
+
+if env.subst("${NO_RELOC}") == "True":
+    image = env.InstallAs("${BUILD_DIR}/bootimg.pbn", image_orig)
+else:
+    env.Replace(RELOC_ADDR = "0x10000000")
+    image = env.Relocate("${BUILD_DIR}/bootimg.pbn", image_orig)
+
+env.Replace(OBJDUMPOPT = "-dClx")
+imgdump = env.ObjectDump("${BUILD_DIR}/bootimg.dump", image)
+
+if os.name == 'posix':
+    q6ss_timer_cfg = "${Q6_TOOLS_ROOT}/qc/lib/iss/qtimer.so --csr_base=0xab000000 --irq_p=3 --freq=19200000 --cnttid=1"
+    q6ss_int_cfg = "${Q6_TOOLS_ROOT}/qc/lib/iss/l2vic.so 32 0xab010000"
+    t32cfg = env.Command("${BUILD_DIR}/t32sim.cfg", 't32/t32sim.cfg', "cat $SOURCE | sed -e 's;T32_MCD.dll;${Q6_TOOLS_ROOT}/qc/lib/iss/T32_MCD.so;' >> $TARGET")
+elif os.name == 'nt':
+    q6ss_timer_cfg = "${Q6_TOOLS_ROOT}/qc/lib/iss/qtimer.dll --csr_base=0xab000000 --irq_p=3 --freq=19200000 --cnttid=1"
+    q6ss_int_cfg = "${Q6_TOOLS_ROOT}/qc/lib/iss/l2vic.dll 32 0xab010000"
+    temppath = env.subst("${Q6_TOOLS_ROOT}").replace("\\", "/")
+    t32cfg = env.Command("${BUILD_DIR}/t32sim.cfg", 't32/t32sim.cfg', "cat $SOURCE | sed -e 's;T32_MCD.dll;"+temppath+"/qc/lib/iss/T32_MCD.dll;' >> $TARGET")
+
+osamcfg = env.Command("${BUILD_DIR}/osam.cfg", '', "echo ${QURT_MODEL} > $TARGET")
+q6cfg = env.Command("${BUILD_DIR}/q6ss.cfg", '', ["echo "+q6ss_timer_cfg+" > $TARGET","echo "+q6ss_int_cfg+" >> $TARGET"])
+
+t32sirccfg = env.InstallAs("${BUILD_DIR}/t32sim_sirc.cfg", q6cfg)
+t32cmm = env.Command("${BUILD_DIR}/t32sim.cmm", 't32/t32sim.cmm', "cat $SOURCE | sed -e 's;HexagonV5;${T32_SYS_CPU};' -e 's;v5;${T32_MCD_ARCH};' >> $TARGET")
+env.Install("${BUILD_DIR}", "${QURT_MODEL}")
+t32men1=env.Install("${BUILD_DIR}", "${Q6_RTOS_ROOT}/debugger/T32/qurt_model.men")
+t32men2=env.Install("${BUILD_DIR}", "${Q6_RTOS_ROOT}/debugger/T32/qurt_model.t32")
+t32men=t32men1+t32men2
+
+t32bat = env.Command("${BUILD_DIR}/T32.bat", '', ["echo set PATH=%PATH%;${Q6_TOOLS_ROOT}/qc/bin; > $TARGET","echo t32mqdsp6.exe -c t32sim.cfg >> $TARGET"])
+env.Depends(t32bat, [t32cfg, t32sirccfg, t32cmm,t32men])
+
+env.Replace(SIM_RTOS = "--rtos " + str(osamcfg[0]))
+env.Replace(SIM_COSIM = "--cosim_file " + str(q6cfg[0]))
+env.Replace(SYMFILE = "--symfile " + str(image[0]))
+simout = env.Simulator("${BUILD_DIR}/stats", image)
+env.Depends(simout, [t32bat, imgdump])
+AlwaysBuild(simout)

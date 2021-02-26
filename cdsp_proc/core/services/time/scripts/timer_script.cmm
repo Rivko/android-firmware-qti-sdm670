@@ -1,0 +1,5369 @@
+;============================================================================
+;  Name:
+;    TIMER_SCRIPT.CMM
+;
+;  Description:
+;    This script is used to help with the development 
+;     and debugging of timers and timer clients.
+;
+; Copyright (c) 2013-2015 QUALCOMM Technologies Incorporated.  
+; All Rights Reserved.
+; Qualcomm Confidential and Proprietary
+;----------------------------------------------------------------------------
+;============================================================================
+;
+;                        EDIT HISTORY FOR MODULE
+;
+; when        who       what, where, why
+; ----------  --------  -----------------------------------------------------
+; 09/11/2015  c_adubey  Logging of leaked timers and some other fixes & enhancements
+; 12/11/2013  c_adubey  Added some additional checks
+; 04/14/2013  cpaulo    Created.
+;============================================================================;
+
+;Note: From script perspective, it seems keeping some important details like 
+; lengths of arrays, some version details, processor details in global variables
+; than macros. Global variables can be accessed by script and thus while coding
+; it will be helpful to keep them as variables.
+; Also for important things, we can keep flags or variables like this is MPD code
+; this is adsp, etc etc
+
+GLOBAL &is_b_family
+GLOBAL &is_mpss_or_adsp
+GLOBAL &is_chunks_logic
+GLOBAL &timer_buffer_size
+GLOBAL &timer_groups_size
+GLOBAL &ret_get_timer_index
+GLOBAL &processing_duration_entered
+GLOBAL &next_expiry_val
+GLOBAL &output_directory
+GLOBAL &output_to_csv
+GLOBAL &current_time
+GLOBAL &current_time_from_str
+GLOBAL &arg1
+GLOBAL &arg2
+GLOBAL &timer_group_list_check_ret
+GLOBAL &check_timetick_internal_ret
+GLOBAL &check_bin_in_list_ret
+GLOBAL &get_IFH_ret_cid
+GLOBAL &get_IFH_ret_timer_idx
+GLOBAL &tt_from_interrupts
+GLOBAL &tt_from_intr_str
+GLOBAL &num_index_ret
+GLOBAL &index_iterator_ret
+GLOBAL &get_next_timetick_val_ret
+GLOBAL &check_partial_log_ret
+GLOBAL &check_if_tt_is_offset_ret
+GLOBAL &list_loop_check_ret
+GLOBAL &check_for_ptr_in_arr_ret
+GLOBAL &check_for_ptr_in_list_ret
+GLOBAL &get_merged_logs_filename_ret
+GLOBAL &timer_check_timer_handle_mapping_ret
+GLOBAL &FILENAME_PREFIX_STRING
+
+;============================================================================
+; Global Defines
+
+&FALSE=0x0
+&TRUE=0x1
+
+&timer_default_flag=0x0FEDCBA9
+&timer_def_flag=0x0FEDCBAA
+&timer_set_flag=0x0FEDCBAB
+&timer_expired_flag=0x0FEDCBAC
+&timer_cleared_flag=0x0FEDCBAD
+&timer_paused_flag=0x0FEDCBAE
+&timer_resumed_flag=0x0FEDCBAF
+&timer_undef_flag=0x0FEDCBB0
+&timer_handle_as_structure=&FALSE
+
+;============================================================================
+; Variables for getting the debug variable informations into merged logs
+
+&debug_var0x1="timer_sets"								
+&debug_var0x2="timers_expired_slave1"
+&debug_var0x3="timers_expired_slave2"
+&debug_var0x4="timers_expired_slave3"
+&debug_var0x5="timer_expired_debug"
+&debug_var0x6="timers_expired"
+&debug_var0x7="timer_trace"
+&debug_var0x8="record_match_val"
+&debug_var0x9="timer_api_log"
+&debug_var0x0A="timer_defer_undefer_reference_count_log"
+&debug_var0x0B="timers_remote_expired"
+&debug_var0x0C="timer_clr_log"
+
+&debug_var_tt_name0x1="ts"
+&debug_var_tt_name0x2="processing_started"
+&debug_var_tt_name0x3="processing_started"
+&debug_var_tt_name0x4="processing_started"
+&debug_var_tt_name0x5="ts"
+&debug_var_tt_name0x6="processing_started"
+&debug_var_tt_name0x7="ts"
+&debug_var_tt_name0x8="ts"
+&debug_var_tt_name0x9="ts"
+&debug_var_tt_name0x0A="ts"
+&debug_var_tt_name0x0B="processing_started"
+&debug_var_tt_name0x0C="ts"
+
+&debug_var_extra0x1=0x0
+&debug_var_extra0x2=0x0
+&debug_var_extra0x3=0x0
+&debug_var_extra0x4=0x0
+&debug_var_extra0x5=0x0
+&debug_var_extra0x6=0x0
+&debug_var_extra0x7="events"
+&debug_var_extra0x8=0x0
+&debug_var_extra0x9=0x0
+&debug_var_extra0x0A=0x0
+&debug_var_extra0x0B=0x0
+&debug_var_extra0x0C=0x0
+
+&number_of_debug_vars=0x0C
+
+&len_timer_sets=0
+&index_timer_sets=0
+&iterator_timer_sets=0
+&first_traversal_timer_sets=0
+&IS_THERE_timer_sets=&FALSE
+&timetick_jump_timer_sets=&TRUE
+
+&len_timers_expired=0
+&index_timers_expired=0
+&iterator_timers_expired=0
+&first_traversal_timers_expired=0
+&IS_THERE_timers_expired=&FALSE
+&timetick_jump_timers_expired=&TRUE
+
+&len_timer_expired_debug=0
+&index_timer_expired_debug=0
+&iterator_timer_expired_debug=0
+&first_traversal_timer_expired_debug=0
+&IS_THERE_timer_expired_debug=&FALSE
+&timetick_jump_timer_expired_debug=&TRUE
+
+&len_timers_expired_slave1=0
+&index_timers_expired_slave1=0
+&iterator_timers_expired_slave1=0
+&first_traversal_timers_expired_slave1=0
+&IS_THERE_timers_expired_slave1=&FALSE
+&timetick_jump_timers_expired_slave1=&TRUE
+
+&len_timers_expired_slave2=0
+&index_timers_expired_slave2=0
+&iterator_timers_expired_slave2=0
+&first_traversal_timers_expired_slave2=0
+&IS_THERE_timers_expired_slave2=&FALSE
+&timetick_jump_timers_expired_slave2=&TRUE
+
+&len_timers_expired_slave3=0
+&index_timers_expired_slave3=0
+&iterator_timers_expired_slave3=0
+&first_traversal_timers_expired_slave3=0
+&IS_THERE_timers_expired_slave3=&FALSE
+&timetick_jump_timers_expired_slave3=&TRUE
+
+&len_timer_trace=0
+&index_timer_trace=0
+&iterator_timer_trace=0
+&first_traversal_timer_trace=0
+&IS_THERE_timer_trace=&FALSE
+&timetick_jump_timer_trace=&TRUE
+
+&len_record_match_val=0
+&index_record_match_val=0
+&iterator_record_match_val=0
+&first_traversal_record_match_val=0
+&IS_THERE_record_match_val=&FALSE
+&timetick_jump_record_match_val=&TRUE
+
+&len_timer_api_log=0
+&index_timer_api_log=0
+&iterator_timer_api_log=0
+&first_traversal_timer_api_log=0
+&IS_THERE_timer_api_log=&FALSE
+&timetick_jump_timer_api_log=&TRUE
+
+&len_timer_defer_undefer_reference_count_log=0
+&index_timer_defer_undefer_reference_count_log=0
+&iterator_timer_defer_undefer_reference_count_log=0
+&first_traversal_timer_defer_undefer_reference_count_log=0
+&IS_THERE_timer_defer_undefer_reference_count_log=&FALSE
+&timetick_jump_timer_defer_undefer_reference_count_log=&TRUE
+
+&len_timers_remote_expired=0
+&index_timers_remote_expired=0
+&iterator_timers_remote_expired=0
+&first_traversal_timers_remote_expired=0
+&IS_THERE_timers_remote_expired=&FALSE
+&timetick_jump_timers_remote_expired=&TRUE
+
+&len_timer_clr_log=0
+&index_timer_clr_log=0
+&iterator_timer_clr_log=0
+&first_traversal_timer_clr_log=0
+&IS_THERE_timer_clr_log=&FALSE
+&timetick_jump_timer_clr_log=&TRUE
+
+&print_line_counter=1
+&callstack_logging_available=1
+
+;============================================================================
+
+;============================================================================
+; Get the arguments passed in.
+;============================================================================
+ENTRY &arg1_in &arg2_in &destination
+
+&Presult=0
+WE.AREA.RESet
+WE.WINPOS 0. 0. 35% 100%
+WE.AREA.Create TIMER
+;WE.AREA.view TIMER
+AREA TIMER
+;RADIX.DECIMAL
+;setup.var.%SYMBOL
+;setup.var.%HEX
+  
+  ; Setup vars to use hex, strings, symbols & index 
+  SETUP.VAR %H %S %Y %I
+
+  ; setup the scrip variables to use hex symbols
+  radix HEX
+
+
+PRINT " "
+PRINT "######################################################################"
+PRINT " "
+PRINT "                       TIMER DEBUG SCRIPT                             "
+PRINT " "
+PRINT "######################################################################"
+PRINT " "
+PRINT "Main Option: &arg1_in"
+PRINT "Sub-menu Option: &arg2_in"
+PRINT "Dest: &destination"
+
+&output_directory="C:\temp"
+&output_to_csv=1
+&processing_duration_entered=0
+
+IF "&destination"!=""
+(
+  &output_directory="&destination"
+)
+ELSE
+(
+  PRINT "No destination directory listed!"
+)
+
+GOSUB GET_PREFIX_STRING
+
+ &opt_file="&output_directory"+"\&FILENAME_PREFIX_STRING"+"_timer_script_opt.log"
+ OPEN #35 &opt_file /Create
+
+ GOSUB PRINT_HELPER "All log files will be created with prefix &FILENAME_PREFIX_STRING at &output_directory"
+ GOSUB PRINT_HELPER "Make sure to select Exit option in main menu at end..."
+ PRINT ""
+ WAIT 2.s
+ ;PRINT "Press any key to continue..."
+ ;ENTER &no_use_script_var
+ 
+WRITE #35 " "
+WRITE #35 "######################################################################"
+WRITE #35 " "
+WRITE #35 "                       TIMER DEBUG SCRIPT                             "
+WRITE #35 " "
+WRITE #35 "######################################################################"
+WRITE #35 " "
+WRITE #35 "Main Option: &arg1_in"
+WRITE #35 "Sub-menu Option: &arg2_in"
+WRITE #35 "Dest: &destination"
+ 
+&arg1=&arg1_in 
+&arg2=&arg2_in
+
+; Get current time
+GOSUB ESTIMATE_TARGET_FAMILY
+GOSUB ESTIMATE_TIMER_DETAILS
+;GOSUB TEST_INTERNAL_MEMBER
+GOSUB PRINT_HELPER "----------------------------------------------------------------------"
+GOSUB PRINT_HELPER "Minimal check for timetick consistency, Cache status & Timer interrupts"
+GOSUB PRINT_HELPER "----------------------------------------------------------------------"
+GOSUB PRINT_HELPER ""
+
+; Get current time
+GOSUB ESTIMATE_CURRENT_TIME
+;GOSUB GENERAL_TIMER_DEBUG
+;GOSUB PRINT_MERGED_LOGS
+GOSUB CHECK_CACHE_FLUSH_STATUS
+GOSUB CHECK_DISABLED_PENDING_INTERRUPTS
+GOSUB CHECK_FOR_TIMETICK &TRUE
+GOSUB SCAN_TIMER_VARIABLES
+GOSUB CHECK_FOR_TIMERS_UNDER_PROCESSING
+GOSUB CHECK_ATS_MISSING_CR
+
+;GOSUB CHECK_FOR_TIMETICK &TRUE
+;GOSUB GENERAL_TIMER_DEBUG
+;GOSUB PRINT_MERGED_LOGS
+;GOSUB CHECK_CACHE_FLUSH_STATUS
+
+;GOSUB CHECK_ATS_MISSING_CR
+
+;============================================================================
+; Print the main menu contents, list options here.
+;============================================================================
+
+MENUSTART:
+&print_line_counter=1
+&inMainOption=""
+&inSubOption=""
+&numOptions=6
+GOSUB PRINT_HELPER " "
+GOSUB PRINT_HELPER "######################################################################"
+GOSUB PRINT_HELPER "                       M a i n   M e n u                              "
+GOSUB PRINT_HELPER "######################################################################"
+GOSUB PRINT_HELPER " "
+GOSUB PRINT_HELPER "1: Auto Debug "
+GOSUB PRINT_HELPER "2: Self Debug "
+GOSUB PRINT_HELPER "3: Power Debug "
+GOSUB PRINT_HELPER "4: Display Chained link list "
+GOSUB PRINT_HELPER "5: Find leaking timer clients "
+GOSUB PRINT_HELPER "0: Exit "
+GOSUB PRINT_HELPER ""
+
+IF "&arg2"!=""
+(
+  &inSubOption=&arg2
+  &arg2=""
+)
+
+IF "&arg1"==""
+(
+  ; Get input option
+  enter &inMainOption
+  GOSUB PRINT_HELPER " "
+)
+ELSE
+(
+  &inMainOption=&arg1
+  &arg1=""
+)
+
+; Verify input option
+IF "&inMainOption"==""  
+(
+  GOTO MENUSTART
+)
+
+if &inMainOption>&numOptions
+(
+  GOSUB PRINT_HELPER "Option not supported! Option Entered: &inMainOption Options Supported: &numOptions "
+  GOSUB PRINT_HELPER " "
+  GOTO MENUSTART
+)
+
+GOSUB PRINT_HELPER " "
+GOSUB PRINT_HELPER "Option &inMainOption input"
+GOSUB PRINT_HELPER " "
+
+; Option 1
+if &inMainOption==1
+(
+  GOSUB MENUSTART_AUTO_DEBUG &inSubOption
+)
+
+; Option 2
+if &inMainOption==2
+(
+  GOSUB MENUSTART_SELF_DEBUG &inSubOption
+)
+
+; Option 3
+if &inMainOption==3
+(
+  GOSUB MENUSTART_POWER_DEBUG &inSubOption
+)
+
+; Option 4
+if &inMainOption==4
+(
+  GOSUB MENUSTART_CHAINED_LIST
+)
+
+; Option 5
+if &inMainOption==5
+(
+  GOSUB MENUSTART_FIND_LEAKING_CLIENTS
+)
+
+; Option 6
+if &inMainOption==6
+(
+  GOSUB PRINT_UDS_LOGS
+)
+
+; Option 0
+if &inMainOption==0
+(
+  GOSUB PRINT_HELPER "Exiting Timer Script..."
+  CLOSE #35
+  ENDDO
+)
+
+
+; End, go back to the start
+GOTO MENUSTART
+
+ENDDO
+
+MENUSTART_SELF_DEBUG:
+&print_line_counter=1
+ENTRY &arg_self
+&numOptions=11
+&inMainOptionSelf=0
+GOSUB PRINT_HELPER " "
+GOSUB PRINT_HELPER "######################################################################"
+GOSUB PRINT_HELPER "                     S e l f   D e b u g                              "
+GOSUB PRINT_HELPER "######################################################################"
+GOSUB PRINT_HELPER " "
+GOSUB PRINT_HELPER "1: Check timer linked list "
+GOSUB PRINT_HELPER "2: Traverse through timer linked list "
+GOSUB PRINT_HELPER "3 : Get Timer Structure from timer handle"
+GOSUB PRINT_HELPER "4 : Find my timer from address"
+GOSUB PRINT_HELPER "5 : Get Timer Group from Group handle"
+GOSUB PRINT_HELPER "6 : Check Recent Match Values "
+GOSUB PRINT_HELPER "7 : Check Recently Expired Timers "
+GOSUB PRINT_HELPER "8 : Check Timer Trace "
+GOSUB PRINT_HELPER "9 : Check Timers Set "
+GOSUB PRINT_HELPER "10 : Print Merged Timer Logs "
+GOSUB PRINT_HELPER "11: Check latest timetick & timetick jumps"
+GOSUB PRINT_HELPER "0 : Exit "
+GOSUB PRINT_HELPER ""
+
+IF "&arg_self"==""
+(
+  ; Get input option
+  enter &inMainOptionSelf
+  GOSUB PRINT_HELPER " "
+)
+ELSE
+(
+  &inMainOptionSelf=&arg_self
+)
+
+; Verify input option
+IF "&inMainOptionSelf"==""
+(
+  GOTO MENUSTART_SELF_DEBUG
+)
+
+; Verify input option
+if &inMainOptionSelf>&numOptions
+(
+  GOSUB PRINT_HELPER "Option not supported! Option Entered: &inMainOption Options Supported: &numOptions "
+  GOSUB PRINT_HELPER " "
+  GOTO MENUSTART_SELF_DEBUG
+)
+
+GOSUB PRINT_HELPER " "
+GOSUB PRINT_HELPER "Option &inMainOptionSelf input"
+GOSUB PRINT_HELPER " "
+
+; Option 1
+if &inMainOptionSelf==1
+(
+  GOSUB TIMER_LIST
+  GOTO MENUSTART_SELF_DEBUG
+)
+
+; Option 2
+if &inMainOptionSelf==2
+(
+  GOSUB TRAVERSE_TIMER_LIST
+  GOTO MENUSTART_SELF_DEBUG
+)
+
+; Option 3
+if &inMainOptionSelf==3
+(
+  GOSUB GET_TIMER_INFO
+  GOTO MENUSTART_SELF_DEBUG
+)
+
+; Option 4
+if &inMainOptionSelf==4
+(
+  GOSUB FIND_TIMER_STRUCTURES_FROM_ADDRESS
+  GOTO MENUSTART_SELF_DEBUG
+)
+
+; Option 5
+if &inMainOptionSelf==5
+(
+  GOSUB GET_GROUP_FROM_HANDLE
+  GOTO MENUSTART_SELF_DEBUG
+)
+
+
+; Option 6
+if &inMainOptionSelf==6
+(
+  GOSUB PRINT_RECENT_MATCH_VALUES
+  GOTO MENUSTART_SELF_DEBUG
+)
+
+; Option 7
+if &inMainOptionSelf==7
+(
+  GOSUB TIMERS_EXPIRED
+  GOTO MENUSTART_SELF_DEBUG
+)
+
+; Option 8
+if &inMainOptionSelf==8
+(
+  GOSUB TIMER_TRACE
+  GOTO MENUSTART_SELF_DEBUG
+)
+
+; Option 9
+if &inMainOptionSelf==9
+(
+  GOSUB TIMER_SETS
+  GOTO MENUSTART_SELF_DEBUG
+)
+
+; Option 10
+if &inMainOptionSelf==10
+(
+  GOSUB PRINT_MERGED_LOGS
+  GOTO MENUSTART_SELF_DEBUG
+)
+
+; Option 11
+if &inMainOptionSelf==11
+(
+  GOSUB CHECK_FOR_TIMETICK &TRUE
+  GOTO MENUSTART_SELF_DEBUG
+)
+
+; Option 0
+if &inMainOptionSelf==0
+(
+  GOSUB PRINT_HELPER "Exiting Self Debug..."
+  RETURN
+)
+else
+(
+  GOSUB PRINT_HELPER "Wrong option selected"
+  GOTO MENUSTART_SELF_DEBUG
+)
+RETURN
+
+MENUSTART_CHAINED_LIST:
+&print_line_counter=1
+ENTRY &arg_power
+&numOptions=5
+&inMainOptionPower=0
+GOSUB PRINT_HELPER " "
+GOSUB PRINT_HELPER "######################################################################"
+GOSUB PRINT_HELPER "              C h a i n e d   l i n k   l i s t                       "
+GOSUB PRINT_HELPER "######################################################################"
+GOSUB PRINT_HELPER " "
+GOSUB PRINT_HELPER "1: Active timers List"
+GOSUB PRINT_HELPER "2: Priority timers (p0_active) List (Currently not present in ADSP)"
+GOSUB PRINT_HELPER "3: Timer groups List"
+GOSUB PRINT_HELPER "4: Timer Bin Pool List (Currently not present in ADSP)"
+GOSUB PRINT_HELPER "5: Timer_Free_Q list"
+GOSUB PRINT_HELPER "0: Exit"
+GOSUB PRINT_HELPER ""
+
+IF "&arg_power"==""
+(
+  ; Get input option
+  enter &inMainOptionPower
+  GOSUB PRINT_HELPER " "
+)
+ELSE
+(
+  &inMainOptionPower=&arg_power
+)
+
+; Verify input option
+IF "&inMainOptionPower"==""
+(
+  GOTO MENUSTART_CHAINED_LIST
+)
+
+; Verify input option
+if &inMainOptionPower>&numOptions
+(
+  GOSUB PRINT_HELPER "Option not supported! Option Entered: &inMainOption Options Supported: &numOptions "
+  GOSUB PRINT_HELPER " "
+  GOSUB MENUSTART_CHAINED_LIST
+)
+
+GOSUB PRINT_HELPER " "
+GOSUB PRINT_HELPER "Option &inMainOptionPower input"
+GOSUB PRINT_HELPER " "
+
+; Option 1
+if &inMainOptionPower==1
+(
+  	v.fixedchain %s %o %hex *(\timer\timers.active.list.first) (*(\timer\timers.active.list.first)).next
+	v.fixedchain %s %o %hex *(\timer\timers.active.list.last) (*(\timer\timers.active.list.last)).prev
+	GOSUB MENUSTART_CHAINED_LIST
+)
+
+; Option 2
+if &inMainOptionPower==2
+(
+  	v.fixedchain %s %o %hex *(\timer\timers.p0_active.list.first) (*(\timer\timers.p0_active.list.first)).next
+	v.fixedchain %s %o %hex *(\timer\timers.p0_active.list.last) (*(\timer\timers.p0_active.list.last)).prev
+	GOSUB MENUSTART_CHAINED_LIST
+)
+; Option 3
+if &inMainOptionPower==3
+(
+   v.fixedchain %s %o %hex \timer\timers.active (\timer\timers.active).next
+   GOSUB MENUSTART_CHAINED_LIST
+)
+
+; Option 4
+if &inMainOptionPower==4
+(
+   	v.fixedchain %s %o %hex *(\timer\timers.bins.first) (*(\timer\timers.bins.first)).next_bin
+	v.fixedchain %s %o %hex *(\timer\timers.bins.last) (*(\timer\timers.bins.last)).prev_bin
+	GOSUB MENUSTART_CHAINED_LIST
+)
+
+; Option 5
+if &inMainOptionPower==5
+(
+   	v.fixedchain %s %o %hex *(timer_free_q.link.next_ptr) (timer_free_q.link.next_ptr).next_ptr
+	GOSUB MENUSTART_CHAINED_LIST
+)
+
+; Option 0
+if &inMainOptionPower==0
+(
+  RETURN
+)
+
+RETURN
+
+
+MENUSTART_AUTO_DEBUG:
+&print_line_counter=1
+GOSUB PRINT_HELPER " "
+GOSUB PRINT_HELPER "######################################################################"
+GOSUB PRINT_HELPER "                      A u t o   D e b u g                             "
+GOSUB PRINT_HELPER "######################################################################"
+GOSUB PRINT_HELPER " "
+GOSUB PRINT_HELPER ""
+
+GOSUB GENERAL_TIMER_DEBUG
+;GOSUB PRINT_HELPER "Finding Leaking clients as well."
+;GOSUB PRINT_HELPER "Note: This may or may not be related to the current issue!!"
+;GOSUB MENUSTART_FIND_LEAKING_CLIENTS
+
+RETURN
+
+MENUSTART_POWER_DEBUG:
+&print_line_counter=1
+ENTRY &arg_power
+&numOptions=2
+&inMainOptionPower=0
+GOSUB PRINT_HELPER " "
+GOSUB PRINT_HELPER "######################################################################"
+GOSUB PRINT_HELPER "                     P o w e r   D e b u g                            "
+GOSUB PRINT_HELPER "######################################################################"
+GOSUB PRINT_HELPER " "
+GOSUB PRINT_HELPER "1: Find wakeup durations "
+GOSUB PRINT_HELPER "2: Find Non-deferrable Timers"
+GOSUB PRINT_HELPER "0: Exit "
+GOSUB PRINT_HELPER ""
+
+IF "&arg_power"==""
+(
+  ; Get input option
+  enter &inMainOptionPower
+  GOSUB PRINT_HELPER " "
+)
+ELSE
+(
+  &inMainOptionPower=&arg_power
+)
+
+; Verify input option
+IF "&inMainOptionPower"==""
+(
+  GOTO MENUSTART_POWER_DEBUG
+)
+
+; Verify input option
+if &inMainOptionPower>&numOptions
+(
+  GOSUB PRINT_HELPER "Option not supported! Option Entered: &inMainOption Options Supported: &numOptions "
+  GOSUB PRINT_HELPER " "
+  GOSUB MENUSTART_POWER_DEBUG
+)
+
+GOSUB PRINT_HELPER " "
+GOSUB PRINT_HELPER "Option &inMainOptionPower input"
+GOSUB PRINT_HELPER " "
+
+; Option 1
+if &inMainOptionPower==1
+(
+  GOSUB TIMER_WAKEUP_DURATIONS
+  GOTO MENUSTART_POWER_DEBUG
+)
+
+; Option 2
+if &inMainOptionPower==2
+(
+  GOSUB TIMER_FIND_NON_DEFERRABLE_TIMERS
+  GOTO MENUSTART_POWER_DEBUG
+)
+
+; Option 0
+if &inMainOptionPower==0
+(
+  GOSUB PRINT_HELPER "Exiting Self Debug..."
+  RETURN
+)
+
+RETURN
+
+;============================================================================
+; Subroutines go here.
+;============================================================================
+
+; Clear Window after each action
+CLEAR_WINDOW:
+  AREA.CLEAR INTRMENU
+  AREA.RESET
+RETURN
+
+;============================================================================
+; Check if the current timetick is already passed the interrupt match count
+;============================================================================
+CHECK_ATS_MISSING_INTERRUPT:
+
+ &intr_expected_count=var.value(\timer\timers.set_value)
+ &timers_processing=v.value(\timer\timers.processing)
+
+ &timer_isr_delay=&current_time-&intr_expected_count
+ 
+ var.if (&intr_expected_count<&current_time)
+  (
+   IF &timers_processing!=1
+    (
+      GOSUB PRINT_HELPER ""
+      GOSUB PRINT_HELPER "Missing/Delayed ATS timer interrupt; Delayed by = &timer_isr_delay ticks."
+	  GOSUB PRINT_HELPER "current timetick = &current_time : expected ISR timetick = &intr_expected_count"
+      GOSUB PRINT_HELPER ""
+    )  
+  )
+
+RETURN
+
+;============================================================================
+; Scanning various Timer Variables
+;============================================================================
+SCAN_TIMER_VARIABLES:
+
+  GOSUB PRINT_HELPER ""
+  &can_reprogram=var.value(\timer\timers.do_reprogram_isr)
+ 
+  &defer_count=0
+  IF (y.type(timer_defer_undefer_reference_count)==3)
+    &defer_count=v.value(timer_defer_undefer_reference_count)
+  var.if ((&can_reprogram==0)||(&defer_count!=0))
+  (
+      GOSUB PRINT_HELPER "Timer task got Deferred.. Timer task cannot expire timers when deferred"
+      GOSUB PRINT_HELPER "\timer\timers.do_reprogram_isr = &can_reprogram"
+      GOSUB PRINT_HELPER "timer_defer_undefer_reference_count = &defer_count"
+	  GOSUB PRINT_HELPER ""
+  )
+  else
+  (
+     GOSUB PRINT_HELPER "Timer task is not deferred"
+  )
+
+
+ &intr_expected_count=var.value(\timer\timers.match_value)
+ &timers_processing=v.value(\timer\timers.processing)
+
+ &timer_isr_delay=&current_time-&intr_expected_count
+ &isr_time_val=v.value(\timer\timers.isr_time)
+ 
+   if (&timers_processing==0)
+   (
+      GOSUB PRINT_HELPER "Last Timer interrupt occured at: &isr_time_val"
+      GOSUB PRINT_HELPER "Next Timer Match Value &intr_expected_count"
+
+      var.if (&intr_expected_count<&current_time)
+      (
+	     GOSUB PRINT_HELPER "- Missing/Delayed ATS timer interrupt"
+	     ;GOSUB PRINT_HELPER ""
+	     GOSUB PRINT_HELPER "  : Delayed by       = &timer_isr_delay"
+	     GOSUB PRINT_HELPER "  : Current Timetick = &current_time"
+	     GOSUB PRINT_HELPER ""
+      )
+   )
+   else
+   (
+      GOSUB PRINT_HELPER "Timer task is processing timer list"
+   )
+  
+  
+ON ERROR GOTO after_backoff
+  &val=var.value(\timer\timers.backoff)
+  GOSUB PRINT_HELPER "timers rlc backoff: &val"
+after_backoff:
+ON ERROR
+
+  IF (y.type(timer_qemu_mutex)==3)
+  (
+     &val=var.value(timer_qemu_mutex.holder)
+	 if (&val==0xFE)
+        GOSUB PRINT_HELPER "timer mutex is free"
+     else
+	 (
+        GOSUB PRINT_HELPER "timer mutex is taken by holder: &val"
+		&tcb_name=var.string(((*(struct QURT_ugp_ptr *)&val)).utcb.attr.name)
+        GOSUB PRINT_HELPER "holding task name: &tcb_name"
+     )
+  )  
+
+  IF (y.type(timer_count_buffer_allocated)==3)
+  (
+     &buffered_timers=var.value(timer_count_buffer_allocated)
+     GOSUB PRINT_HELPER "timer buffers allocated: &buffered_timers"
+  )
+
+  IF (y.type(timer_active_timers_count)==3)
+  (
+     &active_timers=var.value(timer_active_timers_count)
+     GOSUB PRINT_HELPER "Active timers: &active_timers"
+  )
+  
+  IF (y.type(timer_count_paused_timers)==3)
+  (
+     &paused_timers=var.value(timer_count_paused_timers)
+     GOSUB PRINT_HELPER "paused timers: &paused_timers"
+  )
+  
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "Other Timer structures:"
+  
+  IF (y.type(timer_jtag_checks_disable)==3)
+  (
+     &val=var.value(timer_jtag_checks_disable)
+     GOSUB PRINT_HELPER "timer_jtag_checks_disable: &val"
+  )
+
+  IF (y.type(timer_after_pc_mask)==3)
+  (
+     &max=v.sizeof(timer_after_pc_mask)/v.sizeof(timer_after_pc_mask[0])
+	 GOSUB PRINT_HELPER "timer_after_pc_mask array size: &max"
+     
+	 &idx=0
+	 while (&idx<&max)
+	 (
+	    &val=var.value(timer_after_pc_mask[&idx])
+        GOSUB PRINT_HELPER "timer_after_pc_mask[&idx]: &val"
+		&idx=&idx+1
+     )
+  )
+  
+  IF (y.type(timer_multi_notify_cnt)==3)
+  (
+     &val=var.value(timer_multi_notify_cnt)
+     GOSUB PRINT_HELPER "No of users that registered for both signal, callback notification: &val"
+  )
+  
+  IF (y.type(timer_non_defer_expiry_notify_clients_cnt)==3)
+  (
+     &val=var.value(timer_non_defer_expiry_notify_clients_cnt)
+     GOSUB PRINT_HELPER "No of users that registered for first non-defer timer notification: &val"
+  )  
+  
+  GOSUB PRINT_HELPER ""
+
+RETURN
+
+
+;============================================================================
+; Subroutines for checking missing CR's
+;============================================================================
+CHECK_CACHE_FLUSH_STATUS:
+
+&addr_flush_var=0x0
+&rain_check_on_sym=0x0a
+
+  ; Imp.Todo: better to write seperate function for finding family and chipset
+ &is_b_family=&TRUE
+ &rain_check_on_sym=y.type(QURTK_flush_cache_status)
+ if &rain_check_on_sym!=0x1	
+    &is_b_family=&FALSE
+	   
+ if (&is_b_family==&TRUE)
+  (
+    &rain_check_on_sym=y.type(QURTK_flush_cache_status)
+    IF &rain_check_on_sym==0x1
+       &addr_flush_var=var.value(&QURTK_flush_cache_status)
+  )
+ else  
+  (
+    &rain_check_on_sym=y.type(BLASTK_flush_cache_status)
+    IF &rain_check_on_sym==0x1  
+     &addr_flush_var=var.value(&BLASTK_flush_cache_status)
+  )
+
+ IF &rain_check_on_sym==0x1
+  &cache_flush_status=var.value(*(uint32*)&addr_flush_var)
+ else
+  &cache_flush_status=0x11
+ 
+ if (&cache_flush_status==0x1)
+  (
+    ;GOSUB PRINT_HELPER ""
+    GOSUB PRINT_HELPER "- Cache is properly Flushed."
+    GOSUB PRINT_HELPER ""	 
+  )
+ else if (&cache_flush_status==0x11)
+  (
+    ;GOSUB PRINT_HELPER ""
+    GOSUB PRINT_HELPER "- Cache flush check skipped."
+    GOSUB PRINT_HELPER ""	 
+  )  
+ else
+  (
+    GOSUB PRINT_HELPER ""
+    GOSUB PRINT_HELPER "- Cache is not Flushed. Dump vars are not reliable"
+    GOSUB PRINT_HELPER ""	   
+  )
+
+RETURN
+
+;============================================================================
+; Subroutines for checking Cache Flush Status
+;============================================================================
+CHECK_DISABLED_PENDING_INTERRUPTS:
+
+&addr_l2vic_enabled=0x0
+&addr_l2vic_pending=0x0
+&rain_check_on_sym=0x0a
+
+ if (&is_b_family==&TRUE)
+  (
+    &rain_check_on_sym=y.type(QURTK_l2vic_enable_table_dump)
+    IF &rain_check_on_sym==0x1
+       &addr_l2vic_enabled=var.value(&QURTK_l2vic_enable_table_dump)
+
+    &rain_check_on_sym=y.type(QURTK_l2vic_pending_table_dump)
+    IF &rain_check_on_sym==0x1
+       &addr_l2vic_pending=var.value(&QURTK_l2vic_pending_table_dump)
+  )
+ else
+  (
+    RETURN
+  )
+
+  if (&addr_l2vic_enabled!=0x0)
+  (
+    GOSUB PRINT_HELPER ""
+    GOSUB PRINT_HELPER "- Timer Interrupt status"
+    &val_l2vic_enabled=var.value(*(uint32*)&addr_l2vic_enabled)
+    &timer_irq_enabled=&val_l2vic_enabled&0x8
+	if (&timer_irq_enabled==0x8)
+	 (
+       GOSUB PRINT_HELPER "  : Enabled = TRUE"
+	 )
+	else
+	 (
+       GOSUB PRINT_HELPER "  : Enabled = FALSE"
+       GOSUB PRINT_HELPER ""	 
+	 )	
+  )
+
+  if (&addr_l2vic_pending!=0x0)
+  (
+    &val_l2vic_pending=var.value(*(uint32*)&addr_l2vic_pending)
+    &timer_irq_pending=&val_l2vic_pending&0x8
+	if (&timer_irq_pending==0x8)
+	 (
+       GOSUB PRINT_HELPER "  : Pending = YES"
+       GOSUB PRINT_HELPER ""	 
+	 )
+	else
+	 (
+       GOSUB PRINT_HELPER "  : Pending = NO"
+       GOSUB PRINT_HELPER ""	 	 	   
+	 )
+  )
+
+RETURN
+
+;============================================================================
+; Subroutines for checking missing CR's
+;============================================================================
+CHECK_ATS_MISSING_CR:
+;Todo: need to fill yet
+RETURN
+
+;============================================================================
+; Internal subroutine for the handling of the uds log printing
+;============================================================================
+GET_GROUP_FROM_HANDLE:
+GOSUB PRINT_HELPER " "
+GOSUB PRINT_HELPER "######################################################################"
+GOSUB PRINT_HELPER "                      Get Group from handle                           "
+GOSUB PRINT_HELPER "######################################################################"
+GOSUB PRINT_HELPER " "
+GOSUB PRINT_HELPER ""
+GOSUB PRINT_HELPER "Enter the group handle : "
+GOSUB PRINT_HELPER ""
+ENTER &in_group_handle
+GOSUB PRINT_HELPER ""
+
+  &in_group_handle=&in_group_handle&0x00000000FFFFFFFF
+
+  ; values for handle comparision
+  &GROUP_HANDLE_CONST=0XC3C3FFFF
+  &GET_HANDLE_ONLY=0x0000FFFF
+
+
+  &group_index=&in_group_handle&&GET_HANDLE_ONLY
+  
+  &gp_hndle_up=&in_group_handle^&GROUP_HANDLE_CONST
+  &gp_hndle_up=&gp_hndle_up&0xFFFF0000
+  &gp_hndle_up=&gp_hndle_up>>0x10
+  &gp_hndle_dn=&in_group_handle&&GET_HANDLE_ONLY
+  
+  if (&gp_hndle_dn!=&gp_hndle_up)
+	(
+	  GOSUB PRINT_HELPER "Incorrect Group Handle entered"
+	  RETURN
+	)
+
+  var.if (&group_index<0x0 || &group_index>&timer_groups_size)	
+	(
+	  GOSUB PRINT_HELPER "Group index out ou bounds"
+	  RETURN
+	)   
+
+  &name_grp=v.string(timer_internal_groups[&group_index])	
+  &ext_self=v.string((*(timer_internal_groups[&group_index])).ext_self)
+  &disabled=v.value((*(timer_internal_groups[&group_index])).disabled)
+  &deferrable=v.value((*(timer_internal_groups[&group_index])).deferrable)
+  GOSUB PRINT_HELPER "Group : &name_grp"
+  GOSUB PRINT_HELPER "  ext_self   = &ext_self"
+  GOSUB PRINT_HELPER "  disabled   = &disabled"
+  GOSUB PRINT_HELPER "  deferrable = &deferrable"
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+	
+RETURN
+
+;============================================================================
+; Get the timer chunk index & buffer index from the timer handle
+;============================================================================   
+GET_INDEX_FROM_HANDLE:
+  ENTRY &qdi_timer_handle
+
+  ; Init the gloabl ret value
+  &get_IFH_ret_cid=0x0
+  &get_IFH_ret_timer_idx=0x0
+  
+  &TIMER_HANDLE_CONSTANT=0xC3
+
+  &temp=(&qdi_timer_handle>>0x18)&0xFF
+  &get_IFH_ret_cid=(&qdi_timer_handle>>0x10)&0xFF
+  &tid1=(&qdi_timer_handle>>0x8)&0xFF
+  &tid0=&qdi_timer_handle&0xFF
+   
+  &temp_for_check=&get_IFH_ret_cid^&tid1^&tid0^&TIMER_HANDLE_CONSTANT
+
+  if (&temp_for_check!=&temp)
+  (
+	  &get_IFH_ret_cid=0xFEEDF00D
+	  &get_IFH_ret_timer_idx=0xFEEDF00D
+	  ; Return since the passed timer handle is invalid
+	  RETURN
+  )
+  
+  ; Get the timer_index for the client chunk
+  &get_IFH_ret_timer_idx=&qdi_timer_handle&0xFFFF
+RETURN
+   
+;============================================================================
+; Internal subroutine for the handling of the uds log printing
+;============================================================================
+PRINT_UDS_LOGS_INTERNAL:
+  ENTRY &debug_var &timetick_var &force
+
+  &is_there=Y.TYPE(&debug_var)
+  var.if (&is_there==0x3 || &force==0x1)
+   (
+   	&total_size=v.sizeof(&debug_var)
+	&unit_size=v.sizeof(&debug_var[0])
+	&num_indexes=v.value(&total_size / &unit_size)
+	
+	&index_iterator=0x0
+	
+	while (&index_iterator<&num_indexes)
+	  (
+	    &timetick_val=v.value(&debug_var[&index_iterator].&timetick_var)
+		&debug_var_str=var.string(&debug_var[&index_iterator])
+		WRITE #7 "&timetick_val, &debug_var[&index_iterator] = , &debug_var_str"
+	    &index_iterator=&index_iterator+0x1
+	  )
+   )
+  else
+   (
+     GOSUB PRINT_HELPER "Timer-services debug var : '&debug_var' not available"
+   )
+
+RETURN
+   
+;============================================================================
+; Print the UDS logs in CSV format (in unsorted form)
+;============================================================================
+PRINT_UDS_LOGS:
+  
+  &uds_filename="&output_directory"+"\&FILENAME_PREFIX_STRING"+"_timer_services_debug_vars.csv"
+GOSUB PRINT_HELPER " "
+GOSUB PRINT_HELPER "######################################################################"
+GOSUB PRINT_HELPER "                      Printing UDS Logs                              "
+GOSUB PRINT_HELPER "######################################################################"
+GOSUB PRINT_HELPER " "
+GOSUB PRINT_HELPER ""
+
+  OPEN #7 &uds_filename /CREATE
+
+  GOSUB PRINT_HELPER "timer_sets ... "
+  GOSUB PRINT_UDS_LOGS_INTERNAL timer_sets ts 0x0
+  GOSUB PRINT_HELPER "timers_expired_slave1 ... "
+  GOSUB PRINT_UDS_LOGS_INTERNAL timers_expired_slave1 processing_started 0x0
+  GOSUB PRINT_HELPER "timers_expired_slave2 ... "
+  GOSUB PRINT_UDS_LOGS_INTERNAL timers_expired_slave2 processing_started 0x0
+  GOSUB PRINT_HELPER "timers_expired_slave3 ... "
+  GOSUB PRINT_UDS_LOGS_INTERNAL timers_expired_slave3 processing_started 0x0
+  GOSUB PRINT_HELPER "timer_expired_debug ... "
+  GOSUB PRINT_UDS_LOGS_INTERNAL timer_expired_debug ts 0x0
+  GOSUB PRINT_HELPER "timers_expired ... "
+  GOSUB PRINT_UDS_LOGS_INTERNAL timers_expired processing_started 0x0
+  GOSUB PRINT_HELPER "timer_trace ... "
+  
+  ; Additional check for timer_trace
+  &is_there_tt=Y.TYPE(timer_trace)
+  if (&is_there_tt==0x3)
+    (
+    GOSUB PRINT_UDS_LOGS_INTERNAL timer_trace.events ts 0x1
+	)
+  GOSUB PRINT_HELPER "record_match_val ... "
+  GOSUB PRINT_UDS_LOGS_INTERNAL record_match_val timer_now_supplied 0x0
+  GOSUB PRINT_HELPER "timer_api_log ... "
+  GOSUB PRINT_UDS_LOGS_INTERNAL timer_api_log ts 0x0
+  GOSUB PRINT_HELPER "timer_defer_undefer_reference_count_log ... "
+  GOSUB PRINT_UDS_LOGS_INTERNAL timer_defer_undefer_reference_count_log ts 0x0
+
+;------- Interrupt logs -------
+   ; Have to think something for this section
+   
+  CLOSE #7
+
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "Completed printing the unified logs to : '&uds_filename'"
+  GOSUB PRINT_HELPER ""
+
+RETURN
+
+;============================================================================
+; Finds the largest timetick from the debug_log & checks for timetick jump
+;============================================================================
+PRINT_PROCESSING_TIMER_INFO:
+  ENTRY &tmr_clt_ptr
+  
+  
+  &tmr_clt_handle=v.value(*(uint32*)&tmr_clt_ptr)
+  
+  GOSUB GET_INDEX_FROM_HANDLE &tmr_clt_handle
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "Information of the Client Timer under processing :: "
+  GOSUB PRINT_HELPER ""
+  var.if (&get_IFH_ret_cid==0xFEEDF00D || &get_IFH_ret_timer_idx==0xFEEDF00D)
+  (
+      GOSUB PRINT_HELPER "Timer handle does not appear to correct! Exiting..."
+  )
+  else
+  (
+    &tmr_ext_ptr=v.value(&timer_client_chunks[&get_IFH_ret_cid].buffer[&get_IFH_ret_timer_idx])
+
+	GOSUB PRINT_EXT_TIMER_INFO &tmr_ext_ptr
+	GOSUB EXTERNAL_TIMER_SANITY_CHECK &tmr_ext_ptr 0x1
+	
+	; Output the timer info in a window
+	WINPOS 60% 0.0 40% 30% 0. 0. L1Info
+	v.v %OPEN.1 timer_client_chunks[&get_IFH_ret_cid].buffer[&get_IFH_ret_timer_idx]
+    
+    ; Get the internal timer buffer index
+    &tmr_int_handle_ptr=v.value(((timer_client_ptr_type)&tmr_ext_ptr)->timer_int_handle)
+	&tmr_int_handle_ptr=&tmr_int_handle_ptr-1	
+	
+	var.if (&tmr_int_handle_ptr>=0x0 && &tmr_int_handle_ptr<&timer_buffer_size )
+		(
+		  &tmr_int_ptr=v.value(&timer_buffer_ptr[&tmr_int_handle_ptr])
+          GOSUB PRINT_TIMER_INFO &tmr_int_ptr 1
+		  GOSUB INTERNAL_TIMER_SANITY_CHECK &tmr_int_ptr 0x1
+		  GOSUB INTERNAL_EXTERNAL_TIMER_MATCH &tmr_int_ptr &tmr_ext_ptr 0x1
+		  WINPOS 60% 20% 40% 30% 0. 0. L1Info
+		  v.v %OPEN.1 timer_buffer_ptr[&tmr_int_handle_ptr]
+		)
+  )
+
+RETURN
+
+;============================================================================
+; Finds the largest timetick from the debug_log & checks for timetick jump
+;============================================================================
+CHECK_IF_TT_IS_OFFSET:
+  ENTRY &timetick_value
+  
+  &check_if_tt_is_offset_ret=&TRUE
+  
+  &tt_offset=0x0
+  
+  &tmr_ptr=v.value(\timer\timers.active.list.first)
+  
+  if (&tmr_ptr!=0x0)
+    (
+	 	&tt_offset=v.value(((timer_internal_type*)&tmr_ptr)->sclk_delta)
+	)
+	
+  if (&timetick_value==&tt_offset)
+    (
+	  &check_if_tt_is_offset_ret=&FALSE
+    )
+  
+RETURN
+
+;============================================================================
+; Finds the largest timetick from the debug_log & checks for timetick jump
+;============================================================================
+CHECK_TIMETICK_INTERNAL:
+  ENTRY &debug_var &timetick_var
+  
+  &tt_jump_index_string=""
+  &check_timetick_internal_ret=0x0
+  &num_index_ret=0x0
+  &index_iterator_ret=0x0
+  
+  ; Exception for timer_trace
+  &timer_trace_false_positive=0
+  &is_timer_trace=&FALSE
+  
+  IF "&debug_var"=="timer_trace.events"
+    (
+      &is_timer_trace=&TRUE
+	  &timer_trace_false_positive=0xF
+    )
+  
+  &timetick_jump=0x0
+  &prev_timetick_val=0x0
+  &largest_timetick_val=0x0
+  &last_index_for_jump=0x0
+
+  &total_size=v.sizeof(&debug_var)
+  &unit_size=v.sizeof(&debug_var[0])
+  &num_indexes=v.value(&total_size / &unit_size)
+	
+  &num_index_ret=&num_indexes
+  &len_&debug_var_name=&num_index_ret
+	
+  &index_iterator=0x0
+	
+  while (&index_iterator<&num_indexes)
+	  (
+	    &timetick_val=v.value(&debug_var[&index_iterator].&timetick_var)
+	        if (&is_b_family!=&TRUE)
+		(
+                   if (&timetick_val!=0x0)
+		   (
+		      GOSUB CHECK_IF_TT_IS_OFFSET &timetick_val
+                      if (&check_if_tt_is_offset_ret==&FALSE)
+		      (
+		         GOSUB PRINT_HELPER "&debug_var[&index_iterator].&timetick_var=&timetick_val is just the sclk offset, i.e. RGPT timetick count is returned as ZERO"
+		      )
+		   )
+		)
+
+		if (&index_iterator==0x0)
+		  (
+		  &prev_timetick_val=&timetick_val
+		  )
+		else
+		  (
+		    if (&prev_timetick_val>&timetick_val)
+			 (
+			   &timetick_jump=&timetick_jump+1
+			   if (&timetick_jump>1)
+			     (
+				  &tt_jump_index_string="&tt_jump_index_string"+"[&last_index_for_jump], "
+				  if &is_timer_trace==&TRUE
+				    (
+					&event_id=v.value(&debug_var[&last_index_for_jump].event)
+					var.if &event_id==0
+					   &timer_trace_false_positive=&timer_trace_false_positive+1
+					)
+				 )
+			   &last_index_for_jump=&index_iterator
+			 )
+		   &prev_timetick_val=&timetick_val
+		  )
+	    
+		if (&largest_timetick_val<=&timetick_val)
+		  (
+		    &index_iterator_ret=&index_iterator
+		    &largest_timetick_val=&timetick_val
+		  )
+		&index_iterator=&index_iterator+0x1
+	  )
+
+	if (&timetick_jump>1)
+	(
+
+    ; We have not accounted for the last jump index 
+	&tt_jump_index_string="&tt_jump_index_string"+"[&last_index_for_jump], "
+	
+	; Check for the timer_trace false timetick alarm
+	if &is_timer_trace==&TRUE
+	 (
+		&event_id=v.value(&debug_var[&last_index_for_jump].event)
+		var.if &event_id==0
+           &timer_trace_false_positive=&timer_trace_false_positive+1
+		   
+        if (&timer_trace_false_positive==&timetick_jump+0xF)
+		  (
+		    &event_id=v.value(&debug_var[&index_iterator_ret+1].event)
+			if &event_id==0
+			  &timer_trace_false_positive=0
+		  )
+        if (&timer_trace_false_positive==&timetick_jump+0xE)
+		  (
+		    &event_id=v.value(&debug_var[&index_iterator_ret+1].event)
+			if &event_id!=0
+			  &timer_trace_false_positive=0
+		  )		  
+	 )	
+		
+		var.if (&is_timer_trace==&TRUE && &timer_trace_false_positive==0)
+		  (
+		    GOSUB PRINT_HELPER "Skipped timer_trace timetick variation for ISR events"
+			&check_timetick_internal_ret=&largest_timetick_val
+			GOSUB PRINT_HELPER ""
+		  )		
+	    else
+		  (
+	       &check_timetick_internal_ret=0xF00DF00D
+	       &index_iterator_ret=0xFEEFD00D
+		   GOSUB PRINT_HELPER "Timetick Jump Encountered in the debug var"
+		   GOSUB PRINT_HELPER "'&debug_var' @ indexes :"
+		   GOSUB PRINT_HELPER "&tt_jump_index_string"
+		   GOSUB PRINT_HELPER ""
+		  )
+	 )
+	else
+	 (
+	   &check_timetick_internal_ret=&largest_timetick_val
+	 )
+	 
+RETURN
+
+;============================================================================
+; Subroutine to check timetick jump & get the latest timetick value.
+;============================================================================
+CHECK_FOR_TIMETICK_DEREF:
+  ENTRY &debug_var_name &tt_storage_type &extn
+  
+  &rain_check=Y.TYPE(&debug_var_name)
+  var.if (&rain_check==0x3)
+  (
+   &IS_THERE_&debug_var_name=&TRUE
+   if ("&extn"!="0x0")
+    (
+	  &debug_var_name_2="&debug_var_name"+".&extn"
+	  GOSUB CHECK_TIMETICK_INTERNAL &debug_var_name_2 &tt_storage_type
+	)
+   else
+    (
+      GOSUB CHECK_TIMETICK_INTERNAL &debug_var_name &tt_storage_type
+	)
+   var.if (&check_timetick_internal_ret!=0xF00DF00D)
+    (
+      &timetick_jump_&debug_var_name=&FALSE
+	
+	; Setup the debug var params once & for all
+      &len_&debug_var_name=&num_index_ret
+      &index_&debug_var_name=&index_iterator_ret+0x1
+   
+	  &&deref_index="&index_&debug_var_name"
+	  if (&deref_index==&num_index_ret)
+	     (
+ 	     &index_&debug_var_name=0x0
+		 )
+
+      if (&current_time<&check_timetick_internal_ret)
+	   (
+	    &&deref_idx="&index_&debug_var_name"
+		&deref_idx=&deref_idx-0x1
+		if (&deref_idx<0x0)
+		 (
+		   &&deref_idx="&len_&debug_var_name"
+		   &deref_idx=&deref_idx-0x1
+		 )
+	    &current_time_from_str="&debug_var_name[&deref_idx]"
+	    &current_time=&check_timetick_internal_ret
+	   )
+    )
+  )
+
+RETURN
+
+
+;============================================================================
+; Subroutine to check timetick jump & get the latest timetick value.
+;============================================================================
+CHECK_FOR_TIMERS_UNDER_PROCESSING:
+  ENTRY &debug_var_n
+  &iterator=0x1
+  
+  while (&iterator<=&number_of_debug_vars)
+  (
+    var.if (&iterator==0x2 || &iterator==0x3 || &iterator==0x4 || &iterator==0x6)
+	(
+     ; Get the debug var name from the iterator
+	 &&debug_var_n="&debug_var&iterator"
+	 
+ &index_itr=0x0
+ &&deref_length="&len_&debug_var_n"
+
+ &&deref_is_there_n="&IS_THERE_&debug_var_n"
+ &&deref_tt_jump_n="&timetick_jump_&debug_var_n"
+  
+  ;var.if (&deref_is_there_n==&FALSE || &deref_tt_jump_n==&TRUE)
+  var.if (&deref_is_there_n==&FALSE)
+   (
+    RETURN
+   )
+ 
+ while (&index_itr<&deref_length)
+ (
+  &processing_val=v.value(&debug_var_n[&index_itr].processing_time)
+  var.if (&processing_val==0xDEADBEEFD00DFEED || &processing_val==0xDEADBEEF)
+   (
+     &process_start=v.value(&debug_var_n[&index_itr].processing_started)
+     &delay=(&current_time-v.value(&debug_var_n[&index_itr].processing_started))
+	 &delay=(&delay*0xA)/0xC0
+ 	 &client_tmr_ptr=v.string(&debug_var_n[&index_itr].timer_expired)
+	 if (&iterator!=0x6)
+	   &cb_addr=v.string(&debug_var_n[&index_itr].fn_address)
+	 else
+	   &tcb_sigs=v.string(&debug_var_n[&index_itr].tcb_sigs_obj)
+	 GOSUB PRINT_HELPER ""
+     GOSUB PRINT_HELPER "Expired timers still under processing:"
+	 GOSUB PRINT_HELPER "timer=&client_tmr_ptr logged in = &debug_var_n[&index_itr]"
+	 if (&iterator!=0x6)
+	   GOSUB PRINT_HELPER "timer callback &cb_addr running from &delay usecs"
+	 else
+	   GOSUB PRINT_HELPER "timer signals &cb_sigs running from &delay usecs"
+	 GOSUB PRINT_HELPER ""
+	 &client_tmr_ptr=v.value(&debug_var_n[&index_itr].timer_expired)
+	 GOSUB PRINT_PROCESSING_TIMER_INFO &client_tmr_ptr
+   )
+  &index_itr=&index_itr+0x1
+ )
+ )
+   &iterator=&iterator+1
+ )
+ 
+RETURN
+
+;============================================================================
+; Subroutine to check timetick jump & get the latest timetick value.
+;============================================================================
+CHECK_FOR_TIMETICK:
+ ENTRY &check_deadbeef
+ &current_time=0x0
+ &l_iterator=0x1
+ &timetick_from_str=""
+
+ while (&l_iterator<=&number_of_debug_vars)
+   (
+     ; Get the debug var name from the l_iterator
+	 &&deref_debug_var_name="&debug_var&l_iterator"
+	 &&deref_debug_tt_name="&debug_var_tt_name&l_iterator"
+	 &&deref_debug_extn="&debug_var_extra&l_iterator"
+	 
+	 GOSUB CHECK_FOR_TIMETICK_DEREF &deref_debug_var_name &deref_debug_tt_name &deref_debug_extn
+	
+	if (&check_deadbeef!=&FALSE)
+	(
+	 var.if (&l_iterator==0x2 || &l_iterator==0x3 || &l_iterator==0x4 || &l_iterator==0x6)
+	  (
+	   ; Check for timers still under processing 
+	   ;GOSUB CHECK_FOR_TIMERS_UNDER_PROCESSING &deref_debug_var_name
+	  )	 
+	)
+	 ; increment the l_iterator
+     &l_iterator=&l_iterator+0x1
+   )
+   
+   &timetick_from_str="&current_time_from_str"
+
+   ; Compare the largest obtained timetick value with timers.isr
+   &tt_from_timers=v.value(\timer\timers.isr_time)
+   if (&tt_from_timers>&current_time)
+	(
+	  &timetick_from_str="\timer\timers.isr_time"
+	  &current_time=&tt_from_timers
+	)
+	
+   ; Compare the largest obtained timetick value with ticks_now
+   &ticks_now_present=y.type(ticks_now)
+   if (&ticks_now_present==0x3)
+   (
+       &ticks_now=v.value(ticks_now)
+       if (&ticks_now>=&current_time)
+	(
+	  &timetick_from_str="ticks_now"
+	  &current_time=&ticks_now
+	)
+   )
+
+
+; Compare the largest obtained timetick value with the interrupt logs timetick value 
+   GOSUB ESTIMATE_CURRENT_TIME
+   if (&tt_from_interrupts>&current_time)
+	(
+	  &timetick_from_str="&tt_from_intr_str"
+	  &current_time=&tt_from_interrupts
+	)   
+   
+   GOSUB PRINT_HELPER "- Current Timetick Estimate = &current_time"
+   GOSUB PRINT_HELPER "  Obtained from &timetick_from_str"
+   
+  
+RETURN
+
+;============================================================================
+; Timer group list checking.
+;============================================================================
+TIMER_GROUP_LIST_CHECK:
+  ENTRY &operation &timer_group_address
+  ; &operation can be passed as 1 to check for a aprticular group address validity
+
+  &timer_group_list_check_ret=0x0
+  &group_start=v.value(&\timer\timers.active)
+  &group_type="(timer_group_t_ptr)"
+  &group_ptr=v.value((&group_type&group_start)->next)
+  &last_group=&group_start
+  &last_last_group=&group_start
+  &grp_count=0x0
+  &sym_grp=""
+  &sizeof_internal_group=v.sizeof(timer_internal_groups)/v.sizeof(timer_internal_groups[0])
+  &next_group_idx=0
+  &var_name="Group index count"
+  &error=&FALSE
+  
+  
+  &ret=Y.TYPE(timer_next_group_idx)
+  if (&ret==0x3)
+	(
+    &next_group_idx=var.value(timer_next_group_idx)
+	&var_name="timer_next_group_idx"
+	)
+  else
+	(
+	&next_group_idx=var.value(timer_next_free_group_idx)
+	&var_name="timer_next_free_group_idx"
+	&grp_allocated=var.value(timer_internal_groups_allocated)
+	if (&grp_allocated>=&sizeof_internal_group)
+		(
+		GOSUB PRINT_HELPER "!! ERROR Number of allocated groups more than the array size; Allocates=&grp_allocated; Size=&sizeof_internal_group"
+		&error=&TRUE
+		)
+	)
+	
+  if (&next_group_idx>=&sizeof_internal_group)
+	(
+	GOSUB PRINT_HELPER "!! ERROR Next free group index is out of range '&var_name'=&next_group_idx"
+	;wait 1000.ms
+	&error=&TRUE
+	)  
+  
+  var.if (&operation==0x1 && &group_start==&timer_group_address)
+   (
+     &timer_group_list_check_ret=0x1
+	 &operation=0x0
+     RETURN
+   )
+ 
+  var.if (&group_ptr==0x0)
+	(
+	  &sym_grp=v.string(&group_type&last_group)
+	  if (&operation!=0x1)
+	   (
+	    GOSUB PRINT_HELPER "!! Group list seems incorrect or not yet initialized : &sym_grp"
+		GOSUB PRINT_HELPER ""
+	   )
+	  &operation=0x0
+	  RETURN
+	)
+
+  while &group_ptr!=&group_start
+	(
+      var.if (&operation==0x1 && &group_ptr==&timer_group_address)
+        (
+           &timer_group_list_check_ret=0x1
+		   &operation=0x0
+		   RETURN
+		)
+		
+		&group_ptr=v.value((&group_type&group_ptr)->next)
+		;Todo: may be we can add more checks
+		var.if (&group_ptr==0x0)	
+			(
+			  if (&operation!=0x1)
+	          (
+			   &sym_grp=v.string(&group_type&last_group)
+			  
+			   GOSUB PRINT_HELPER "!! Group corrupted :           &sym_grp"
+			   &sym_grp1=v.string(&group_type&group_ptr)
+			   GOSUB PRINT_HELPER "(&group_type&sym_grp)->next  = &sym_grp1"
+			   &sym_grp2=v.string(&group_type&last_last_group)
+			   GOSUB PRINT_HELPER "(&group_type&sym_grp2)->next = &sym_grp"
+			   GOSUB PRINT_HELPER ""
+			  )
+			  &operation=0x0
+			  RETURN
+			)
+		&last_group=&group_ptr
+		if &grp_count>=1
+			(
+			  &last_last_group=v.value((&group_type&last_last_group)->next)
+			)
+		
+		&grp_count=&grp_count+1
+		var.if (&grp_count>=&sizeof_internal_group)
+			(
+			  if (&operation!=0x1)
+			  (
+			   GOSUB PRINT_HELPER "!! Suspicious group list, too many groups (more than &sizeof_internal_group)"
+			   GOSUB PRINT_HELPER ""
+			  )
+			  &operation=0x0
+			  RETURN
+			)
+	)
+	
+  ;&grp_count=&grp_count-1
+
+  var.if (&operation!=0x1 && &error==&FALSE)
+  (
+   GOSUB PRINT_HELPER "Group list is correct & proper"
+   GOSUB PRINT_HELPER "Total groups = &grp_count"
+   GOSUB PRINT_HELPER ""
+  )
+
+&operation=0x0
+RETURN
+
+;============================================================================
+; Internal timer Sanity checking Subroutine.
+;============================================================================
+
+;Todo: This is to be fixed for adsp
+TIMER_CHECK_TIMER_HANDLE_MAPPING:	
+  ENTRY &int_timer &ext_timer
+
+  
+  
+  
+  
+  
+  
+  
+  &ext_timer_local=&ext_timer&0xFFFFFFFF
+  &int_timer_local=&int_timer&0xFFFFFFFF
+  
+  &ext_timer_handle=0x0
+  &is_XOR_handle=&FALSE
+  &index_from_ext_timer=0xFFFFFFFF
+  &corrupted_handle=&FALSE
+  &MAGIC_VAL=0xC3C3
+  &ext_timer_string=0x0
+  &ext_timer_handle=0x0
+
+  if (&ext_timer_local==0x0)
+    &ext_timer_local=var.value(((timer_internal_type*)&int_timer)->timer_ext)
+  
+  &ext_timer_string=var.string((timer_type*)&ext_timer_local)
+  if (&timer_handle_as_structure==&TRUE)
+  (
+  &ext_timer_handle=var.value(((timer_type*)&ext_timer_local)->timer_handle)
+  )
+  else
+  (
+  &ext_timer_handle=var.value(((timer_type*)&ext_timer_local))
+  )
+  &ext_timer_handle=&ext_timer_handle&0xFFFFFFFF
+  &top_byte=&ext_timer_handle>>0x18
+  if (&top_byte==0xC3)
+    &is_XOR_handle=&TRUE
+  else if (&top_byte!=0x0)
+    &corrupted_handle=&TRUE
+  
+  ; Get the index if XOR based handle
+  var.if (&corrupted_handle==&FALSE && &is_XOR_handle==&TRUE)
+    (
+      &ext_timer_handle_U=&ext_timer_handle>>0x10
+ 	 &ext_timer_handle_L=&ext_timer_handle&0xFFFF
+ 	 &magic_val_from_handle=&ext_timer_handle_U^&ext_timer_handle_L
+ 	 if (&magic_val_from_handle!=&MAGIC_VAL)
+ 	   (
+ 	    &corrupted_handle=&TRUE
+ 	   )
+      else
+ 	   (
+ 	    &index_from_ext_timer=&ext_timer_handle_L
+ 	   )
+    )
+ 
+  ; Get the index if normal handle is there
+  var.if (&corrupted_handle==&FALSE && &is_XOR_handle==&FALSE)
+    (
+ 	 &index_from_ext_timer=&ext_timer_handle-1
+    )
+
+   ; Finally check if the index from external timer is valid or not
+   &sizeof_timer_buffer=&timer_buffer_size
+   var.if (&index_from_ext_timer<&sizeof_timer_buffer && &index_from_ext_timer>=0)
+     &corrupted_handle=&FALSE
+   else
+     &corrupted_handle=&TRUE
+
+  ; Corrupted handle error message
+  if (&corrupted_handle==&TRUE)
+   (
+     GOSUB PRINT_HELPER "ERROR : &ext_timer_string ; timer_handle is corrupt = &ext_timer_handle"
+   )
+  else
+   (
+    if (&int_timer_local==0x0)
+      &int_timer_local=var.value(&timer_buffer_ptr[&index_from_ext_timer])
+   )
+
+    &int_timer_string=var.string((timer_internal_type*)&int_timer_local)
+   ; Since both internal timer & external one is provided
+   ; just check for the mapping in between them & return
+   
+   ; Internal to external mapping
+   &timer_ext_addr=var.value(((timer_internal_type*)&int_timer_local)->timer_ext)
+   if (&ext_timer_local!=&timer_ext_addr)
+    (
+	  GOSUB PRINT_HELPER "ERROR : &int_timer_string->timer_ext not pointing to &ext_timer_string"
+	)
+   
+   ; external to internal mapping
+   if (&corrupted_handle==&FALSE)
+    (
+	  &addr_from_index=var.value(&timer_buffer_ptr[&index_from_ext_timer])
+     if (&addr_from_index!=&int_timer_local)
+        GOSUB PRINT_HELPER "ERROR : &ext_timer_string;  timer_handle not pointing back to &int_timer_string"
+	)
+  
+RETURN
+
+;============================================================================
+; Internal timer Sanity checking Subroutine.
+;============================================================================
+INTERNAL_TIMER_SANITY_CHECK:
+  ENTRY &internal_timer_addr &silent_sanity_check
+
+  &test_result=0x1
+  &internal_timer_str=var.string((timer_internal_type*)&internal_timer_addr)
+  
+  if (&silent_sanity_check!=0x0)
+  GOSUB PRINT_HELPER "-- Sanity test for the internal timer : &internal_timer_str ---"
+  
+  ;--------------------------------------------------------------------------
+  ; Check the links next/prev pointer values
+  &link_next_val=var.value(((timer_internal_type*)&internal_timer_addr)->link.next_ptr)
+  ;&link_prev_val=var.value(((timer_internal_type*)&internal_timer_addr)->link.prev_ptr) 	;prev_ptr will be timer_free_q.link in adsp and on Modem NULL
+  ;Todo: Can we have common code where we can check for mpss for null and on adsp for q ptr in link
+  
+  var.if (&link_next_val!=0x0)
+	(
+	  GOSUB PRINT_HELPER "!! Internal timer: &internal_timer_str - link's next pointer seem to be having some corrupt value "
+	)
+
+  ;--------------------------------------------------------------------------
+  ; Check the internal timers index vaue
+  &index_val=var.value(((timer_internal_type*)&internal_timer_addr)->index)
+  &addr_from_index=var.value(&timer_buffer_ptr[&index_val])
+  if (&internal_timer_addr!=&addr_from_index)
+	(
+	  GOSUB PRINT_HELPER "!! Internal timer: &internal_timer_str - index value is not pointing back to the same timer"
+	  &test_result=0x0
+	)	
+
+  ;--------------------------------------------------------------------------
+  ; Check the group sanity for the timer
+  &group_var=var.value(((timer_internal_type*)&internal_timer_addr)->info.group_idx)
+  
+  var.if (&group_var<0x0 || &group_var>&timer_groups_size)	
+	(
+	  GOSUB PRINT_HELPER "!! Internal timer: &internal_timer_str - group index incorrect"
+	  &test_result=0x0
+	)
+
+  ;--------------------------------------------------------------------------
+  ; Check the slave task assignment for the timer
+  &int_slave_task_idx=var.value(((timer_internal_type*)&internal_timer_addr)->info.slave_task_idx)
+  var.if (&int_slave_task_idx<0x0 || &int_slave_task_idx>0x2)
+	(
+	  GOSUB PRINT_HELPER "!! Internal timer: &internal_timer_str - slave task assignment incorrect"
+	  &test_result=0x0
+	)	
+
+  ;--------------------------------------------------------------------------
+  ; Check the process index & remote process for the timer
+  &int_remote_process=var.value(((timer_internal_type*)&internal_timer_addr)->info.remote_process)
+  &int_process_idx=var.value(((timer_internal_type*)&internal_timer_addr)->info.process_idx)
+  var.if (&int_remote_process!=0x0 && &int_remote_process!=0x3)
+	(
+	  GOSUB PRINT_HELPER "!! Internal timer: &internal_timer_str - remote process num incorrect"
+	  &test_result=0x0
+	)
+  var.if (&int_remote_process==0x0 && &int_process_idx!=0x0)
+	(
+	  GOSUB PRINT_HELPER "!! Internal timer: &internal_timer_str - remote process is zero albeit process_idx != 0"
+	  &test_result=0x0
+	)	
+
+  ;--------------------------------------------------------------------------
+  ; Check the node status
+  &int_node_state=var.value(((timer_internal_type*)&internal_timer_addr)->info.node_state)
+  
+  ;Todo: I guess since this function gets active internal timer, it should be 0xC only
+  var.if (&int_node_state!=0x3 && &int_node_state!=0xC)
+	(
+	  GOSUB PRINT_HELPER "!! Internal timer: &internal_timer_str - Node status not correct"
+	  &test_result=0x0
+	)
+	
+  ;--------------------------------------------------------------------------
+  ; check the timers list pointer	
+  &list_val=var.value(((timer_internal_type*)&internal_timer_addr)->list)
+  &active_list_val=v.value(&\timer\timers.active.list)
+  if (&list_val!=&active_list_val)
+	(
+	  GOSUB PRINT_HELPER "!! Internal timer: &internal_timer_str - list not pointing to active timer list"
+	  &test_result=0x0
+	)	
+  ;--------------------------------------------------------------------------	
+  ; Minimal cache structure checking
+  &reload_from_cache=var.value(((timer_internal_type*)&internal_timer_addr)->cache.reload_sclk)
+  &reload_val=var.value(((timer_internal_type*)&internal_timer_addr)->reload)
+  if (&reload_val!=&reload_from_cache)
+	(
+	  GOSUB PRINT_HELPER "!! Internal timer: &internal_timer_str - reload is not matching with the value in cache"
+	  &test_result=0x0
+	)	
+
+  ;--------------------------------------------------------------------------	
+  ; Checking for internal timer's next & prev pointers sanity
+  ; Really bad logic used here (couldn't find any better way)
+  &next_val=var.value(((timer_internal_type*)&internal_timer_addr)->next)
+  &prev_val=var.value(((timer_internal_type*)&internal_timer_addr)->prev)
+  &next_found=0x0
+  &prev_found=0x0
+  &iterator=0x0
+  
+  ; Go in a while loop searching every timer address to match with next & prev pointers
+  while (&iterator<=&timer_buffer_size)	
+    (
+	  &t_buff_addr=var.value(&timer_buffer_ptr[&iterator])
+	  if (&next_val==&t_buff_addr)
+		&next_found=0x1
+	  if (&prev_val==&t_buff_addr)
+		&prev_found=0x1
+	
+	  var.if (&next_found==0x1 && &prev_found==0x1)
+	    &iterator=0x1FF
+	  
+	  &iterator=&iterator+1
+	)
+	
+  if (&next_found==0x0)
+    (
+      &last_timer_from_list=var.value(\timer\timers.active.list.last)
+	  var.if (&last_timer_from_list==&internal_timer_addr && &next_val==0x0)
+	  else
+	   (
+	    GOSUB PRINT_HELPER "!! Internal timer: &internal_timer_str - next pointer is corrupted"
+	    &test_result=0x0
+	   )
+    )
+  if (&prev_found==0x0)
+    (
+	  &first_timer_from_list=var.value(\timer\timers.active.list.first)
+	  var.if (&first_timer_from_list==&internal_timer_addr && &prev_val==0x0)
+	  else
+	   (
+	    GOSUB PRINT_HELPER "!! Internal timer: &internal_timer_str - prev pointer is corrupted"
+	    &test_result=0x0
+	   )
+    )	
+  ;--------------------------------------------------------------------------	
+  ; Bin pointer value checking		; Todo: Need to add check if bins are there or not and put this code in adsp too
+  ;--------------------------------------------------------------------------	
+  ; Check for internal->external->internal timer mapping correctness
+  ;Todo: needs to fix in that function
+  ;GOSUB TIMER_CHECK_TIMER_HANDLE_MAPPING &internal_timer_addr 0x0	
+  	
+  var.if (&silent_sanity_check!=0x0)
+   (
+   if (&test_result==0x0)
+	(
+	  GOSUB PRINT_HELPER "Sanity check for the timer failed : result above"
+	)
+  else
+    (
+	  GOSUB PRINT_HELPER "Internal Timer structure seems sane"
+	)
+  GOSUB PRINT_HELPER ""
+   )
+	
+RETURN
+
+;============================================================================
+; External timer Sanity checking Subroutine.
+;============================================================================
+;Todo: Need to consider Paused state timers too whose internal timers will not have list etc
+EXTERNAL_TIMER_SANITY_CHECK:	
+  ENTRY &external_timer_address &silent_int_sanity
+
+  &ex_test_result=0x1
+  &ex_external_timer_str=var.string((timer_client_ptr_type)&external_timer_address)
+  if (&silent_int_sanity!=0x0)
+  GOSUB PRINT_HELPER "--- Sanity test for the external timer : &ex_external_timer_str ---"
+
+  ;--------------------------------------------------------------------------	
+  ; Check if timer_state is a valid value only & also check the internal timer index
+  &ex_timer_state=var.value(((timer_client_ptr_type)&external_timer_address)->timer_state)
+  
+  ; Todo: make these values as macros
+  var.if (&ex_timer_state<0x0FEDCBA9 || &ex_timer_state>0x0FEDCBB0)	
+	(
+	  GOSUB PRINT_HELPER "!! External timer: &ex_external_timer_str - Unknown timer state value"
+	  &ex_test_result=0x0
+	)
+  else
+	(
+	  var.if (&ex_timer_state!=0x0FEDCBAF && &ex_timer_state!=0x0FEDCBAB)
+	    (
+         &ex_tmr_handle=var.value(((timer_client_ptr_type)&external_timer_address)->timer_int_handle)
+		 var.if (&ex_tmr_handle!=-1)
+		  (
+		   &ex_test_result=0x0
+		   GOSUB PRINT_HELPER "!! External timer: &ex_external_timer_str - state is neither SET / RESUMED & the timer_handle is containing some value"
+		  )			
+		)
+	  else
+	   (
+	   	&ex_tmr_handle=var.value(((timer_client_ptr_type)&external_timer_address)->timer_int_handle)
+		&ex_tmr_handle=&ex_tmr_handle-1
+		var.if (&ex_tmr_handle<0x0 || &ex_tmr_handle>&timer_buffer_size)
+		 (
+          &ex_test_result=0x0
+		  GOSUB PRINT_HELPER "!! External timer: &ex_external_timer_str - Internal timer index out of bounds"
+		 )
+	   )
+	)   
+  ;--------------------------------------------------------------------------
+  ; Check the group sanity for the timer
+  &ex_group_var=var.value(((timer_client_ptr_type)&external_timer_address)->info.group_idx)
+  
+  var.if (&ex_group_var<0x0 || &ex_group_var>&timer_groups_size)	
+	(
+	  GOSUB PRINT_HELPER "!! External timer: &ex_external_timer_str - group index out of bounds"
+	  &ex_test_result=0x0
+	)
+
+  ;--------------------------------------------------------------------------	
+  ; Check if internal-external timer mapping is correct
+  ; Todo: need to fix in mapping method for adsp
+  ;GOSUB TIMER_CHECK_TIMER_HANDLE_MAPPING 0x0 &external_timer_address	
+  
+  ;--------------------------------------------------------------------------
+  ; Check the slave task assignment for the timer
+  &ex_slave_task_idx=var.value(((timer_client_ptr_type)&external_timer_address)->info.slave_task_idx)
+  var.if (&ex_slave_task_idx<0x0 || &ex_slave_task_idx>0x2)
+	(
+	  GOSUB PRINT_HELPER "!! External timer: &ex_external_timer_str - slave task assignment incorrect"
+	  &ex_test_result=0x0
+	)	
+
+  ;--------------------------------------------------------------------------
+  ; Check the process index & remote process for the timer
+  &ex_remote_process=var.value(((timer_client_ptr_type)&external_timer_address)->info.remote_process)
+  &ex_process_idx=var.value(((timer_client_ptr_type)&external_timer_address)->info.process_idx)
+  var.if (&ex_remote_process!=0x0 && &ex_remote_process!=0x3)
+	(
+	  GOSUB PRINT_HELPER "!! External timer: &ex_external_timer_str - remote process num incorrect"
+	  &ex_test_result=0x0
+	)
+  var.if (&ex_remote_process==0x0 && &ex_process_idx!=0x0)
+	(
+	  GOSUB PRINT_HELPER "!! External timer: &ex_external_timer_str - remote process is zero albeit process_idx != 0"
+	  &ex_test_result=0x0
+	)
+
+  ;--------------------------------------------------------------------------
+  ; Check the callback type
+  &ex_callback_type=var.value(((timer_client_ptr_type)&external_timer_address)->info.callback_type)
+  
+  ;Todo: It should be 6 right, not 3
+    var.if (&ex_callback_type<0x0 || &ex_callback_type>0x6)	
+	(
+	  GOSUB PRINT_HELPER "!! External timer: &ex_external_timer_str - callback type is incorrect"
+	  &ex_test_result=0x0
+	)		
+
+  ;--------------------------------------------------------------------------
+  ; Check the function type
+  var.if (&ex_callback_type==0x1 || &ex_callback_type==0x2 || &ex_callback_type==0x3 || &ex_callback_type==0x6)
+    (
+       If (&is_mpss_or_adsp==0x0)
+       (
+	  &tcb_addr=var.value(((timer_client_ptr_type)&external_timer_address)->tcb)
+	  &ex_func_name=Y.VARNAME(P:&tcb_addr)
+	  if "&ex_func_name"==""
+	    (
+		  GOSUB PRINT_HELPER "!! External timer: &ex_external_timer_str - tcb address seems to be incorrect &tcb_addr"
+		  &ex_test_result=0x0
+	    )
+	)
+    )
+    
+  ;--------------------------------------------------------------------------
+  ; Check the function type
+  var.if (&ex_callback_type==0x4 || &ex_callback_type==0x5 || &ex_callback_type==0x6)
+    (
+	  &func_addr=var.value(((timer_client_ptr_type)&external_timer_address)->cbfn.func1)
+	  &ex_func_name=Y.FUNCTION(P:&func_addr)
+	  if "&ex_func_name"==""
+	    (
+		  GOSUB PRINT_HELPER "!! External timer: &ex_external_timer_str - cb function address seems to be incorrect"
+		  &ex_test_result=0x0
+	    )
+	)
+	
+  ;--------------------------------------------------------------------------
+  ; Check the expiry type
+  &ex_expiry_type=var.value(((timer_client_ptr_type)&external_timer_address)->info.expiry_type)
+  var.if (&ex_expiry_type<0x0 || &ex_expiry_type>0x1)
+	(
+	  GOSUB PRINT_HELPER "!! External timer: &ex_external_timer_str - Unknown expiry type"
+	  &ex_test_result=0x0
+	)		
+	
+  ;--------------------------------------------------------------------------
+  ; Check the node status
+  &ex_node_state=var.value(((timer_client_ptr_type)&external_timer_address)->info.node_state)
+  
+  ; Todo: Since we expect this to be a active timer, only 0xC should be sufficient.
+  var.if (&ex_node_state!=0x3 && &ex_node_state!=0xC)		
+	(
+	  GOSUB PRINT_HELPER "!! External timer: &ex_external_timer_str - Node status not correct"
+	  &ex_test_result=0x0
+	)
+
+  if (&silent_int_sanity!=0x0)
+  (
+   if (&ex_test_result==0x0)
+ 	(
+	  GOSUB PRINT_HELPER "Sanity check for the external timer failed : result above"
+	)
+   else
+    (
+	  GOSUB PRINT_HELPER "External timer structure seems sane"
+	)
+   GOSUB PRINT_HELPER ""
+  )
+	
+RETURN
+
+;============================================================================
+; Timer List Subroutine.
+;============================================================================
+TIMER_LIST:
+
+  AREA.CREATE TLO
+  WINPOS 60% 30% 40% 70% 0. 0. TLO
+  AREA.VIEW TLO
+  AREA.SELECT TLO
+
+  ; Backup the line counter
+  &temp_bkup_print_line_counter=&print_line_counter
+  &print_line_counter=1
+
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "######################################################################"
+  GOSUB PRINT_HELPER "                A c t i v e   T i m e r   L i s t                     "
+  GOSUB PRINT_HELPER "######################################################################"
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+
+  &iterator=0
+  &last_iterator=0
+  &tmr=v.value(\timer\timers.active.list.first)
+  WHILE &tmr!=0
+  (
+    &jump_duck=0x50
+    &not_in_free_q=v.value(((timer_internal_type*)&tmr)->info.node_state)
+    IF &not_in_free_q==0xC
+    (
+      &timer_index=var.string(((timer_internal_type*)&tmr)->index)
+      &timer_ext=var.string((((timer_internal_type*)&tmr)->timer_ext))
+      &expiry=var.value(((timer_internal_type*)&tmr)->expiry)
+
+      ;Print out list to screen
+      GOSUB PRINT_HELPER "Timer #&iterator  -- Timer Index: &timer_index    Expiry: &expiry    External Timer: &timer_ext"
+    )
+	if (&iterator==&jump_duck)
+	  (
+	    GOSUB PRINT_HELPER ""
+		GOSUB PRINT_HELPER "Press any key to continue displaying the timers list"
+		ENTER &no_use_script_var
+		GOSUB PRINT_HELPER ""
+		&jump_duck=&jump_duck+0x50
+	  )
+    &iterator=&iterator+1
+    &tmr=v.value(((timer_internal_type*)&tmr)->next)
+  )
+
+  AREA.CLOSE TLO
+  
+  WE.AREA.select TIMER  
+  
+  &last_iterator=&iterator
+
+  GOSUB PRINT_HELPER " "
+  GOSUB PRINT_HELPER " "
+
+  GOSUB PRINT_HELPER "Get more info on a timer? Enter 'y' if you would like to."
+
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+
+  ENTER &in_more_info
+
+  IF "&in_more_info"=="y"
+  (
+    GOSUB PRINT_HELPER "Please enter timer number from the list printed out in the side window."
+    GOSUB PRINT_HELPER ""
+    GOSUB PRINT_HELPER ""
+
+    ENTER &in_timer_number
+
+    IF &in_timer_number<&last_iterator
+    (
+      &iterator=0
+      &tmr=v.value(\timer\timers.active.list.first)
+      WHILE &iterator<&in_timer_number
+      (
+        &iterator=&iterator+1
+        &tmr=v.value(((timer_internal_type*)&tmr)->next)
+      )
+    
+      IF &tmr!=0
+      (
+        GOSUB PRINT_TIMER_INFO &tmr &in_timer_number
+      )
+    )
+    ELSE
+    (
+      GOSUB PRINT_HELPER "Invalid timer number entered!"
+      GOSUB PRINT_HELPER ""
+      GOSUB PRINT_HELPER ""
+    )
+
+  )
+
+  ; Restore the line counter
+  &print_line_counter=&temp_bkup_print_line_counter 
+  
+RETURN
+
+;============================================================================
+; Recent Match Value Subroutine.
+;============================================================================
+PRINT_RECENT_MATCH_VALUES:
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "######################################################################"
+  GOSUB PRINT_HELPER "              R e c e n t   M a t c h   V a l u e s                   "
+  GOSUB PRINT_HELPER "######################################################################"
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+
+  var.if (&IS_THERE_record_match_val==&FALSE || &timetick_jump_record_match_val==&TRUE)
+	(
+	GOSUB PRINT_HELPER "Debug Variable : 'record_match_val' might be not available or could be having timetick jumps"
+    GOSUB PRINT_HELPER ""
+    GOSUB PRINT_HELPER ""
+    GOSUB PRINT_HELPER ""
+	RETURN
+	)
+
+    WINPOS 60% 0.0 40% 30% 0. 0. L1Info
+    v.v %OPEN.1 record_match_val
+	
+  &to_print=0x0F
+  
+  if (&to_print>&len_record_match_val)
+   (
+     &to_print=&len_record_match_val
+   )
+  
+  &end_idx=&index_record_match_val-0x1
+  &start_idx=&end_idx-&to_print
+  if (&start_idx<0x0)
+   (
+   &start_idx=&len_record_match_val-&to_print+&end_idx+0x1
+   )
+   
+  &rmv_cnt=0x0
+  &mv_setter_str=""
+
+  AREA.CREATE TLO
+  WINPOS 60% 30% 40% 70% 0. 0. TLO
+  AREA.VIEW TLO
+  AREA.SELECT TLO
+  
+  GOSUB PRINT_HELPER "Last &to_print match value entries from record_match_value"
+  GOSUB PRINT_HELPER ""
+
+  
+  
+  WHILE (&rmv_cnt<0xF)
+  (
+    &mv_setter=var.value(record_match_val[&start_idx].mv_setter)
+    &timer_now_supplied=var.value(record_match_val[&start_idx].timer_now_supplied)
+    &timer_match_value_actual_set=var.string(record_match_val[&start_idx].timer_match_value_actual_set)
+    &timer_address=var.string((timer_type*)record_match_val[&start_idx].timer_address)
+
+    ;TIMER_MVS_TIMER_PROCESSED = 0x1,
+    IF &mv_setter==1
+    (
+      &mv_setter_str="Timer Processed"
+    )
+    ;TIMER_MVS_TIMER_SET,
+    IF &mv_setter==2
+    (
+      &mv_setter_str="Timer Set"
+    )
+    ;TIMER_MVS_DEFER_MATCH_INT,
+    IF &mv_setter==3
+    (
+      &mv_setter_str="Timers Deferred"
+    )
+    ;TIMER_MVS_UNDEFER_MATCH_INT,
+    IF &mv_setter==4
+    (
+      &mv_setter_str="Timers Undeferred"
+    )
+    ;TIMER_MVS_GROUP_DISABLED,
+    IF &mv_setter==5
+    (
+      &mv_setter_str="Timer Group Disabled"
+    )
+    ;TIMER_MVS_GROUP_ENABLED,
+    IF &mv_setter==6
+    (
+      &mv_setter_str="Timer Group Enabled"
+    )
+    ;TIMER_MVS_TIMER_CLEARED,
+    IF &mv_setter==7
+    (
+      &mv_setter_str="Timer Cleared"
+    )
+    ;TIMER_MVS_TIMER_PAUSED,
+    IF &mv_setter==8
+    (
+      &mv_setter_str="Timer Paused"
+    )
+    ;TIMER_MVS_TIMER_RESUMED,
+    IF &mv_setter==9
+    (
+      &mv_setter_str="Timer Resumed"
+    )
+    ;TIMER_MVS_TIMER_CLEAR_TASK_TIMERS,
+    IF &mv_setter==10
+    (
+      &mv_setter_str="Task Timers Cleared"
+    )
+    ;TIMER_MVS_SET_WAKEUP,
+    IF &mv_setter==11
+    (
+      &mv_setter_str="Wakeup Set"
+    )
+
+    ;Print out to screen
+    GOSUB PRINT_HELPER "record_match_val[&start_idx]: ----------------------------------"
+	GOSUB PRINT_HELPER "    MV Set Type: &mv_setter_str"
+    GOSUB PRINT_HELPER "    MV Set Time: &timer_now_supplied"
+    GOSUB PRINT_HELPER "    MV Set: &timer_match_value_actual_set"
+    GOSUB PRINT_HELPER "    Timer: &timer_address"
+    
+    &rmv_cnt=&rmv_cnt+0x1
+	&start_idx=&start_idx+0x1
+	if (&start_idx==&len_record_match_val)
+	  (
+	    &start_idx=0x0
+	  )
+  )
+    GOSUB PRINT_HELPER "----------------------------------------------------------------"
+  AREA.CLOSE TLO
+  
+  
+  WE.AREA.select TIMER
+  
+  GOSUB PRINT_HELPER "Output put into the area window TLO for recent match value entries"
+  GOSUB PRINT_HELPER "Oldest Index for 'record_match_val' = &index_record_match_val"
+  
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+RETURN
+
+
+;============================================================================
+; Timers Expired.
+;============================================================================
+TIMERS_EXPIRED:
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "######################################################################"
+  GOSUB PRINT_HELPER "                    T i m e r s   E x p i r e d                       "
+  GOSUB PRINT_HELPER "######################################################################"
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+  
+  var.if (&IS_THERE_timers_expired==&FALSE || &timetick_jump_timers_expired==&TRUE)
+	(
+    ; Todo: In case of timetick jumps, can we print in index order
+	GOSUB PRINT_HELPER "Debug Variable : 'timers_expired' might be not available or could be having timetick jumps"	
+    GOSUB PRINT_HELPER ""
+    GOSUB PRINT_HELPER ""
+    GOSUB PRINT_HELPER ""
+	RETURN
+	)
+
+  WINPOS 60% 0.0 40% 30% 0. 0. L1Info
+  v.v %OPEN.1 timers_expired
+	
+  &to_print=0x0A
+  &cnt=0x0
+  
+  if (&to_print>&len_timers_expired)
+   (
+     &to_print=&len_timers_expired
+   )
+  
+  &end_idx=&index_timers_expired-0x1
+  &start_idx=&end_idx-&to_print
+  if (&start_idx<0x0)
+   (
+   &start_idx=&len_timers_expired-&to_print+&end_idx+0x1
+   )
+   
+  GOSUB PRINT_HELPER "Last &to_print timers_expired logs"
+  GOSUB PRINT_HELPER ""  
+
+  &sizeof_timers_expired=v.sizeof(timers_expired)/v.sizeof(timers_expired[0])
+  &start_cnt=v.value(timers_expired_cnt)
+  &iterator=1
+
+  &new_out_dir="&output_directory"+"\&FILENAME_PREFIX_STRING"+"_timers_expired.csv"
+
+  IF &output_to_csv==1
+  (
+    OPEN #1 &new_out_dir /Create
+    WRITE #1 "Timer Expired,Expiry Value,Processing Started,Processing Time,Processing Ended,Function Address,Callback Type"
+  )
+
+  AREA.CREATE TLO
+  WINPOS 60% 30% 40% 70% 0. 0. TLO
+  AREA.VIEW TLO
+  AREA.SELECT TLO
+
+  GOSUB PRINT_HELPER "Last &to_print timers_expired logs"
+  GOSUB PRINT_HELPER ""  
+  
+  WHILE &cnt<&to_print
+  (
+    &timer_expired=var.string(timers_expired[&start_idx].timer_expired)
+	if (&is_b_family==&TRUE)
+    &expiry_value=var.value(timers_expired[&start_idx].expiry_value)
+    &processing_started=var.value(timers_expired[&start_idx].processing_started)
+    &processing_time=var.value(timers_expired[&start_idx].processing_time)
+    &processing_end=var.value(timers_expired[&start_idx].processing_started)+&processing_time
+    ;Todo: on MPSS there is no fn_address, need to fix that.
+    if (&is_mpss_or_adsp==0x0)
+       &fn_address=var.string(timers_expired[&start_idx].tcb_sigs_obj)
+    else
+       &fn_address=var.string(timers_expired[&start_idx].fn_address)
+    
+    &call_back_type=var.value(timers_expired[&start_idx].info.callback_type)
+    
+    ;Print out to screen
+    GOSUB PRINT_HELPER "timers_expired[&start_idx] :: --------------------------"
+	GOSUB PRINT_HELPER "        Timer Expired:      &timer_expired"
+	if (&is_b_family==&TRUE)
+	GOSUB PRINT_HELPER "        Expiry Value:       &expiry_value"  
+	GOSUB PRINT_HELPER "        Processing Started: &processing_started"  
+	GOSUB PRINT_HELPER "        Processing Ended:   &processing_end"  
+	GOSUB PRINT_HELPER "        Processing Time:    &processing_time"  
+	if (&is_mpss_or_adsp==0x0)
+       GOSUB PRINT_HELPER "        TCB Address     :   &fn_address"   
+    else
+       GOSUB PRINT_HELPER "        Function Address:   &fn_address"   
+	GOSUB PRINT_HELPER "        Callback Type:      &call_back_type"
+
+    IF &output_to_csv==1
+    (
+      WRITE #1 "&timer_expired,&expiry_value,&processing_started,&processing_time,&processing_end,&fn_address,&call_back_type"
+    )
+
+    &cnt=&cnt+0x1
+	&start_idx=&start_idx+0x1
+	if (&start_idx==&len_timers_expired)
+	 (
+	   &start_idx=0x0
+	 )
+  )
+    GOSUB PRINT_HELPER "----------------------------------------------------------------"
+  AREA.CLOSE TLO
+  
+  WE.AREA.select TIMER
+  
+  GOSUB PRINT_HELPER "Output put into the area window TLO for recent expired timers"
+  GOSUB PRINT_HELPER "Oldest Index for 'timers_expired' = &index_timers_expired"
+  
+  IF &output_to_csv==1
+  (
+    CLOSE #1
+  )
+
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+RETURN
+
+
+;============================================================================
+; Timer Trace.
+;============================================================================
+TIMER_TRACE:
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "######################################################################"
+  GOSUB PRINT_HELPER "                       T i m e r   T r a c e                          "
+  GOSUB PRINT_HELPER "######################################################################"
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+  
+  var.if (&IS_THERE_timer_trace==&FALSE || &timetick_jump_timer_trace==&TRUE)
+	(
+	GOSUB PRINT_HELPER "Debug Variable : 'timer_trace' is either not availale in this build or has timetick jumps"
+    GOSUB PRINT_HELPER ""
+    GOSUB PRINT_HELPER ""
+    GOSUB PRINT_HELPER ""
+	RETURN
+	)  
+  
+  WINPOS 60% 0.0 40% 30% 0. 0. L1Info
+  v.v %OPEN.1 timer_trace.events
+  
+  &to_print=0x20
+  &cnt=0x0
+  
+  if (&to_print>&len_timer_trace)
+   (
+     &to_print=&len_timer_trace
+   )
+  
+  &end_idx=&index_timer_trace-0x1
+  &start_idx=&end_idx-&to_print
+  if (&start_idx<0x0)
+   (
+   &start_idx=&len_timer_trace-&to_print+&end_idx+0x1
+   )
+   
+   
+   
+  
+  AREA.CREATE TLO
+  WINPOS 60% 30% 40% 70% 0. 0. TLO
+  AREA.VIEW TLO
+  AREA.SELECT TLO
+
+  GOSUB PRINT_HELPER "Last &to_print timer_trace logs"
+  GOSUB PRINT_HELPER ""  
+
+  WHILE &cnt<&to_print
+  (
+    &event=var.string(timer_trace.events[&start_idx].event)
+    &timestamp=var.value(timer_trace.events[&start_idx].ts)
+    
+    ;Print out to screen
+    GOSUB PRINT_HELPER "timer_trace[&start_idx]: Timestamp: &timestamp  Event: &event"
+
+    &cnt=&cnt+0x1
+	&start_idx=&start_idx+0x1
+	if &start_idx==&len_timer_trace
+	 (
+	  &start_idx=0x0
+	 )
+  )
+
+    GOSUB PRINT_HELPER "----------------------------------------------------------------"
+  AREA.CLOSE TLO
+  
+
+  
+  WE.AREA.select TIMER
+  
+  GOSUB PRINT_HELPER "Output put into the area window TLO for recent timer trace events"
+  GOSUB PRINT_HELPER "Oldest Index for 'timer_trace' = &index_timer_trace"
+  
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+RETURN
+
+
+;============================================================================
+; Timer Sets.
+;============================================================================
+TIMER_SETS:
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "######################################################################"
+  GOSUB PRINT_HELPER "                        T i m e r   S e t s                           "
+  GOSUB PRINT_HELPER "######################################################################"
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+
+  var.if (&IS_THERE_timer_sets==&FALSE || &timetick_jump_timer_sets==&TRUE)
+	(
+	GOSUB PRINT_HELPER "Debug Variable : 'timer_sets' is either not availale in this build or it has timetick jumps"
+    GOSUB PRINT_HELPER ""
+    GOSUB PRINT_HELPER ""
+    GOSUB PRINT_HELPER ""
+	RETURN
+	)    
+
+	  WINPOS 60% 0.0 40% 30% 0. 0. L1Info
+      v.v %OPEN.1 timer_sets
+	
+  &end_idx=0x0
+  &start_idx=0x0
+  &to_print=0x20
+  &cnt=0x0
+  
+  if (&to_print>&len_timer_sets)
+   (
+     &to_print=&len_timer_sets
+   )
+
+    &end_idx=&index_timer_sets-0x1
+	&start_idx=&end_idx-&to_print
+	if (&start_idx<0x0)
+     ( 
+     &start_idx=&len_timer_sets-&to_print+&end_idx+0x1
+     )
+
+   
+  
+  AREA.CREATE TLO
+  WINPOS 60% 30% 40% 70% 0. 0. TLO
+  AREA.VIEW TLO
+  AREA.SELECT TLO
+
+  GOSUB PRINT_HELPER "Last &to_print timer_sets logs"
+  GOSUB PRINT_HELPER ""  	
+	
+  WHILE &cnt<&to_print
+  (
+    if (&is_b_family==&TRUE)
+    &timer_to_be_set=var.string(timer_sets[&start_idx].timer_to_be_set)
+	else
+    &timer_to_be_set=var.string(timer_sets[&start_idx].timer)
+    &timestamp=var.value(timer_sets[&start_idx].ts)
+    &expiry=var.value(timer_sets[&start_idx].expiry)
+    
+    ;Print out to screen
+    GOSUB PRINT_HELPER "timer_sets[&start_idx]: Timestamp: &timestamp  Expiry: &expiry  Timer: &timer_to_be_set"
+
+    &cnt=&cnt+0x1
+	&start_idx=&start_idx+0x1
+	if (&start_idx==&len_timer_sets)
+	  (
+	    &start_idx=0x0
+	  ) 
+  )
+
+  GOSUB PRINT_HELPER "----------------------------------------------------------------"
+  AREA.CLOSE TLO
+  
+ 
+  WE.AREA.select TIMER
+  
+  GOSUB PRINT_HELPER "Output put into the area window TLO for recent timer sets events"
+  GOSUB PRINT_HELPER "Oldest Index for 'timer_sets' = &index_timer_sets"
+  
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+RETURN
+
+
+;============================================================================
+; Find Wakeup Information.
+;============================================================================
+TIMER_WAKEUP_DURATIONS:
+
+  AREA.CREATE TLO
+  WINPOS 60% 30% 40% 70% 0. 0. TLO
+  AREA.VIEW TLO
+  AREA.SELECT TLO
+
+  &total_prints=0x0
+  &print_limit=0x50
+  
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "######################################################################"
+  GOSUB PRINT_HELPER "            T i m e r   W a k e u p  I n f o r m a t i o n            "
+  GOSUB PRINT_HELPER "######################################################################"
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+
+  var.if (&IS_THERE_timer_expired_debug==&FALSE || &timetick_jump_timer_expired_debug==&TRUE)
+	(
+	GOSUB PRINT_HELPER "Debug Variable : 'timer_expired_debug' is either not availale in this build or it has timetick jumps"
+    GOSUB PRINT_HELPER ""
+    GOSUB PRINT_HELPER ""
+    GOSUB PRINT_HELPER ""
+    AREA.CLOSE TLO
+
+    WE.AREA.select TIMER  	
+	RETURN
+	)   
+  
+  &sizeof_timer_expired_debug=v.sizeof(timer_expired_debug)/v.sizeof(timer_expired_debug[0])
+  &start_cnt=v.value(timer_expired_debug_cnt)
+  &curr_cnt=v.value(timer_expired_debug_cnt)
+  &iterator=1
+  &skip_first_part=0
+  &expiry_cnt=0
+  &wakeup_number=1
+  &outstring=""
+
+  &out_dir_wakeup="&output_directory"+"\&FILENAME_PREFIX_STRING"+"_wakeups.txt"
+  &out_dir_ulog="&output_directory"+"\&FILENAME_PREFIX_STRING"+"_timers.ulog"
+
+  OPEN #2 &out_dir_wakeup /Create
+
+  WRITE #2 ""
+  WRITE #2 ""
+  WRITE #2 "######################################################################"
+  WRITE #2 "            T i m e r   W a k e u p  I n f o r m a t i o n            "
+  WRITE #2 "######################################################################"
+  WRITE #2 ""
+  WRITE #2 ""
+
+  ;Find the first clean timer expiry
+  WHILE (var.value(timer_expired_debug[&curr_cnt].whileloopcnt)>1)&&(&curr_cnt<&sizeof_timer_expired_debug)
+  (
+    &curr_cnt=&curr_cnt+1
+  )
+
+  ;If we exited early
+  IF &curr_cnt==&sizeof_timer_expired_debug
+  (
+    &curr_cnt=0
+    WHILE (var.value(timer_expired_debug[&curr_cnt].whileloopcnt)>1)&&(&curr_cnt<&start_cnt)
+    (
+      &curr_cnt=&curr_cnt+1
+    )
+    &skip_first_part=1
+  )
+
+  &last_cnt=&curr_cnt
+  &first_tmr=&curr_cnt
+  ;Print first half
+  WHILE (&curr_cnt<&sizeof_timer_expired_debug)&&(&skip_first_part==0)
+  (
+    ;Roll Over Case
+    IF var.value(timer_expired_debug[&curr_cnt].whileloopcnt)==1
+    (
+      IF (&last_cnt-&first_tmr)>5
+      (
+        ;Print all timers in between
+        &iterator=0
+        &first_timestamp=v.value(timer_expired_debug[&first_tmr].ts)
+        &last_timestamp=&first_timestamp
+        WHILE &first_tmr<=&last_cnt
+        (
+          &timer_exp_ptr=var.string((timer_type*)timer_expired_debug[&first_tmr].timer_exp_ptr)
+          &timestamp=var.value(timer_expired_debug[&first_tmr].ts)
+          &expiry=var.value(timer_expired_debug[&first_tmr].expiry)
+          &last_timestamp=&timestamp
+          &iterator=&iterator+1
+          &first_tmr=&first_tmr+1
+          &outstring="#&iterator: Timestamp: &timestamp  Expiry: &expiry  Timer: &timer_exp_ptr"
+          GOSUB PRINT_HELPER "&outstring"
+		  &total_prints=&total_prints+0x1
+          WRITE #2 "&outstring"
+		  
+		  if (&total_prints==&print_limit)
+		   (
+		   GOSUB PRINT_HELPER "Press any key to continue..."
+		   Enter &no_use_script_var
+		   &total_prints=0x0
+		   )
+        )
+
+        &duration=&last_timestamp-&first_timestamp
+        &duration_us=(&duration*10)/192
+
+        GOSUB PRINT_HELPER ""
+        GOSUB PRINT_HELPER ""
+        GOSUB PRINT_HELPER "Summary: Number of Timers Expired: &iterator  Total Wakeup Duration: &duration  Total Wakeup Duration in Microseconds: &duration_us"
+        GOSUB PRINT_HELPER ""
+        GOSUB PRINT_HELPER ""
+		&total_prints=&total_prints+0x5
+        if (&total_prints==&print_limit)
+		   (
+		   GOSUB PRINT_HELPER "Press any key to continue..."
+		   Enter &no_use_script_var
+		   &total_prints=0x0
+		   )
+
+        WRITE #2 ""
+        WRITE #2 ""
+        WRITE #2 "Summary: Number of Timers Expired: %decimal &iterator Total Wakeup Duration: %decimal &duration  Total Wakeup Duration in Microseconds: %decimal &duration_us"
+        WRITE #2 ""
+        WRITE #2 ""
+		&total_prints=&total_prints+0x5
+        if (&total_prints==&print_limit)
+		   (
+		   GOSUB PRINT_HELPER "Press any key to continue..."
+		   Enter &no_use_script_var
+		   &total_prints=0x0
+		   )		
+      )
+      &first_tmr=&curr_cnt
+      &last_cnt=&curr_cnt
+    )
+    ELSE
+    (
+      &last_cnt=&curr_cnt
+    )
+    
+    &curr_cnt=&curr_cnt+1
+  )
+
+  &curr_cnt=0
+
+  ;Print second half
+  &last_cnt=&curr_cnt
+  WHILE &curr_cnt<&start_cnt
+  (
+    ;Roll Over Case
+    IF var.value(timer_expired_debug[&curr_cnt].whileloopcnt)==1
+    (
+      &total_first=0
+      &total_last=0
+      ;Wrap around case
+      IF &last_cnt<&first_tmr
+      (
+        &total_first=(&sizeof_timer_expired_debug-&first_tmr)
+        &total_last=&total_first+&last_cnt
+      )
+      ELSE
+      (
+        &total_first=&first_tmr
+        &total_last=&last_cnt
+      )
+      IF ((&total_last-&total_first)>5)
+      (
+        ;Wrap Around Case
+        IF &last_cnt<&first_tmr
+        (
+          ;Print all timers in between
+          &iterator=0
+          &first_timestamp=v.value(timer_expired_debug[&first_tmr].ts)
+          &last_timestamp=0
+          WHILE &first_tmr<&sizeof_timer_expired_debug
+          (
+            &timer_exp_ptr=var.string((timer_type*)timer_expired_debug[&first_tmr].timer_exp_ptr)
+            &timestamp=var.value(timer_expired_debug[&first_tmr].ts)
+            &expiry=var.value(timer_expired_debug[&first_tmr].expiry)
+            &last_timestamp=&timestamp
+            &iterator=&iterator+1
+            &first_tmr=&first_tmr+1
+            &outstring="#&iterator: Timestamp: &timestamp  Expiry: &expiry  Timer: &timer_exp_ptr"
+            GOSUB PRINT_HELPER "&outstring"
+			&total_prints=&total_prints+0x1
+            WRITE #2 "&outstring"
+		    if (&total_prints==&print_limit)
+		     (
+			 GOSUB PRINT_HELPER "Press any key to continue..."
+		     Enter &no_use_script_var
+		     &total_prints=0x0
+		     )			
+          )
+
+          &first_tmr=0
+          WHILE &first_tmr<=&last_cnt
+          (
+            &timer_exp_ptr=var.string((timer_type*)timer_expired_debug[&first_tmr].timer_exp_ptr)
+            &timestamp=var.value(timer_expired_debug[&first_tmr].ts)
+            &expiry=var.value(timer_expired_debug[&first_tmr].expiry)
+            &last_timestamp=&timestamp
+            &iterator=&iterator+1
+            &first_tmr=&first_tmr+1
+            &outstring="#&iterator: Timestamp: &timestamp  Expiry: &expiry  Timer: &timer_exp_ptr"
+            GOSUB PRINT_HELPER "&outstring"
+            WRITE #2 "&outstring"
+          )
+
+          &duration=&last_timestamp-&first_timestamp
+          &duration_us=(&duration*10)/192
+
+          GOSUB PRINT_HELPER ""
+          GOSUB PRINT_HELPER ""
+          GOSUB PRINT_HELPER "Summary: Number of Timers Expired: %decimal &iterator Total Wakeup Duration: %decimal &duration Total Wakeup Duration in Microseconds: %decimal &duration_us"
+          GOSUB PRINT_HELPER ""
+          GOSUB PRINT_HELPER ""
+		&total_prints=&total_prints+0x5
+        if (&total_prints==&print_limit)
+		   (
+		   GOSUB PRINT_HELPER "Press any key to continue..."
+		   Enter &no_use_script_var
+		   &total_prints=0x0
+		   )		  
+
+          WRITE #2 ""
+          WRITE #2 ""
+          WRITE #2 "Summary: Number of Timers Expired: &iterator  Total Wakeup Duration: &duration  Total Wakeup Duration in Microseconds: &duration_us"
+          WRITE #2 ""
+          WRITE #2 ""
+		&total_prints=&total_prints+0x5
+        if (&total_prints==&print_limit)
+		   (
+		   GOSUB PRINT_HELPER "Press any key to continue..."
+		   Enter &no_use_script_var
+		   &total_prints=0x0
+		   )			  
+        )
+        ELSE
+        (
+          ;Print all timers in between
+          &iterator=0
+          &first_timestamp=v.value(timer_expired_debug[&first_tmr].ts)
+          &last_timestamp=0
+          WHILE &first_tmr<=&last_cnt
+          (
+            &timer_exp_ptr=var.string((timer_type*)timer_expired_debug[&first_tmr].timer_exp_ptr)
+            &timestamp=var.value(timer_expired_debug[&first_tmr].ts)
+            &expiry=var.value(timer_expired_debug[&first_tmr].expiry)
+            &last_timestamp=&timestamp
+            &iterator=&iterator+1
+            &first_tmr=&first_tmr+1
+            &outstring="#&iterator: Timestamp: &timestamp  Expiry: &expiry  Timer: &timer_exp_ptr"
+            GOSUB PRINT_HELPER "&outstring"
+		&total_prints=&total_prints+0x1
+        if (&total_prints==&print_limit)
+		   (
+		   GOSUB PRINT_HELPER "Press any key to continue..."
+		   Enter &no_use_script_var
+		   &total_prints=0x0
+		   )				
+			
+            WRITE #2 "&outstring"
+          )
+
+          &duration=&last_timestamp-&first_timestamp
+          &duration_us=(&duration*10)/192
+
+          GOSUB PRINT_HELPER ""
+          GOSUB PRINT_HELPER ""
+          GOSUB PRINT_HELPER "Summary: Number of Timers Expired: %decimal &iterator Total Wakeup Duration: %decimal &duration Total Wakeup Duration in Microseconds: %decimal &duration_us"
+          GOSUB PRINT_HELPER ""
+          GOSUB PRINT_HELPER ""
+		&total_prints=&total_prints+0x5
+        if (&total_prints==&print_limit)
+		   (
+		   GOSUB PRINT_HELPER "Press any key to continue..."
+		   Enter &no_use_script_var
+		   &total_prints=0x0
+		   )			  
+
+          WRITE #2 ""
+          WRITE #2 ""
+          WRITE #2 "Summary: Number of Timers Expired: &iterator  Total Wakeup Duration: &duration  Total Wakeup Duration in Microseconds: &duration_us"
+          WRITE #2 ""
+          WRITE #2 ""
+		&total_prints=&total_prints+0x5
+        if (&total_prints==&print_limit)
+		   (
+		   GOSUB PRINT_HELPER "Press any key to continue..."
+		   Enter &no_use_script_var
+		   &total_prints=0x0
+		   )			  
+        )
+      )
+      &first_tmr=&curr_cnt
+      &last_cnt=&curr_cnt
+    )
+    ELSE
+    (
+      &last_cnt=&curr_cnt
+    )
+    &curr_cnt=&curr_cnt+1
+  )
+
+  CLOSE #2
+  
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "Output dumped to file in the location &out_dir_wakeup"
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+  
+  AREA.CLOSE TLO
+  
+  WE.AREA.select TIMER  
+  
+RETURN
+
+
+
+
+;============================================================================
+; Traverse Timer List Subroutine.
+;============================================================================
+TRAVERSE_TIMER_LIST:
+
+  AREA.CREATE TLO
+  WINPOS 60% 30% 40% 70% 0. 0. TLO
+  AREA.VIEW TLO
+  AREA.SELECT TLO
+
+  ; Backup the line counter
+  &temp_bkup_print_line_counter=&print_line_counter
+  &print_line_counter=1  
+  
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "######################################################################"
+  GOSUB PRINT_HELPER "              T r a v e r s e   T i m e r   L i s t                   "
+  GOSUB PRINT_HELPER "######################################################################"
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+
+  ;Initialize exit parameter as 0
+  &exit_param=0
+  &in_param=0
+  &in_param_found=0
+
+  ;Initialize sequence number
+  &seq_num=1
+  &total_tmrs=0
+
+  ;Initialize timer to use (head)
+  &tmr=v.value(\timer\timers.active.list.first)
+
+  IF &tmr==0
+  (
+    GOSUB PRINT_HELPER "No timers on the timer linked list! Exiting Subroutine..."
+    GOSUB PRINT_HELPER ""
+    GOSUB PRINT_HELPER ""
+    RETURN
+  )
+  
+  ;Todo: Should we check for whether loop is there if not already done.
+  ;If already done, we can add that flag check here
+  
+  ;Find total timers on linked list
+  WHILE &tmr!=0
+  (
+    &total_tmrs=&total_tmrs+1
+    &tmr=v.value(((timer_internal_type*)&tmr)->next)
+  )
+
+  ;Initialize timer to use (head)
+  &tmr=v.value(\timer\timers.active.list.first)
+
+  GOSUB PRINT_HELPER "Starting with head of the timer linked list"
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+
+  ;Print head timer
+  GOSUB PRINT_TIMER_INFO &tmr &seq_num
+
+  ;Loop until we get exit cmd
+  WHILE &exit_param==0
+  (
+
+    GOSUB PRINT_HELPER "Please enter one of the following -- First:f   Next:n   Prev:p   Last:l   Exit:x"
+    GOSUB PRINT_HELPER ""
+    GOSUB PRINT_HELPER ""
+
+    ;Wait for user input
+    ENTER &in_param
+
+    IF "&in_param"=="n"
+    (
+      IF v.value(((timer_internal_type*)&tmr)->next)==0
+      (
+        GOSUB PRINT_HELPER "Cannot move forward in the linked list, already at tail!"
+        GOSUB PRINT_HELPER ""
+        GOSUB PRINT_HELPER ""
+      )
+      ELSE
+      (
+        &seq_num=&seq_num+1
+        &tmr=v.value(((timer_internal_type*)&tmr)->next)
+		GOSUB PRINT_TIMER_INFO &tmr &seq_num
+      )
+	  &in_param_found=1
+    )
+
+    IF "&in_param"=="p"
+    (
+      IF &seq_num==1
+      (
+        GOSUB PRINT_HELPER "Cannot move back in the timer linked list, already at the head!"
+        GOSUB PRINT_HELPER ""
+        GOSUB PRINT_HELPER ""
+      )
+      ELSE
+      (
+        &seq_num=&seq_num-1
+        &tmr=v.value(((timer_internal_type*)&tmr)->prev)
+		GOSUB PRINT_TIMER_INFO &tmr &seq_num
+        
+      )
+	  &in_param_found=1
+    )
+
+    IF "&in_param"=="f"
+    (
+      &seq_num=1
+      &tmr=v.value(\timer\timers.active.list.first)
+      GOSUB PRINT_TIMER_INFO &tmr &seq_num
+      &in_param_found=1
+    )
+
+    IF "&in_param"=="l"
+    (
+      &seq_num=&total_tmrs
+      &tmr=v.value(\timer\timers.active.list.last)
+      GOSUB PRINT_TIMER_INFO &tmr &seq_num
+      &in_param_found=1
+    )
+
+    IF "&in_param"=="x"
+    (
+      GOSUB PRINT_HELPER "Exiting Traverse Subroutine..."
+      GOSUB PRINT_HELPER ""
+      GOSUB PRINT_HELPER ""
+
+	  ; Restore the line counter
+      &print_line_counter=&temp_bkup_print_line_counter  
+  
+      AREA.CLOSE TLO
+      WE.AREA.select TIMER  
+	  
+      RETURN
+    )
+
+    IF &in_param_found==0
+    (
+
+      GOSUB PRINT_HELPER "Invalid Paramter Entered!"
+      GOSUB PRINT_HELPER ""
+      GOSUB PRINT_HELPER ""
+
+    )
+
+    ;Reinitialize value
+    &in_param_found=0
+
+  )
+
+  ;Start with the head of the list
+  ;GOSUB PRINT_TIMER_INFO &tmr 1
+
+  ; Restore the line counter
+  &print_line_counter=&temp_bkup_print_line_counter  
+  
+  AREA.CLOSE TLO
+  
+  WE.AREA.select TIMER     
+
+RETURN
+
+;============================================================================
+; Internal timer - External timer matching Subroutine.
+;============================================================================
+INTERNAL_EXTERNAL_TIMER_MATCH:
+  ENTRY &int_timer_addr &ext_timer_addr &silent_match
+  
+  &int_timer_string_var=var.string((timer_internal_type*)&int_timer_addr)
+  &ext_timer_string_var=var.string((timer_client_ptr_type)&ext_timer_addr)
+
+  if (&silent_match!=0x0)
+  GOSUB PRINT_HELPER "--- Checking Internal Timer vs. External Timer ---"
+  
+  &external_timer_addr=var.value(((timer_internal_type*)&int_timer_addr)->timer_ext)
+  if (&external_timer_addr!=&ext_timer_addr)
+	(
+	  GOSUB PRINT_HELPER "!! Ext timer:(&ext_timer_string_var); Int timer(&int_timer_string_var) mismatch - timer_ext not matching with that in the internal timer buffer"
+	)
+
+  ; Check if internal-external timer mapping is correct
+  ;todo: Need to enable after fixing this function
+  ;GOSUB TIMER_CHECK_TIMER_HANDLE_MAPPING &int_timer_addr &ext_timer_addr	
+	
+  &int_timer_group=var.value(((timer_internal_type*)&int_timer_addr)->info.group_idx)
+  &ext_timer_group=var.value(((timer_client_ptr_type)&ext_timer_addr)->info.group_idx)
+  if (&int_timer_group!=&ext_timer_group)
+	(
+	  GOSUB PRINT_HELPER "!! Ext timer:(&ext_timer_string_var); Int timer(&int_timer_string_var) mismatch - group index mismatch"
+	)
+
+  &int_timer_slave_task=var.value(((timer_internal_type*)&int_timer_addr)->info.slave_task_idx)
+  &ext_timer_slave_task=var.value(((timer_client_ptr_type)&ext_timer_addr)->info.slave_task_idx)
+  if (&int_timer_slave_task!=&ext_timer_slave_task)
+	(
+	  GOSUB PRINT_HELPER "!! Ext timer:(&ext_timer_string_var); Int timer(&int_timer_string_var) mismatch - slave task number mismatch"
+	)
+
+  &int_process_idx=var.value(((timer_internal_type*)&int_timer_addr)->info.process_idx)
+  &ext_process_idx=var.value(((timer_client_ptr_type)&ext_timer_addr)->info.process_idx)
+  if (&int_process_idx!=&ext_process_idx)
+	(
+	  GOSUB PRINT_HELPER "!! Ext timer:(&ext_timer_string_var); Int timer(&int_timer_string_var) mismatch - process index not matching"
+	)	
+	
+  &int_remote_process=var.value(((timer_internal_type*)&int_timer_addr)->info.remote_process)
+  &ext_remote_process=var.value(((timer_client_ptr_type)&ext_timer_addr)->info.remote_process)
+  if (&int_remote_process!=&ext_remote_process)
+	(
+	  GOSUB PRINT_HELPER "!! Ext timer:(&ext_timer_string_var); Int timer(&int_timer_string_var) mismatch - remote process mismatch"
+	)
+
+  &int_node_state=var.value(((timer_internal_type*)&int_timer_addr)->info.node_state)
+  &ext_node_state=var.value(((timer_client_ptr_type)&ext_timer_addr)->info.node_state)
+  if (&int_node_state!=&ext_node_state)
+	(
+	  GOSUB PRINT_HELPER "!! Ext timer:(&ext_timer_string_var); Int timer(&int_timer_string_var) mismatch - node status mismatch"
+	)	
+	
+  if (&silent_match!=0x0)
+  GOSUB PRINT_HELPER "Done checking for internal/external timer mismatch"
+  
+  RETURN
+  
+;============================================================================
+; Get Internal Timer Index Subroutine.
+;============================================================================
+GET_TIMER_INDEX:
+  ENTRY &ext_timer_handle &silent
+
+  &ret_get_timer_index=0xFFFFFFFF
+
+  var.if (&ext_timer_handle==0xDEADDEAD || &ext_timer_handle==0xFFFFFFFF || &ext_timer_handle==0xFFFFFFFFDEADDEAD)
+	(
+		RETURN
+	)
+
+  &ext_timer_handle=0x00000000FFFFFFFF&&ext_timer_handle
+
+  ; values for handle comparision
+  &TIMER_HANDLE_CONST=0x0000FFFF
+  &VERIFY_XOR_HANDLE=0xFF000000
+
+  &XOR_HANDLE=0x0
+  &INT_TIMER_INDEX=0x0
+
+  if (&silent!=1)
+  (
+    GOSUB PRINT_HELPER "External timer_handle = &ext_timer_handle"
+  )
+
+  &XOR_HANDLE=&ext_timer_handle&&VERIFY_XOR_HANDLE
+
+  var.if (&XOR_HANDLE==0xC3000000)
+	(
+	&INT_TIMER_INDEX=&TIMER_HANDLE_CONST&&ext_timer_handle
+	)
+  else
+	(
+	&INT_TIMER_INDEX=&ext_timer_handle-1
+	)
+
+  ; Check if the internal timer index is valid
+  var.if	(&INT_TIMER_INDEX>0xFF || &INT_TIMER_INDEX<0x0)
+	(
+	if (&silent!=1)
+     (
+	  GOSUB PRINT_HELPER ">> Internal Timer index is incorrect = &INT_TIMER_INDEX"
+	  GOSUB PRINT_HELPER ""
+	 )
+
+	; Flag the return to notify that the handle is incorrect
+	&ret_get_timer_index=0xDEADD00D
+	RETURN
+	)
+
+if (&silent!=1)
+  (	
+  GOSUB PRINT_HELPER "Internal Timer index  = &INT_TIMER_INDEX"
+  GOSUB PRINT_HELPER ""
+  )
+&ret_get_timer_index=&INT_TIMER_INDEX
+
+&silent=0x0
+
+
+RETURN
+
+;============================================================================
+; Get Timer Info Subroutine.
+;============================================================================
+GET_TIMER_INFO:
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "######################################################################"
+  GOSUB PRINT_HELPER "                    G e t   T i m e r   I n f o                       "
+  GOSUB PRINT_HELPER "######################################################################"
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+  
+  GOSUB PRINT_HELPER "Please enter the timer handle"
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+
+  ENTER &in_timer_handle
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+
+  GOSUB GET_INDEX_FROM_HANDLE &in_timer_handle
+
+  var.if (&get_IFH_ret_cid==0xFEEDF00D || &get_IFH_ret_timer_idx==0xFEEDF00D)
+  (
+      GOSUB PRINT_HELPER "Timer handle does not appear to correct! Exiting..."
+  )
+  else
+  (
+    &tmr_ext=v.value(&timer_client_chunks[&get_IFH_ret_cid].buffer[&get_IFH_ret_timer_idx])
+
+	GOSUB PRINT_EXT_TIMER_INFO &tmr_ext
+	GOSUB EXTERNAL_TIMER_SANITY_CHECK &tmr_ext 0x1
+	
+	; Output the timer info in a window
+	v.v timer_client_chunks[&get_IFH_ret_cid].buffer[&get_IFH_ret_timer_idx]
+    
+    ; Get the internal timer buffer index
+    &tmr_int_handle=v.value(((timer_client_ptr_type)&tmr_ext)->timer_int_handle)
+	&tmr_int_handle=&tmr_int_handle-1	
+	
+	var.if (&tmr_int_handle>=0x0 && &tmr_int_handle<=&timer_buffer_size )
+		(
+		  &tmr_int=v.value(&timer_buffer_ptr[&tmr_int_handle])
+          GOSUB PRINT_TIMER_INFO &tmr_int 1
+		  GOSUB INTERNAL_TIMER_SANITY_CHECK &tmr_int 0x1
+		  GOSUB INTERNAL_EXTERNAL_TIMER_MATCH &tmr_int &tmr_ext 0x1
+		  v.v timer_buffer_ptr[&tmr_int_handle]
+		)
+  )
+
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+
+
+RETURN
+
+;============================================================================
+; Find My Timer Subroutine.
+;============================================================================
+FIND_TIMER_STRUCTURES_FROM_ADDRESS:
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "######################################################################"
+  GOSUB PRINT_HELPER "                    F i n d   M y   T i m e r                         "
+  GOSUB PRINT_HELPER "######################################################################"
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+  
+  GOSUB PRINT_HELPER "Please enter address of your timer: "
+  ENTER &in_timer_addr
+  GOSUB PRINT_HELPER ""
+
+&timer_counter=0x00
+&num_chunks=0x0A
+&chunk_index=0x00
+
+while (&chunk_index<&num_chunks)
+ (
+ &timer_index=0x0
+ &num_of_buffers=var.value(timer_client_chunks[&chunk_index].num_timers)
+ while (&timer_index<&num_of_buffers)
+   (
+   &tmr_pointer=var.value(timer_client_chunks[&chunk_index].buffer[&timer_index].timer_client_ptr)
+   &tmr_state=var.value(timer_client_chunks[&chunk_index].buffer[&timer_index].timer_state)
+   var.if (&tmr_pointer==&in_timer_addr && &tmr_state!=&timer_default_flag)
+   (
+    GOSUB PRINT_HELPER "Timer found at timer_client_chunks[&chunk_index].buffer[&timer_index]" 
+    &timer_counter=&timer_counter+1
+   )
+   &timer_index=&timer_index+0x1
+   ) 
+ &chunk_index=&chunk_index+0x01
+ )
+
+if (&timer_counter==0)
+(
+   GOSUB PRINT_HELPER ""
+   GOSUB PRINT_HELPER "No timer structure is associated with this timer"
+)
+ 
+if (&timer_counter>1)
+(
+   GOSUB PRINT_HELPER ""
+   GOSUB PRINT_HELPER "Note: This timer is leaking timer buffers.. Has &timer_counter instances while there should be only 1"
+)
+
+RETURN
+
+;============================================================================
+; Print Timer List Helper Function.
+;============================================================================
+PRINT_TIMER_INFO:
+
+  ;Input parameter is the internal timer whose info will be printed
+  ENTRY &internal_timer &sequence_number
+  LOCAL &sigs_obj
+  LOCAL &sigs_val
+
+  ;Print Spacer
+  GOSUB PRINT_HELPER "### Timer #&sequence_number ###"
+
+  ;Print Index
+  &timer_index=var.string(((timer_internal_type*)&internal_timer)->index)
+  GOSUB PRINT_HELPER "Timer Index:              &timer_index"
+  
+  ;Print External Timer
+  &timer_ext=var.string(((timer_internal_type*)&internal_timer)->timer_ext)
+  GOSUB PRINT_HELPER "External Timer:           (timer_client_ptr_type)&timer_ext"
+
+  ;Print Group
+  &group_idx=var.value(((timer_internal_type*)&internal_timer)->info.group_idx)
+  &group_str=var.str(timer_internal_groups[&group_idx])
+  GOSUB PRINT_HELPER "Timer Group:              &group_str"
+
+  ;Print TCB (if available)
+  ;commenting below code as task_id is not present
+;  ON ERROR goto task_id_next
+;  &tcb=var.string(((timer_internal_type*)&internal_timer)->task_id)
+;  GOSUB PRINT_HELPER "Client task_id:           &tcb"
+;task_id_next:
+   ON ERROR        ;remove the assigned handler
+  
+  ;Print the callback type
+  &timer_cb_type=var.value(((timer_internal_type*)&internal_timer)->timer_ext->info.callback_type)
+  GOSUB PRINT_HELPER "Callback Type:            &timer_cb_type"
+  if (&timer_cb_type==0x0)
+	(
+	  GOSUB PRINT_HELPER "No callback notification used for the timer"
+	)
+  else if(&timer_cb_type==0x1 || &timer_cb_type==0x2 || &timer_cb_type==0x3)
+    (
+      if (&is_mpss_or_adsp==0x0)
+      (
+         &sigs_obj=var.string(((timer_internal_type*)&internal_timer)->timer_ext->tcb)
+         &sigs_val=var.value(((timer_internal_type*)&internal_timer)->timer_ext->sigs)
+      )
+      else
+      (
+         &sigs_obj=var.string(((timer_internal_type*)&internal_timer)->timer_ext->cbfn.sigs_obj)
+         &sigs_val=var.value(((timer_internal_type*)&internal_timer)->timer_ext->cbdt.sigs)
+      )
+      
+      if &sigs_val>0
+      (
+        GOSUB PRINT_HELPER "Signal object1:            &sigs_obj ;"
+		GOSUB PRINT_HELPER "Signal Mask  :            &sigs_val"
+      )
+	)
+  else if (&timer_cb_type==0x4)
+    (
+	  &func1=var.string(((timer_internal_type*)&internal_timer)->timer_ext->cbfn.func1)
+      if (&is_mpss_or_adsp==0x0)
+         &cb_data=var.value(((timer_internal_type*)&internal_timer)->timer_ext->data)
+      else
+	     &cb_data=var.value(((timer_internal_type*)&internal_timer)->timer_ext->cbdt.data)
+      GOSUB PRINT_HELPER "Callback Type 1 Function: &func1 ; Data : &cb_data"
+	)  
+  else if (&timer_cb_type==0x5)		
+    (
+      ; Todo: Need to write details about new callback types
+	  &func1=var.string(((timer_internal_type*)&internal_timer)->timer_ext->cbfn.func1)
+      if (&is_mpss_or_adsp==0x0)
+	     &cb_data=var.value(((timer_internal_type*)&internal_timer)->timer_ext->data)
+      else
+         &cb_data=var.value(((timer_internal_type*)&internal_timer)->timer_ext->cbdt.data)
+      GOSUB PRINT_HELPER "Callback Type 2 Function: &func2 ; Data : &cb_data"
+	)
+  else
+    (
+	  GOSUB PRINT_HELPER "Invalid/Unknown callback type &timer_cb_type (ignore this line if less than 6)"
+	)
+
+  ; Print the timer list this timer is assigned to
+  &tmr_list_allocated=var.string(((timer_internal_type*)&internal_timer)->list)  
+  GOSUB PRINT_HELPER "Timer List assigned:      &tmr_list_allocated"
+  
+  ; Print the slave task assigned to this timer
+  &tmr_slave_task=var.value(((timer_internal_type*)&internal_timer)->info.slave_task_idx)  
+  GOSUB PRINT_HELPER "Slave Task Assigned:      &tmr_slave_task"
+  
+  ;Print Start Timetick
+  &start=var.string(((timer_internal_type*)&internal_timer)->start)
+  GOSUB PRINT_HELPER "Start Timetick:           &start"
+
+  ;Print Expiry Timetick
+  &expiry=var.string(((timer_internal_type*)&internal_timer)->expiry)
+  GOSUB PRINT_HELPER "Expiry Timetick:          &expiry"
+
+  ;Print State
+  &timer_state=var.string(((timer_internal_type*)&internal_timer)->timer_ext->timer_state)
+  GOSUB PRINT_HELPER "Timer State:              &timer_state"
+
+  ;Print Spacer
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+
+RETURN
+
+
+;============================================================================
+; Print External Timer Helper Function.
+;============================================================================
+PRINT_EXT_TIMER_INFO:
+
+  ;Input parameter is the internal timer whose info will be printed
+  ENTRY &external_timer
+  LOCAL &sigs_obj
+  LOCAL &sigs_val
+
+  ;Print Timer Name & Address
+  &name=var.string(((timer_client_ptr_type)&external_timer)->timer_client_ptr)
+    GOSUB PRINT_HELPER "Client Timer :            &name"
+    
+  ;Print Timer Name & Address
+  &name=var.string((timer_client_ptr_type)&external_timer)
+    GOSUB PRINT_HELPER "Timer :                   &name"
+
+  ;Print State
+  &timer_state=var.string(((timer_client_ptr_type)&external_timer)->timer_state)
+    GOSUB PRINT_HELPER "Timer State:              &timer_state"
+	
+  &timer_state_ts=var.value(((timer_client_ptr_type)&external_timer)->timer_state_at)
+    GOSUB PRINT_HELPER "Timer State at:           &timer_state_ts"	
+
+  &timer_buff_idx=var.value(((timer_client_ptr_type)&external_timer)->timer_int_handle)
+    GOSUB PRINT_HELPER "Timer Int buff idx:       &timer_buff_idx"
+	
+  ;Print Timer Callback information to Set
+  &timer_cb_type=var.value(((timer_client_ptr_type)&external_timer)->info.callback_type)
+  GOSUB PRINT_HELPER "Callback Type:            &timer_cb_type"
+  if (&timer_cb_type==0x0)
+	(
+	  GOSUB PRINT_HELPER "No callback notification used for the timer"
+	)
+    else if(&timer_cb_type==0x1 || &timer_cb_type==0x2 || &timer_cb_type==0x3)
+    (
+      if (&is_mpss_or_adsp==0x0)
+      (
+         &sigs_obj=var.string(((timer_client_ptr_type)&external_timer)->tcb)
+         &sigs_val=var.value(((timer_client_ptr_type)&external_timer)->sigs)
+      )
+      else
+      (
+         &sigs_obj=var.string(((timer_client_ptr_type)&external_timer)->cbfn.sigs_obj)
+         &sigs_val=var.value(((timer_client_ptr_type)&external_timer)->cbdt.sigs)
+      )
+      IF &sigs_val>0
+      (
+        GOSUB PRINT_HELPER "Signal object:            &sigs_obj ;"
+		GOSUB PRINT_HELPER "Signal Mask  :            &sigs_val"
+      )
+	)
+  else if (&timer_cb_type==0x4)
+    (
+	  &func1=var.string(((timer_client_ptr_type)&external_timer)->cbfn.func1)
+      if (&is_mpss_or_adsp==0x0)
+         &cb_data=var.value(((timer_client_ptr_type)&external_timer)->data)
+      else
+	     &cb_data=var.value(((timer_client_ptr_type)&external_timer)->cbdt.data)
+      GOSUB PRINT_HELPER "Callback Type 1 Function: &func1 ; Data : &cb_data"
+	)      
+  else if (&timer_cb_type==0x5)		
+    (
+      ; Todo: Need to write details about new callback types
+	  &func1=var.string(((timer_client_ptr_type)&external_timer)->cbfn.func1)
+      if (&is_mpss_or_adsp==0x0)
+	     &cb_data=var.value(((timer_client_ptr_type)&external_timer)->data)
+      else
+         &cb_data=var.value(((timer_client_ptr_type)&external_timer)->cbdt.data)
+      GOSUB PRINT_HELPER "Callback Type 2 Function: &func2 ; Data : &cb_data"
+	)
+  else
+    (
+      ;Todo: Actually need to write for 6th callback type.. That is different in mpss, adsp
+	  GOSUB PRINT_HELPER "Invalid/Unknown callback type &timer_cb_type (ignore this line if less than 6)"
+	)
+
+  ;Print Group Info
+  &group_idx=var.value(((timer_client_ptr_type)&external_timer)->info.group_idx)
+  &group_str=var.str(timer_internal_groups[&group_idx])
+  GOSUB PRINT_HELPER "Timer Group:              &group_str"	
+	
+  ;Print Timer Slave Task Assigned
+  &slave_assigned=var.value(((timer_client_ptr_type)&external_timer)->info.slave_task_idx)
+    GOSUB PRINT_HELPER "Slave Task Assigned:      &slave_assigned"
+
+  ;Print Process Index
+  &process_idx=var.value(((timer_client_ptr_type)&external_timer)->info.process_idx)
+    GOSUB PRINT_HELPER "Process Index:            &process_idx"
+
+  ;Print Remote process information
+  &remote_process=var.value(((timer_client_ptr_type)&external_timer)->info.remote_process)
+    GOSUB PRINT_HELPER "Remote Process:           &remote_process"
+	
+  ;Print Expiry type information
+  &expiry_type=var.value(((timer_client_ptr_type)&external_timer)->info.expiry_type)
+    if (&expiry_type==0x0)
+	    GOSUB PRINT_HELPER "Expiry Type:              TIMER_ABSOLUTE_EXPIRY"
+	else if (&expiry_type==0x1)
+	    GOSUB PRINT_HELPER "Expiry Type:              TIMER_RELATIVE_EXPIRY"
+	else
+	    GOSUB PRINT_HELPER "Unknown Expiry type: &expiry_type"
+	
+  ;Print Timer Slave Task Assigned
+  &node_state=var.value(((timer_client_ptr_type)&external_timer)->info.node_state)
+  if (&node_state==0x03)
+    GOSUB PRINT_HELPER "Node Status:              NODE_IS_FREE"	
+  else if (&node_state==0x0C)
+	GOSUB PRINT_HELPER "Node Status:              NODE_IS_NOT_FREE"
+  else
+    GOSUB PRINT_HELPER "Unknown Node Status:  &node_state"
+
+	;Print Spacer
+    GOSUB PRINT_HELPER ""
+
+RETURN
+
+
+;============================================================================
+; Search for Non-deferrable Timers.
+;============================================================================
+TIMER_FIND_NON_DEFERRABLE_TIMERS:
+
+  AREA.CREATE TLO
+  WINPOS 60% 30% 40% 70% 0. 0. TLO
+  AREA.VIEW TLO
+  AREA.SELECT TLO
+
+  &ret=0x0
+
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "######################################################################"
+  GOSUB PRINT_HELPER "         F i n d   N o n - D e f e r r a b l e   T i m e r s          "
+  GOSUB PRINT_HELPER "######################################################################"
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+  ;Todo: For these kind of timers, better to have a debug variable or entry for group, since group will be permanent, atleast expected :)
+  
+  ;Todo: better to check for this variable existence
+  &sizeof_timers_expired=v.sizeof(timers_expired)/v.sizeof(timers_expired[0])	
+  &sizeof_timers_expired_slave1=0
+  &sizeof_timers_expired_slave2=0
+  &sizeof_timers_expired_slave3=0
+  &ret=y.type(timers_expired_slave1)
+  IF (&ret==0x3)
+  (
+    &sizeof_timers_expired_slave1=v.sizeof(timers_expired_slave1)/v.sizeof(timers_expired_slave1[0])
+  )
+  &ret=y.type(timers_expired_slave2)
+  IF (&ret==0x3)
+  (
+    &sizeof_timers_expired_slave2=v.sizeof(timers_expired_slave2)/v.sizeof(timers_expired_slave2[0])
+  )
+  &ret=y.type(timers_expired_slave3)
+  IF (&ret==0x3)
+  (
+    &sizeof_timers_expired_slave3=v.sizeof(timers_expired_slave3)/v.sizeof(timers_expired_slave3[0])
+  )
+  &start_cnt=v.value(timers_expired_cnt)
+  &curr_cnt=v.value(timers_expired_cnt)
+  &iterator=1
+
+  &out_dir_ulog="&output_directory"+"\&FILENAME_PREFIX_STRING"+"_timers.ulog"
+
+  OPEN #3 &out_dir_ulog /Create
+
+  GOSUB PRINT_HELPER "======================================================"
+  GOSUB PRINT_HELPER " Checking Expired Non-deferrable Timers On Timer Task "
+  GOSUB PRINT_HELPER "======================================================"
+  GOSUB PRINT_HELPER ""
+
+  ;Print first half
+  WHILE &curr_cnt<&sizeof_timers_expired
+  (
+    &timer_expired=var.string(timers_expired[&curr_cnt].timer_expired)
+    &timer_expired_val=var.value(timers_expired[&curr_cnt].timer_expired)
+    &group_idx=var.value((timers_expired[&curr_cnt].info.group_idx))
+    &deferrable=var.value((*(timer_internal_groups[&group_idx])).deferrable)
+	&group_str=var.string((*(timer_internal_groups[&group_idx])).ext_self)
+    &expiry_value=var.value(timers_expired[&curr_cnt].expiry_value)
+    &processing_started=var.value(timers_expired[&curr_cnt].processing_started)
+    
+    ;Print out to screen
+    IF (&deferrable==0)&&(&timer_expired_val!=0)
+    (
+      &outstring_ulog="&processing_started: Non-deferrable timer expiry.  Expiry Value: &expiry_value  Timer Expired: &timer_expired  Group: &group_str"
+      GOSUB PRINT_HELPER "&iterator: Expiry Value: &expiry_value  Processing Started: &processing_started  Timer Expired: &timer_expired  Group: &group_str"
+      WRITE #3 "&outstring_ulog"
+      &iterator=&iterator+1
+    )
+    &curr_cnt=&curr_cnt+1
+  )
+
+  &curr_cnt=0
+  ;Print second half
+  WHILE &curr_cnt<&start_cnt
+  (
+    &timer_expired=var.string(timers_expired[&curr_cnt].timer_expired)
+    &timer_expired_val=var.value(timers_expired[&curr_cnt].timer_expired)
+    &group_idx=var.value((timers_expired[&curr_cnt].info.group_idx))
+    &deferrable=var.value((*(timer_internal_groups[&group_idx])).deferrable)
+	&group_str=var.string((*(timer_internal_groups[&group_idx])).ext_self)
+    &expiry_value=var.value(timers_expired[&curr_cnt].expiry_value)
+    &processing_started=var.value(timers_expired[&curr_cnt].processing_started)
+    
+    ;Print out to screen
+    IF (&deferrable==0)&&(&timer_expired_val!=0)
+    (
+      &outstring_ulog="&processing_started: Non-deferrable timer expiry.  Expiry Value: &expiry_value  Timer Expired: &timer_expired  Group: &group_str"
+      GOSUB PRINT_HELPER "&iterator: Expiry Value: &expiry_value  Processing Started: &processing_started  Timer Expired: &timer_expired  Group: &group_str"
+      WRITE #3 "&outstring_ulog"
+      &iterator=&iterator+1
+    )
+    &curr_cnt=&curr_cnt+1
+  )
+
+
+  &ret=y.type(timers_expired_slave1)
+  IF (&ret==0x3)
+  (
+    GOSUB PRINT_HELPER "======================================================="
+    GOSUB PRINT_HELPER " Checking Expired Non-deferrable Timers On Slave1 Task "
+    GOSUB PRINT_HELPER "======================================================="
+    GOSUB PRINT_HELPER ""
+	
+	&timer_handle=0x0
+	
+	;Imp. Todo: There is no info structure in slave task expired variable.. Need to get that in the code..
+	; temporarily getting from the handle in timer but this can be stale by the time we are seeing.. Saving info will be best option
+	
+    &start_cnt=v.value(timers_expired_cnt_slave1)
+    &curr_cnt=v.value(timers_expired_cnt_slave1)
+    ;Print first half
+    WHILE &curr_cnt<&sizeof_timers_expired_slave1
+    (
+      &timer_expired=var.string(timers_expired_slave1[&curr_cnt].timer_expired)
+      &timer_expired_val=var.value(timers_expired_slave1[&curr_cnt].timer_expired)
+      IF (&timer_expired_val!=0x0)
+      (
+	  if (&timer_handle_as_structure==&TRUE)
+	  (
+	  &timer_handle=var.value((*(timer_type*)&timer_expired_val)->timer_handle)
+	  )
+	  else
+	  (
+	  &timer_handle=var.value((*(uint32*)&timer_expired_val))
+	  )
+      GOSUB GET_INDEX_FROM_HANDLE &timer_handle
+	  ;Check only if handle is correct
+	  var.if (&get_IFH_ret_cid!=0xFEEDF00D && &get_IFH_ret_timer_idx!=0xFEEDF00D)
+	  (
+		  &group_idx=var.value((timer_client_chunks[&get_IFH_ret_cid].buffer[&get_IFH_ret_timer_idx].info.group_idx))
+		  &deferrable=var.value((*(timer_internal_groups[&group_idx])).deferrable)
+		  &group_str=var.string((*(timer_internal_groups[&group_idx])).ext_self)
+		  
+		  &processing_started=var.value(timers_expired_slave1[&curr_cnt].processing_started)
+	  
+		  ;Print out to screen
+		  IF (&deferrable==0)&&(&timer_expired_val!=0)
+		  (
+			&outstring_ulog="&processing_started: Non-deferrable timer expiry.  Expiry Value: &expiry_value  Timer Expired: &timer_expired  Group: &group_str"
+			WRITE #3 "&outstring_ulog"
+			GOSUB PRINT_HELPER "&iterator: Processing Started: &processing_started  Timer Expired: &timer_expired  Group: &group_str"
+			&iterator=&iterator+1
+		  )
+	  )
+      )
+      &curr_cnt=&curr_cnt+1
+    )
+
+    &curr_cnt=0
+    ;Print second half
+    WHILE &curr_cnt<&start_cnt
+    (
+      &timer_expired=var.string(timers_expired_slave1[&curr_cnt].timer_expired)
+      &timer_expired_val=var.value(timers_expired_slave1[&curr_cnt].timer_expired)
+      IF (&timer_expired_val!=0x0)
+      (
+	  if (&timer_handle_as_structure==&TRUE)
+	  (
+	  &timer_handle=var.value((*(timer_type*)&timer_expired_val)->timer_handle)
+	  )
+	  else
+	  (
+	  &timer_handle=var.value((*(uint32*)&timer_expired_val))
+	  )
+      GOSUB GET_INDEX_FROM_HANDLE &timer_handle
+	  ;Check only if handle is correct
+	  var.if (&get_IFH_ret_cid!=0xFEEDF00D && &get_IFH_ret_timer_idx!=0xFEEDF00D)
+	  (
+		  &group_idx=var.value((timer_client_chunks[&get_IFH_ret_cid].buffer[&get_IFH_ret_timer_idx].info.group_idx))
+		  &deferrable=var.value((*(timer_internal_groups[&group_idx])).deferrable)
+		  &group_str=var.string((*(timer_internal_groups[&group_idx])).ext_self)
+		  
+		  &processing_started=var.value(timers_expired_slave1[&curr_cnt].processing_started)
+	  
+		  ;Print out to screen
+		  IF (&deferrable==0)&&(&timer_expired_val!=0)
+		  (
+			&outstring_ulog="&processing_started: Non-deferrable timer expiry.  Expiry Value: &expiry_value  Timer Expired: &timer_expired  Group: &group_str"
+			WRITE #3 "&outstring_ulog"
+			GOSUB PRINT_HELPER "&iterator: Processing Started: &processing_started  Timer Expired: &timer_expired  Group: &group_str"
+			&iterator=&iterator+1
+		  )
+	  )
+      )
+      &curr_cnt=&curr_cnt+1
+    )
+  )
+
+  &ret=y.type(timers_expired_slave2)
+  IF (&ret==0x3)
+  (
+    GOSUB PRINT_HELPER "======================================================="
+    GOSUB PRINT_HELPER " Checking Expired Non-deferrable Timers On Slave2 Task "
+    GOSUB PRINT_HELPER "======================================================="
+    GOSUB PRINT_HELPER ""
+
+	;Imp. Todo: There is no info structure in slave task expired variable.. Need to get that in the code..
+	; temporarily getting from the handle in timer but this can be stale by the time we are seeing.. Saving info will be best option
+	
+    &start_cnt=v.value(timers_expired_cnt_slave2)
+    &curr_cnt=v.value(timers_expired_cnt_slave2)
+    ;Print first half
+    WHILE &curr_cnt<&sizeof_timers_expired_slave2
+    (
+	  &timer_handle=0x0
+      &timer_expired=var.string(timers_expired_slave2[&curr_cnt].timer_expired)
+      &timer_expired_val=var.value(timers_expired_slave2[&curr_cnt].timer_expired)
+      IF (&timer_expired_val!=0x0)
+      (
+	  if (&timer_handle_as_structure==&TRUE)
+	  (
+	  &timer_handle=var.value((*(timer_type*)&timer_expired_val)->timer_handle)
+	  )
+	  else
+	  (
+	  &timer_handle=var.value((*(uint32*)&timer_expired_val))
+	  )
+      GOSUB GET_INDEX_FROM_HANDLE &timer_handle
+	  ;Check only if handle is correct
+	  var.if (&get_IFH_ret_cid!=0xFEEDF00D && &get_IFH_ret_timer_idx!=0xFEEDF00D)
+	  (
+		  &group_idx=var.value((timer_client_chunks[&get_IFH_ret_cid].buffer[&get_IFH_ret_timer_idx].info.group_idx))
+		  &deferrable=var.value((*(timer_internal_groups[&group_idx])).deferrable)
+		  &group_str=var.string((*(timer_internal_groups[&group_idx])).ext_self)
+		  
+		  &processing_started=var.value(timers_expired_slave2[&curr_cnt].processing_started)
+	  
+		  ;Print out to screen
+		  IF (&deferrable==0)&&(&timer_expired_val!=0)
+		  (
+			&outstring_ulog="&processing_started: Non-deferrable timer expiry.  Expiry Value: &expiry_value  Timer Expired: &timer_expired  Group: &group_str"
+			WRITE #3 "&outstring_ulog"
+			GOSUB PRINT_HELPER "&iterator: Processing Started: &processing_started  Timer Expired: &timer_expired  Group: &group_str"
+			&iterator=&iterator+1
+		  )
+	  )
+	  )
+	  &curr_cnt=&curr_cnt+1
+    )
+
+    &curr_cnt=0
+    ;Print second half
+    WHILE &curr_cnt<&start_cnt
+    (
+	  &timer_handle=0x0
+      &timer_expired=var.string(timers_expired_slave2[&curr_cnt].timer_expired)
+      &timer_expired_val=var.value(timers_expired_slave2[&curr_cnt].timer_expired)
+      IF (&timer_expired_val!=0x0)
+      (
+	  if (&timer_handle_as_structure==&TRUE)
+	  (
+	  &timer_handle=var.value((*(timer_type*)&timer_expired_val)->timer_handle)
+	  )
+	  else
+	  (
+	  &timer_handle=var.value((*(uint32*)&timer_expired_val))
+	  )
+      GOSUB GET_INDEX_FROM_HANDLE &timer_handle
+	  ;Check only if handle is correct
+	  var.if (&get_IFH_ret_cid!=0xFEEDF00D && &get_IFH_ret_timer_idx!=0xFEEDF00D)
+	  (
+		  &group_idx=var.value((timer_client_chunks[&get_IFH_ret_cid].buffer[&get_IFH_ret_timer_idx].info.group_idx))
+		  &deferrable=var.value((*(timer_internal_groups[&group_idx])).deferrable)
+		  &group_str=var.string((*(timer_internal_groups[&group_idx])).ext_self)
+		  
+		  &processing_started=var.value(timers_expired_slave2[&curr_cnt].processing_started)
+	  
+		  ;Print out to screen
+		  IF (&deferrable==0)&&(&timer_expired_val!=0)
+		  (
+			&outstring_ulog="&processing_started: Non-deferrable timer expiry.  Expiry Value: &expiry_value  Timer Expired: &timer_expired  Group: &group_str"
+			WRITE #3 "&outstring_ulog"
+			GOSUB PRINT_HELPER "&iterator: Processing Started: &processing_started  Timer Expired: &timer_expired  Group: &group_str"
+			&iterator=&iterator+1
+		  )
+	  )
+      )
+      &curr_cnt=&curr_cnt+1
+    )
+  )
+
+  &ret=y.type(timers_expired_slave3)
+  IF (&ret==0x3)  
+  (
+    GOSUB PRINT_HELPER "======================================================="
+    GOSUB PRINT_HELPER " Checking Expired Non-deferrable Timers On Slave3 Task "
+    GOSUB PRINT_HELPER "======================================================="
+    GOSUB PRINT_HELPER ""
+
+	;Imp. Todo: There is no info structure in slave task expired variable.. Need to get that in the code..
+	; temporarily getting from the handle in timer but this can be stale by the time we are seeing.. Saving info will be best option
+	
+    &start_cnt=v.value(timers_expired_cnt_slave3)
+    &curr_cnt=v.value(timers_expired_cnt_slave3)
+    ;Print first half
+    WHILE &curr_cnt<&sizeof_timers_expired_slave3
+    (
+	  &timer_handle=0x0
+      &timer_expired=var.string(timers_expired_slave3[&curr_cnt].timer_expired)
+      &timer_expired_val=var.value(timers_expired_slave3[&curr_cnt].timer_expired)
+      IF (&timer_expired_val!=0x0)
+      (
+	  ;Todo: Temporarily using handle from timer address in timers_expired_slave structure. 
+	  ;But need to save info structure as the handle can be stale in the dump by the time we look
+	  if (&timer_handle_as_structure==&TRUE)
+	  (
+	  &timer_handle=var.value((*(timer_type*)&timer_expired_val)->timer_handle)
+	  )
+	  else
+	  (
+	  &timer_handle=var.value((*(uint32*)&timer_expired_val))
+	  )
+      GOSUB GET_INDEX_FROM_HANDLE &timer_handle
+	  ;Check only if handle is correct
+	  var.if (&get_IFH_ret_cid!=0xFEEDF00D && &get_IFH_ret_timer_idx!=0xFEEDF00D)
+	  (
+		  &group_idx=var.value((timer_client_chunks[&get_IFH_ret_cid].buffer[&get_IFH_ret_timer_idx].info.group_idx))
+		  &deferrable=var.value((*(timer_internal_groups[&group_idx])).deferrable)
+		  &group_str=var.string((*(timer_internal_groups[&group_idx])).ext_self)
+		  
+		  &processing_started=var.value(timers_expired_slave3[&curr_cnt].processing_started)
+	  
+		  ;Print out to screen
+		  IF (&deferrable==0)&&(&timer_expired_val!=0)
+		  (
+			&outstring_ulog="&processing_started: Non-deferrable timer expiry.  Expiry Value: &expiry_value  Timer Expired: &timer_expired  Group: &group_str"
+			WRITE #3 "&outstring_ulog"
+			GOSUB PRINT_HELPER "&iterator: Processing Started: &processing_started  Timer Expired: &timer_expired  Group: &group_str"
+			&iterator=&iterator+1
+	          )
+	  )
+	  )
+      &curr_cnt=&curr_cnt+1
+    )
+
+    &curr_cnt=0
+    ;Print second half
+    WHILE &curr_cnt<&start_cnt
+    (
+	  &timer_handle=0x0	  
+      &timer_expired=var.string(timers_expired_slave3[&curr_cnt].timer_expired)
+      &timer_expired_val=var.value(timers_expired_slave3[&curr_cnt].timer_expired)
+      IF (&timer_expired_val!=0x0)
+      (
+	  ;Todo: Temporarily using handle from timer address in timers_expired_slave structure. 
+	  ;But need to save info structure as the handle can be stale in the dump by the time we look
+	  if (&timer_handle_as_structure==&TRUE)
+	  (
+	  &timer_handle=var.value((*(timer_type*)&timer_expired_val)->timer_handle)
+	  )
+	  else
+	  (
+	  &timer_handle=var.value((*(uint32*)&timer_expired_val))
+	  )
+      GOSUB GET_INDEX_FROM_HANDLE &timer_handle
+	  ;Check only if handle is correct
+	  var.if (&get_IFH_ret_cid!=0xFEEDF00D && &get_IFH_ret_timer_idx!=0xFEEDF00D)
+	  (
+		  &group_idx=var.value((timer_client_chunks[&get_IFH_ret_cid].buffer[&get_IFH_ret_timer_idx].info.group_idx))
+		  &deferrable=var.value((*(timer_internal_groups[&group_idx])).deferrable)
+		  &group_str=var.string((*(timer_internal_groups[&group_idx])).ext_self)
+		  
+		  &processing_started=var.value(timers_expired_slave3[&curr_cnt].processing_started)
+	  
+		  ;Print out to screen
+		  IF (&deferrable==0)&&(&timer_expired_val!=0)
+		  (
+			&outstring_ulog="&processing_started: Non-deferrable timer expiry.  Expiry Value: &expiry_value  Timer Expired: &timer_expired  Group: &group_str"
+			WRITE #3 "&outstring_ulog"
+			GOSUB PRINT_HELPER "&iterator: Processing Started: &processing_started  Timer Expired: &timer_expired  Group: &group_str"
+			&iterator=&iterator+1
+		  )
+	  )
+      )
+      &curr_cnt=&curr_cnt+1
+    )
+  )
+
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "==========================================="
+  GOSUB PRINT_HELPER " Checking for Active Non-deferrable Timers "
+  GOSUB PRINT_HELPER "==========================================="
+  GOSUB PRINT_HELPER ""
+
+  &tmr=v.value(\timer\timers.active.list.first)
+  &iterator=1
+
+  WHILE &tmr!=0
+  (
+    &group_idex=v.value(((timer_internal_type*)&tmr)->info.group_idx)
+	&deferrable=v.value((*(timer_internal_groups[&group_idex])).deferrable)
+
+    IF &deferrable==0
+    (
+      GOSUB PRINT_HELPER "Deferrable Timer #&iterator in linked list:"
+      GOSUB PRINT_TIMER_INFO &tmr &iterator
+      &iterator=&iterator+1
+    )
+
+    &tmr=v.value(((timer_internal_type*)&tmr)->next)
+  )
+
+  &ret=y.type(timer_expired_debug)
+  IF (&ret==0x3)
+  (
+  GOSUB PRINT_HELPER "==============================================================="
+  GOSUB PRINT_HELPER " Checking Expired Non-deferrable Timers On Timer expired Debug "
+  GOSUB PRINT_HELPER "==============================================================="
+  GOSUB PRINT_HELPER ""
+
+  &curr_cnt=v.value(timer_expired_debug_cnt)
+  &sizeof_timer_expired_debug=v.sizeof(timer_expired_debug)/v.sizeof(timer_expired_debug[0])
+  
+  &start_cnt=0
+  &timer_handle=0
+  &timer_expired=0
+  &timer_expired_val=0
+  
+  WHILE &start_cnt<&sizeof_timer_expired_debug
+   (
+
+      &timer_expired=var.string(timer_expired_debug[&start_cnt].ext_timer)
+      &timer_expired_val=var.value(timer_expired_debug[&start_cnt].ext_timer)
+      IF (&timer_expired_val!=0x0)
+      (
+	  if (&timer_handle_as_structure==&TRUE)
+	  (
+	  &timer_handle=var.value((*(timer_type*)&timer_expired_val)->timer_handle)
+	  )
+	  else
+	  (
+	  &timer_handle=var.value((*(uint32*)&timer_expired_val))
+	  )
+      GOSUB GET_INDEX_FROM_HANDLE &timer_handle
+	  ;Check only if handle is correct
+	  var.if (&get_IFH_ret_cid!=0xFEEDF00D && &get_IFH_ret_timer_idx!=0xFEEDF00D)
+	  (
+		  &group_idx=var.value((timer_client_chunks[&get_IFH_ret_cid].buffer[&get_IFH_ret_timer_idx].info.group_idx))
+		  &deferrable=var.value((*(timer_internal_groups[&group_idx])).deferrable)
+		  &group_str=var.string((*(timer_internal_groups[&group_idx])).ext_self)
+		  
+		  &processing_started=var.value(timer_expired_debug[&curr_cnt].ts)
+	  
+		  ;Print out to screen
+		  IF (&deferrable==0)&&(&timer_expired_val!=0)
+		  (
+			&outstring_ulog="&processing_started: Non-deferrable timer expiry.  Expiry Value: &expiry_value  Timer Expired: &timer_expired  Group: &group_str"
+			WRITE #3 "&outstring_ulog"
+			GOSUB PRINT_HELPER "&iterator: Processing Started: &processing_started  Timer Expired: &timer_expired  Group: &group_str"
+			&iterator=&iterator+1
+		  )
+	  )
+      )   
+		
+		&curr_cnt=&curr_cnt+1
+		IF (&curr_cnt==&sizeof_timer_expired_debug)
+		 (
+			&curr_cnt=0
+		 )
+		&start_cnt=&start_cnt+1
+   )
+  
+  )
+  
+  CLOSE #3
+  GOSUB PRINT_HELPER "ULog file output in the following directory: &out_dir_ulog"
+
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+  
+  AREA.CLOSE TLO
+  
+  WE.AREA.select TIMER
+  
+RETURN
+
+;============================================================================
+; Reset the starting index iterator for the respective debug vars.
+;============================================================================
+RESET_DEBUG_VAR_ITERATOR:
+
+&iterator=0x1
+
+ while (&iterator<=&number_of_debug_vars)
+   (
+     ; Get the debug var name from the iterator
+	 &&deref_debug_var_name="&debug_var&iterator"
+ 
+	 ; Get the starting index deref for the debug var
+	 &&defer_index="&index_&deref_debug_var_name"
+	 
+	 ; reinitialize the value
+	 &iterator_&deref_debug_var_name=&defer_index
+	 &first_traversal_&deref_debug_var_name=&TRUE
+ 
+	 ; increment the iterator
+     &iterator=&iterator+0x1
+   )
+
+RETURN
+
+;============================================================================
+; Reset the starting index iterator for the respective debug vars.
+;============================================================================
+GET_NEXT_TIMETICK_VAL:
+  ENTRY &dbg_var_id
+
+  &get_next_timetick_val_ret=0xFEEDF00D
+  
+  &&deref_dbg_var_name="&debug_var&dbg_var_id"
+  &&deref_dbg_tt_name="&debug_var_tt_name&dbg_var_id"
+  &&deref_dbg_extra="&debug_var_extra&dbg_var_id"
+  
+  &&deref_len="&len_&deref_dbg_var_name"
+  &&deref_index="&index_&deref_dbg_var_name"
+  &&deref_iterator="&iterator_&deref_dbg_var_name"
+  &&deref_is_there="&IS_THERE_&deref_dbg_var_name"
+  &&deref_tt_jump="&timetick_jump_&deref_dbg_var_name"
+  
+  var.if (&deref_is_there==&FALSE || &deref_tt_jump==&TRUE)
+   (
+    RETURN
+   )
+  
+  ; reset the iterator to zero if it has reached the boundry
+  if (&deref_iterator==&deref_len)
+   (
+   &iterator_&deref_dbg_var_name=0x0
+   )
+ 
+  &&deref_iterator_2="&iterator_&deref_dbg_var_name"
+  &&deref_first_traversal="&first_traversal_&deref_dbg_var_name"
+  
+  
+  var.if (&deref_iterator_2!=&deref_index || &deref_first_traversal==&TRUE)
+   (
+    if ("&deref_dbg_extra"!="0x0")
+     (
+	  &deref_dbg_var_name="&deref_dbg_var_name"+".&deref_dbg_extra"
+	 )
+    &get_next_timetick_val_ret=v.value(&deref_dbg_var_name[&deref_iterator_2].&deref_dbg_tt_name)
+   )
+
+RETURN
+;============================================================================
+; get the filename to use for merged outfile from CMD itself
+;============================================================================
+GET_PREFIX_STRING:
+
+&FILENAME_PREFIX_STRING=""
+
+PRINT ""
+PRINT "Enter some unique string to be used for file names (Ex: JIRA-1234)"
+PRINT ""
+
+enter &FILENAME_PREFIX_STRING
+
+PRINT "You entered: &FILENAME_PREFIX_STRING"
+
+RETURN
+
+;============================================================================
+; Get the filename using which merge log file is to be named
+;============================================================================
+GET_MERGED_LOGS_FILENAME_CMD:
+  GOSUB PRINT_HELPER " "
+  GOSUB PRINT_HELPER "Please give some string to save by prefixing to timer_merged_logs file name:"
+  GOSUB PRINT_HELPER " "
+  enter &file_prefix
+  LOCAL &file_name
+  
+  if ("&file_prefix"=="")
+  (
+     &file_name="timer_unified_logs.log"
+  )
+  else
+  (
+     &file_name="&file_prefix"+"_timer_unified_logs.log"
+  )
+  GOSUB PRINT_HELPER "output is: &file_name"
+RETURN &file_name
+
+;============================================================================
+; Print the merged debug logs for timer-services
+;============================================================================
+PRINT_MERGED_LOGS:
+ 
+ ; Reset the debug var iterator
+   GOSUB RESET_DEBUG_VAR_ITERATOR
+ 
+ ; Init local vars
+ &tt_from_dbg_var=0x1FFFFFFFFFFFFF
+ &dbg_var_identifier=0xF00FF00F
+ 
+ ; Get file name to be saved to
+ ;GOSUB GET_MERGED_LOGS_FILENAME_CMD
+ ;ENTRY &file_name
+ ;GOSUB PRINT_HELPER "file_name is: &file_name"
+  
+ ; Open / Create the file for the output
+ &uds_out_dir="&output_directory"+"\&FILENAME_PREFIX_STRING"+"_timer_unified_logs.log"
+
+ OPEN #15 &uds_out_dir /Create
+ 
+ while (&dbg_var_identifier!=0xFFFFFFFF)
+  (
+   ; reinitialize the local script vars
+   &dbg_var_identifier=0xFFFFFFFF
+   &iterator=0x1
+   &tt_from_dbg_var=0x1FFFFFFFFFFFFF
+   
+   while (&iterator<=&number_of_debug_vars)
+   (
+	 GOSUB GET_NEXT_TIMETICK_VAL &iterator
+	 
+	 var.if (&get_next_timetick_val_ret!=0xFEEDF00D && &get_next_timetick_val_ret<=&tt_from_dbg_var)
+	   (	 
+	     &tt_from_dbg_var=&get_next_timetick_val_ret
+		 &dbg_var_identifier=&iterator
+	   )
+	 ; increment the iterator
+     &iterator=&iterator+0x1
+   )
+   
+   ; Send the debug var data to the out file
+   if (&dbg_var_identifier!=0xFFFFFFFF)
+    (
+	GOSUB WRITE_OUT_FILE &dbg_var_identifier &tt_from_dbg_var
+	)
+  )
+  
+  CLOSE #15
+  
+  GOSUB PRINT_HELPER "Merged Logs created & updated : &uds_out_dir"
+  
+RETURN
+
+;============================================================================
+; Write the debug var info on the output file
+;============================================================================
+WRITE_OUT_FILE:
+  ENTRY &debug_var_id &tt
+  
+  &str_to_write=""
+  &&deref_debug_var_name="&debug_var&debug_var_id"
+  &&deref_debug_extra="&debug_var_extra&debug_var_id"
+  
+  &&deref_iterator="&iterator_&deref_debug_var_name"
+
+  if ("&deref_debug_extra"!="0x0")
+    (
+	  &deref_debug_var_name_2="&deref_debug_var_name"+".&deref_debug_extra"
+	  &str_to_write=var.string(&deref_debug_var_name_2[&deref_iterator])
+	)  
+  else
+    (
+	  &str_to_write=var.string(&deref_debug_var_name[&deref_iterator])
+	)
+  
+  WRITE #15 "&tt: &deref_debug_var_name[&deref_iterator]= &str_to_write"
+  
+  ; Increment the index
+  &iterator_&deref_debug_var_name=&deref_iterator+0x1
+  
+  ; Mark first_traversal as false if it is not so
+  &&deref_first_traversal="&first_traversal_&deref_debug_var_name"
+  if (&deref_first_traversal==&TRUE)
+	 (
+	  &first_traversal_&deref_debug_var_name=&FALSE
+	 )
+	
+RETURN
+
+
+;XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+;============================================================================
+;XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+;============================================================================
+;XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+;               D e b u g   S u b r o u t i n e s 
+;XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+;============================================================================
+;XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+;============================================================================
+;XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+
+
+;============================================================================
+; General Debugging.
+;============================================================================
+
+GENERAL_TIMER_DEBUG:
+
+  AREA.CREATE TLO
+  WINPOS 60% 30% 40% 70% 0. 0. TLO
+  AREA.VIEW TLO
+  AREA.SELECT TLO
+  
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "######################################################################"
+  GOSUB PRINT_HELPER "                     G e n e r a l   D e b u g                        "
+  GOSUB PRINT_HELPER "######################################################################"
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+
+  &ret=0x0  
+  ;
+  ; Check first & last timer pointers
+  ;
+  &tmr_first=v.value(\timer\timers.active.list.first)
+  &tmr_last=v.value(\timer\timers.active.list.last)
+  &timers_processing=v.value(\timer\timers.processing)
+
+  IF &timers_processing==1
+  (
+    GOSUB PRINT_HELPER ""
+    GOSUB PRINT_HELPER "WARNING: Timer task is currently processing timers, linked list may appear corrupted, but may not actually be!"
+    GOSUB PRINT_HELPER ""
+  )
+
+  IF (&tmr_first==0)&&(&tmr_last!=0)
+  (
+    GOSUB PRINT_HELPER "ERROR: Timer list appears to be corrupted.  FIRST timer is NULL, LAST is not. "
+    GOSUB PRINT_HELPER ""
+    GOSUB PRINT_HELPER ""
+  )
+
+  IF (&tmr_last==0)&&(&tmr_first!=0)
+  (
+    GOSUB PRINT_HELPER "ERROR: Timer list appears to be corrupted.  LAST timer is NULL, FIRST is not. "
+    GOSUB PRINT_HELPER ""
+    GOSUB PRINT_HELPER ""
+  )
+
+
+  ;
+  ; Check first & last timer pointers
+  ;
+
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "Checking Bins..."
+  GOSUB PRINT_HELPER ""
+  GOSUB TIMER_BIN_CHECK_DEBUG
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "Bin Checking Completed!"
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "######################################################################"
+
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "Checking Timer Groups..."
+  GOSUB PRINT_HELPER ""
+  GOSUB TIMER_GROUP_LIST_CHECK 0x0 0x0
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "Group Checking Completed!"
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "######################################################################"  
+
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "Checking Timer Linked List..."
+  GOSUB PRINT_HELPER ""
+  GOSUB TIMER_ACTIVE_LIST_CHECK_DEBUG
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "Timer Linked List Checking Completed!"
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "######################################################################"
+
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "Checking Timer Free Queue..."
+  GOSUB PRINT_HELPER ""
+  GOSUB TIMER_FREE_Q_CHECKUP
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "Timer Free Queue Checking Completed!"
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "######################################################################"    
+  
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "Checking Timetick jumps cases..."
+  GOSUB PRINT_HELPER ""
+  GOSUB CHECK_FOR_TIMETICK &FALSE
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "Timetick jump checking complete!"
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "######################################################################"  
+  
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "Checking Callback Durations..."
+  GOSUB PRINT_HELPER ""
+  GOSUB TIMER_CHECK_LONG_CALLBACKS
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "Callback Duration Checking Completed!"
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "######################################################################"
+
+  
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "Checking For Delayed ISR..."
+  GOSUB PRINT_HELPER ""
+  GOSUB TIMER_CHECK_FOR_DELAYED_ISR
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "Delayed ISR Checking Completed!"
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER "######################################################################"
+
+  
+  GOSUB PRINT_HELPER ""
+  GOSUB PRINT_HELPER ""
+  AREA.CLOSE TLO
+  
+  WE.AREA.select TIMER
+
+RETURN
+
+;============================================================================
+timer_free_q checing subroutine
+;============================================================================
+TIMER_FREE_Q_CHECKUP:
+
+  &q_var_name="timer_free_q"
+  &q_var_max_cnt=0xFF
+  &iterator=0x0
+  &q_var_addr=var.value(&(&q_var_name))
+  
+  &size_timer_buffer=&timer_buffer_size
+  
+  &q_var_max_cnt=&size_timer_buffer  
+  
+  ; Check if the count is correct
+  &queue_cnt_val=var.value(((q_type *)&q_var_addr)->cnt)
+  &q_nxt_ptr=var.value(((q_type *)&q_var_addr)->link.next_ptr)
+  &q_last_ptr=var.value(((q_type *)&q_var_addr)->link.prev_ptr)
+  ;GOSUB PRINT_HELPER "next=&q_nxt_ptr, last=&q_last_ptr, cnt=&queue_cnt_val"
+  
+  ; If next / prev pointers are NULL then print error message & return
+  if (&q_nxt_ptr==0x0)
+   (
+     GOSUB PRINT_HELPER "ERROR:  &q_var_name->next_ptr is NULL !!! it can never be NULL"
+	 RETURN
+   )
+  if (&q_last_ptr==0x0)
+   (
+     GOSUB PRINT_HELPER "ERROR:  &q_var_name->prev_ptr is NULL !!! it can never be NULL"
+	 RETURN
+   )  
+  
+  ; If count is zero, the queue is an empty queue
+  if (&queue_cnt_val==0)
+   (
+     var.if (&q_nxt_ptr!=&q_var_addr || &q_last_ptr!=&q_var_addr)
+	  (
+	     GOSUB PRINT_HELPER "ERROR:  &q_var_name->cnt is zero & next_ptr/prev_ptr not pointing to the queue itself."
+		 RETURN
+	  )
+   )
+  else
+   (
+    GOSUB CHECK_FOR_PTR_IN_ARR &q_nxt_ptr timer_buffer_ptr &size_timer_buffer
+	if (&check_for_ptr_in_arr_ret!=&TRUE)
+	(
+	  &check_for_ptr_in_arr_ret=&FALSE
+	  GOSUB PRINT_HELPER "ERROR: &q_var_name.link->next_ptr is not a timer buffer array address"
+	  RETURN
+	)
+    GOSUB CHECK_FOR_PTR_IN_ARR &q_last_ptr timer_buffer_ptr &size_timer_buffer
+	if (&check_for_ptr_in_arr_ret!=&TRUE)
+	(
+	  &check_for_ptr_in_arr_ret=&FALSE
+	  GOSUB PRINT_HELPER "ERROR: &q_var_name.link->prev_ptr is not a timer buffer array address"
+	  RETURN
+	)	
+   )
+   
+   
+  ; If count is more than what the queue can gobble up, throw error
+  if (&queue_cnt_val>&q_var_max_cnt)
+   (
+     GOSUB PRINT_HELPER "ERROR:  &q_var_name->cnt = &queue_cnt_val, this is too large"
+	 RETURN
+   )
+
+  
+   ; the next ptr of the last pointer of the queue should point to the queue itself
+   &q_last_ptrs_next=var.value(((q_type *)&q_last_ptr)->link.next_ptr)
+   if (&q_last_ptrs_next!=&q_var_addr)
+     GOSUB PRINT_HELPER "ERROR:  &q_var_name->prev_ptr->next_ptr is not pointing to the queue itself"
+   
+   &q_ptr=&q_var_addr
+   &q_ptr_last_ptr=0x0
+  ; traverse through the queue to find incorrect entries in between
+  while (&iterator<=&queue_cnt_val)
+   (
+	  &tmr_pointer=var.value(((q_type *)&q_ptr)->link.next_ptr)
+	  if (&tmr_pointer!=&q_var_addr)
+	  (
+	  GOSUB CHECK_FOR_PTR_IN_ARR &tmr_pointer timer_buffer_ptr &size_timer_buffer
+	  if (&check_for_ptr_in_arr_ret!=&TRUE)
+	  (
+	    &check_for_ptr_in_arr_ret=&FALSE
+	    GOSUB PRINT_HELPER "ERROR: &tmr_pointer obtained from &q_var_name is not a timer buffer array address"
+	  )
+	  else
+	  (
+	  ;GOSUB CHECK_FREE_INTERNAL_TIMER &tmr_pointer
+	  )
+	 )
+   
+	 &q_ptr_last_ptr=&q_ptr
+     &q_ptr=var.value(((q_type *)&q_ptr)->link.next_ptr)
+     &iterator=&iterator+1
+   )
+  ; check that after the queue is traversed, the last entry is correct
+  if (&q_ptr_last_ptr!=&q_last_ptr)
+     GOSUB PRINT_HELPER "ERROR:  &q_var_name last pointer traversed is not matching with &q_var_name->prev_ptr"
+
+  ; Manually traverse the queue to count the number of elements
+  &q_ptr=var.value(((q_type *)&q_var_addr)->link.next_ptr)
+  &q_element_count=0
+  while (&q_ptr!=&q_var_addr)
+   (
+   &q_ptr=var.value(((q_type *)&q_ptr)->link.next_ptr)
+   &q_element_count=&q_element_count+1
+   if (&q_element_count>&q_var_max_cnt)
+    (
+	  GOSUB PRINT_HELPER "ERROR:  &q_var_name has incorrect number of queue items"
+	  RETURN
+	)
+   )
+  if (&q_element_count!=&queue_cnt_val)
+   GOSUB PRINT_HELPER "ERROR:  &q_var_name->cnt (&queue_cnt_val) != Manually traversed count (&q_element_count)"
+  
+RETURN
+
+
+TIMER_BIN_CHECK_DEBUG:
+  
+  &rain_check=y.type(timer_bin_pool)
+  if (&rain_check!=0x3)
+	(
+	GOSUB PRINT_HELPER "Debug Variable : 'timer_bin_pool' is not availale in this build"
+	RETURN
+	)
+
+  &bins_first=v.value((struct timer_bin_struct*)\timer\timers.bins.first)
+  &bins_last=v.value((struct timer_bin_struct*)\timer\timers.bins.last)
+  &bins_cnt=v.value((int*)\timer\timers.bins.count)
+
+  ;
+  ; Check pointers to see if they make sense
+  ;
+
+  IF (&bins_first==0)&&(&bins_last!=0)
+  (
+    GOSUB PRINT_HELPER "ERROR:  Timer bin list appears corrupted.  FIRST bin is NULL, LAST is not"
+    GOSUB PRINT_HELPER ""
+    GOSUB PRINT_HELPER ""
+  )
+
+  IF (&bins_last==0)&&(&bins_first!=0)
+  (
+    GOSUB PRINT_HELPER "ERROR:  Timer bin list appears corrupted.  LAST bin is NULL, FIRST is not"
+    GOSUB PRINT_HELPER ""
+    GOSUB PRINT_HELPER ""
+  )
+
+  ;
+  ; Verify the list of bins
+  ;
+
+  IF (&bins_first!=0)&&(&bins_last!=0)
+  (
+    ;
+    ; Check forward direction of list counts
+    ;
+
+    &forward_cnt=0
+    &bin=&bins_first
+    &last_bin=&bin
+
+    WHILE &bin!=0
+    (
+      &forward_cnt=&forward_cnt+1
+      &last_bin=&bin
+      &bin=v.value(((struct timer_bin_struct*)&bin)->next_bin)
+    )
+
+    IF &forward_cnt!=&bins_cnt
+    (
+      GOSUB PRINT_HELPER "ERROR: Detected Incorrect Number of Bins! Forward Count: &forward_cnt  Bins Count: &bins_cnt"
+      GOSUB PRINT_HELPER ""
+      GOSUB PRINT_HELPER ""
+    )
+
+    IF &last_bin!=&bins_last
+    (
+      GOSUB PRINT_HELPER "ERROR:  Detected Incorrect Last Bin!  Actual: &bins_last  Propagated: &last_bin"
+    )
+
+
+    ;
+    ; Check reverse direction of list counts
+    ;
+
+    &reverse_cnt=0
+    &bin=&bins_last
+    &last_bin=&bin
+
+
+    WHILE &bin!=0
+    (
+      &reverse_cnt=&reverse_cnt+1
+      &last_bin=&bin
+      &bin=v.value(((struct timer_bin_struct*)&bin)->prev_bin)
+    )
+
+    IF &reverse_cnt!=&bins_cnt
+    (
+      GOSUB PRINT_HELPER "ERROR: Detected Incorrect Number of Bins! Reverse Count: &reverse_cnt  Bins Count: &bins_cnt"
+      GOSUB PRINT_HELPER ""
+      GOSUB PRINT_HELPER ""
+    )
+
+    IF &last_bin!=&bins_first
+    (
+      GOSUB PRINT_HELPER "ERROR:  Detected Incorrect First Bin!  Actual: &bins_first  Propagated: &last_bin"
+    )
+
+    ;
+    ; Check forward direction of list logically
+    ;
+
+    &bin_front=&bins_first
+    &bin_back=&bins_first
+    &counter=1
+
+    WHILE &counter<=(&bins_cnt-1)
+    (
+      ;
+      ; Get Front Direction
+      ;
+
+      &bin_back=v.value(((struct timer_bin_struct*)&bin_front)->next_bin->prev_bin)
+
+      IF &bin_back!=&bin_front
+      (
+        &bin_front_str=v.string((struct timer_bin_struct*)&bin_front)
+        &bin_back_str=v.string((struct timer_bin_struct*)&bin_back)
+        GOSUB PRINT_HELPER "ERROR: Bin list corruption detected in the forward direction! Bin: &bin_front_str  Fwd->Back_Bin: &bin_back_str"
+        GOSUB PRINT_HELPER ""
+        GOSUB PRINT_HELPER ""
+      )
+
+      &bin_front=v.value(((struct timer_bin_struct*)&bin_front)->next_bin)
+      
+      &counter=&counter+1
+    )
+    
+
+    ;
+    ; Check reverse direction of list logically
+    ;
+
+    &bin_front=&bins_last
+    &bin_back=&bins_last
+    &counter=1
+
+    WHILE &counter<=(&bins_cnt-1)
+    (
+      ;
+      ; Get Reverse Direction
+      ;
+
+      &bin_front=v.value(((struct timer_bin_struct*)&bin_back)->prev_bin->next_bin)
+
+      IF &bin_back!=&bin_front
+      (
+        &bin_front_str=v.string((struct timer_bin_struct*)&bin_front)
+        &bin_back_str=v.string((struct timer_bin_struct*)&bin_back)
+        GOSUB PRINT_HELPER "ERROR: Bin list corruption detected in the reverse direction! Bin: &bin_back_str  Back->Fwd_Bin: &bin_front_str"
+        GOSUB PRINT_HELPER ""
+        GOSUB PRINT_HELPER ""
+      )
+
+      &bin_back=v.value(((struct timer_bin_struct*)&bin_front)->prev_bin)
+      
+      &counter=&counter+1
+    )
+    
+    ;
+    ; Check timers within bin & bin ordering
+    ;  
+
+    &bin=&bins_first
+
+    WHILE (&bin!=0)
+    (
+      &tmr_first=v.value((timer_internal_type*)((struct timer_bin_struct*)&bin)->first)
+      &tmr_last=v.value((timer_internal_type*)((struct timer_bin_struct*)&bin)->last)
+      &cnt=0
+      &max=v.value(((struct timer_bin_struct*)&bin)->count)
+      &lower=v.value(((struct timer_bin_struct*)&bin)->lower)
+      &upper=v.value(((struct timer_bin_struct*)&bin)->upper)
+
+      WHILE (&tmr_first!=0)&&(&cnt<&max)
+      (
+        &expiry=v.value(((timer_internal_type*)&tmr_first)->expiry)
+        IF (&expiry>&upper)
+        (
+          GOSUB PRINT_HELPER "ERROR: Timer expiry exceeds the upper boundary of the bin! Bin: &bin  Timer: &tmr_first  Expiry: &expiry  Upper Bound: &upper"
+        )
+
+        IF (&expiry<&lower)
+        (
+          GOSUB PRINT_HELPER "ERROR: Timer expiry exceeds the lower boundary of the bin! Bin: &bin  Timer: &tmr_first  Expiry: &expiry  Lower Bound: &lower"
+        )
+
+        IF (&cnt==(&max-1))&&(&tmr_first!=&tmr_last)
+        (
+          GOSUB PRINT_HELPER "ERROR: Last timer in bin appears to be incorrect! Bin: &bin  Last Timer in Bin: &tmr_last  Traversed Last Timer: &tmr_first"          
+        )
+
+        &tmr_first=v.value(((timer_internal_type*)&tmr_first)->next)
+        &cnt=&cnt+1
+      )
+
+      &bin=v.value(((struct timer_bin_struct*)&bin)->next_bin)
+    )
+  )
+
+
+RETURN
+
+TIMER_ACTIVE_LIST_CHECK_DEBUG:
+  &tmr=v.value(\timer\timers.active.list.first)
+  &tmr_first=v.value(\timer\timers.active.list.first)
+  ;&sizeof_timers=v.sizeof(timer_buffer_ptr)/v.sizeof(timer_buffer_ptr[0])
+  
+  ; temporary solution
+  &sizeof_timers=&timer_buffer_size
+  &iterator=1
+
+  ;
+  ; Check for circular timer list
+  ;
+
+  WHILE (&tmr!=0)&&(&iterator<&sizeof_timers)
+  (
+    IF (&tmr==&tmr_first)&&(&iterator>1)
+    (
+      GOSUB PRINT_HELPER "ERROR: Circular linked list found! First Timer: &tmr_first"
+    )
+  
+    &iterator=&iterator+1
+    &tmr=v.value(((timer_internal_type*)&tmr)->next)
+  )
+
+  IF &sizeof_timers==&iterator
+  (
+    GOSUB PRINT_HELPER "ERROR: Circular linked list found! First Timer: &tmr_first"
+  )
+
+  ;
+  ; Check that the expiry values in the timer list are in order
+  ; and check that the timer list is not broken
+  ;
+
+  &tmr=v.value(\timer\timers.active.list.first)
+  &last_tmr=v.value(\timer\timers.active.list.first)
+  &last_expiry=0
+  &expiry=0
+  
+  IF &tmr!=0
+  (
+    &last_expiry=v.value(((timer_internal_type*)&tmr)->expiry)
+  )
+
+  WHILE &tmr!=0
+  (
+    &expiry=v.value(((timer_internal_type*)&tmr)->expiry)
+    IF &expiry<&last_expiry
+    (
+      &last_tmr_str=v.string((timer_internal_type*)&last_tmr)
+      &tmr_str=v.string((timer_internal_type*)&tmr)
+      GOSUB PRINT_HELPER "ERROR: Timer expiries appear out of order on the timer linked list! Previous Timer:&last_tmr_str  Previous Expiry:&last_expiry  Timer:&tmr_str  Expiry:&expiry"
+    )
+
+    &tmr_next=v.value(((timer_internal_type*)&tmr)->next)
+    IF &tmr_next!=0
+    (
+      &tmr_next_prev=v.value(((timer_internal_type*)&tmr_next)->prev)
+      IF &tmr_next_prev!=&tmr
+      (
+        &last_tmr_str=v.string((timer_internal_type*)&tmr_next_prev)
+        &tmr_str=v.string((timer_internal_type*)&tmr)
+        GOSUB PRINT_HELPER "ERROR: Timer linked list corruption detected! Timer->next->prev:&last_tmr_str  Timer:&tmr_str"
+      )
+    )
+
+    &timer_state=v.value(((timer_internal_type*)&tmr)->timer_ext->timer_state)
+    ; If timer is not in set state, display
+    var.if (&timer_state!=0x0FEDCBAB &&  &timer_state!=0x0FEDCBAF)
+    (
+      &timer_state_val=v.string(((timer_internal_type*)&tmr)->timer_ext->timer_state)
+      &tmr_str=v.string((timer_internal_type*)&tmr)
+      &tmr_ext_str=v.string(((timer_internal_type*)&tmr)->timer_ext)
+      GOSUB PRINT_HELPER "ERROR:  Timer on linked list that is not in SET state! Timer State: &timer_state_val  Timer: &tmr_str  External Timer: &tmr_ext_str"
+    )
+	
+	; Check the active list timer Sanity
+    GOSUB INTERNAL_TIMER_SANITY_CHECK &tmr 0x0
+	
+    ; Check the External timer sanity
+    &int_timers_ext_pointer=v.value(((timer_internal_type*)&tmr)->timer_ext)
+	GOSUB EXTERNAL_TIMER_SANITY_CHECK &int_timers_ext_pointer 0x0
+	
+	; Check if the internal-external timer matches correctly
+	GOSUB INTERNAL_EXTERNAL_TIMER_MATCH &tmr &int_timers_ext_pointer 0x0
+	
+    &last_tmr=&tmr
+    &last_expiry=&expiry
+    &tmr=v.value(((timer_internal_type*)&tmr)->next)
+  )
+
+RETURN
+
+TIMER_CHECK_LONG_CALLBACKS:
+  &sizeof_timers_expired=v.sizeof(timers_expired)/v.sizeof(timers_expired[0])
+  &start_cnt=v.value(timers_expired_cnt)
+  &curr_cnt=v.value(timers_expired_cnt)
+  &iterator=1
+  &processing_duration_measured=1920
+  &sizeof_timers_expired_slave1=0
+  &sizeof_timers_expired_slave2=0
+  &sizeof_timers_expired_slave3=0
+
+  &ret=y.type(timers_expired_slave1)
+  IF (&ret==0x3)  
+  (
+    &sizeof_timers_expired_slave1=v.sizeof(timers_expired_slave1)/v.sizeof(timers_expired_slave1[0])
+  )
+  &ret=y.type(timers_expired_slave2)
+  IF (&ret==0x3)
+  (
+    &sizeof_timers_expired_slave2=v.sizeof(timers_expired_slave2)/v.sizeof(timers_expired_slave2[0])
+  )
+  &ret=y.type(timers_expired_slave3)
+  IF (&ret==0x3)
+  (
+    &sizeof_timers_expired_slave3=v.sizeof(timers_expired_slave3)/v.sizeof(timers_expired_slave3[0])
+  )
+
+
+  ; Get processing duration
+  IF &processing_duration_entered!=0
+  (
+    &processing_duration_measured=&processing_duration_entered
+  )
+
+  ;Print first half
+  WHILE &curr_cnt<&sizeof_timers_expired
+  (
+    &timer_expired=var.string(timers_expired[&curr_cnt].timer_expired)
+    &processing_duration=var.value(timers_expired[&curr_cnt].processing_time)
+    
+    IF &processing_duration>&processing_duration_measured
+    (
+      GOSUB PRINT_HELPER "Long callback detected! Timer: &timer_expired  Processing Time: &processing_duration"
+    )
+    
+    &curr_cnt=&curr_cnt+1
+  )
+
+  &curr_cnt=0
+  ;Print second half
+  WHILE &curr_cnt<&start_cnt
+  (
+    &timer_expired=var.string(timers_expired[&curr_cnt].timer_expired)
+    &processing_duration=var.value(timers_expired[&curr_cnt].processing_time)
+    
+    IF &processing_duration>&processing_duration_measured
+    (
+      GOSUB PRINT_HELPER "Long callback detected! Timer: &timer_expired  Processing Time: &processing_duration"
+    )
+    
+    &curr_cnt=&curr_cnt+1
+  )
+
+  &ret=y.type(timers_expired_slave1)
+  IF (&ret==0x3)
+  (
+    &start_cnt=v.value(timers_expired_cnt_slave1)
+    &curr_cnt=v.value(timers_expired_cnt_slave1)
+    ;Print first half
+    WHILE &curr_cnt<&sizeof_timers_expired_slave1
+    (
+      &timer_expired=var.string(timers_expired_slave1[&curr_cnt].timer_expired)
+      &processing_duration=var.value(timers_expired_slave1[&curr_cnt].processing_time)
+      
+      IF &processing_duration>&processing_duration_measured
+      (
+        GOSUB PRINT_HELPER "Long callback detected! Timer: &timer_expired  Processing Time: &processing_duration"
+      )
+      
+      &curr_cnt=&curr_cnt+1
+    )
+
+    &curr_cnt=0
+    ;Print second half
+    WHILE &curr_cnt<&start_cnt
+    (
+      &timer_expired=var.string(timers_expired_slave1[&curr_cnt].timer_expired)
+      &processing_duration=var.value(timers_expired_slave1[&curr_cnt].processing_time)
+      
+      IF &processing_duration>&processing_duration_measured
+      (
+        GOSUB PRINT_HELPER "Long callback detected! Timer: &timer_expired  Processing Time: &processing_duration"
+      )
+      
+      &curr_cnt=&curr_cnt+1
+    )
+  )
+
+  &ret=y.type(timers_expired_slave2)
+  IF (&ret==0x3)
+  (
+    &start_cnt=v.value(timers_expired_cnt_slave2)
+    &curr_cnt=v.value(timers_expired_cnt_slave2)
+    ;Print first half
+    WHILE &curr_cnt<&sizeof_timers_expired_slave2
+    (
+      &timer_expired=var.string(timers_expired_slave2[&curr_cnt].timer_expired)
+      &processing_duration=var.value(timers_expired_slave2[&curr_cnt].processing_time)
+      
+      IF &processing_duration>&processing_duration_measured
+      (
+        GOSUB PRINT_HELPER "Long callback detected! Timer: &timer_expired  Processing Time: &processing_duration"
+      )
+      
+      &curr_cnt=&curr_cnt+1
+    )
+
+    &curr_cnt=0
+    ;Print second half
+    WHILE &curr_cnt<&start_cnt
+    (
+      &timer_expired=var.string(timers_expired_slave2[&curr_cnt].timer_expired)
+      &processing_duration=var.value(timers_expired_slave2[&curr_cnt].processing_time)
+      
+      IF &processing_duration>&processing_duration_measured
+      (
+        GOSUB PRINT_HELPER "Long callback detected! Timer: &timer_expired  Processing Time: &processing_duration"
+      )
+      
+      &curr_cnt=&curr_cnt+1
+    )
+  )
+
+  &ret=y.type(timers_expired_slave3)
+  IF (&ret==0x3)
+  (
+    &start_cnt=v.value(timers_expired_cnt_slave3)
+    &curr_cnt=v.value(timers_expired_cnt_slave3)
+    ;Print first half
+    WHILE &curr_cnt<&sizeof_timers_expired_slave3
+    (
+      &timer_expired=var.string(timers_expired_slave3[&curr_cnt].timer_expired)
+      &processing_duration=var.value(timers_expired_slave3[&curr_cnt].processing_time)
+      
+      IF &processing_duration>&processing_duration_measured
+      (
+        GOSUB PRINT_HELPER "Long callback detected! Timer: &timer_expired  Processing Time: &processing_duration"
+      )
+      
+      &curr_cnt=&curr_cnt+1
+    )
+
+    &curr_cnt=0
+    ;Print second half
+    WHILE &curr_cnt<&start_cnt
+    (
+      &timer_expired=var.string(timers_expired_slave3[&curr_cnt].timer_expired)
+      &processing_duration=var.value(timers_expired_slave3[&curr_cnt].processing_time)
+      
+      IF &processing_duration>&processing_duration_measured
+      (
+        GOSUB PRINT_HELPER "Long callback detected! Timer: &timer_expired  Processing Time: &processing_duration"
+      )
+      
+      &curr_cnt=&curr_cnt+1
+    )
+  )
+
+
+RETURN
+
+ESTIMATE_TARGET_FAMILY:
+    
+    ;Todo: Move this to seperate funciton
+	&is_b_family=&TRUE	
+    &rain_check_on_sym=y.type(QURTK_flush_cache_status)
+       IF &rain_check_on_sym!=0x1	
+	   &is_b_family=&FALSE
+RETURN
+
+ESTIMATE_TIMER_DETAILS:
+
+    &is_chunks_logic=0
+    &chunks_var_present=y.type(timer_client_chunks)
+    IF &chunks_var_present==0x3
+       &is_chunks_logic=1
+       
+    GOSUB PRINT_HELPER "Timer chunks logic present in this build: &is_chunks_logic"
+    
+    IF &is_chunks_logic==0x1
+    (
+	   &num_timers_per_chunk=v.value(timer_client_chunks[0].num_timers)
+       if &num_timers_per_chunk>=0x100
+       (
+          &timer_buffer_size=0x100
+          &timer_groups_size=0x100
+          ;need to find a better logic for finding proc details
+          &is_mpss_or_adsp=0x0      
+       )
+       else
+       (
+          &timer_buffer_size=0x40
+          &timer_groups_size=0x40
+          &is_mpss_or_adsp=0x1
+       )
+    )
+    GOSUB PRINT_HELPER "Timer Buffer Size: &timer_buffer_size, &is_mpss_or_adsp"
+	
+	&ext_timer_addr=var.value(timer_client_chunks[0].buffer[0].timer_client_ptr)
+	On.ERROR GOSUB ERR_HANDLER_FOR_HANDLE
+	&ext_timer_handle=var.value(((timer_type*)&ext_timer_addr)->timer_handle)
+	On.ERROR Default
+	if (&timer_handle_as_structure==0xFFAADD)
+	 (
+	 &timer_handle_as_structure=&FALSE
+	 GOSUB PRINT_HELPER "Timer handle is treated as uint32"
+	 )
+	else
+	 (
+	 &timer_handle_as_structure=&TRUE
+	 GOSUB PRINT_HELPER "Timer handle is treated as structure"
+	 )
+	
+    
+RETURN
+
+ERR_HANDLER_FOR_HANDLE:
+On.ERROR Default
+&timer_handle_as_structure=0xFFAADD
+RETURN
+	   
+TEST_INTERNAL_MEMBER:
+ON ERROR GOTO error_print1
+&test1_str=var.value(timer_client_chunks[0].buffer[0xF]->cbdt.sigs)
+   GOSUB PRINT_HELPER "timer_client_chunks[0].buffer[0xF]->cbdt is present"
+error_print1:
+   GOSUB PRINT_HELPER "timer_client_chunks[0].buffer[0xF]->cbdt is not present"
+ON ERROR	; remove the assigned handler
+
+ON ERROR GOTO error_print2
+&test1_str = var.value(timer_client_chunks[0].buffer[0xF]->cbdt.sigs1)
+   GOSUB PRINT_HELPER "timer_client_chunks[0].buffer[0xF]->cbdt.sigs1 is present"
+error_print2:
+   GOSUB PRINT_HELPER "timer_client_chunks[0].buffer[0xF]->cbdt.sigs1 is not present"
+ON ERROR	; remove the assigned handler
+RETURN
+
+ESTIMATE_CURRENT_TIME:
+  &ret=Y.TYPE(pInterruptData)
+  if (&ret==0x3)
+	(
+	&log_cnt=v.value((*(pInterruptData)).pLog.nIdx)
+	&log_max=v.value((*(pInterruptData)).pLog.nLogSize)
+
+	IF &log_cnt==0
+	(
+		&log_cnt=&log_max-1
+	)
+	ELSE
+	(
+		&log_cnt=&log_cnt-1
+	)
+	
+	; Set the global current time
+	&tt_from_interrupts=v.value((*(pInterruptData)).pLog.pEntries[&log_cnt].nTimeStamp)
+	&tt_from_intr_str="(*(pInterruptData)).pLog.pEntries[&log_cnt].nTimeStamp"
+	GOSUB PRINT_HELPER ""
+	)
+ ;&ret=Y.EXIST(tramp_log)
+ else if (Y.EXIST(tramp_log))
+   (
+	    &tramp_iterator=0x0
+		&size_debug_var=v.sizeof(tramp_log.entries)
+		&element_size=v.sizeof(tramp_log.entries[0])
+		&len_tramp_log=v.value(&size_debug_var / &element_size)
+
+		var.if (&len_tramp_log==0x0)
+			(
+			&len_tramp_log=0x800
+			)
+	   &tt_from_interrupts=v.value(tramp_log.entries[0].timestamp)
+			
+	   while (&tramp_iterator<&len_tramp_log)
+		(
+		&temp_timetick=v.value(tramp_log.entries[&tramp_iterator].timestamp)
+		
+		if &temp_timetick>=&tt_from_interrupts
+			(
+			&tt_from_intr_str="tramp_log.entries[&tramp_iterator].timestamp"
+			&tt_from_interrupts=&temp_timetick
+			)
+	
+		&tramp_iterator=&tramp_iterator+1	
+		)
+   )
+ else
+   (
+    &tt_from_interrupts=0x0
+	&tt_from_intr_str="Interrupt log not found"
+   )
+   
+	
+	;use aliter method since the current time is not available
+	
+	RETURN
+
+TIMER_CHECK_FOR_DELAYED_ISR:
+  &isr_time_val=v.value(\timer\timers.isr_time)
+  &match_value=v.value(\timer\timers.match_value)
+  &tolerance=(19200*50)
+
+  ;Check to see if we are more than 10ms late for ISR
+  IF (&match_value>&isr_time_val)&&(&current_time>(&match_value+&tolerance))
+  (
+    &delay=&current_time-&match_value
+    GOSUB PRINT_HELPER "Delayed ISR detected!  Match Value Set:&match_value   Current Time:&current_time   Last ISR:&isr_time_val   Delay:&delay"
+  )
+
+RETURN
+
+MENUSTART_FIND_LEAKING_CLIENTS_OLD:
+&outfile="&output_directory"+"\&FILENAME_PREFIX_STRING"+"_leaked_timers_callstacks.log"
+OPEN #4 &outfile /CREATE
+Print "File &outfile created.."
+Print "Processing Started.."
+
+&write_counter=0x00
+&num_chunks=0x0A
+&index=0x00
+
+while (&index<&num_chunks)
+ (
+ &index_buffer=0x0
+ &num_of_buffers=var.value(timer_client_chunks[&index].num_timers)
+ while (&index_buffer<&num_of_buffers)
+   (
+   &tmr_pointer=var.value(timer_client_chunks[&index].buffer[&index_buffer].timer_client_ptr)
+   &tmr_state=var.value(timer_client_chunks[&index].buffer[&index_buffer].timer_state)
+   var.if (&tmr_pointer!=0x0 && &tmr_state!=&timer_default_flag)
+   (
+   &timer_handle=0x0
+   if (&timer_handle_as_structure==&TRUE)
+	(
+	&timer_handle=var.value((*(timer_type*)&tmr_pointer)->timer_handle)
+	)
+    else
+	(
+	&timer_handle=var.value((*(timer_type*)&tmr_pointer))
+	)
+       
+	GOSUB GET_INDEX_FROM_HANDLE &timer_handle
+	var.if (&get_IFH_ret_cid==0xFEEDF00D || &get_IFH_ret_timer_idx==0xFEEDF00D || &get_IFH_ret_cid!=&index || &get_IFH_ret_timer_idx!=&index_buffer)
+		(
+		&callstack0=var.string(timer_client_chunks[&index].buffer[&index_buffer].callstack_info[0])
+		&callstack1=var.string(timer_client_chunks[&index].buffer[&index_buffer].callstack_info[1])
+		&callstack2=var.string(timer_client_chunks[&index].buffer[&index_buffer].callstack_info[2])
+		&callstack3=var.string(timer_client_chunks[&index].buffer[&index_buffer].callstack_info[3])
+		
+		&tmr_pointer_str=var.string(&tmr_pointer)
+		WRITE #4 "#&write_counter timer_client_chunks[&index].buffer[&index_buffer]->timer_client_ptr : &tmr_pointer_str"
+		WRITE #4 "Handle in the timer = &timer_handle, defined through"
+		WRITE #4 "&callstack3"
+		WRITE #4 "&callstack2"
+		WRITE #4 "&callstack1"
+		WRITE #4 "&callstack0"
+		WRITE #4 ""
+		&write_counter=&write_counter+1
+		)
+   )
+   &index_buffer=&index_buffer+0x1
+   ) 
+ &index=&index+0x01
+ )
+
+PRINT "output file generated: &outfile" 
+CLOSE #4
+
+RETURN
+
+;============================================================================
+; Subroutines for Printing the client timer chunks details
+;============================================================================
+MENUSTART_FIND_LEAKING_CLIENTS:
+
+&leaked_chunks_detail_file_name=0x0
+&all_chunks_detail_file_name=0x0
+&leak_counter=0
+
+&outfile="&output_directory"+"\&FILENAME_PREFIX_STRING"+"_timer_leaked_chunks.csv"
+&outfile2="&output_directory"+"\&FILENAME_PREFIX_STRING"+"_timer_all_chunks_detail.csv"
+
+OPEN #5 &outfile /CREATE
+OPEN #6 &outfile2 /CREATE
+
+; Check if callstack logging is there or not in this build
+On.ERROR GOSUB ERR_HANDLING_NO_CALLSTAACK
+&potpourri=var.string(timer_client_chunks[0].buffer[0].callstack_info[0])
+On.ERROR Default
+
+&num_chunks=v.sizeof(timer_client_chunks)/v.sizeof(timer_client_chunks[0])
+&index=0x00
+
+WRITE #5 "Timer State,   Client timer Chunk,   timer pointer,   timer_handle value,   Callstack Level-5,   Callstack Level-4,   Callstack Level-3,   Callstack Level-2,   TCB,   Function,   Data"
+WRITE #6 "Timer State,   Client timer Chunk,   timer pointer,   timer_handle value,   Callstack Level-5,   Callstack Level-4,   Callstack Level-3,   Callstack Level-2,   TCB,   Function,   Data"
+while (&index<&num_chunks)
+ (
+ &index_buffer=0x0
+ &num_of_buffers=var.value(timer_client_chunks[&index].num_timers)
+ while (&index_buffer<&num_of_buffers)
+   (
+   &tmr_pointer=var.value(timer_client_chunks[&index].buffer[&index_buffer].timer_client_ptr)
+   ON ERROR GOTO after_this_timer
+   if (&tmr_pointer!=0x0)
+   (
+	&timer_handle=var.value((*(timer_type*)&tmr_pointer))
+	GOSUB GET_INDEX_FROM_HANDLE &timer_handle
+
+		&callstack0=0x0
+		&callstack1=0x0
+		&callstack2=0x0
+		&callstack3=0x0
+		&tcb_ptr=0x0
+        &func_ptr=0x0
+        &data_val=0x0		
+	
+	    if (&callstack_logging_available==1)
+		(
+		&callstack0=var.string(timer_client_chunks[&index].buffer[&index_buffer].callstack_info[0])
+		&callstack1=var.string(timer_client_chunks[&index].buffer[&index_buffer].callstack_info[1])
+		&callstack2=var.string(timer_client_chunks[&index].buffer[&index_buffer].callstack_info[2])
+		&callstack3=var.string(timer_client_chunks[&index].buffer[&index_buffer].callstack_info[3])
+		)
+		
+        &tmr_pointer_str=var.string(timer_client_chunks[&index].buffer[&index_buffer].timer_client_ptr)
+		&timer_state=var.string(timer_client_chunks[&index].buffer[&index_buffer].timer_state)
+		
+		if (&is_mpss_or_adsp==0x0)
+		(
+		&tcb_ptr=var.string(timer_client_chunks[&index].buffer[&index_buffer].tcb)
+		&func_ptr=var.string(timer_client_chunks[&index].buffer[&index_buffer].cbfn.func1)
+		&data_val=var.string(timer_client_chunks[&index].buffer[&index_buffer].data)
+		)
+		else
+		(
+		&tcb_ptr=var.string(timer_client_chunks[&index].buffer[&index_buffer].cbfn.sigs_obj)
+		&func_ptr=var.string(timer_client_chunks[&index].buffer[&index_buffer].cbfn.func1)
+		&data_val=var.string(timer_client_chunks[&index].buffer[&index_buffer].cbdt.data)
+		)		
+	
+	var.if (&get_IFH_ret_cid==0xFEEDF00D || &get_IFH_ret_timer_idx==0xFEEDF00D || &get_IFH_ret_cid!=&index || &get_IFH_ret_timer_idx!=&index_buffer)
+		(
+		&timer_state_val=var.value(timer_client_chunks[&index].buffer[&index_buffer].timer_state)
+		; Check if the timer state is not TIMER_DEFAULT_FLAG or TIMER_UNDEF_FLAG, in which case the timer is not supposed to be having a proper handle value.
+		var.if (&timer_state_val!=0x0FEDCBA9 && &timer_state_val!=0x0FEDCBB0)
+		(
+		WRITE #5 "&timer_state,   timer_client_chunks[&index].buffer[&index_buffer],   Ext timer=&tmr_pointer_str,   Ext timer handle=&timer_handle,   &callstack3,   &callstack2,   &callstack1,   &callstack0,   TCB=&tcb_ptr,   FUNC=&func_ptr,   Data=&data_val"
+		&leak_counter=&leak_counter+1
+		)
+		)
+	WRITE #6 "&timer_state,   timer_client_chunks[&index].buffer[&index_buffer],   Ext timer=&tmr_pointer_str,   Ext timer handle=&timer_handle,   &callstack3,   &callstack2,   &callstack1,   &callstack0,   TCB=&tcb_ptr,   FUNC=&func_ptr,   Data=&data_val"
+   )
+after_this_timer:
+   ON ERROR
+   &index_buffer=&index_buffer+0x1
+   ) 
+ &index=&index+0x01
+ )
+
+GOSUB PRINT_HELPER ""
+GOSUB PRINT_HELPER "Found &leak_counter leaked client timer chunks; Output file with details ->" 
+GOSUB PRINT_HELPER "Leaked client timer chunks : &outfile"
+GOSUB PRINT_HELPER "All client timer chunks    : &outfile2"
+GOSUB PRINT_HELPER ""
+CLOSE #5
+CLOSE #6
+ 
+RETURN
+
+ERR_HANDLING_NO_CALLSTAACK:
+On.ERROR Default
+&callstack_logging_available=0
+RETURN
+
+;============================================================================
+; PRINT SUBROUTINE
+;============================================================================
+PRINT_HELPER:
+  ENTRY &str
+  
+  &print_line_counter=&print_line_counter+0x1
+  var.if (&print_line_counter<0x5F)
+    PRINT &str
+  else
+    (
+	PRINT "Press any key to continue . . ."
+        enter
+	&print_line_counter=0x1	
+	PRINT ""
+	PRINT &str
+    )
+  WRITE #35 &str
+  
+RETURN
+
+;============================================================================
+; Checks if the passed address is valid member in the array
+;============================================================================
+CHECK_FOR_PTR_IN_ARR:
+  ENTRY &ptr_to_check &arr_name &arr_size
+
+  &check_for_ptr_in_arr_ret=&TRUE
+  
+  &arr_base_addr=v.value(&(&arr_name[0]))
+  &single_element_size=v.sizeof(&arr_name[0])
+
+  &arr_element_count=&arr_size
+
+  &arr_end_addr=&arr_element_count*&single_element_size
+  &arr_end_addr=&arr_end_addr+&arr_base_addr
+  
+  &failed=0x0
+  
+  var.if (&ptr_to_check>=&arr_base_addr && &ptr_to_check<=&arr_end_addr)
+   (
+     &temp_var=&ptr_to_check-&arr_base_addr
+     &temp_var=&temp_var%&single_element_size
+     if &temp_var!=0
+      &check_for_ptr_in_arr_ret=&FALSE
+	  RETURN
+   )
+  else
+   &check_for_ptr_in_arr_ret=&FALSE
+   
+RETURN

@@ -1,0 +1,1100 @@
+; ============================================================================
+;
+;  PMICDump.cmm
+;
+;  Script to dump PMIC register values to an XML file.
+;
+;  Execution:
+;    PMICDump.cmm [ filename ] 
+;                 [ register_list_0 slaveid0_0 slaveid1_0 ]
+;                 [ register_list_1 slaveid0_1 slaveid1_1 ]
+;
+;   Examples:
+;   do PMICDump.cmm c:\temp\pmicdump.xml -> Auto-detects and dumps/parses all the PMICs
+;   do PMICDump.cmm c:\temp\pmicdump.xml pm8994\v2\PMICRegisterList.txt 0 1 -> Dumps the given register list
+;
+;  <filename> is the output dump file name.  It will default to
+;    c:\temp\pmicdump.xml
+;
+;  The next three parameters define how to dump one of the PMICs on the
+;  platform.  Either 0, 1 or 2 sets can be provided.  If none are provided
+;  then the interactive dialog window will be shown.
+;
+;  <register_list_x> is a file containing a list of register addresses.
+;  <slaveidx_y> are the SPMI slave ids for the two PMIC slaves.
+;
+;  ====================================================================
+;
+;  Copyright (c) 2012-2017 QUALCOMM Technologies Incorporated.  All Rights Reserved.
+;  QUALCOMM Proprietary and Confidential.
+;
+;  ====================================================================
+;
+;  $Header: //components/rel/core.glue/1.2/tools/tools/systemdrivers/pmic/hoya/PMICDump.cmm#4 $
+;  $DateTime: 2017/08/29 12:54:28 $
+;  $Author: pwbldsvc $
+;
+; ============================================================================
+;
+
+ENTRY &dumpfile &pm0_reglist &pm0_sid0 &pm0_sid1 &pm1_reglist &pm1_sid0 &pm1_sid1 &pm2_reglist &pm2_sid0 &pm2_sid1
+
+;-----------------------------------------------------------------------------
+; Default bus access mode and owner
+;-----------------------------------------------------------------------------
+
+local &SPMIOwnerChannel
+&SPMIOwnerChannel=3  ; LPASS Channel by default
+
+local &BusAccessMode
+&BusAccessMode="EZAXI"
+
+local &CurrentDir
+&CurrentDir=OS.PWD()
+
+local &PmicIoScript
+&PmicIoScript="&CurrentDir"+"\pmic_io.cmm"
+
+;-----------------------------------------------------------------------------
+; REV ID PERIPHERAL TYPE AND SUBTYPES (VERSION DETECTION)
+;-----------------------------------------------------------------------------
+
+LOCAL &PM_REVID_PERIPH_TYPE_QC_PMIC
+&PM_REVID_PERIPH_TYPE_QC_PMIC=0x51
+
+LOCAL &PM_REVID_PERIPH_SUBTYPES_MAX_NUM
+&PM_REVID_PERIPH_SUBTYPES_MAX_NUM=36.
+
+VAR.NEW char[&PM_REVID_PERIPH_SUBTYPES_MAX_NUM][10] \RevidPeriphSubtypeNamesArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_REVID_PERIPH_SUBTYPES_MAX_NUM
+	VAR.SET \RevidPeriphSubtypeNamesArr[\i++]="UNKNOWN"
+
+VAR.SET \RevidPeriphSubtypeNamesArr[1]="PM8941"
+VAR.SET \RevidPeriphSubtypeNamesArr[2]="PM8841"
+VAR.SET \RevidPeriphSubtypeNamesArr[3]="PMD9607"
+VAR.SET \RevidPeriphSubtypeNamesArr[4]="PM8026"
+VAR.SET \RevidPeriphSubtypeNamesArr[5]="PM8110"
+VAR.SET \RevidPeriphSubtypeNamesArr[6]="PMA8084"
+VAR.SET \RevidPeriphSubtypeNamesArr[7]="PMI8962"
+VAR.SET \RevidPeriphSubtypeNamesArr[8]="PMD9645"
+VAR.SET \RevidPeriphSubtypeNamesArr[9]="PM8994"
+VAR.SET \RevidPeriphSubtypeNamesArr[10]="PMI8994"
+VAR.SET \RevidPeriphSubtypeNamesArr[11]="PM8916"
+VAR.SET \RevidPeriphSubtypeNamesArr[12]="PM8004"
+VAR.SET \RevidPeriphSubtypeNamesArr[13]="PM8909"
+VAR.SET \RevidPeriphSubtypeNamesArr[14]="PM2433"
+VAR.SET \RevidPeriphSubtypeNamesArr[15]="PMD9655"
+VAR.SET \RevidPeriphSubtypeNamesArr[16]="PM8950"
+VAR.SET \RevidPeriphSubtypeNamesArr[17]="PMI8950"
+VAR.SET \RevidPeriphSubtypeNamesArr[18]="PMK8001"
+VAR.SET \RevidPeriphSubtypeNamesArr[19]="PMI8996"
+VAR.SET \RevidPeriphSubtypeNamesArr[20]="PM8998"
+VAR.SET \RevidPeriphSubtypeNamesArr[21]="PMI8998"
+VAR.SET \RevidPeriphSubtypeNamesArr[22]="PM8953"
+VAR.SET \RevidPeriphSubtypeNamesArr[23]="SMB1380"
+VAR.SET \RevidPeriphSubtypeNamesArr[24]="PM8005"
+VAR.SET \RevidPeriphSubtypeNamesArr[25]="PM8937"
+VAR.SET \RevidPeriphSubtypeNamesArr[26]="PM660L"
+VAR.SET \RevidPeriphSubtypeNamesArr[27]="PM660"
+VAR.SET \RevidPeriphSubtypeNamesArr[28]="SMB1355"
+VAR.SET \RevidPeriphSubtypeNamesArr[30]="PM855"
+VAR.SET \RevidPeriphSubtypeNamesArr[33]="PMK8002"
+VAR.SET \RevidPeriphSubtypeNamesArr[34]="PMX24"
+
+LOCAL &PM_MAX_NUM_PMICS &PM_MAX_NUM_SLAVE_IDS
+&PM_MAX_NUM_SLAVE_IDS=14.
+&PM_MAX_NUM_PMICS=7.
+
+VAR.NEW char[&PM_MAX_NUM_PMICS] \PmicModelTypeValueArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_MAX_NUM_PMICS
+	VAR.SET \PmicModelTypeValueArr[\i++]=0
+
+VAR.NEW int[&PM_MAX_NUM_PMICS] \PmicSlaveIdArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_MAX_NUM_PMICS
+	VAR.SET \PmicSlaveIdArr[\i++]=0
+
+VAR.NEW char[&PM_MAX_NUM_PMICS] \PmicModelSubTypeValueArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_MAX_NUM_PMICS
+	VAR.SET \PmicModelSubTypeValueArr[\i++]=0
+
+VAR.NEW int[&PM_MAX_NUM_PMICS] \PmicAllLayerRevArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_MAX_NUM_PMICS
+	VAR.SET \PmicAllLayerRevArr[\i++]=0
+
+VAR.NEW int[&PM_MAX_NUM_PMICS] \PmicMetalRevArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_MAX_NUM_PMICS
+	VAR.SET \PmicMetalRevArr[\i++]=0
+
+LOCAL &PM_VERSION_DETECT_FLAG
+&PM_VERSION_DETECT_FLAG=0
+
+LOCAL &PM_REGISTER_LIST_FILE_NAME &PM_FLAT_FILE_NAME
+&PM_REGISTER_LIST_FILE_NAME="PMICRegisterList.txt"
+&PM_FLAT_FILE_NAME="CORE_ADDRESS_FILE.FLAT"
+
+;-----------------------------------------------------------------------------
+; CUSTOMIZED DUMP VARIABLES
+;-----------------------------------------------------------------------------
+
+VAR.NEW char[&PM_MAX_NUM_PMICS][500] \CustomRegisterListArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_MAX_NUM_PMICS
+	VAR.SET \CustomRegisterListArr[\i++]="#&PM_REGISTER_LIST_FILE_NAME"
+
+VAR.NEW char[&PM_MAX_NUM_PMICS][500] \CustomFlatFileArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_MAX_NUM_PMICS
+	VAR.SET \CustomFlatFileArr[\i++]="#&PM_FLAT_FILE_NAME"
+
+VAR.NEW int[&PM_MAX_NUM_PMICS] \CustomDumpFlagArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_MAX_NUM_PMICS
+	VAR.SET \CustomDumpFlagArr[\i++]=0
+
+VAR.NEW int[&PM_MAX_NUM_PMICS] \CustomFileLocFlagArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_MAX_NUM_PMICS
+	VAR.SET \CustomFileLocFlagArr[\i++]=0
+
+;-----------------------------------------------------------------------------
+; Set up local pmic index to determine which PMIC is selected from pull down
+; for customized dump
+;-----------------------------------------------------------------------------
+
+LOCAL &CURRENT_PULLDOWN_PMIC_INDEX
+&CURRENT_PULLDOWN_PMIC_INDEX=&PM_MAX_NUM_PMICS
+
+AREA.SELECT A000
+AREA.CLEAR A000
+
+;-----------------------------------------------------------------------------
+; Set up local flag for whether to include the trim registers or not.
+;-----------------------------------------------------------------------------
+
+LOCAL &include_trim
+&include_trim=1
+
+;-----------------------------------------------------------------------------
+; Check for non-interactive mode.
+;-----------------------------------------------------------------------------
+
+IF ("&dumpfile"!="")
+(
+  IF (!STATE.RUN()&&(SYSTEM.MODE()<=0x5))
+  (
+    sys.m.a
+  )
+  GOSUB StartDump
+
+  &defaultFlag=TRUE()
+  &breakFlag=FALSE()
+  &trimFlag=TRUE()
+  &analyzeFlag=TRUE()
+
+  IF "&pm0_reglist"!=""
+  (
+    GOSUB DumpPMIC &pm0_reglist &pm0_sid0 &pm0_sid1
+    &defaultFlag=FALSE()
+  )
+  IF "&pm1_reglist"!=""
+  (
+    GOSUB DumpPMIC &pm1_reglist &pm1_sid0 &pm1_sid1
+    &defaultFlag=FALSE()
+  )
+  IF "&pm2_reglist"!=""
+  (
+    GOSUB DumpPMIC &pm2_reglist &pm2_sid0 &pm2_sid1
+    &defaultFlag=FALSE()
+  )
+
+  if &defaultFlag
+  (
+    GOSUB CollectAndAnalyzeDump &defaultFlag &breakFlag &trimFlag &analyzeFlag
+  )
+  else
+  (
+    GOSUB CloseDump 
+  )
+
+  PRINT "PMIC Dump Complete"
+  
+  ENDDO
+)
+
+;-----------------------------------------------------------------------------
+; Determine the file name to save to.
+;-----------------------------------------------------------------------------
+
+IF "&dumpfile"==""
+(
+  &dumpfile="c:\temp\pmicdump.xml"
+)
+
+;-----------------------------------------------------------------------------
+; Create the dialog
+;-----------------------------------------------------------------------------
+
+DIALOG
+(
+  HEADER "PMIC Register Dump Tool"
+   
+  POS 0. 0. 35. 6.
+  BOX "Configuration"
+  
+  POS 1. 1. 10. 1.
+  TEXT "Log File:"
+  POS 12. 1. 20. 1.
+  LOGFILE: EDIT "c:\temp\pmicdump.xml" ""
+
+  POS 1. 2.5 12. 1.
+  TEXT20: TEXT "Break on Dump:"
+  POS 13. 2.5 1.5 1.
+  BREAK.CHK: CHECKBOX "" ""
+
+  POS 1. 4. 12. 1.
+  TEXT20: TEXT "IncludeTrim:"
+  POS 13. 4. 1.5 1.
+  TRIM.CHK: CHECKBOX "" ""
+
+  POS 17. 2.5 6. 1.
+  TEXT20: TEXT "Owner:"
+  POS 23.5 2.5 10. 1.
+  DUMP_OWNER: PULLDOWN "DEFAULT,AOP"
+  (
+  )
+
+  POS 17. 4. 6. 1.
+  TEXT20: TEXT "Access:"
+  POS 23.5 4. 10. 1.
+  DUMP_ACCESSMODE: PULLDOWN "EZAXI,A"
+  (
+  )
+   
+  POS 0. 6. 35. 9.5
+  BOX "Customize"
+
+  POS 1. 7.5 12. 1.
+  TEXT20: TEXT "Default Settings:"
+  POS 13.5 7.5 1.5 1.
+  DEFAULT.CHK: CHECKBOX "" "GOSUB DefaultCheckToggle"
+  
+  POS 1. 9. 7. 1.
+  PMIC_MODEL_TXT: TEXT "PMIC:"
+  POS 12. 9. 8. 1.
+  PMIC_MODEL_PD: DYNPULLDOWN ",PMIC A,PMIC B,PMIC C,PMIC D,PMIC E,PMIC F,PMIC G" "GOSUB CustomizeDumpConfig"
+  (
+  )
+  POS 21. 9. 10. 1.
+  PMIC_MODEL_DATA: DYNTEXT ""
+  
+  POS 1. 10.5 10. 1.
+  TEXT "Register List:"
+  POS 12. 10.5 20. 1.
+  REGLIST: EDIT "" ""
+  
+  POS 1. 12. 10. 1.
+  TEXT "Flat File:"
+  POS 12. 12. 20. 1.
+  FLATFILE: EDIT "" ""
+
+  POS 1. 13.5 12. 1.
+  TEXT20: TEXT "Collect Dump:"
+  POS 13.5 13.5 1.5 1.
+  COLLECT_DUMP.CHK: CHECKBOX "" "GOSUB CollectDumpCheckToggle"
+  
+  POS 1. 16. 11. 1.5
+  DEFBUTTON "Dump" 
+  (
+    &BusAccessMode=DIALOG.STRING(DUMP_ACCESSMODE)
+    GOSUB SetOwnerChannel DIALOG.STRING(DUMP_OWNER)
+    &dumpfile=DIALOG.STRING(LOGFILE)
+    &defaultFlag=DIALOG.BOOLEAN(DEFAULT.CHK)
+    &breakFlag=DIALOG.BOOLEAN(BREAK.CHK)
+    &trimFlag=DIALOG.BOOLEAN(TRIM.CHK)
+    &analyzeFlag=FALSE()
+
+    IF (!DIALOG.BOOLEAN(DEFAULT.CHK)&&DIALOG.BOOLEAN(COLLECT_DUMP.CHK))
+    (
+      &reglistCustom=STRING.REPLACE(DIALOG.STRING(REGLIST),"\","#",0.)
+      &flatfileCustom=STRING.REPLACE(DIALOG.STRING(FLATFILE),"\","#",0.)
+      VAR.SET \CustomRegisterListArr[&CURRENT_PULLDOWN_PMIC_INDEX]="&reglistCustom"
+      VAR.SET \CustomFlatFileArr[&CURRENT_PULLDOWN_PMIC_INDEX]="&flatfileCustom"
+      AREA.SELECT A000
+      AREA.CLEAR A000
+    )
+
+    GOSUB CollectAndAnalyzeDump &defaultFlag &breakFlag &trimFlag &analyzeFlag
+  )
+
+  POS 13. 16. 12. 1.5
+  DEFBUTTON "Dump + Analyze" 
+  (
+    &BusAccessMode=DIALOG.STRING(DUMP_ACCESSMODE)
+    GOSUB SetOwnerChannel DIALOG.STRING(DUMP_OWNER)
+    &dumpfile=DIALOG.STRING(LOGFILE)
+    &defaultFlag=DIALOG.BOOLEAN(DEFAULT.CHK)
+    &breakFlag=DIALOG.BOOLEAN(BREAK.CHK)
+    &trimFlag=DIALOG.BOOLEAN(TRIM.CHK)
+    &analyzeFlag=TRUE()
+
+    IF (!DIALOG.BOOLEAN(DEFAULT.CHK)&&DIALOG.BOOLEAN(COLLECT_DUMP.CHK))
+    (
+      &reglistCustom=STRING.REPLACE(DIALOG.STRING(REGLIST),"\","#",0.)
+      &flatfileCustom=STRING.REPLACE(DIALOG.STRING(FLATFILE),"\","#",0.)
+      VAR.SET \CustomRegisterListArr[&CURRENT_PULLDOWN_PMIC_INDEX]="&reglistCustom"
+      VAR.SET \CustomFlatFileArr[&CURRENT_PULLDOWN_PMIC_INDEX]="&flatfileCustom"
+      AREA.SELECT A000
+      AREA.CLEAR A000
+    )
+
+    GOSUB CollectAndAnalyzeDump &defaultFlag &breakFlag &trimFlag &analyzeFlag
+  )
+
+  POS 27. 16. 10. 1.5
+  BUTTON "Close" "JUMPTO winclose"
+  CLOSE "JUMPTO winclose"
+)
+DIALOG.SET DEFAULT.CHK
+DIALOG.SET TRIM.CHK
+DIALOG.SET BREAK.CHK
+DIALOG.DISABLE PMIC_MODEL_PD
+DIALOG.DISABLE REGLIST
+DIALOG.DISABLE FLATFILE
+DIALOG.DISABLE COLLECT_DUMP.CHK
+STOP
+
+winclose:
+DIALOG.END
+ENDDO
+
+
+;=============================================================================
+;=============================================================================
+; SUBROUTINES
+;=============================================================================
+;=============================================================================
+
+;=============================================================================
+; SUB: PmicVersionDetection
+;=============================================================================
+
+PmicVersionDetection:
+
+  &verPeriphBaseAddr=0x100
+  &verMetalRevAddr=&verPeriphBaseAddr+0x02
+  &verAllLayerRevAddr=&verPeriphBaseAddr+0x03
+  &verPeriphTypeAddr=&verPeriphBaseAddr+0x04
+  &verPeriphSubTypeAddr=&verPeriphBaseAddr+0x05
+  &verMetalRevData=0
+  &verAllLayerRevData=0
+  &verPeriphTypeData=0
+  &verPeriphSubTypeData=0
+  &verSlaveId=0
+  &verDeviceIndex=0
+  &status=0
+
+  IF (!STATE.RUN()&&(SYSTEM.MODE()<=0x5))
+  (
+    sys.m.a
+  )
+
+  WHILE (&verSlaveId<=&PM_MAX_NUM_SLAVE_IDS)
+  (
+    IF (&verDeviceIndex<&PM_MAX_NUM_PMICS)
+    (
+      do &PmicIoScript read &SPMIOwnerChannel &BusAccessMode &verSlaveId &verPeriphTypeAddr
+      ENTRY &status &verPeriphTypeData
+
+      IF ((&status!=0)&&(&verPeriphTypeData!=0)&&(&verPeriphTypeData==&PM_REVID_PERIPH_TYPE_QC_PMIC))
+      (
+        do &PmicIoScript read &SPMIOwnerChannel &BusAccessMode &verSlaveId &verPeriphSubTypeAddr
+        ENTRY &status &verPeriphSubTypeData
+        do &PmicIoScript read &SPMIOwnerChannel &BusAccessMode &verSlaveId &verAllLayerRevAddr
+        ENTRY &status &verAllLayerRevData
+        do &PmicIoScript read &SPMIOwnerChannel &BusAccessMode &verSlaveId &verMetalRevAddr
+        ENTRY &status &verMetalRevData
+
+        IF (&verPeriphSubTypeData!=1)
+        (
+          IF (&verAllLayerRevData<1)
+          (
+            &verAllLayerRevData=&verAllLayerRevData+1
+          )
+        )
+        ELSE
+        (
+          IF (&verAllLayerRevData<2)
+          (
+            &verAllLayerRevData=&verAllLayerRevData+1
+          )
+        )
+
+        VAR.SET \PmicSlaveIdArr[&verDeviceIndex]=&verSlaveId
+        VAR.SET \PmicModelSubTypeValueArr[&verDeviceIndex]=&verPeriphSubTypeData
+        VAR.SET \PmicAllLayerRevArr[&verDeviceIndex]=&verAllLayerRevData
+        VAR.SET \PmicMetalRevArr[&verDeviceIndex]=&verMetalRevData
+      )
+    )
+    &verDeviceIndex=&verDeviceIndex+1
+    &verSlaveId=&verSlaveId+2
+  )
+
+  &PM_VERSION_DETECT_FLAG=1
+
+  AREA.SELECT A000
+  AREA.CLEAR A000
+
+  RETURN
+
+;=============================================================================
+; SUB: SetOwnerChannel
+;=============================================================================
+
+SetOwnerChannel:
+
+  ENTRY &OwnerName
+
+  IF &OwnerName=="APPS"
+  (
+    &SPMIOwnerChannel=0
+  )
+  ELSE IF &OwnerName=="TZ"
+  (
+    &SPMIOwnerChannel=1
+  )
+  ELSE IF &OwnerName=="MSS"
+  (
+    &SPMIOwnerChannel=2
+  )
+  ELSE IF &OwnerName=="DEFAULT"
+  (
+    &SPMIOwnerChannel=3
+  )
+  ELSE IF &OwnerName=="AOP"
+  (
+    &SPMIOwnerChannel=4
+  )
+  ELSE IF &OwnerName=="SSC"
+  (
+    &SPMIOwnerChannel=5
+  )
+
+  IF (!STATE.RUN()&&(SYSTEM.MODE()<=0x5))
+  (
+    sys.m.a
+  )
+
+  RETURN
+
+
+;=============================================================================
+; SUB: DefaultCheckToggle
+;=============================================================================
+
+DefaultCheckToggle:
+
+  IF DIALOG.BOOLEAN(DEFAULT.CHK)
+  (
+    DIALOG.DISABLE PMIC_MODEL_PD
+    DIALOG.DISABLE REGLIST
+    DIALOG.DISABLE FLATFILE
+    DIALOG.DISABLE COLLECT_DUMP.CHK
+  )
+  ELSE
+  (
+    DIALOG.ENABLE PMIC_MODEL_PD
+  )
+
+  RETURN
+
+
+;=============================================================================
+; SUB: CustomizeDumpConfig
+;=============================================================================
+
+CustomizeDumpConfig:
+
+  &pmicModelValue=0
+
+  &reglistStatus=0
+  &reglist=""
+  &flatfileStatus=0
+  &flatfile=""
+
+  IF (&PM_VERSION_DETECT_FLAG==0)
+  (
+    IF (STATE.RUN()&&(SYSTEM.MODE()>0x5)&&(DIALOG.BOOLEAN(BREAK.CHK)))
+    (
+      b
+      GOSUB PmicVersionDetection
+      g
+    )
+    ELSE
+    (
+      GOSUB PmicVersionDetection
+    )
+  )
+
+  IF (&CURRENT_PULLDOWN_PMIC_INDEX<&PM_MAX_NUM_PMICS)
+  (
+    &reglistCustom=STRING.REPLACE(DIALOG.STRING(REGLIST),"\","#",0.)
+    &flatfileCustom=STRING.REPLACE(DIALOG.STRING(FLATFILE),"\","#",0.)
+    VAR.SET \CustomRegisterListArr[&CURRENT_PULLDOWN_PMIC_INDEX]="&reglistCustom"
+    VAR.SET \CustomFlatFileArr[&CURRENT_PULLDOWN_PMIC_INDEX]="&flatfileCustom"
+  )
+
+  IF (DIALOG.STRING(PMIC_MODEL_PD)=="PMIC A")
+  (
+    &CURRENT_PULLDOWN_PMIC_INDEX=0.
+  )
+  ELSE IF (DIALOG.STRING(PMIC_MODEL_PD)=="PMIC B")
+  (
+    &CURRENT_PULLDOWN_PMIC_INDEX=1.
+  )
+  ELSE IF (DIALOG.STRING(PMIC_MODEL_PD)=="PMIC C")
+  (
+    &CURRENT_PULLDOWN_PMIC_INDEX=2.
+  )
+  ELSE IF (DIALOG.STRING(PMIC_MODEL_PD)=="PMIC D")
+  (
+    &CURRENT_PULLDOWN_PMIC_INDEX=3.
+  )
+  ELSE IF (DIALOG.STRING(PMIC_MODEL_PD)=="PMIC E")
+  (
+    &CURRENT_PULLDOWN_PMIC_INDEX=4.
+  )
+  ELSE IF (DIALOG.STRING(PMIC_MODEL_PD)=="PMIC F")
+  (
+    &CURRENT_PULLDOWN_PMIC_INDEX=5.
+  )
+  ELSE IF (DIALOG.STRING(PMIC_MODEL_PD)=="PMIC G")
+  (
+    &CURRENT_PULLDOWN_PMIC_INDEX=6.
+  )
+  ELSE
+  (
+    &CURRENT_PULLDOWN_PMIC_INDEX=&PM_MAX_NUM_PMICS
+    DIALOG.SET PMIC_MODEL_DATA ""
+    DIALOG.SET REGLIST ""
+    DIALOG.SET FLATFILE ""
+
+    DIALOG.DISABLE REGLIST
+    DIALOG.DISABLE FLATFILE
+    DIALOG.DISABLE COLLECT_DUMP.CHK
+    AREA.SELECT A000
+    AREA.CLEAR A000
+    RETURN
+  )
+
+  &pmicModelValue=VAR.VALUE(\PmicModelSubTypeValueArr[&CURRENT_PULLDOWN_PMIC_INDEX])
+  IF (&pmicModelValue!=0)
+  (
+    &model=VAR.STRING(\RevidPeriphSubtypeNamesArr[&pmicModelValue])
+    &pmicAllLayerRev=FORMAT.DECIMAL(0,VAR.VALUE(\PmicAllLayerRevArr[&CURRENT_PULLDOWN_PMIC_INDEX]))
+    &pmicMetalRev=FORMAT.DECIMAL(0,VAR.VALUE(\PmicMetalRevArr[&CURRENT_PULLDOWN_PMIC_INDEX]))
+
+    DIALOG.SET PMIC_MODEL_DATA "&model"+"v"+"&pmicAllLayerRev"+"."+"&pmicMetalRev"
+
+    IF (VAR.VALUE(\CustomFileLocFlagArr[&CURRENT_PULLDOWN_PMIC_INDEX])==0)
+    (
+      GOSUB GetDefaultDumpFiles &model &pmicAllLayerRev &pmicMetalRev
+      ENTRY &reglistStatus &reglist &flatfileStatus &flatfile
+      IF (&reglistStatus==1)
+      (
+        &reglistTemp=STRING.REPLACE("&reglist","\","#",0.)
+        VAR.SET \CustomRegisterListArr[&CURRENT_PULLDOWN_PMIC_INDEX]="&reglistTemp"
+      )
+
+      IF (&flatfileStatus==1)
+      (
+        &flatfileTemp=STRING.REPLACE("&flatfile","\","#",0.)
+        VAR.SET \CustomFlatFileArr[&CURRENT_PULLDOWN_PMIC_INDEX]="&flatfileTemp" 
+      )
+
+      VAR.SET \CustomFileLocFlagArr[&CURRENT_PULLDOWN_PMIC_INDEX]=1
+    )
+
+    DIALOG.SET REGLIST STRING.REPLACE(VAR.STRING(\CustomRegisterListArr[&CURRENT_PULLDOWN_PMIC_INDEX]),"#","\",0.)
+    DIALOG.SET FLATFILE STRING.REPLACE(VAR.STRING(\CustomFlatFileArr[&CURRENT_PULLDOWN_PMIC_INDEX]),"#","\",0.)
+
+    DIALOG.ENABLE REGLIST
+    DIALOG.ENABLE FLATFILE
+    DIALOG.ENABLE COLLECT_DUMP.CHK
+
+    IF (VAR.VALUE(\CustomDumpFlagArr[&CURRENT_PULLDOWN_PMIC_INDEX])==1)
+    (
+      DIALOG.SET COLLECT_DUMP.CHK "ON"
+    )
+    ELSE
+    (
+      DIALOG.SET COLLECT_DUMP.CHK "OFF"
+    )
+  )
+  ELSE
+  (
+    DIALOG.SET PMIC_MODEL_DATA "NO PMIC"
+    DIALOG.SET REGLIST STRING.REPLACE(VAR.STRING(\CustomRegisterListArr[&CURRENT_PULLDOWN_PMIC_INDEX]),"#","\",0.)
+    DIALOG.SET FLATFILE STRING.REPLACE(VAR.STRING(\CustomFlatFileArr[&CURRENT_PULLDOWN_PMIC_INDEX]),"#","\",0.)
+
+    DIALOG.DISABLE REGLIST
+    DIALOG.DISABLE FLATFILE
+    DIALOG.DISABLE COLLECT_DUMP.CHK
+  )
+  AREA.SELECT A000
+  AREA.CLEAR A000
+
+  RETURN
+
+
+;=============================================================================
+; SUB: CollectDumpCheckToggle
+;=============================================================================
+
+CollectDumpCheckToggle:
+
+  IF DIALOG.BOOLEAN(COLLECT_DUMP.CHK)
+  (
+    &reglistCustom=STRING.REPLACE(DIALOG.STRING(REGLIST),"\","#",0.)
+    &flatfileCustom=STRING.REPLACE(DIALOG.STRING(FLATFILE),"\","#",0.)
+    VAR.SET \CustomRegisterListArr[&CURRENT_PULLDOWN_PMIC_INDEX]="&reglistCustom"
+    VAR.SET \CustomFlatFileArr[&CURRENT_PULLDOWN_PMIC_INDEX]="&flatfileCustom"
+    VAR.SET \CustomDumpFlagArr[&CURRENT_PULLDOWN_PMIC_INDEX]=1
+  )
+  ELSE
+  (
+    VAR.SET \CustomRegisterListArr[&CURRENT_PULLDOWN_PMIC_INDEX]="#&PM_REGISTER_LIST_FILE_NAME"
+    VAR.SET \CustomFlatFileArr[&CURRENT_PULLDOWN_PMIC_INDEX]="#&PM_FLAT_FILE_NAME"
+    VAR.SET \CustomDumpFlagArr[&CURRENT_PULLDOWN_PMIC_INDEX]=0
+  )
+  AREA.SELECT A000
+  AREA.CLEAR A000
+
+  RETURN
+
+;=============================================================================
+; SUB: CollectAndAnalyzeDump
+;=============================================================================
+
+CollectAndAnalyzeDump:
+  ENTRY &defaultFlag &breakFlag &trimFlag &analyzeFlag
+    
+  &pmicIndex=0
+  &pmicModelType=0
+  &model=""
+  &pmicAllLayerRev=0
+  &pmicMetalRev=0
+  &pmicSlaveId0=0
+  &pmicSlaveId1=0
+  &pmicDetectedFlag=0
+  &reglistStatus=0
+  &reglist=""
+  &flatfileStatus=0
+  &flatfile=""
+  &dumpStatus=0 ; 0 - Failure, 1 - Success
+
+  IF (STATE.RUN()&&(SYSTEM.MODE()>0x5)&&(&breakFlag))
+  (
+    b
+  )
+
+  IF (&PM_VERSION_DETECT_FLAG==0)
+  (
+    GOSUB PmicVersionDetection
+  )
+
+  GOSUB StartDump
+
+  IF &trimFlag
+  (
+    &include_trim=1
+  )
+  ELSE
+  (
+    &include_trim=0
+  )
+
+  AREA
+  PRINT " "
+
+  WHILE (&pmicIndex<&PM_MAX_NUM_PMICS)
+  (
+    &pmicModelValue=VAR.VALUE(\PmicModelSubTypeValueArr[&pmicIndex])
+    IF (&pmicModelValue!=0)
+    (
+      &pmicDetectedFlag=1
+      &reglistStatus=0
+      &model=VAR.STRING(\RevidPeriphSubtypeNamesArr[&pmicModelValue])
+      &pmicAllLayerRev=FORMAT.DECIMAL(0,VAR.VALUE(\PmicAllLayerRevArr[&pmicIndex]))
+      &pmicMetalRev=FORMAT.DECIMAL(0,VAR.VALUE(\PmicMetalRevArr[&pmicIndex]))
+      &pmicSlaveId0=VAR.VALUE(\PmicSlaveIdArr[&pmicIndex])
+      &pmicSlaveId1=VAR.VALUE(\PmicSlaveIdArr[&pmicIndex])+1
+      &sid0="&pmicSlaveId0"
+      &sid1="&pmicSlaveId1"
+
+      PRINT "Collecting &model"+"v"+"&pmicAllLayerRev.&pmicMetalRev pmic register dump..."
+
+      IF &defaultFlag
+      (
+        GOSUB GetDefaultDumpFiles &model &pmicAllLayerRev &pmicMetalRev
+        ENTRY &reglistStatus &reglist &flatfileStatus &flatfile
+        IF (&reglistStatus==1)
+        (
+          &dumpStatus=1
+          GOSUB DumpPMIC &reglist &sid0 &sid1 &model
+        )
+      )
+      ELSE
+      (
+        IF (VAR.VALUE(\CustomDumpFlagArr[&pmicIndex])==1)
+        (
+          &reglist=STRING.REPLACE(VAR.STRING(\CustomRegisterListArr[&pmicIndex]),"#","\",0.)
+          IF (FILE.EXIST(&reglist))
+          (
+            &reglistStatus=1
+            &dumpStatus=1
+            GOSUB DumpPMIC &reglist &sid0 &sid1 &model
+          )
+          ELSE
+          (
+            ;if register list not found return error
+            PRINT "ERROR: &model register list not found"
+          )
+        )
+        ELSE
+        (
+          ;Dump flag is disabled for this pmic index
+          ;so setting this flag to avoid printing error
+          &reglistStatus=1
+          PRINT "&model PMIC 'Collect Dump' checkbox disabled"
+        )
+      )
+    )
+    &pmicIndex=&pmicIndex+1
+  )
+
+  ;if register list not found return error
+  IF (&dumpStatus==1)
+  (
+    PRINT "PMIC register dump sent to &dumpfile"
+  )
+  ELSE
+  (
+    PRINT "PMIC register dump collection failed"
+  )
+
+  GOSUB CloseDump
+
+  IF (&pmicDetectedFlag==0)
+  (
+    PRINT "ERROR: PMIC detection failed"
+  )
+
+  IF ((&analyzeFlag)&&(&dumpStatus==1))
+  (
+    GOSUB AnalyzeDump
+  )
+
+  RETURN
+
+;=============================================================================
+; SUB: AnalyzeDump
+;=============================================================================
+
+AnalyzeDump:
+  &pmicIndex=0
+  &pmicModelType=0
+  &model=0
+  &pmicAllLayerRev=0
+  &pmicMetalRev=0
+  &reglistStatus=0
+  &reglist=""
+  &flatfileStatus=0
+  &flatfile=""
+  &parseDumpIndex=0
+
+  WHILE (&pmicIndex<&PM_MAX_NUM_PMICS)
+  (
+    &pmicModelValue=VAR.VALUE(\PmicModelSubTypeValueArr[&pmicIndex])
+    IF (&pmicModelValue!=0)
+    (
+      &model=VAR.STRING(\RevidPeriphSubtypeNamesArr[&pmicModelValue])
+      &pmicAllLayerRev=FORMAT.DECIMAL(0,VAR.VALUE(\PmicAllLayerRevArr[&pmicIndex]))
+      &pmicMetalRev=FORMAT.DECIMAL(0,VAR.VALUE(\PmicMetalRevArr[&pmicIndex]))
+
+      PRINT "Parsing &model"+"v"+"&pmicAllLayerRev.&pmicMetalRev pmic register dump..."
+
+      ; Check if default settings or customized settings
+      IF &defaultFlag
+      (
+        GOSUB GetDefaultDumpFiles &model &pmicAllLayerRev &pmicMetalRev
+        ENTRY &reglistStatus &reglist &flatfileStatus &flatfile
+
+        IF (&flatfileStatus==1)
+        (
+          ;Depending on number of PMIC dumps collected, index used for parsing is decided
+          GOSUB ParseDump &parseDumpIndex &model &flatfile
+          &parseDumpIndex=&parseDumpIndex+1
+        )
+      )
+      ELSE
+      (
+        IF (VAR.VALUE(\CustomDumpFlagArr[&pmicIndex])==1)
+        (
+          &flatfile=STRING.REPLACE(VAR.STRING(\CustomFlatFileArr[&pmicIndex]),"#","\",0.)
+          IF (FILE.EXIST(&flatfile))
+          (
+            &flatfileStatus=1
+
+            ;Depending on number of PMIC dumps collected, index used for parsing is decided
+            GOSUB ParseDump &parseDumpIndex &model &flatfile
+            &parseDumpIndex=&parseDumpIndex+1
+          )
+          ELSE
+          (
+
+            ;if flat file not found return error
+            PRINT "ERROR: &model flat file not found"
+          )
+        )
+        ELSE
+        (
+          ;Collect Dump flag is disabled for this pmic index
+          ;so setting this flag to avoid printing error
+          PRINT "&model PMIC 'Collect Dump' checkbox disabled"
+          &flatfileStatus=1
+        )
+      )
+    )
+    &pmicIndex=&pmicIndex+1
+  )
+
+  RETURN
+
+;=============================================================================
+; SUB: GetDefaultDumpFiles
+;=============================================================================
+
+GetDefaultDumpFiles:
+  ENTRY &model &pmicAllLayerRev &pmicMetalRev
+
+  &reglistStatus=0
+  &reglist=""
+  &reglistTempAllLayer=""
+  &reglistTempAllLayerMetal=""
+
+  &flatfileStatus=0
+  &flatfile=""
+  &flatfileTempAllLayer=""
+  &flatfileTempAllLayerMetal=""
+
+  WHILE ((&pmicAllLayerRev>0)&&(&reglistStatus==0))
+  (
+    &pmicAllLayerRev=FORMAT.DECIMAL(0,&pmicAllLayerRev)
+    &pmicMetalRev=FORMAT.DECIMAL(0,&pmicMetalRev)
+
+    &reglistTempAllLayer="&model"+"\v"+"&pmicAllLayerRev"+"\"+"&PM_REGISTER_LIST_FILE_NAME"
+    &reglistTempAllLayerMetal="&model"+"\v"+"&pmicAllLayerRev"+"_"+"&pmicMetalRev"+"\"+"&PM_REGISTER_LIST_FILE_NAME"
+
+    &flatfileTempAllLayer="&model"+"\v"+"&pmicAllLayerRev"+"\"+"&PM_FLAT_FILE_NAME"
+    &flatfileTempAllLayerMetal="&model"+"\v"+"&pmicAllLayerRev"+"_"+"&pmicMetalRev"+"\"+"&PM_FLAT_FILE_NAME"
+
+    &custFlatFileName=STRING.REPLACE("&PM_FLAT_FILE_NAME","FILE.FLAT","FILE_CUSTOMER.FLAT", 0.)
+
+    &flatfileTempAllLayerCust="&model"+"\v"+"&pmicAllLayerRev"+"\"+"&custFlatFileName"
+    &flatfileTempAllLayerMetalCust="&model"+"\v"+"&pmicAllLayerRev"+"_"+"&pmicMetalRev"+"\"+"&custFlatFileName"
+
+    IF (FILE.EXIST(&reglistTempAllLayer))
+    (
+      &reglist="&reglistTempAllLayer"
+      &reglistStatus=1
+    )
+    ELSE IF (FILE.EXIST(&reglistTempAllLayerMetal))
+    (
+      &reglist="&reglistTempAllLayerMetal"
+      &reglistStatus=1
+    )
+
+    IF (FILE.EXIST(&flatfileTempAllLayer))
+    (
+      &flatfile="&flatfileTempAllLayer"
+      &flatfileStatus=1
+    )
+    ELSE IF (FILE.EXIST(&flatfileTempAllLayerMetal))
+    (
+      &flatfile="&flatfileTempAllLayerMetal"
+      &flatfileStatus=1
+    )
+    ELSE IF (FILE.EXIST(&flatfileTempAllLayerCust))
+    (
+      &flatfile="&flatfileTempAllLayerCust"
+      &flatfileStatus=1
+    )
+    ELSE IF (FILE.EXIST(&flatfileTempAllLayerMetalCust))
+    (
+      &flatfile="&flatfileTempAllLayerMetalCust"
+      &flatfileStatus=1
+    )
+    &pmicAllLayerRev=&pmicAllLayerRev-1
+  )
+  
+  RETURN &reglistStatus &reglist &flatfileStatus &flatfile
+
+;=============================================================================
+; SUB: StartDump
+;=============================================================================
+
+StartDump:
+  ENTRY &target
+  OPEN #1 &dumpfile /Create
+  WRITE #1 "<pmicDump version='1'>"
+  WRITE #1 "  <timestamp>" CLOCK.DATE() ", " CLOCK.TIME() "</timestamp>"
+  WRITE #1 "  <generator>Trace32</generator>"
+
+  if "&target"==""
+  (
+    WRITE #1 "  <target>"
+  )
+  ELSE
+  (
+    WRITE #1 "  <target name='&target'>"
+  )
+
+  RETURN
+
+
+;=============================================================================
+; SUB: DumpPMIC
+;=============================================================================
+
+DumpPMIC:
+
+  ENTRY &reglist &sid0 &sid1 &pmic
+  LOCAL &spmi_slave
+
+  ;-----------------------------------------------------------------------------
+  ; Add header information.
+  ;-----------------------------------------------------------------------------
+
+  IF "&pmic"==""
+  (
+    WRITE #1 "    <pmic>"
+  )
+  ELSE
+  (
+    WRITE #1 "    <pmic model='&pmic'>"
+  )
+  WRITE #1 "      <bus type='spmi' slaveid0='&sid0' slaveid1='&sid1' />"
+
+  ;-----------------------------------------------------------------------------
+  ; Save each register value.
+  ;-----------------------------------------------------------------------------
+
+  OPEN #2 &reglist /Read
+
+  READ #2 %line &addr
+  
+  WHILE !EOF()
+  (
+    &pmic_sid=&addr>>16.
+    IF &pmic_sid==0
+    (
+      &spmi_slave=&sid0
+    )
+    ELSE IF &pmic_sid==1
+    (
+      &spmi_slave=&sid1
+    )
+    ELSE
+    (
+      &spmi_slave=0xFF
+    )
+
+    IF "&spmi_slave"!="0xFF"
+    (
+      &spmi_addr=&addr&0xFFFF
+      &spmi_offset=&addr&0xFF
+      IF (&include_trim==1)||(&spmi_offset<0xF0)
+      (
+        do &PmicIoScript read &SPMIOwnerChannel &BusAccessMode &spmi_slave &spmi_addr
+        ENTRY &status &data
+        IF (&status==1)
+        (
+          WRITE #1 "      <register address='0x" &addr "' value='0x" &data "' />"
+        )
+      )
+    )
+
+    READ #2 %line &addr
+  )
+
+  ;-----------------------------------------------------------------------------
+  ; Close up the XML element.
+  ;-----------------------------------------------------------------------------
+
+  WRITE #1 "    </pmic>"
+
+  RETURN
+
+
+;=============================================================================
+; SUB: CloseDump
+;=============================================================================
+
+CloseDump:
+  WRITE #1 "  </target>"
+  WRITE #1 "</pmicDump>"
+  CLOSE #1
+
+  RETURN
+
+
+;=============================================================================
+; SUB: ParseDump
+;=============================================================================
+
+ParseDump:
+  ENTRY &devidx &model &flat
+  LOCAL &fname
+
+  &fname="&dumpfile.&model.txt"
+  &pwd=OS.PWD()
+  &parser_cmd="&pwd"+"\"+"PMICDumpParser.py"
+  &devidx=FORMAT.DECIMAL(0,&devidx)
+
+  IF ((STRING.SCAN("&flat","\\",0)!=0)&&(STRING.SCAN("&flat","//",0)!=0))
+  (
+    &flat="&pwd"+"\"+"&flat"
+  )
+
+  OS.COMMAND start python &parser_cmd --flat=&flat --file=&dumpfile --output=&fname --devidx=&devidx
+
+  PRINT "PMIC register dump parsed to &fname"
+
+  RETURN
+

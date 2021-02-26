@@ -1,0 +1,137 @@
+;=============================================================================
+;
+;                                    t32sim.cmm
+;
+; GENERAL DESCRIPTION
+;
+; EXTERNAL FUNCTIONS
+;        None.
+;
+; INITIALIZATION AND SEQUENCING REQUIREMENTS
+;        None.
+;
+;             Copyright (c) 2013  by Qualcomm Technologies, Inc.  All Rights Reserved.
+;=============================================================================
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;
+; Startup Script for Trace32 (Windows)
+;
+;  1) Configure standard menu entries   (this part was provided by Lauterbach)
+;  2) Configure for "qdsp6000v2" processor
+;  3) Parse "hostname:port" from command-line and connect to GDI Socket interface
+;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+
+;Default startup program for TRACE32
+;
+;This startup program can be modified according to your needs.
+
+;choose hex mode for input
+ radix hex
+
+;Add some extra buttons to the toolbar
+
+menu.rp
+(
+  add
+  toolbar
+  (
+    separator
+    toolitem "Source/List" "list" "Data.List"
+    toolitem "Memory Dump" "dump" "Data.dump"
+    toolitem "Register" "reg" "Register"
+    separator
+    toolitem "Watch" ":varwatch" "Var.Watch"
+    toolitem "Stack" ":varframe" "Var.Frame /l /c"
+    toolitem "Automatic Watch" ":varref" "Var.Ref"
+    separator
+    toolitem "List Breakpoints" "break" "Break.List"
+    toolitem "List Symbols" "symbols" "sYmbol.Browse"
+    separator
+  )
+
+  menu
+  (
+    popup "&CPU"
+    (
+      replace
+      menuitem "&In Target Reset"
+      (
+        System.ResetOut ; you may also want to try 'register.reset'
+      )
+    )
+  )
+)
+
+ if language()!=""
+ (
+  local &menuname
+  &menuname="~~/t32"+language()
+  menu.rp &menuname
+ )
+
+;Recall and Define History File
+ autostore , history
+
+
+; Select a CPU, and enable it
+   sys.CPU HexagonV5
+   ; may need to add --rtos osam.cfg to the end of sys.mcdconfig line to avoid ambiguity
+   sys.mcdconfig arch=v5 debug=0xff simargs=--symfile qurt.elf --symfile app1.elf --symfile app2.elf bootimg.pbn --cosim_file t32sim_sirc.cfg
+   sys.mode attach
+
+
+; wclear   ; clear all windows
+
+
+;;;;;;;;;;;;;;;;;;;;
+; Misc Stuff
+;;;;;;;;;;;;;;;;;;;
+
+; Open a source file view (empty by default)
+  winpos 0% 0% 50% 100%
+  win.data.list
+
+; Open a register window
+  winpos 50% 0% 50% 50%
+  register.view /spotlight
+
+; Open default AREA window area
+;area
+
+; Bring up the "Load File" dialogue window
+; data.load.elf *.elf
+  d.load.elf bootimg.pbn /NOCODE /NOCLEAR
+  d.load.elf   qurt.elf /NOCODE /NOREG /NOCLEAR /NOMAP
+  d.load.elf   app1.elf /NOCODE /NOREG /NOCLEAR /NOMAP
+  d.load.elf   app2.elf /NOCODE /NOREG /NOCLEAR /NOMAP
+
+; Configure QuRT T32 model
+task.config qurt_model.t32
+menu.reprogram qurt_model.men
+
+; Set up Break points
+  b.s QURTK_handle_error
+  b.s QURTK_tlb_crash
+  b.s QURTK_error
+  b.s QURTK_exit
+
+  ; this brkpt is pd-specific, you have to set it runtime or with full path
+  ;b.s qurt_exception_raise_nonfatal
+
+; to avoid semihosting issues, have t32 handle trap0
+  b.s QURTK_handle_trap0 /onchip
+  TERM.METHOD ANGEL QURTK_handle_trap0
+  TERM.SCROLL ON
+  TERM.SIZE 100 500
+  TERM.Mode STRING
+  TERM.GATE
+
+; alternative and more stable way is to launch hexagon sim instance directly, instead of having mcd launch it, and
+; attach t32 to already running instance on a host with an open port, this is "if-all-else-fails" method:
+; from command line (win/lnx): qdsp6-sim --rtos osam.cfg --symfile qurt.elf --symfile app1.elf --symfile app2.elf -G <port>
+; in t32sim.cmm change: sys.mcdconfig arch=v5 debug=0xff hostname=<hostname> port=<port>
+; do t32sim.cmm
+
+ enddo

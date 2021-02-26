@@ -1,0 +1,180 @@
+// Copyright (c) 2016, 2017 Qualcomm Technologies, Inc.  All Rights Reserved.
+// Qualcomm Technologies Proprietary and Confidential.
+
+interface IHavenTokenApp {
+
+  //--------------------------------------------------------
+  //  HavenToken
+  //--------------------------------------------------------
+
+  /**
+   Security Levels to add Data Items.
+   */
+  const uint32 SIG_SEC_LEVEL_HW                             = 7;                        /** Pure HW, with no SW involved, not even firmware */
+  const uint32 SIG_SEC_LEVEL_SEK                            = 6;                        /** Secure Element or equivalent security level. In the kernel or system SW for the secure element */
+  const uint32 SIG_SEC_LEVEL_SEU                            = 5;                        /** Secure Element or equivalent security level. A downloaded or installed non-system app. */
+  const uint32 SIG_SEC_LEVEL_TEEK                           = 4;                        /** TEE or equivalent security level. In the kernel or system SW for the TEE */
+  const uint32 SIG_SEC_LEVEL_TEEU                           = 3;                        /** TEE or equivalent security level. A downloaded or installed non-system app. */
+  const uint32 SIG_SEC_LEVEL_RICHOSK                        = 2;                        /** Rich OS or equivalent security level. In the rich OS kernel or system SW. */
+  const uint32 SIG_SEC_LEVEL_RICHOSU                        = 1;                        /** Rich OS or equivalent security level. A downloaded or installed non-system app. */
+
+  /**
+   This names the attestation key used to sign the token.
+   Not all keys are available on all devices and the security of the keys vary.
+   */
+  const uint32 KEYTYPE_NONE                                 = 0;                        /** No key selected */
+  const uint32 KEYTYPE_DEMO                                 = 1;                        /** No-security key suitable for demo and test only. Available on most devices. */
+  const uint32 KEYTYPE_GROUPLOW                             = 2;                        /** Low security group key. This is privacy preserving. */
+  const uint32 KEYTYPE_GROUP                                = 3;                        /** A privacy-preserving. Key is shared by approximatly 100,000 devices. */
+  const uint32 KEYTYPE_PERCHIP                              = 4;                        /** Key is not privacy preserving and may not be available due to Android privacy requirements or other. */
+  const uint32 KEYTYPE_RESERVED_1                           = 5;                        /** Key RESERVED_1 is reserved for internal develoment purpose and not to be used by any clients. */
+  const uint32 KEYTYPE_RESERVED_2                           = 6;                        /** Key RESERVED_2 is reserved for internal development purpose and not to be used by any clients. */
+  const uint32 KEYTYPE_GROUPTEST                            = 7;                        /** Derived Group Key - Test Mode */
+  const uint32 KEYTYPE_BEST_PRIVACY_PRESERVING_AVAILABLE    = 8;                        /** Select this key type to opt for best privacy preserving key among all available key types. */
+
+  /**
+   Options to select
+   */
+  const uint64 OPT_SIMDATA                                  = 0x0000000000000001;       /** Request static simulated data */
+  const uint64 OPT_APPCERT                                  = 0x0000000000000002;       /** Include the full signing cert of the calling application */
+  const uint64 OPT_LOCATION                                 = 0x0000000000000004;       /** Location is optional */
+  const uint64 OPT_LONGRTIC                                 = 0x0000000000000008;       /** Long RTIC Report */
+  const uint64 OPT_RTIC_CURRENT                             = 0x0000000000000020;       /** Run RTIC report right now, rather than get most cached; slows down token creation */
+    
+  /*
+   The cipher suite specifies the algorithms and formats used for signing and encryption.
+   Some change in these over time is expected, but it is a goal to keep these to a minimum.
+   A ciphersuite style is choosen rather than the ability to pick the four algorithms 
+   separately to keep things simpler.
+   */
+  
+  /**
+   Ciphersuite 1 is defined as:
+     RSA 2048 bit encryption with OEAP padding in CMS format
+     AES 256 is used with CMS
+   
+   Ciphersuite 1 is the default and will be selected if no ciphersuite option is passed.
+   */
+  const uint64 OPT_CIPHER_SUITE_1                           = 0x0000000000000100;       
+  /** Ciphersuite 2 and 3 are yet undefined */
+  const uint64 OPT_CIPHER_SUITE_2                           = 0x0000000000000200;
+  const uint64 OPT_CIPHER_SUITE_3                           = 0x0000000000000400;
+
+  //--------------------------------------------------------
+  //  HavenLicense
+  //--------------------------------------------------------
+
+  /**
+   Options to select
+   */
+  const uint32 LICENSE_OPT_NO_OEMID_CHECK                   = 0x00000001;               /** Check the OEM IDs in the cert against the OEM in fuses. Check is not made if flag is not set. */        
+  const uint32 LICENSE_OPT_NO_HWVERSION_CHECK               = 0x00000002;               /** Check the HW Versions in the cert against the chip HW version. Check is not made if flag is not set. */
+  const uint32 LICENSE_OPT_NO_FEATUREID_CHECK               = 0x00000004;               /** Check the feature ID of the cert against the feature ID passed in. Check is not made if flag is not set. */
+  const uint32 LICENSE_OPT_NO_TIME_CHECK                    = 0x00000008;               /** Check the expiration extension of the cert against the current time. Check is not made if flag is not set. */
+  const uint32 LICENSE_OPT_CLOCK_NOT_SET_OK                 = 0x00000010;               /** Check the expiration extension of the cert against the current time. Check is not made if flag is not set. */
+  const uint32 LICENSE_OPT_SELECT_TEST_ROOT                 = 0x00000020;               /** Selection flag to switch between QTI commercial root or Test root */
+  const uint32 LICENSE_OPT_USAGE_ENCRYPT                    = 0x00000040;               /** If this flag is set, then the Havenlicense validates the cert extension key usage value against Key Encipherment.  (2.5.29.15) */
+  //--------------------------------------------------------
+  //  IHavenTokenApp Error Codes
+  //--------------------------------------------------------
+
+  error ERROR_NOMEM;                                                                    /** Heap is exhausted. Cannot continue. The Haven Token data may be too large. The service creating the token in the TEE may be out of memory. */
+  error ERROR_SIGNING_KEY_UNAVAIL;                                                      /** The signing key requested doesn't exist or is in accessible. */
+  error ERROR_CBOR_ENCODE_ERR;                                                          /** Error creating CBOR encoding, possible due to bad raw CBOR added. */
+  error ERROR_CERT_PKHASH;                                                              /** The license certificate is not valid for this PKHash (Device PKHash). */
+  error ERROR_INVALID_CERT;                                                             /** The license certificate is corrupt or unparsable. */
+  error ERROR_CERT_FEATUREID;                                                           /** The license certificate is not valid for the given feature ID. */
+  error ERROR_CERT_EXPIRED_OR_NOTYETVALID;                                              /** The license certificate is either expired or not yet valid. */
+  error ERROR_CERT_OEM;                                                                 /** The license certificate is not valid for this OEM (this handset vendor) */
+  error ERROR_CERT_HWVERSION;                                                           /** The license certificate is not valid for this HW version (chip familiy) */
+  error ERROR_CERT_ISVCERTHASH;                                                         /** The license certificate is not valid for this ISV */
+  error ERROR_DATA_MARSHAL;                                                             /** Error in copying added data items to the Haven Token service in the TEE or similar. */
+  error ERROR_HASH_GENERATION;                                                          /** Error during generation of hash. */ 
+  error ERROR_CERT_NOT_TRUSTED;                                                         /** The root CA is not marked as trusted. */
+  error ERROR_CERT_GENERAL_ERR;                                                         /** Error while verifying the cert chain. */
+  error ERROR_DATA_TOO_BIG;                                                             /** The data items added are too big to be transferred to the Haven Token service in the TEE or similar. */                                             
+  error ERROR_OFFSET_TOO_LARGE;                                                         /** The data items added are too big to be transferred to the Haven Token service in the TEE or similar. */
+  error ERROR_OUT_OF_ORDER;                                                             /** Tried to add data after getting the size. */
+  error ERROR_NO_DATA;                                                                  /** There is no data to return. */
+  error ERROR_RPMB_ERR;                                                                 /** Error while accessing RPMB partition. */
+  error ERROR_ENCRYPTION;                                                               /** Error during CMS Encryption. */
+  error ERROR_NOT_ALLOWED;                                                              /** One of the options selected to generate token is not allowed. Add HAVENT_OPT_SIMDATA to options to resolve this error. */
+  error ERROR_LICENSE_TOO_BIG;                                                          /** Given input license certificate is too large to process. */
+  error ERROR_PRIVILEGE_ERR;                                                            /** Client App is not having enough privileges for the requested Haven Options. */
+  error ERROR_TOO_MUCH_APPDATA;                                                         /** Maximum of 64KB App data can be added to generate a token. Error if it crosses 64KB app data limit. */
+  error ERROR_SECURITYLEVEL_NOT_SUPPORTED;                                              /** Trying to add data at a security level that is not allowed. */
+  error ERROR_UNSUPPORTED_PAYLOAD_HASH;                                                 /** Requested hash algorithm is not supported. */
+  error ERROR_SIGNING_ERR;                                                              /** Error during computation of signature. */
+  error ERROR_DEVICE_NOT_SECURE;                                                        /** Device is not secure, SecureBoot is not enabled. */
+  error ERROR_GROUPKEY_ERR;                                                             /** Error while using group key. */
+
+  //--------------------------------------------------------
+  //  Interfaces - HavenToken
+  //--------------------------------------------------------
+
+  /**
+  Start creating a Haven Token.
+  The License Certificate must chain up to a Haven License root. 
+  It will be used to encrypt the token in CMS Enveloped Data format.
+  */
+  method start(in uint32 uKeySelect, in uint64 nOpts, in buffer LicenseCert);
+
+  /**
+  Add any dataitem like int, string, maps, arrays.
+  */
+  method addDataItem(in buffer DataItem, in buffer Label, in buffer Data);
+
+  /**
+  Gets full size of the encrypted and signed token.
+  */
+  method getSize(out uint64 pnSize);
+
+  /**
+  Gets the bytes in the token.  
+
+  Typical use is to get the the size and then call this in a loop with
+  a 4KB buffer incrementing the offset by the number of bytes returned
+  until all the bytes have been fetched.  
+
+  The caller should keep track of the bytes fetched to know when they
+  have got them all.  There is no "end of file" return code.  
+
+  A buffer larger than 4KB may be used with some implementations. If
+  the buffer is too large for the underlying IPC mechanism, then an
+  error will be returned.  
+
+  An error will be returned if uOffset is not in the range of 0 and the
+  size of the token.  
+
+  The token is an encrypted data blob. There is no use for part of a
+  token because it can't be decrypted so the full token should always
+  be fetched.  
+  */
+  method getBytes(in uint64 uOffset, out buffer pBuffer);
+
+  /**
+  Clean up
+  */
+  method finish();
+
+  //--------------------------------------------------------
+  //  Interfaces - HavenLicense
+  //--------------------------------------------------------
+
+  /**
+  This API sets the time. Apps using Haven features do not need to call this API.
+  */
+  method setTime(in uint64 UTCTime);
+
+  /**
+  This API validates a Haven License Certificate. Apps using Haven features do not need to call this API. 
+  It is used internally by Haven features to validate the licenses automatically.
+  */
+  method processLicense(in buffer LicenseCert, in uint32 OptFlags, in buffer IntermediateCert, in uint32 FeatureID, in buffer ISVCertHash, out buffer Licensee, out buffer Issuer, out buffer SerialNumber, out buffer PublicKey);
+
+ /**
+  This API validates a Haven License Certificate. Apps using Haven features do not need to call this API. 
+  It is used internally by Haven features to validate the licenses automatically.
+  */
+  method processLicense_TEE(in buffer LicenseCert, in uint32 OptFlags, in buffer IntermediateCert, in uint32 FeatureID, in buffer ISVCertHash, out buffer Licensee, out buffer Issuer, out buffer SerialNumber, out buffer PublicKey, out uint64 CalleeID);
+}; 

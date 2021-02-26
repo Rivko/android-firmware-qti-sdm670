@@ -1,0 +1,455 @@
+//============================================================================
+//  Name:                                                                     
+//    std_trace_apps_msm8998.cmm 
+//
+//  Description:                                                              
+//    Trace setup script for 8998 apps
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who           what, where, why
+// --------   ---           ---------------------------------------------------------
+// 04/27/2016 JBILLING      Updated for 8998
+// 06/18/2015 JBILLING      Bugs fixed
+// 05/13/2015 JBILLING      Ported for 8996
+// 07/28/2014 JBILLING      Ported for 8994 apps dual cluster tracing
+// 09/28/2012 jbilling      Created for B-family.
+
+//####################Declarations#######################
+
+LOCAL &ArgumentLine
+LOCAL &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+LOCAL &TargetProcessor &Default_TPIU_Sink
+
+//###################Arguments passed #####################
+ENTRY %LINE &ArgumentLine
+ENTRY &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+
+//##################Defaults##########################
+&TargetProcessor="apps0"
+&Default_TPIU_Sink="tpiub" 
+&Default_TraceSource="apps0"
+
+
+
+
+//#####################Select Subroutine###################
+// Name of the utility we are calling
+LOCAL &SUBROUTINE
+// Any subroutine specific options
+// Default exists for each subroutine
+LOCAL &OPTION
+
+// Input Argument 0 is the name of the utility
+&SUBROUTINE="&UTILITY"
+IF !(("&SUBROUTINE"!="GETTRACEDEFAULTS")||("&SUBROUTINE"!="STARTTRACING"))
+(
+    PRINT %ERROR "WARNING: UTILITY &UTILITY DOES NOT EXIST."
+    GOTO EXIT
+)
+
+
+    // This should be created by some top level script. The setupenv for each proc would
+    // set this up
+    AREA.SELECT
+    // Call the required utility
+    GOSUB &SUBROUTINE &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+    ENTRY &PASS &RVAL0 &RVAL1 &RVAL2
+
+    GOTO EXIT
+    
+
+//////////////////////////////////////////////
+//
+//  GETTRACEDEFAULTS
+//  Returns Trace default parameters for this target processor
+//
+//  assumed/example call:
+//  do std_trace_adsp_&CHIPSET  GETTRACEDEFAULTS &tracesink &tracesource &CycleAccurate &traceconfiguration &Portsize 
+//  where 
+//      &tracesink="etb" 
+//      &tracesource="adsp" 
+//      &CycleAccurate="cycleaccurate" 
+//      &traceconfiguration="fromcoldboot" 
+//      &Portsize=="16bit" 
+//////////////////////////////////////////////
+GETTRACEDEFAULTS:
+    LOCAL &ACTION &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5 &ARG6 &ARG7 &ARG8 &ARG9 &ARG10 &ARG11
+    ENTRY &ACTION &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5 &ARG6 &ARG7 &ARG8 &ARG9 &ARG10 &ARG11
+
+    LOCAL &given_tracesource &given_tracesink &given_cycleaccurate &given_traceconfiguration &given_portsize
+    
+    &given_tracesource=         string.lwr("&ARG0")
+    &given_tracesink=           string.lwr("&ARG1")
+    &given_cycleaccurate=       string.lwr("&ARG2")
+    &given_traceconfiguration=  string.lwr("&ARG3")
+    &given_portsize=            string.lwr("&ARG4")
+    
+    LOCAL &rvalue_tracesource &rvalue_tracesink &rvalue_tpiusink &rvalue_portsize &rvalue_cycleaccuratecommand &rvalue_traceconfiguration &rvalue_portsizecommand 
+    
+    
+    //Set Defaults
+    &rvalue_tracesource=             "&Default_TraceSource"    
+    &rvalue_tracesink=              "none"
+    &rvalue_tpiusink=               "&Default_TPIU_Sink" 
+    &rvalue_portsize=               "16bit"
+    &rvalue_cycleaccuratecommand=   "off"
+    &rvalue_traceconfiguration=     "fromcoldboot"
+    &rvalue_portsizecommand=        "16."
+
+                            
+        //###########Trace sink configuration######
+        IF ("&given_tracesink"=="etb")
+        (
+            &rvalue_tracesink="etb"
+        )
+        ELSE IF ("&given_tracesink"=="tpiua")
+        (
+            &rvalue_tracesink="tpiua"
+        )
+        ELSE IF ("&given_tracesink"=="tpiu_a")
+        (
+            &rvalue_tracesink="tpiua"
+        )
+        ELSE IF ("&given_tracesink"=="tpiub")
+        (
+            &rvalue_tracesink="tpiub"
+        )
+        ELSE IF ("&given_tracesink"=="tpiu_b")
+        (
+            &rvalue_tracesink="tpiub"
+        )
+        ELSE IF ("&given_tracesink"=="tpiu")
+        (
+            //do nothing. Default TPIU port should be set in GETTRACEDEFAULTS above
+        )
+        ELSE //TraceSink not specified. No tracing should occur
+        (
+            &rvalue_tracesink="none"
+        )
+
+        //################Other trace configurations###################
+        IF (("&given_cycleaccurate"=="true")||("&given_cycleaccurate"=="on"))
+        (
+            &rvalue_cycleaccuratecommand="on"
+        )
+        
+        IF ("&given_traceconfiguration"=="hotattach")
+        (
+            &rvalue_traceconfiguration=    "HOTATTACH"
+        )
+        IF ("&given_traceconfiguration"=="fromcoldboot")
+        (
+            &rvalue_traceconfiguration=    "fromcoldboot"
+        )
+        
+        IF ("&given_portsize"=="4bit")
+        (
+            &rvalue_portsizecommand=4
+        )
+        IF ("&given_portsize"=="8bit")
+        (
+            &rvalue_portsizecommand=8
+        )
+        IF ("&given_portsize"=="16bit")
+        (
+            &rvalue_portsizecommand=16
+        )
+
+    ENDDO &rvalue_tracesource &rvalue_tracesink &rvalue_tpiusink &rvalue_portsize &rvalue_cycleaccuratecommand &rvalue_traceconfiguration &rvalue_portsizecommand 
+        
+
+
+//////////////////////////////////////////////
+//
+//  Main Tracing Functionality
+//  assumes to be run on target processor's Jtag window
+//  CPU doesn't need to be halted, but ETM must be accessible
+//  (i.e. not in power collapse or clock gated)
+
+//  Assumptions: 
+//      Boot processor is already attached.
+//
+//////////////////////////////////////////////
+STARTTRACING:
+    LOCAL &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5 &ARG6 &ARG7 &ARG8 &ARG9 &ARG10 &ARG11
+    ENTRY &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5 &ARG6 &ARG7 &ARG8 &ARG9 &ARG10 &ARG11
+    LOCAL &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+    LOCAL &tracesource &tracesink &cycleaccuratecommand &traceconfiguration &portsizecommand
+    
+    
+    
+    &tracesource=           "&ARG0"
+    &tracesink=             "&ARG1"
+    &cycleaccuratecommand=  "&ARG2"
+    &traceconfiguration=    "&ARG3"
+    &portsizecommand=       "&ARG4"
+    
+    do hwio
+    
+    //FIXME
+    //IF ("&tracesink"=="tpiua")||("&tracesink"=="tpiub")
+    //(
+    //    do std_trace_&CHIPSET NULL &tracesink
+    //)
+    
+///////////figure out what window is currently open////
+///////////configure tracing for that window//////////
+    
+    //apps cluster case
+    IF (STRING.SCAN("&LOCALNAME","APPSC",0)!=-1)
+    (
+        GOSUB APPSCLUSTERTRACE &tracesource &tracesink &cycleaccuratecommand &traceconfiguration &portsizecommand
+    
+    )
+    //single core case
+    ELSE
+    (
+        GOSUB APPSSINGLECORETRACE &tracesource &tracesink &cycleaccuratecommand &traceconfiguration &portsizecommand
+    )
+    
+    
+    RETURN
+    
+    
+APPSSINGLECORETRACE:
+    LOCAL &tracesource &tracesink &cycleaccuratecommand &traceconfiguration &portsizecommand
+    ENTRY &tracesource &tracesink &cycleaccuratecommand &traceconfiguration &portsizecommand
+    LOCAL &corenumber
+    &corenumber=STRING.REPLACE("&LOCALNAME","APPS","",0)
+    LOCAL &APCX_ETM_BASE
+    &APCX_ETM_BASE="APC"+"&corenumber"+"_ETM_BASE"
+    
+    
+    
+   ////////////////////// SYS_CONFIG SETTINGS ///////////////////////
+    SYStem.CONFIG ETMBASE APB:(0x80000000+&APC0_ETM_BASE)
+
+    SYStem.CONFIG.FUNNEL5.BASE APB:(0x80000000+APC0_FUNNEL_BASE)
+    SYStem.CONFIG.FUNNEL5.ATBSOURCE ETM &corenumber
+    SYStem.CONFIG.FUNNEL4.BASE APB:(0x80000000+APC1_FUNNEL_BASE)
+    SYStem.CONFIG.FUNNEL4.ATBSOURCE FUNNEL5 0
+    SYStem.CONFIG.FUNNEL3.BASE APB:(0x80000000+IN_FUN1_BASE)
+    SYStem.CONFIG.FUNNEL3.ATBSOURCE FUNNEL4 6
+    SYStem.CONFIG.FUNNEL1.BASE APB:(0x80000000+MERG_FUN_BASE)
+    SYStem.CONFIG.FUNNEL1.ATBSOURCE FUNNEL3 1
+
+    if ("&tracesink"=="etb")
+    (
+        SYStem.CONFIG.ETB.BASE APB:(0x80000000+ETBETF_BASE)
+        SYStem.CONFIG.ETB.ATBSOURCE FUNNEL1
+    )
+    else
+    (
+        SYStem.CONFIG.ETF.BASE APB:(0x80000000+ETBETF_BASE)
+        SYStem.CONFIG.ETF.ATBSOURCE FUNNEL1
+        SYStem.CONFIG.TPIU.BASE APB:(0x80000000+TPIU_BASE)
+        SYStem.CONFIG.TPIU.ATBSOURCE ETF
+    )
+    
+    //////////////////////ETM Settings/////////////////////////
+    IF ((STRING.SCAN("&tracesink","tpiu",0))!=-1)
+    (
+        etm.portsize &portsizecommand
+        etm.portmode continuous
+    )
+    else if ("&tracesink"=="sdcc")
+    (
+        etm.portsize 4.
+        etm.portmode continuous
+    )
+
+    etm.traceid 4.
+    etm.timestamps OFF
+    etm.stall OFF
+    etm.on
+    etm.clear
+    
+    /////////////////////Trace Settings////////////////////
+    if ("&tracesink"=="etb")
+    (
+        trace.method OnChip
+    )
+    else
+    (
+        trace.method ANALYZER
+    )
+    trace.clock 10.MHz
+    trace.init
+    if ((STRING.SCAN("&tracesink","tpiu",0))!=-1)||((STRING.SCAN("&tracesink","sdcc",0))!=-1)
+    (
+        ON ERROR GOSUB autofocusErrorHandler
+        trace.AutoFocus
+        ON ERROR
+    )
+    B::
+    WINPOS 1.8571 32.846 79. 25. 8. 1. W004
+    WINTABS 32.
+    trace.list
+
+    RETURN
+    
+APPSCLUSTERTRACE:
+    
+LOCAL &tracesource &tracesink &cycleaccuratecommand &traceconfiguration &portsizecommand
+    ENTRY &tracesource &tracesink &cycleaccuratecommand &traceconfiguration &portsizecommand
+    LOCAL &corenumber
+    &corenumber=STRING.REPLACE("&LOCALNAME","APPS","",0)
+    LOCAL &APCX_ETM_BASE
+    &APCX_ETM_BASE="APC"+"&corenumber"+"_ETM_BASE"
+    
+    
+    
+   ////////////////////// SYS_CONFIG SETTINGS ///////////////////////
+    SYStem.CONFIG ETMBASE APB:(0x80000000+&APC0_ETM_BASE)
+
+    SYStem.CONFIG.FUNNEL5.BASE APB:(0x80000000+APC0_FUNNEL_BASE)
+    SYStem.CONFIG.FUNNEL5.ATBSOURCE ETM 1 2 3 5
+    SYStem.CONFIG.FUNNEL4.BASE APB:(0x80000000+APC1_FUNNEL_BASE)
+    SYStem.CONFIG.FUNNEL4.ATBSOURCE FUNNEL5 0
+    SYStem.CONFIG.FUNNEL3.BASE APB:(0x80000000+IN_FUN1_BASE)
+    SYStem.CONFIG.FUNNEL3.ATBSOURCE FUNNEL4 6
+    SYStem.CONFIG.FUNNEL1.BASE APB:(0x80000000+MERG_FUN_BASE)
+    SYStem.CONFIG.FUNNEL1.ATBSOURCE FUNNEL3 1
+
+    if ("&tracesink"=="etb")
+    (
+        SYStem.CONFIG.ETB.BASE APB:(0x80000000+ETBETF_BASE)
+        SYStem.CONFIG.ETB.ATBSOURCE FUNNEL1
+    )
+    else
+    (
+        SYStem.CONFIG.ETF.BASE APB:(0x80000000+ETBETF_BASE)
+        SYStem.CONFIG.ETF.ATBSOURCE FUNNEL1
+        SYStem.CONFIG.TPIU.BASE APB:(0x80000000+TPIU_BASE)
+        SYStem.CONFIG.TPIU.ATBSOURCE ETF
+    )
+    
+    //////////////////////ETM Settings/////////////////////////
+    if ("&tracesink"=="tpiu")
+    (
+        etm.portsize 16.
+        etm.portmode continuous
+    )
+    else if ("&tracesink"=="sdcc")
+    (
+        etm.portsize 4.
+        etm.portmode continuous
+    )
+
+    etm.traceid 4.
+    etm.timestamps OFF
+    etm.stall OFF
+    etm.on
+    etm.clear
+    
+    /////////////////////Trace Settings////////////////////
+    if ("&tracesink"=="etb")
+    (
+        trace.method OnChip
+    )
+    else
+    (
+        trace.method ANALYZER
+    )
+    trace.clock 10.MHz
+    trace.init
+    if ("&tracesink"=="tpiu")||("&tracesink"=="sdcc")
+    (
+        ON ERROR GOSUB autofocusErrorHandler
+        trace.AutoFocus
+        ON ERROR
+    )
+    B::
+    WINPOS 1.8571 32.846 79. 25. 8. 1. W004
+    WINTABS 32.
+    trace.list
+
+    RETURN
+    
+    
+    RETURN
+    
+    
+    
+    
+ 
+AUTOFOCUS_ERRHANDLER:
+    ON ERROR
+    AREA
+    print %error " Autofocus Error indicate that Trace signal lines likely have some physical path problem."
+    print %error " Make sure that TPIU cable is plugged in and CDP switches are correct "
+    RETURN
+    
+
+////////////////////////////////////////
+//
+//          MAKE_SURE_BOOT_PROCESSOR_ATTACHED
+//          
+//          Makes sure boot processor is attached
+//          Otherwise attaching on subsystem processor not possible
+//
+///////////////////////////////////////// 
+MAKE_SURE_BOOT_PROCESSOR_ATTACHED:
+
+
+
+    LOCAL &Rvalue
+    do std_intercom_init CHECKSESSION 1 &bootprocessor
+        ENTRY &Rvalue
+    IF (&Rvalue!=1.)
+    (
+        PRINT %ERROR "&bootprocessor T32 window not open. Please open and try again"
+        GOTO FATALEXIT
+    )
+
+    do std_intercom_do &bootprocessorport hwio
+   
+    //if boot processor t32 not attached, attach.
+    INTERCOM.EVALUATE &bootprocessorport SYSTEM.MODE()
+        &BOOT_PROCESSOR_STATE=EVAL()
+    IF ("&BOOT_PROCESSOR_STATE"!="0x0B")
+    (
+        INTERCOM.EXECUTE &bootprocessorport sys.m.a
+    )
+    INTERCOM.EVALUATE &bootprocessorport SYSTEM.MODE()
+        &BOOT_PROCESSOR_STATE=EVAL()
+    IF ("&BOOT_PROCESSOR_STATE"!="0x0B")
+    (
+            winclear
+            WINPOS 0. 0. 60. 15. 0. 0. 
+            area.reset
+            area
+            PRINT %ERROR " apps tracing - &bootprocessor not able to attach"
+            PRINT %ERROR " Please ensure the following:"    
+            PRINT %ERROR "     JTAG is physically attached"
+            PRINT %ERROR "     T32 installation is up to date."
+            PRINT %ERROR "     Device is booted."
+            PRINT %ERROR " "
+            
+            ENDDO &FAILURE
+    )
+    
+    RETURN
+
+    
+autofocusErrorHandler:
+    area
+    print %error " Autofocus Error indicate that Trace signal lines likely have some physical path problem."
+    print %error " You should try fixing that problem first before proceeding further"
+    RETURN
+    
+    
+
+EXIT:
+    ENDDO
+
+FATALEXIT:
+    ENDDO

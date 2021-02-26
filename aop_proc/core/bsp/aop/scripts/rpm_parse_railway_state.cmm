@@ -1,0 +1,238 @@
+
+&num_rails=v.value(RAILWAY_CONFIG_DATA->num_rails)
+
+v.v %std %e %open %index railway.rail_state[0..&num_rails-1]
+
+area.select A000
+area.view
+
+setup.Var %decimal.off %hex.off
+
+print
+print
+print
+
+&dump_clk=False()
+&i=0
+while &i<&num_rails
+(
+    &rsrc=v.string(RAILWAY_CONFIG_DATA->rails[&i].vreg_type)
+    &rsrc=string.cut("&rsrc",-4)
+    &rsrc=string.cut("&rsrc",4)
+    &rsrc="&rsrc,"+format.decimal(0,v.value(RAILWAY_CONFIG_DATA->rails[&i].vreg_num))
+
+    print %attr 0x64 format.string(string.upper(d.string(d:v.value(RAILWAY_CONFIG_DATA->rails[&i].vreg_name))),12.,' ')+format.string("(&rsrc)",12.,' ')
+    print %cont %attr 0x96 "  ("+format.string(string.cut(v.string(railway.rail_state[&i].current_active.mode),8),18.,' ')+", "+format.string(format.decimal(0,v.value(railway.rail_state[&i].current_active.microvolts)),-7,' ')+" uV)"
+    print
+    &ptr=v.value(railway.rail_state[&i].voter_list_head)
+    print "    "+"+------------------------------------------+--------------------------------+--------------------------------+---------------+"
+    print "    "+"| "+format.string("VOTER",40.,' ')+" | "+format.string("VOLTAGE CORNER",30.,' ')+" | "+format.string("ACTIVE FLOOR",30.,' ')+" | "+format.string("SUPPRESSIBLE",14.,' ')+"|"
+    print "    "+"+------------------------------------------+--------------------------------+--------------------------------+---------------+"
+
+    while &ptr!=0
+    (
+        &id=v.value((*(railway_voter_t)&ptr).id)
+
+        &attr=""
+        if v.value((*(railway_voter_t)&ptr).suppressible)==0
+        (
+            ;&attr="%attr 0x20"
+        )
+        if v.value((*(railway_voter_t)&ptr).voltage_corner)>=v.value(railway.rail_state[&i].current_active.mode)
+        (
+            &attr="%attr 0x2a"
+            if &id==106.&&&i==1
+            (
+                &dump_clk=True()
+            )
+        )
+
+        print "    "+"| "
+        if &id>=100.
+            print %cont &attr format.string(string.cut(v.string((railway_voter_id)&id),8)+" (&id)",40.,' ')+" | "
+        else
+            print %cont &attr format.string(string.cut(v.string((rpm_ee_type)&id),7)+" (&id)",40.,' ')+" | "
+        print %cont &attr format.string(string.cut(v.string((*(railway_voter_t)&ptr).voltage_corner),8),30.,' ')+" | "
+        print %cont &attr format.string(string.cut(v.string((*(railway_voter_t)&ptr).active_floor),8),30.,' ')+" | "
+        print %cont &attr format.string(v.string((*(railway_voter_t)&ptr).suppressible),14.,' ')
+        print %cont "|"
+
+        &ptr=v.value((*(railway_voter_t)&ptr).voter_link)
+    )
+
+    print "    "+"+------------------------------------------+--------------------------------+--------------------------------+---------------+"
+    print
+
+    &i=&i+1
+)
+
+print
+
+if &dump_clk==False()
+    enddo
+
+print %attr 0x64 "Clocks requiring "+v.string((ClockVRegLevelType)pDrvCtxt->CX_VRegConfig.eRailVoteLevel)
+&clk_vote=v.value((ClockVRegLevelType)pDrvCtxt->CX_VRegConfig.eRailVoteLevel)
+
+&num_npa_rsrc=v.value(Clock_Resources.sNPAClkNode.resource_count)
+&npa=0
+while &npa<&num_npa_rsrc
+(
+    &npa_name=d.string(d:v.value(Clock_Resources.sNPAClkNode.resources[&npa].name))
+    &rsrc_ptr=v.value(((ClockNPAResDataType*)Clock_Resources.sNPAClkNode.resources[&npa].data)->pData)
+
+    if &rsrc_ptr!=0
+    (
+        &num_rsrc_clks=v.value(((ClockResourceType*)&rsrc_ptr)->nNumClocks)
+        &rsrc_clk=0
+        &found=False()
+        while &rsrc_clk<&num_rsrc_clks
+        (
+            &clk_ptr=v.value(((ClockResourceType*)&rsrc_ptr)->apClocks[&rsrc_clk])
+
+            if v.value(((ClockNodeType*)&clk_ptr)->nReferenceCount)>0
+            (
+                &clk_name=d.string(d:v.value(((ClockNodeType*)&clk_ptr)->szName))
+                if &clk_vote==v.value(((ClockNodeType*)&clk_ptr)->pDomain->eVRegLevel)&&(v.value(((ClockNodeType*)&clk_ptr)->pDomain->nReferenceCount)>0||v.value(((ClockNodeType*)&clk_ptr)->pDomain->nReferenceCountInSuppress)>0)
+                (
+                    if &found==False()
+                    (
+                        &found=True()
+                        print
+                        print %attr 0x24 format.string("&npa_name",20.,' ')+" ActiveState: "+format.decimal(10.,v.value(Clock_Resources.sNPAClkNode.resources[&npa].handle->active_state))+" "+d.string(d:v.value(Clock_Resources.sNPAClkNode.resources[&npa].units))
+                        print
+                        print "    "+"Clocks:"
+                    )
+                    &freq=v.value(((ClockNodeType*)&clk_ptr)->pDomain->pActiveMuxConfig->nFreqHz)
+                    gosub FindDomain v.value(((ClockNodeType*)&clk_ptr)->pDomain)
+                    entry &dom_str
+                    print %attr 0x44 "        "+format.string("&clk_name",40.,' ')
+                    print %cont %attr 0x28 format.string(&dom_str,30.,' ')
+                    print %cont format.string(v.string(((ClockNodeType*)&clk_ptr)->pDomain->pActiveMuxConfig->eVRegLevel),30.,' ')+format.decimal(10.,&freq/1000.)+" KHz"
+                )
+            )
+
+            &rsrc_clk=&rsrc_clk+1
+        )
+        if &found
+        (
+            &npa_handle=v.value(Clock_Resources.sNPAClkNode.resources[&npa].handle)
+            print
+            print "    "+"NPA Clients:"
+            gosub PrintNpaClient &npa_handle
+            print
+        )
+    )
+
+    &npa=&npa+1
+)
+
+&num_domains=v.value(pDrvCtxt->nNumClockDomains)
+&num_clocks=v.value(pDrvCtxt->nNumClocks)
+&d=0
+while &d<&num_domains
+(
+    if v.value(pDrvCtxt->aClockDomains[&d].eVRegLevel)==&clk_vote&&(v.value(pDrvCtxt->aClockDomains[&d].nReferenceCount)>0||v.value(pDrvCtxt->aClockDomains[&d].nReferenceCountInSuppress)>0)
+    (
+        print %attr 0x28 "pDrvCtxt->aClockDomains["+format.decimal(2,&d)+"]:"
+
+        print
+        &j=0
+        while v.value(pDrvCtxt->aClockDomains[&d].pBSPConfig[&j].nFreqHz)!=0
+        (
+            if v.value(&pDrvCtxt->aClockDomains[&d].pBSPConfig[&j])==v.value(pDrvCtxt->aClockDomains[&d].pActiveMuxConfig)
+                print %attr 0x96 "        "+format.decimal(10.,v.value(pDrvCtxt->aClockDomains[&d].pBSPConfig[&j].nFreqHz)/1000.)+" KHz : "+v.string(pDrvCtxt->aClockDomains[&d].pBSPConfig[&j].eVRegLevel)
+            else
+                print "        "+format.decimal(10.,v.value(pDrvCtxt->aClockDomains[&d].pBSPConfig[&j].nFreqHz)/1000.)+" KHz : "+v.string(pDrvCtxt->aClockDomains[&d].pBSPConfig[&j].eVRegLevel)
+            &j=&j+1
+        )
+        print
+        &dom=v.value(&pDrvCtxt->aClockDomains[&d])
+
+        print "        "+"pDrvCtxt->aClocks:"
+        &i=0.
+        while &i<&num_clocks
+        (
+            if (&dom==v.value(pDrvCtxt->aClocks[&i].pDomain))&&(v.value(pDrvCtxt->aClocks[&i].nReferenceCount)>0)
+            (
+                gosub FindNpaResource v.value(&pDrvCtxt->aClocks[&i])
+                entry &npa_name
+                print %attr 0x44 "            "+format.decimal(3,&i)+": "+format.string(d.string(d:v.value(pDrvCtxt->aClocks[&i].szName)),40.,' ')
+                print %cont "NPA Resource: "
+                print %cont %attr 0x24 &npa_name
+            )
+            &i=&i+1
+        )
+        print
+    )
+    &d=&d+1
+)
+
+print
+
+enddo
+
+
+FindNpaResource:
+    entry &clk_ptr
+    local &num_npa_rsrc &i &j &npa_name &rsrc_ptr &num_rsrc_clks
+
+    &num_npa_rsrc=v.value(Clock_Resources.sNPAClkNode.resource_count)
+    &i=0
+    while &i<&num_npa_rsrc
+    (
+        &npa_name=d.string(d:v.value(Clock_Resources.sNPAClkNode.resources[&i].name))
+        &rsrc_ptr=v.value(((ClockNPAResDataType*)Clock_Resources.sNPAClkNode.resources[&i].data)->pData)
+
+        if &rsrc_ptr!=0
+        (
+            &num_rsrc_clks=v.value(((ClockResourceType*)&rsrc_ptr)->nNumClocks)
+            &j=0
+            while &j<&num_rsrc_clks
+            (
+                if &clk_ptr==v.value(((ClockResourceType*)&rsrc_ptr)->apClocks[&j])
+                (
+                    return "&npa_name"
+                )
+
+                &j=&j+1
+            )
+        )
+
+        &i=&i+1
+    )
+
+    return ""
+
+FindDomain:
+    entry &dom_ptr
+    local &num_domains &i &dom_str
+    &num_domains=v.value(pDrvCtxt->nNumClockDomains)
+    &i=0
+    while &i<&num_domains
+    (
+        if &dom_ptr==v.value(&pDrvCtxt->aClockDomains[&i])
+        (
+            &dom_str="pDrvCtxt->aClockDomains["+format.decimal(2,&i)+"]"
+            return "&dom_str"
+        )
+        &i=&i+1
+    )
+    return ""
+
+PrintNpaClient:
+    entry &handle
+    &client=v.value(((struct npa_resource*)&handle)->clients)
+    while &client!=0
+    (
+        &attr=""
+        if v.value(((npa_client*)&client)->type)==0x40
+            &attr="%attr 0x44"
+        print &attr "        "+format.string(d.string(d:v.value(((npa_client*)&client)->name)),20.,' ')
+        &idx=v.value(((npa_client*)&client)->index)
+        print %cont &attr format.string(v.string(((npa_client*)&client)->type),30.,' ')
+        print %cont &attr format.decimal(10,v.value(((npa_client*)&client)->work[&idx].state))+" "+d.string(d:v.value(((struct npa_resource*)&handle)->definition->units))
+        &client=v.value(((npa_client*)&client)->next)
+    )
+    return
+

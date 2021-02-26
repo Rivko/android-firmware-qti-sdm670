@@ -1,0 +1,340 @@
+<html>
+<title> UEFI Tool for HS USB Host Mode Electrical Testing v2.0</title>
+
+<body>
+
+<h1>UEFI Tool for HS USB Host Mode Electrical Testing</h1>
+
+<h3>Change History</h3>
+
+<ul>
+  <li>[09/2017] v2.1 Added support to enable SS TX compliance testing, updated command line interface.</li>
+  <li>[06/2013] v2.0 Added support for Xhci host controller, updated command line interface.</li>
+  <li>[07/2012] v1.5 Add support of multiple USB host controllers and testing of downstream hub ports. Please reset the hub/device after each test.</li>
+  <li>[01/2012] v1.0 Initial release</li>
+</ul>
+
+<h3>Introduction</h3>
+
+<p>USB electrical testing typically involves a software HSETT developed by Intel. Most of the test equipment
+vendors like Agilent/Tektronics base their USB electrical testing procedures on HSETT. The problem with HSETT
+is that it does not run natively in DUT, thus not possible to use for Host mode electrical testing.</p>
+
+<p>This page introduces a UEFI command line tool/application "UsbHostPortTestApp.efi" that can be used as HSETT
+for high-speed host mode electrical testing. The tool was developed during the process of testing 8960/8064/8974 EA
+high-speed USB in host mode, and the scope is Agilent Infinnium. The following test cases are supported for the testing of roothub ports:</p>
+
+
+<ul>
+<li>Host Hi-Speed Signal Quality</li>
+<li>Host Controller Packet Parameters</li>
+<li>Host CHIRP Timing</li>
+<li>Host Suspend/Resume Timing</li>
+<li>Host Test J/K, SE0_NAK</li>
+<li>Host Disconnect Detect</li>
+<li>Host SS compliance tests</li>
+</ul>
+
+<p>And the following test cases are supported for non-root hub downstream ports (i.e. hub ports):</p>
+<ul>
+<li>Hub Hi-Speed Signal Quality Test - Downstream Facing Ports</li>
+<li>Hub Jitter Test - Downstream Facing Ports</li>
+<li>Hub Test J/K, SE0_NAK - Downstream Facing Ports</li>
+</ul>
+
+<p>Following sections explains the tool's CLI interface and the procedures to conduct each tests list above.</p>
+
+
+
+
+<h3>Command Line Interface of UsbHostPortTestApp</h3>
+
+<p>After booting into UEFI shell, type "<b>exit</b>" to quit into SBL shell. Then type "<b>cd fv1:</b>"
+to enter the firmware volume where the command line application resides. Run the command with no options
+to display the list of available options.</p>
+
+
+<pre>
+    Qcom fv1:\&gt; start UsbHostPortTestApp
+    ERROR: at least 2 arguments required (0 supplied)
+    High-speed USB Host Mode Electrical Test Tool version 2.0
+    Usage: UsbHostPortTestApp "CONTROLLER_ID TEST_MODE_ID [HUB_PORT_ID]"
+      Controllers:
+        ID  Description
+         0  Ehci PortTest protocol on core 0
+              Has 3 port hub (1 based index)
+         1  Xhci PortTest protocol on core 128
+      Test Modes:
+        ID  Description
+         0  TEST_DISABLE
+         1  TEST_J_STATE
+         2  TEST_K_STATE
+         3  TEST_SE0/NAK
+         4  TEST_PACKET
+         5  TEST_FORCE_ENABLE
+         6  SS compliance enable
+        10  Suspend
+        11  Resume
+        12  Single step get device descriptor (HC packet parameters)
+        13  Suspend+reset (Chirp timing)
+       101  TEST_J_STATE (Hub)
+       102  TEST_K_STATE (Hub)
+       103  TEST_SE0/NAK (Hub)
+       104  TEST_PACKET (Hub)
+       105  TEST_FORCE_ENABLE (Hub)
+
+</pre>
+
+
+<b>Notes:</b>
+<ul>
+  <li>All arguments must be placed in a single set of quotes (see Usage line of help).</li>
+  <li>The controllers listed and any hubs on their root ports are dynamically populated at runtime, however,
+  the controller ID values will be consistent across multiple runs.</li>
+  <li>Options 1-5 are open-ended in that once the DUT is put into certain test mode it will stay in that mode till option 0 (TEST_DISABLE)
+  is issued. An exception is that options 1-3 can be issued in tandem for "Host Test J/K, SE0_NAK".</li>
+  <li>The HUB_PORT_ID argument is only required for the hub test modes (101-105) and will be ignored if supplied with other test modes.</li>
+</ul>
+
+
+<h3>High-speed USB Host Mode Electrical Testing</h3>
+
+<p>USB test instructions often refer to the screenshots of HSETT. To make it easier to correlate HSETT instructions with UsbHostPortTestApp command line options, users are recommended to read Agilent USB Electrical testing notes: <a href="http://www.usb.org/developers/docs/USB_Electrical_Testing_Notes.pdf" class="external free" title="http://www.usb.org/developers/docs/USB_Electrical_Testing_Notes.pdf" rel="nofollow">http://www.usb.org/developers/docs/USB_Electrical_Testing_Notes.pdf</a>. Following sections will list Agilent instructions along side the instructions for UsbHostPortTestApp.efi. Don't worry if you don't have Agilent scope in your lab because all vendors refer to the same HSETT in their documents.</p>
+<b>Notes:</b>
+<ul>
+<li><b>The following examples use the Xhci controller's root port for testing, so the CONTROLLER_ID used is 1.</b></li>
+<li><b>For each test, if previous tests involve any of the UsbHostPortTestApp options 1-5, use option 0 to reset first.</b></li>
+</ul>
+<p><a name="Host_Hi-Speed_Signal_Quality" id="Host_Hi-Speed_Signal_Quality"></a></p>
+
+<h4>Host Hi-Speed Signal Quality</h4>
+<table border="1" cellspacing="1" cellpadding="1">
+<tr>
+<td>Step</td>
+<td>Agilent Instructions</td>
+<td>UsbHostPortTestApp Instructions</td>
+</tr>
+<tr>
+<td>1</td>
+<td>Test instructions Part1 (P134)</td>
+<td>In scope Click OK to close the Test Instruction dialog.</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Test Instructions Part2 (P135)</td>
+<td>Run 'UsbHostPortTestApp.efi "1 4"' in console. Then in scope click OK to close the Test Instruction dialog.</td>
+</tr>
+</table>
+<p><br /></p>
+<p><a name="Host_Controller_Packet_Parameters" id="Host_Controller_Packet_Parameters"></a></p>
+
+<h4>Host Controller Packet Parameters</h4>
+<table border="1" cellspacing="1" cellpadding="1">
+<tr>
+<td>Step</td>
+<td>Agilent Instructions</td>
+<td>UsbHostPortTestApp Instructions</td>
+</tr>
+<tr>
+<td>1</td>
+<td>Test instructions Part1 (P139)</td>
+<td>Do nothing.</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Test Instructions Part2 (P140)</td>
+<td>Run 'UsbHostPortTestApp.efi "1 12"' in console. After seeing "Press enter to send next control transfer stage", press enter once. Then in scope click OK to close the Test Instruction dialog.</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Test instructions Part3 (P141)</td>
+<td>Press Enter twice in console. Then in scope click OK to close the Test Instruction dialog.</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Test instructions for EL_55 SOF EOP Width Test (P143)</td>
+<td>In scope click OK to close the Test Instruction dialog. After scope is done with the test, press any key to exit UsbHostPortTestApp.</td>
+</tr>
+</table>
+<p><br /></p>
+<p><a name="Host_CHIRP_Timing" id="Host_CHIRP_Timing"></a></p>
+
+<h4>Host CHIRP Timing</h4>
+<table border="1" cellspacing="1" cellpadding="1">
+<tr>
+<td>Step</td>
+<td>Agilent Instructions</td>
+<td>UsbHostPortTestApp Instructions</td>
+</tr>
+<tr>
+<td>1</td>
+<td>Test Instructions Part2 (P150)</td>
+<td>Run 'UsbHostPortTestApp.efi "1 13"' in console. Then in scope click OK to close the Test Instruction dialog.</td>
+</tr>
+</table>
+<p><br /></p>
+<p><a name="Host_Suspend.2FResume_Timing" id="Host_Suspend.2FResume_Timing"></a></p>
+
+<h4>Host Suspend/Resume Timing</h4>
+<table border="1" cellspacing="1" cellpadding="1">
+<tr>
+<td>Step</td>
+<td>Agilent Instructions</td>
+<td>UsbHostPortTestApp Instructions</td>
+</tr>
+<tr>
+<td>1</td>
+<td>Test instructions (P154)</td>
+<td>Run 'UsbHostPortTestApp.efi "1 10"' in console. Then in scope Click OK to close the Test Instruction dialog.</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Test Instructions (P155)</td>
+<td>Run 'UsbHostPortTestApp.efi "1 11"' in console. Then in scope click OK to close the Test Instruction dialog.</td>
+</tr>
+</table>
+<p><br /></p>
+<p><a name="Host_Test_J.2FK.2C_SE0_NAK" id="Host_Test_J.2FK.2C_SE0_NAK"></a></p>
+
+<h4>Host Test J/K, SE0_NAK</h4>
+<table border="1" cellspacing="1" cellpadding="1">
+<tr>
+<td>Step</td>
+<td>Agilent Instructions</td>
+<td>UsbHostPortTestApp Instructions</td>
+</tr>
+<tr>
+<td>1</td>
+<td>EL_8 J Test (P158)</td>
+<td>Run 'UsbHostPortTestApp.efi "1 1"' in console. Then in scope click OK to close the Test Instruction dialog. Enter the voltage measurements.</td>
+</tr>
+<tr>
+<td>2</td>
+<td>EL_8 K Test (P159)</td>
+<td>Run 'UsbHostPortTestApp.efi "1 2"' in console. Then in scope click OK to close the Test Instruction dialog. Enter the voltage measurements.</td>
+</tr>
+<tr>
+<td>3</td>
+<td>EL_9 SE0_NAK Test (P160)</td>
+<td>Run 'UsbHostPortTestApp.efi "1 3"' in console. Then in scope click OK to close the Test Instruction dialog. Enter the voltage measurements.</td>
+</tr>
+</table>
+<p><br /></p>
+<p><a name="Host_Disconnect_Detect" id="Host_Disconnect_Detect"></a></p>
+
+
+<h4>Host Disconnect Detect</h4>
+<table border="1" cellspacing="1" cellpadding="1">
+<tr>
+<td>Step</td>
+<td>Agilent Instructions</td>
+<td>UsbHostPortTestApp Instructions</td>
+</tr>
+<tr>
+<td>1</td>
+<td>EL_37 Disconnect Detect Test at 525mV Threshold (P146)</td>
+<td>Run 'UsbHostPortTestApp.efi "1 5"' in console. Press enter and a line will be displayed on whether disconnect is detected. Then enter the result in scope.</td>
+</tr>
+<tr>
+<td>2</td>
+<td>EL_38 Disconnect Detect Test at 625mV Threshold (P146)</td>
+<td>After change the Test switch to Normal position, press Enter again in console. The tool will check connection status again and display the result. Enter the result in scope.</td>
+</tr>
+</table>
+<ul>
+<li>Note: Disconnect detect is no longer required for USB electrical compliance, according to <a href="http://compliance.usb.org/index.asp?UpdateFile=Electrical&Format=Standard#6">this compliance update.</a>  <br /></li>
+</ul>
+
+
+<p><a name="Hub_Hi-Speed_Signal_Quality" id="Hub_Hi-Speed_Signal_Quality"></a></p>
+
+<H3>Hub Port Test Modes</H3>
+<b>Notes:</b>
+<ul>
+<li><b>The following examples use the Ehci controller's hub port 1 for testing, so the CONTROLLER_ID used is 0 and the HUB_PORT_ID is 1.</b></li>
+<li><b>The hub will need to be reset between each test run.</b></li>
+</ul>
+
+<h4>Hub Hi-Speed Signal Quality - Downstream Facing Ports</h4>
+<table border="1" cellspacing="1" cellpadding="1">
+<tr>
+<td>Step</td>
+<td>Agilent Instructions</td>
+<td>UsbHostPortTestApp Instructions</td>
+</tr>
+<tr>
+<td>1</td>
+<td>Test Instructions (P71)</td>
+<td>Run 'UsbHostPortTestApp.efi "0 104 1"' in console. Then in scope click OK to close the Test complete dialog. Reset the hub/device after test.</td>
+</tr>
+</table>
+<p><br /></p>
+
+
+
+<p><a name="Hub_Jitter_test" id="Hub_Jitter_test"></a></p>
+
+
+<h4>Hub Jitter Test - Downstream Facing Ports</h4>
+<table border="1" cellspacing="1" cellpadding="1">
+<tr>
+<td>Step</td>
+<td>Agilent Instructions</td>
+<td>UsbHostPortTestApp Instructions</td>
+</tr>
+<tr>
+<td>1</td>
+<td>Test instructions (P75)</td>
+<td>Run 'UsbHostPortTestApp.efi "0 105 1"' in console, followed by "UsbHostPortTestApp.efi 0 4". Then in scope click OK to close the Test Instruction dialog. Reset the hub/device after test.</td>
+</tr>
+</table>
+<p><br /></p>
+
+
+<p><a name="Hub_Test_J.2FK.2C_SE0_NAK" id="Hub_Test_J.2FK.2C_SE0_NAK"></a></p>
+<h4>Hub Test J/K, SE0_NAK - Downstream Facing Ports</h4>
+<table border="1" cellspacing="1" cellpadding="1">
+<tr>
+<td>Step</td>
+<td>Agilent Instructions</td>
+<td>UsbHostPortTestApp Instructions</td>
+</tr>
+<tr>
+<td>1</td>
+<td>EL_8 J Test (P127)</td>
+<td>Run 'UsbHostPortTestApp.efi "0 101 1"' in console. Then in scope click OK to close the Test Instruction dialog. Enter the voltage measurements.</td>
+</tr>
+<tr>
+<td>2</td>
+<td>EL_8 K Test (P128)</td>
+<td>Run 'UsbHostPortTestApp.efi "0 102 1"' in console. Then in scope click OK to close the Test Instruction dialog. Enter the voltage measurements.</td>
+</tr>
+<tr>
+<td>3</td>
+<td>EL_9 SE0_NAK Test (P129)</td>
+<td>Run 'UsbHostPortTestApp.efi "0 103 1"' in console. Then in scope click OK to close the Test Instruction dialog. Enter the voltage measurements. Reset the hub/device after test.</td>
+</tr>
+</table>
+<p><br /></p>
+<h3>Super-speed USB Host Mode Electrical Testing</h3>
+
+<p>
+<b>Notes:</b>
+<ul>
+<li><b>For each test, if previous tests involve any of the UsbHostPortTestApp options 1-5, use option 0 to reset first.</b></li>
+<li><b>Procedure to enable SS compliance:
+  <ul>
+ <li><b> 1. Controller needs to be running/active (RS bit set) </b></li>
+ <li><b> 2. Detach downstream test dongle. </b></li>
+ <li><b> 3. Run UsbHostPortTestApp "0 6" to enable SS compliance mode. </b></li>
+ <li><b> 4. Attach downstream dongle. </b></li>
+ <li><b> 5. Run tests</b></li>
+  </ul>
+</ul>
+<p><a name="Host_Hi-Speed_Signal_Quality" id="Host_Hi-Speed_Signal_Quality"></a></p>
+
+<p>Copyright &copy; 2011 - 2017 Qualcomm Technologies, Inc. All rights reserved.<p/>
+
+</body>
+</html>
+

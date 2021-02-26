@@ -1,0 +1,128 @@
+;============================================================================
+;  Name:
+;    sym.cmm
+;
+;  Description:
+;     Loads UEFI symbols, after halting target
+;
+; Copyright (c) 2015-2017 Qualcomm Technologies Incorporated.
+; All Rights Reserved.
+; Qualcomm Technologies Confidential and Proprietary
+;
+;----------------------------------------------------------------------------
+;============================================================================
+;
+;                        EDIT HISTORY FOR MODULE
+;
+;
+;
+; when         who     what, where, why
+; ----------   ---     ----------------------------------------------------------
+; 2017-09-12   vk      Remove PATH
+; 2015-05-09   vk      Use physical address
+; 2016-02-18   bh      Update info block offset
+; 2015-10-16   bh      Fix incremental driver vs. full symbol loading
+; 2015-10-15   bh      Initial revision
+;============================================================================;
+
+local &SecAddr
+local &CwDir
+local &RamCmd
+local &ModName
+local &ModuleBkpt
+local &tfile1
+local &CmdIncrOffset
+
+global &InfoBlkAddr
+global &AppObjPath
+global &ModuleSrcRoot
+global &ModuleObjRoot
+global &UefiRootDirName
+global &AppSrcDirName
+global &AppObjDirName
+
+;
+;  No arguments expected, just run the script from Krait 0 T32
+;
+
+ENTRY &UefiBase &LoadAllSymbols
+  &CwDir=os.ppd()
+
+  do &CwDir/InitOffsets.cmm
+
+  gosub VerifyInfoBlk &UefiBase
+  
+  &TempFile=OS.TMPFILE()
+  &TempFile="&TempFile.cmm"
+
+  &CmdSize=data.long(RD:&InfoBlkAddr+&IBlkTotalCmdSize)
+  &CmdAddr=data.long(RD:&InfoBlkAddr+&IBlkSymbolCmdString)
+  &CmdEnd=&CmdAddr+&CmdSize-1
+
+  if (&LoadAllSymbols==0)
+  (
+    &CmdIncrOffset=data.long(RD:&InfoBlkAddr+&IBlkCmdStartOffset)
+    &CmdIncrOffset=&CmdAddr+&CmdIncrOffset
+    data.save.binary &TempFile A:&CmdIncrOffset--&CmdEnd
+    data.set &InfoBlkAddr+&IBlkCmdStartOffset %LONG &CmdSize 
+  )
+  else
+  (
+    data.save.binary &TempFile A:&CmdAddr--&CmdEnd
+  )
+
+  cd &CwDir/../../
+
+  &ModuleSrcRoot="&UefiRootDirName"
+  &ModuleObjRoot="&UefiRootDirName"
+  do &TempFile
+
+  if ("&AppObjPath"!="")
+  (
+    cd &AppObjPath
+
+    &ModuleSrcRoot="&AppSrcDirName"
+    &ModuleObjRoot="&AppObjDirName"
+    do &TempFile
+    
+    cd &CwDir/../../
+  )
+
+  rm &TempFile
+
+  if (&LoadAllSymbols==0)
+  (
+    &ModName=data.string(RD:&InfoBlkAddr+&IBlkModuleName)
+    &ModuleBkpt="\\&ModName\AutoGen\ProcessModuleEntryPointList"
+    g &ModuleBkpt
+    wait !run()
+    b.enable BreakPointFunction
+  )
+
+enddo
+
+
+VerifyInfoBlk:
+  ENTRY &ParamUefiBaseAddr
+  
+  local &InfFound
+
+  &InfoBlkPtrOffset=0x003ff000
+  &InfoBlkAddr=&ParamUefiBaseAddr+&InfoBlkPtrOffset
+
+  ;Read signature and verify
+  &Sig=data.long(RD:&InfoBlkAddr)
+
+  ;Check signature before dereference
+  if (&Sig==0x6B6C4249)
+    &InfFound=1
+  else
+    &InfFound=0
+  
+  if (&InfFound==0)
+  (
+    print %ERROR "UefiInfoBlk not found"
+    end
+  )
+  else
+    return

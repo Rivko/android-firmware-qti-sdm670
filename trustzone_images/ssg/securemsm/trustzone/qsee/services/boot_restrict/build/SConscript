@@ -1,0 +1,73 @@
+#===============================================================================
+#
+#                             Edit History
+# $Header: //components/rel/ssg.tz/1.0.2/securemsm/trustzone/qsee/services/boot_restrict/build/SConscript#1 $
+#
+# when         who     what, where, why
+# ----------   ---     ---------------------------------------------------------
+# 2017/12/15   nb      Initial version
+#
+#===============================================================================
+#   Copyright (c) 2017 by QUALCOMM Technologies, Incorporated.
+#   All Rights Reserved.
+#===============================================================================
+# Boot Restrict
+#-------------------------------------------------------------------------------
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+#SRCPATH = ".."
+SRCPATH = "${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/services/boot_restrict"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_APIS = [
+   'DAL',
+   'KERNEL',
+   'SYSTEMDRIVERS',
+]
+
+env.RequirePublicApi(CBSP_APIS, area = 'core')
+
+SSG_API = [
+   'MINK',
+   'QSEE',
+   'SECUREMSM',
+   'SSGPLATFORM',
+   'TZCHIPSET',
+]
+
+env.RequirePublicApi(SSG_API, area = 'ssg')
+env.RequireRestrictedApi(SSG_API)
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+SOURCES = [
+   '${BUILDPATH}/src/qsee_boot_restrict.c',
+]
+
+#-------------------------------------------------------------------------------
+# Device Configuration Sources
+#-------------------------------------------------------------------------------
+if 'USES_DEVCFG' in env:
+    BOOT_RESTRICT_XML = '${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/services/boot_restrict/config/boot_restrict.xml'
+    if 'BOOT_RESTRICT_BYPASS' in env:
+        BOOT_RESTRICT_XML = '${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/services/boot_restrict/config/boot_restrict_bypass.xml'
+    env.AddDevCfgInfo(['DAL_DEVCFG_IMG'],
+    {
+      'devcfg_xml' : [BOOT_RESTRICT_XML]
+    })
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+env.AddBinaryObject('TZOS_IMAGE', SOURCES)
+

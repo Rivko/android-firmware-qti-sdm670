@@ -1,0 +1,85 @@
+             #
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2017 by QUALCOMM Technology Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  #                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 10/10/17   pc      Added config xml for SDM670
+# 06/05/17   ks      Enabled BAM for 670
+# 03/13/17   ss      Intial version.Moving BAM tgt cfg to core/settings
+#===============================================================================
+import os
+Import('env')
+env = env.Clone()
+if env['MSM_ID'] in ['845', '670']:
+    if not env.has_key('ADSP_PROC'):
+       Return();
+
+if env['MSM_ID'] in ['8996','8998','845','670']:
+   env.PublishPrivateApi('BAM', [
+       "${INC_ROOT}/core/settings/hwengines/bam/interface",
+       "${INC_ROOT}/core/settings/hwengines/bam/config/${MSM_ID}"
+   ])
+
+if env.has_key('MBA_CORE_SW'):
+    env.Append(CPPDEFINES = [ 'BAM_MBA' ])
+else : 
+    env.Append(CPPDEFINES = [ 'BAM_XML_PROPS' ])
+     
+
+# Bam config
+if env['MSM_ID'] in ['8996', '8998', '845', '670']:
+    if env.has_key('ADSP_PROC'):
+       env.Append(CPPDEFINES = ['BAM_ADSP_CONFIG'])
+
+SRCPATH = "../config/"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'HWENGINES',
+   'DAL',   
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# DEVCFG - BAM XML
+#-------------------------------------------------------------------------------
+
+if ('USES_DEVCFG' in env):
+   if env['MSM_ID'] in ['8996', '8998', '845', '670']:
+      if (('USES_AUDIO_PD' in env) or ('USES_AUDIO_IMG' in env)):
+         DEVCFG_IMG_AUDIO = ['DEVCFG_CORE_QDSP6_AUDIO_SW']
+	 env.AddDevCfgInfo(DEVCFG_IMG_AUDIO, 
+	 {
+       '845_xml'  : ['../config/common/bam_config.xml',
+                     '${BUILDPATH}/common/bamconfig_props.c'],
+       '670_xml'  : ['../config/common/bam_config.xml',
+                     '${BUILDPATH}/common/bamconfig_props.c']					  
+	 })
+      else:
+         DEVCFG_IMG = ['DAL_DEVCFG_IMG']
+         env.AddDevCfgInfo(DEVCFG_IMG, 
+         {
+            '845_xml'  : ['../config/common/bam_config.xml',
+                          '${BUILDPATH}/common/bamconfig_props.c'],
+            '670_xml'  : ['../config/common/bam_config.xml',
+                          '${BUILDPATH}/common/bamconfig_props.c']
+         })
+
+

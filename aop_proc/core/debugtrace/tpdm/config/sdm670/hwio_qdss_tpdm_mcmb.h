@@ -1,0 +1,931 @@
+#ifndef __HWIO_QDSS_TPDM_MCMB_H__
+#define __HWIO_QDSS_TPDM_MCMB_H__
+/*
+===========================================================================
+*/
+/**
+  @file hwio_qdss_tpdm_mcmb.h
+  @brief Auto-generated HWIO interface include file.
+
+  Reference chip release:
+    SDM845 (Napali) [napali_v1.0_p1q0r25.1.2_F0_ECO]
+ 
+  This file contains HWIO register definitions for the following modules:
+    QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB
+
+  'Include' filters applied: 
+  'Exclude' filters applied: RESERVED DUMMY 
+*/
+/*
+  ===========================================================================
+
+  Copyright (c) 2016 Qualcomm Technologies Incorporated.
+  All Rights Reserved.
+  Qualcomm Confidential and Proprietary
+
+  Export of this technology or software is regulated by the U.S. Government.
+  Diversion contrary to U.S. law prohibited.
+
+  All ideas, data and information contained in or disclosed by
+  this document are confidential and proprietary information of
+  Qualcomm Technologies Incorporated and all rights therein are expressly reserved.
+  By accepting this material the recipient agrees that this material
+  and the information contained therein are held in confidence and in
+  trust and will not be used, copied, reproduced in whole or in part,
+  nor its contents revealed in any manner to others without the express
+  written permission of Qualcomm Technologies Incorporated.
+
+  ===========================================================================
+
+  $Header: //components/rel/aop.ho/1.1.c1/aop_proc/core/debugtrace/tpdm/config/sdm670/hwio_qdss_tpdm_mcmb.h#1 $
+  $DateTime: 2018/02/16 04:48:18 $
+  $Author: pwbldsvc $
+
+  ===========================================================================
+*/
+
+/*----------------------------------------------------------------------------
+ * MODULE: QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB
+ *--------------------------------------------------------------------------*/
+
+#include "qdss_tpdm_config.h"
+
+#define  QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE_PHYS
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_CR_ADDR                         (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000780)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_CR_RMSK                           0x1fffc7
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_CR_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_CR_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_CR_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_CR_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_CR_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_CR_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_CR_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_CR_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_CR_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_CR_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_CR_XTRIG_LNSEL_BMSK               0x1c0000
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_CR_XTRIG_LNSEL_SHFT                   0x12
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_CR_E_LN_BMSK                       0x3fc00
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_CR_E_LN_SHFT                           0xa
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_CR_CA_BMSK                           0x300
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_CR_CA_SHFT                             0x8
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_CR_ATBFLOWERR_BMSK                    0x80
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_CR_ATBFLOWERR_SHFT                     0x7
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_CR_EBITSET_BMSK                       0x40
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_CR_EBITSET_SHFT                        0x6
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_CR_FLOWCTRL_BMSK                       0x4
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_CR_FLOWCTRL_SHFT                       0x2
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_CR_MODE_BMSK                           0x2
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_CR_MODE_SHFT                           0x1
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_CR_E_BMSK                              0x1
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_CR_E_SHFT                              0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TIER_ADDR                       (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000784)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TIER_RMSK                              0x3
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TIER_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TIER_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TIER_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TIER_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TIER_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TIER_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TIER_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TIER_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TIER_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TIER_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TIER_XTRIG_TSENAB_BMSK                 0x2
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TIER_XTRIG_TSENAB_SHFT                 0x1
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TIER_PATT_TSENAB_BMSK                  0x1
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TIER_PATT_TSENAB_SHFT                  0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPRn_ADDR(n)                    (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000788 + 0x4 * (n))
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPRn_RMSK                       0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPRn_MAXn                                0
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPRn_INI(n)        \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPRn_ADDR(n), HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPRn_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPRn_INMI(n,mask)    \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPRn_ADDR(n), mask)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPRn_OUTI(n,val)    \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPRn_ADDR(n),val)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPRn_OUTMI(n,mask,val) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPRn_ADDR(n),mask,val,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPRn_INI(n))
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPRn_VAL_BMSK                   0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPRn_VAL_SHFT                          0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPRm_ADDR(m)                    (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000788 + 0x4 * (m))
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPRm_RMSK                       0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPRm_MAXm                                1
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPRm_INI(m)        \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPRm_ADDR(m), HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPRm_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPRm_INMI(m,mask)    \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPRm_ADDR(m), mask)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPRm_OUTI(m,val)    \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPRm_ADDR(m),val)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPRm_OUTMI(m,mask,val) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPRm_ADDR(m),mask,val,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPRm_INI(m))
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPRm_VAL_BMSK                   0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPRm_VAL_SHFT                          0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPMRn_ADDR(n)                   (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000790 + 0x4 * (n))
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPMRn_RMSK                      0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPMRn_MAXn                               0
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPMRn_INI(n)        \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPMRn_ADDR(n), HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPMRn_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPMRn_INMI(n,mask)    \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPMRn_ADDR(n), mask)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPMRn_OUTI(n,val)    \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPMRn_ADDR(n),val)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPMRn_OUTMI(n,mask,val) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPMRn_ADDR(n),mask,val,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPMRn_INI(n))
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPMRn_VAL_BMSK                  0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPMRn_VAL_SHFT                         0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPMRm_ADDR(m)                   (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000790 + 0x4 * (m))
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPMRm_RMSK                      0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPMRm_MAXm                               1
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPMRm_INI(m)        \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPMRm_ADDR(m), HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPMRm_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPMRm_INMI(m,mask)    \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPMRm_ADDR(m), mask)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPMRm_OUTI(m,val)    \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPMRm_ADDR(m),val)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPMRm_OUTMI(m,mask,val) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPMRm_ADDR(m),mask,val,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPMRm_INI(m))
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPMRm_VAL_BMSK                  0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_TPMRm_VAL_SHFT                         0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPRn_ADDR(n)                    (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000798 + 0x4 * (n))
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPRn_RMSK                       0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPRn_MAXn                                0
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPRn_INI(n)        \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPRn_ADDR(n), HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPRn_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPRn_INMI(n,mask)    \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPRn_ADDR(n), mask)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPRn_OUTI(n,val)    \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPRn_ADDR(n),val)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPRn_OUTMI(n,mask,val) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPRn_ADDR(n),mask,val,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPRn_INI(n))
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPRn_VAL_BMSK                   0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPRn_VAL_SHFT                          0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPRm_ADDR(m)                    (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000798 + 0x4 * (m))
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPRm_RMSK                       0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPRm_MAXm                                1
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPRm_INI(m)        \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPRm_ADDR(m), HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPRm_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPRm_INMI(m,mask)    \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPRm_ADDR(m), mask)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPRm_OUTI(m,val)    \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPRm_ADDR(m),val)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPRm_OUTMI(m,mask,val) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPRm_ADDR(m),mask,val,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPRm_INI(m))
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPRm_VAL_BMSK                   0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPRm_VAL_SHFT                          0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPMRn_ADDR(n)                   (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x000007a0 + 0x4 * (n))
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPMRn_RMSK                      0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPMRn_MAXn                               0
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPMRn_INI(n)        \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPMRn_ADDR(n), HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPMRn_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPMRn_INMI(n,mask)    \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPMRn_ADDR(n), mask)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPMRn_OUTI(n,val)    \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPMRn_ADDR(n),val)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPMRn_OUTMI(n,mask,val) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPMRn_ADDR(n),mask,val,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPMRn_INI(n))
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPMRn_VAL_BMSK                  0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPMRn_VAL_SHFT                         0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPMRm_ADDR(m)                   (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x000007a0 + 0x4 * (m))
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPMRm_RMSK                      0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPMRm_MAXm                               1
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPMRm_INI(m)        \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPMRm_ADDR(m), HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPMRm_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPMRm_INMI(m,mask)    \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPMRm_ADDR(m), mask)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPMRm_OUTI(m,val)    \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPMRm_ADDR(m),val)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPMRm_OUTMI(m,mask,val) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPMRm_ADDR(m),mask,val,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPMRm_INI(m))
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPMRm_VAL_BMSK                  0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_XPMRm_VAL_SHFT                         0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MARKR_ADDR                      (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x000007a8)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MARKR_RMSK                          0x3fff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MARKR_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MARKR_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MARKR_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MARKR_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MARKR_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MARKR_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MARKR_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MARKR_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MARKR_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MARKR_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MARKR_MODE_BMSK                     0x2000
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MARKR_MODE_SHFT                        0xd
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MARKR_COUNT_MODE_BMSK               0x1000
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MARKR_COUNT_MODE_SHFT                  0xc
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MARKR_COUNT_BMSK                     0xfff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MARKR_COUNT_SHFT                       0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_READCTL_ADDR                    (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x000007f0)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_READCTL_RMSK                           0xf
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_READCTL_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_READCTL_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_READCTL_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_READCTL_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_READCTL_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_READCTL_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_READCTL_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_READCTL_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_READCTL_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_READCTL_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_READCTL_LANE_SEL_BMSK                  0xe
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_READCTL_LANE_SEL_SHFT                  0x1
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_READCTL_SEL_BMSK                       0x1
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_READCTL_SEL_SHFT                       0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_READVAL_ADDR                    (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x000007f4)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_READVAL_RMSK                    0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_READVAL_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_READVAL_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_READVAL_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_READVAL_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_READVAL_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_READVAL_VALUE_BMSK              0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_READVAL_VALUE_SHFT                     0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR0_ADDR                       (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000800)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR0_RMSK                       0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR0_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR0_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR0_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR0_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR0_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR0_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR0_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR0_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR0_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR0_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR0_VAL_BMSK                   0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR0_VAL_SHFT                          0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR1_ADDR                       (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000804)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR1_RMSK                       0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR1_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR1_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR1_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR1_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR1_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR1_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR1_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR1_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR1_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR1_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR1_VAL_BMSK                   0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR1_VAL_SHFT                          0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR2_ADDR                       (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000808)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR2_RMSK                       0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR2_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR2_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR2_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR2_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR2_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR2_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR2_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR2_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR2_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR2_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR2_VAL_BMSK                   0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR2_VAL_SHFT                          0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR3_ADDR                       (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x0000080c)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR3_RMSK                       0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR3_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR3_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR3_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR3_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR3_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR3_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR3_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR3_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR3_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR3_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR3_VAL_BMSK                   0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR3_VAL_SHFT                          0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR4_ADDR                       (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000810)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR4_RMSK                       0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR4_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR4_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR4_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR4_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR4_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR4_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR4_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR4_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR4_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR4_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR4_VAL_BMSK                   0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR4_VAL_SHFT                          0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR5_ADDR                       (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000814)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR5_RMSK                       0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR5_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR5_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR5_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR5_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR5_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR5_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR5_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR5_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR5_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR5_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR5_VAL_BMSK                   0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR5_VAL_SHFT                          0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR6_ADDR                       (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000818)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR6_RMSK                       0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR6_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR6_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR6_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR6_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR6_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR6_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR6_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR6_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR6_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR6_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR6_VAL_BMSK                   0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR6_VAL_SHFT                          0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR7_ADDR                       (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x0000081c)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR7_RMSK                       0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR7_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR7_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR7_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR7_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR7_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR7_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR7_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR7_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR7_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR7_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR7_VAL_BMSK                   0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR7_VAL_SHFT                          0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR8_ADDR                       (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000820)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR8_RMSK                       0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR8_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR8_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR8_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR8_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR8_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR8_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR8_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR8_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR8_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR8_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR8_VAL_BMSK                   0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR8_VAL_SHFT                          0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR9_ADDR                       (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000824)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR9_RMSK                       0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR9_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR9_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR9_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR9_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR9_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR9_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR9_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR9_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR9_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR9_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR9_VAL_BMSK                   0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR9_VAL_SHFT                          0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR10_ADDR                      (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000828)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR10_RMSK                      0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR10_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR10_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR10_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR10_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR10_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR10_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR10_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR10_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR10_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR10_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR10_VAL_BMSK                  0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR10_VAL_SHFT                         0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR11_ADDR                      (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x0000082c)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR11_RMSK                      0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR11_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR11_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR11_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR11_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR11_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR11_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR11_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR11_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR11_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR11_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR11_VAL_BMSK                  0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR11_VAL_SHFT                         0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR12_ADDR                      (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000830)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR12_RMSK                      0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR12_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR12_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR12_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR12_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR12_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR12_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR12_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR12_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR12_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR12_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR12_VAL_BMSK                  0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR12_VAL_SHFT                         0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR13_ADDR                      (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000834)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR13_RMSK                      0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR13_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR13_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR13_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR13_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR13_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR13_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR13_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR13_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR13_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR13_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR13_VAL_BMSK                  0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR13_VAL_SHFT                         0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR14_ADDR                      (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000838)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR14_RMSK                      0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR14_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR14_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR14_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR14_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR14_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR14_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR14_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR14_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR14_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR14_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR14_VAL_BMSK                  0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR14_VAL_SHFT                         0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR15_ADDR                      (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x0000083c)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR15_RMSK                      0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR15_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR15_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR15_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR15_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR15_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR15_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR15_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR15_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR15_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR15_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR15_VAL_BMSK                  0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR15_VAL_SHFT                         0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR16_ADDR                      (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000840)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR16_RMSK                      0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR16_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR16_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR16_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR16_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR16_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR16_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR16_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR16_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR16_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR16_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR16_VAL_BMSK                  0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR16_VAL_SHFT                         0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR17_ADDR                      (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000844)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR17_RMSK                      0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR17_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR17_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR17_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR17_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR17_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR17_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR17_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR17_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR17_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR17_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR17_VAL_BMSK                  0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR17_VAL_SHFT                         0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR18_ADDR                      (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000848)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR18_RMSK                      0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR18_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR18_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR18_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR18_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR18_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR18_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR18_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR18_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR18_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR18_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR18_VAL_BMSK                  0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR18_VAL_SHFT                         0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR19_ADDR                      (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x0000084c)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR19_RMSK                      0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR19_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR19_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR19_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR19_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR19_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR19_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR19_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR19_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR19_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR19_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR19_VAL_BMSK                  0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR19_VAL_SHFT                         0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR20_ADDR                      (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000850)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR20_RMSK                      0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR20_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR20_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR20_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR20_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR20_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR20_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR20_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR20_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR20_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR20_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR20_VAL_BMSK                  0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR20_VAL_SHFT                         0x0
+
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR32_ADDR                      (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000880)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR32_RMSK                      0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR32_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR32_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR32_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR32_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR32_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR32_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR32_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR32_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR32_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR32_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR32_VAL_BMSK                  0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR32_VAL_SHFT                         0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR33_ADDR                      (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000884)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR33_RMSK                      0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR33_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR33_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR33_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR33_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR33_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR33_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR33_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR33_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR33_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR33_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR33_VAL_BMSK                  0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR33_VAL_SHFT                         0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR34_ADDR                      (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000888)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR34_RMSK                      0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR34_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR34_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR34_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR34_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR34_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR34_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR34_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR34_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR34_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR34_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR34_VAL_BMSK                  0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR34_VAL_SHFT                         0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR35_ADDR                      (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x0000088c)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR35_RMSK                      0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR35_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR35_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR35_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR35_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR35_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR35_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR35_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR35_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR35_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR35_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR35_VAL_BMSK                  0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR35_VAL_SHFT                         0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR48_ADDR                      (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x000008c0)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR48_RMSK                      0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR48_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR48_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR48_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR48_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR48_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR48_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR48_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR48_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR48_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR48_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR48_VAL_BMSK                  0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR48_VAL_SHFT                         0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR49_ADDR                      (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x000008c4)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR49_RMSK                      0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR49_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR49_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR49_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR49_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR49_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR49_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR49_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR49_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR49_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR49_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR49_VAL_BMSK                  0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR49_VAL_SHFT                         0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR50_ADDR                      (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x000008c8)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR50_RMSK                      0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR50_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR50_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR50_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR50_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR50_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR50_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR50_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR50_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR50_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR50_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR50_VAL_BMSK                  0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR50_VAL_SHFT                         0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR51_ADDR                      (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x000008cc)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR51_RMSK                      0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR51_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR51_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR51_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR51_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR51_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR51_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR51_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR51_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR51_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR51_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR51_VAL_BMSK                  0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CMB_MSR51_VAL_SHFT                         0x0
+
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_ITATBCNTRL_ADDR                     (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000c70)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_ITATBCNTRL_RMSK                     0xc07fffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_ITATBCNTRL_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_ITATBCNTRL_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_ITATBCNTRL_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_ITATBCNTRL_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_ITATBCNTRL_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_ITATBCNTRL_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_ITATBCNTRL_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_ITATBCNTRL_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_ITATBCNTRL_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_ITATBCNTRL_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_ITATBCNTRL_TSREQ_BMSK               0x80000000
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_ITATBCNTRL_TSREQ_SHFT                     0x1f
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_ITATBCNTRL_ATVALID_BMSK             0x40000000
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_ITATBCNTRL_ATVALID_SHFT                   0x1e
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_ITATBCNTRL_ATDATAMODE_BMSK            0x400000
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_ITATBCNTRL_ATDATAMODE_SHFT                0x16
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_ITATBCNTRL_ATBYTES_BMSK               0x3c0000
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_ITATBCNTRL_ATBYTES_SHFT                   0x12
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_ITATBCNTRL_ATDATA_BMSK                 0x3fc00
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_ITATBCNTRL_ATDATA_SHFT                     0xa
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_ITATBCNTRL_ATID_BMSK                     0x3f8
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_ITATBCNTRL_ATID_SHFT                       0x3
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_ITATBCNTRL_TSVAL_BMSK                      0x7
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_ITATBCNTRL_TSVAL_SHFT                      0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_ITCNTRL_ADDR                        (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000c80)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_ITCNTRL_RMSK                               0x1
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_ITCNTRL_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_ITCNTRL_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_ITCNTRL_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_ITCNTRL_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_ITCNTRL_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_ITCNTRL_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_ITCNTRL_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_ITCNTRL_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_ITCNTRL_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_ITCNTRL_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_ITCNTRL_IME_BMSK                           0x1
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_ITCNTRL_IME_SHFT                           0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CLAIMSET_ADDR                       (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000d20)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CLAIMSET_RMSK                       0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CLAIMSET_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CLAIMSET_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CLAIMSET_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CLAIMSET_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CLAIMSET_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CLAIMSET_VAL_SET_BMSK               0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CLAIMSET_VAL_SET_SHFT                      0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CLAIMCLR_ADDR                       (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000d24)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CLAIMCLR_RMSK                       0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CLAIMCLR_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CLAIMCLR_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CLAIMCLR_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CLAIMCLR_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CLAIMCLR_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CLAIMCLR_VAL_CLR_BMSK               0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CLAIMCLR_VAL_CLR_SHFT                      0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVAFF0_ADDR                        (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000d28)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVAFF0_RMSK                        0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVAFF0_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_DEVAFF0_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_DEVAFF0_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVAFF0_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_DEVAFF0_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVAFF0_VAL_BMSK                    0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVAFF0_VAL_SHFT                           0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVAFF1_ADDR                        (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000d2c)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVAFF1_RMSK                        0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVAFF1_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_DEVAFF1_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_DEVAFF1_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVAFF1_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_DEVAFF1_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVAFF1_VAL_BMSK                    0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVAFF1_VAL_SHFT                           0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_LAR_ADDR                            (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000d30)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_LAR_RMSK                            0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_LAR_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_LAR_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_LAR_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_LAR_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_LAR_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_LAR_OUT(v)      \
+        out_dword(HWIO_QDSS_SWAO_TPDM0_TPDM_LAR_ADDR,v)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_LAR_OUTM(m,v) \
+        out_dword_masked_ns(HWIO_QDSS_SWAO_TPDM0_TPDM_LAR_ADDR,m,v,HWIO_QDSS_SWAO_TPDM0_TPDM_LAR_IN)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_LAR_KEY_BMSK                        0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_LAR_KEY_SHFT                               0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_LSR_ADDR                            (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000d34)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_LSR_RMSK                                   0x7
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_LSR_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_LSR_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_LSR_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_LSR_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_LSR_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_LSR_NTT_BMSK                               0x4
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_LSR_NTT_SHFT                               0x2
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_LSR_SLK_BMSK                               0x2
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_LSR_SLK_SHFT                               0x1
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_LSR_SLI_BMSK                               0x1
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_LSR_SLI_SHFT                               0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_AUTHSTATUS_ADDR                     (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000d38)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_AUTHSTATUS_RMSK                           0xff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_AUTHSTATUS_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_AUTHSTATUS_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_AUTHSTATUS_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_AUTHSTATUS_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_AUTHSTATUS_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_AUTHSTATUS_SNID_BMSK                      0xc0
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_AUTHSTATUS_SNID_SHFT                       0x6
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_AUTHSTATUS_SID_BMSK                       0x30
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_AUTHSTATUS_SID_SHFT                        0x4
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_AUTHSTATUS_NSNID_BMSK                      0xc
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_AUTHSTATUS_NSNID_SHFT                      0x2
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_AUTHSTATUS_NSID_BMSK                       0x3
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_AUTHSTATUS_NSID_SHFT                       0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVARCH_ADDR                        (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000d3c)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVARCH_RMSK                        0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVARCH_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_DEVARCH_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_DEVARCH_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVARCH_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_DEVARCH_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVARCH_ARCHITECT_BMSK              0xffe00000
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVARCH_ARCHITECT_SHFT                    0x15
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVARCH_PRESENT_BMSK                  0x100000
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVARCH_PRESENT_SHFT                      0x14
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVARCH_REVISION_BMSK                  0xf0000
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVARCH_REVISION_SHFT                     0x10
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVARCH_ARCHID_BMSK                     0xffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVARCH_ARCHID_SHFT                        0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVID1_ADDR                         (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000d44)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVID1_RMSK                         0xc0000000
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVID1_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_DEVID1_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_DEVID1_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVID1_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_DEVID1_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVID1_CMB_LIVE_BMSK                0x80000000
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVID1_CMB_LIVE_SHFT                      0x1f
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVID1_DSB_LIVE_BMSK                0x40000000
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVID1_DSB_LIVE_SHFT                      0x1e
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVID_ADDR                          (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000d48)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVID_RMSK                          0xff800000
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVID_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_DEVID_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_DEVID_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVID_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_DEVID_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVID_MCMB_LANES_BMSK               0xe0000000
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVID_MCMB_LANES_SHFT                     0x1d
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVID_TC_LVL_TRIG_BMSK              0x18000000
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVID_TC_LVL_TRIG_SHFT                    0x1b
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVID_BC_LVL_TRIG_BMSK               0x6000000
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVID_BC_LVL_TRIG_SHFT                    0x19
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVID_BC_GANG_BMSK                   0x1800000
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVID_BC_GANG_SHFT                        0x17
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVTYPE_ADDR                        (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000d4c)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVTYPE_RMSK                              0xff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVTYPE_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_DEVTYPE_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_DEVTYPE_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVTYPE_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_DEVTYPE_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVTYPE_SUB_BMSK                          0xf0
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVTYPE_SUB_SHFT                           0x4
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVTYPE_MAJOR_BMSK                         0xf
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_DEVTYPE_MAJOR_SHFT                         0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR4_ADDR                          (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000d50)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR4_RMSK                                0xff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR4_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR4_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR4_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR4_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR4_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR4_SIZE_BMSK                           0xf0
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR4_SIZE_SHFT                            0x4
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR4_DES_2_BMSK                           0xf
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR4_DES_2_SHFT                           0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR5_ADDR                          (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000d54)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR5_RMSK                          0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR5_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR5_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR5_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR5_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR5_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR5_EMPTY_BMSK                    0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR5_EMPTY_SHFT                           0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR6_ADDR                          (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000d58)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR6_RMSK                          0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR6_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR6_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR6_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR6_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR6_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR6_EMPTY_BMSK                    0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR6_EMPTY_SHFT                           0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR7_ADDR                          (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000d5c)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR7_RMSK                          0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR7_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR7_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR7_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR7_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR7_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR7_EMPTY_BMSK                    0xffffffff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR7_EMPTY_SHFT                           0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR0_ADDR                          (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000d60)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR0_RMSK                                0xff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR0_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR0_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR0_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR0_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR0_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR0_PART_7_BMSK                         0x80
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR0_PART_7_SHFT                          0x7
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR0_PART_6_BMSK                         0x40
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR0_PART_6_SHFT                          0x6
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR0_PART_5_BMSK                         0x20
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR0_PART_5_SHFT                          0x5
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR0_PART_4_BMSK                         0x10
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR0_PART_4_SHFT                          0x4
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR0_PART_3_BMSK                          0x8
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR0_PART_3_SHFT                          0x3
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR0_PART_2_BMSK                          0x4
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR0_PART_2_SHFT                          0x2
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR0_PART_1_BMSK                          0x2
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR0_PART_1_SHFT                          0x1
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR0_PART_0_BMSK                          0x1
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR0_PART_0_SHFT                          0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR1_ADDR                          (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000d64)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR1_RMSK                                0xff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR1_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR1_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR1_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR1_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR1_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR1_DES_0_BMSK                          0xf0
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR1_DES_0_SHFT                           0x4
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR1_PART_1_BMSK                          0xf
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR1_PART_1_SHFT                          0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR2_ADDR                          (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000d68)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR2_RMSK                                0xff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR2_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR2_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR2_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR2_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR2_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR2_REVISION_BMSK                       0xf0
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR2_REVISION_SHFT                        0x4
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR2_JEDEC_BMSK                           0x8
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR2_JEDEC_SHFT                           0x3
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR2_DES_1_BMSK                           0x7
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR2_DES_1_SHFT                           0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR3_ADDR                          (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000d6c)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR3_RMSK                                0xff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR3_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR3_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR3_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR3_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR3_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR3_REVAND_BMSK                         0xf0
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR3_REVAND_SHFT                          0x4
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR3_CMOD_BMSK                            0xf
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_PIDR3_CMOD_SHFT                            0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR0_ADDR                          (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000d70)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR0_RMSK                                0xff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR0_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR0_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR0_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR0_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR0_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR0_PRMBL_0_BMSK                        0xff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR0_PRMBL_0_SHFT                         0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR1_ADDR                          (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000d74)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR1_RMSK                                0xff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR1_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR1_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR1_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR1_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR1_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR1_CLASS_BMSK                          0xf0
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR1_CLASS_SHFT                           0x4
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR1_PRMBL_1_BMSK                         0xf
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR1_PRMBL_1_SHFT                         0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR2_ADDR                          (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000d78)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR2_RMSK                                0xff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR2_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR2_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR2_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR2_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR2_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR2_PRMBL_2_BMSK                        0xff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR2_PRMBL_2_SHFT                         0x0
+
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR3_ADDR                          (QDSS_SWAO_TPDM0_TPDM_ATB128_MCMB8_CSF007C153_SUB_REG_BASE      + 0x00000d7c)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR3_RMSK                                0xff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR3_IN          \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR3_ADDR, HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR3_RMSK)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR3_INM(m)      \
+        in_dword_masked(HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR3_ADDR, m)
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR3_PRMBL_3_BMSK                        0xff
+#define HWIO_QDSS_SWAO_TPDM0_TPDM_CIDR3_PRMBL_3_SHFT                         0x0
+
+
+#endif /* __HWIO_QDSS_TPDM_MCMB_H__ */

@@ -1,0 +1,84 @@
+#===============================================================================
+#
+# Topology Util
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2009-2014 by QUALCOMM Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/avs.adsp/2.8.5/afe/utils/topo/build/topo.scons#1 $
+#  $DateTime: 2017/11/07 23:00:25 $
+#  $Author: pwbldsvc $
+#  $Change: 14795016 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 6/13/14    Unni    Initial Version
+#===============================================================================
+Import('env')
+
+core_public_apis = [
+    'DEBUGTOOLS',
+    'KERNEL',
+    'POWER',
+    'SERVICES',
+    ]
+
+platform_public_apis = [
+    'QAIC',
+    'STDDEF',
+    'HAPSDK',
+    'DLW' 
+    ]
+   
+restricted_apis = [
+    'AVS',
+    'CAPI_V2_APPI_WRAPPER',
+    'MODULE_INTERFACES_API',
+    'MODULE_INTERFACES_UTILS',
+    'AFE_UTILS_TOPO',
+    ]   
+
+env.PublishPrivateApi('AFE_PRIVATE',['../build','${AVS_ROOT}/module_mgmt/amdb/inc',])    
+env.RequirePublicApi(core_public_apis, area='core')
+env.RequireRestrictedApi(restricted_apis)
+env.RequireProtectedApi('AVS')
+env.RequirePublicApi([
+  'ADSP_AMDB',
+])
+
+# This has to be the last include command, so that the Elite_CAPI.h and Elite_APPI.h are not overridden
+env.RequirePublicApi(platform_public_apis, area='platform') 
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = ".."
+LIBNAME = 'afe_topo_util'
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+# Generate regular source file list
+reg_sources = env.GlobSourceFiles(['/src/*.cpp', '/src/*.c', '/src/*.S'], SRCPATH,posix=True)
+
+# Generate stub source file list
+stub_sources = env.GlobSourceFiles(['/stub_src/*.cpp', '/stub_src/*.c', '/stub_src/*.S'], SRCPATH,posix=True)
+
+# Genate proprietary source file list
+prop_sources = []
+
+
+
+#import pdb; pdb.set_trace()
+if 'USES_AVS_LIBRARY_BUILDER' in env:
+   env.AddAvsLibrary(['AVS_ADSP','AVS_ADSP_USER'], '${BUILDPATH}/'+LIBNAME,
+      [reg_sources, stub_sources, prop_sources],PACK_SRC=True)

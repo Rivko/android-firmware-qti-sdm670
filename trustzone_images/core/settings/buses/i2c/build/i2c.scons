@@ -1,0 +1,87 @@
+#===============================================================================
+#
+# I2C settings 
+#
+# GENERAL DESCRIPTION
+#    Public build script for I2C settings.
+#
+# Copyright (c) 2016-2017 Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Qualcomm Technologies, Inc. Confidential and Proprietary.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.tz/2.0.2/settings/buses/i2c/build/i2c.scons#1 $
+#  $DateTime: 2018/02/06 02:57:17 $
+#  $Author: pwbldsvc $
+#  $Change: 15399902 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#  
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 03/12/17   UNR     Initial release
+#
+#===============================================================================
+
+import os
+Import('env')
+env = env.Clone()
+
+#------------------------------------------------------------------------------
+# Images
+#------------------------------------------------------------------------------
+I2C_CFG_IMAGES = ['DAL_DEVCFG_OEM_QSEE_IMG']
+
+#-------------------------------------------------------------------------------
+# Source PATH:  
+#-------------------------------------------------------------------------------
+SRCPATH = "../config"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+if "USES_DEPLOY_BUILDER" in env:
+   env.Deploy(['../interface/i2c_config.h',
+               '../build/i2c.api',
+               '../build/i2c.scons'])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_APIS = [
+   'DAL',
+   'BUSES',
+   'BUSES_I2C',
+   'SYSTEMDRIVERS',
+   'SERVICES',
+   'HWENGINES',
+]
+
+env.RequirePublicApi(CBSP_APIS, area='core')
+env.RequireRestrictedApi('I2C_SETTINGS')
+
+#-------------------------------------------------------------------------------
+# Define cores
+#-------------------------------------------------------------------------------
+if env['MSM_ID'] in ['670', '640']:
+    env.Append(CCFLAGS = ' -DENABLE_I2C_10')
+
+
+
+#---------------------------------------------------------------------------
+# Device Config
+#---------------------------------------------------------------------------
+if 'USES_DEVCFG' in env:
+    if env['MSM_ID'] in ['845','670','855', '640']:
+        env.AddDevCfgInfo(I2C_CFG_IMAGES, 
+        {
+            'devcfg_xml' : ['${BUILD_ROOT}/core/settings/buses/i2c/config/${CHIPSET}/tz/i2c_devcfg.xml',
+                            '${BUILD_ROOT}/core/settings/buses/i2c/config/${CHIPSET}/tz/i2c_devcfg.c']
+        })
+    else:
+        env.AddDevCfgInfo(I2C_CFG_IMAGES, 
+        {
+            'devcfg_xml' : ['${BUILD_ROOT}/core/settings/buses/i2c/config/stubs/tz/i2c_devcfg.xml',
+                            '${BUILD_ROOT}/core/settings/buses/i2c/config/stubs/tz/i2c_devcfg.c']
+        })

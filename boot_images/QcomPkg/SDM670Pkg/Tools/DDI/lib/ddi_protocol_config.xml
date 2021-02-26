@@ -1,0 +1,605 @@
+<?xml version="1.0"?>
+<DDI>
+  <Meta>
+    <!-- offset into DCB flash partition where the DDI input starts -->
+    <InputSize>0x400</InputSize>
+
+    <!-- offset into DDR flash partition where the DDI output starts -->
+    <OutputOffset>0xB5000</OutputOffset>
+    <OutputSize>0x4B000</OutputSize>
+  </Meta>
+  <Commands_Header>
+    <Param>
+      <Name>DDI Version</Name>
+      <Type>uint32</Type>
+      <Default>0x00010000</Default>
+      <Description>DDI version number to ensure QDUTT compatibility. (uint16 major version)[31..16] (uint16 minor version)[15..0]</Description>
+    </Param>
+    <Param>
+      <Name>Boot Location ID</Name>
+      <Type>uint8</Type>
+      <Default>0</Default>
+      <Description>After the commands have been run, or the commands have been processed. Proceed to boot to the location defined by the ID.</Description>
+      <Options>
+        <Option>
+          <Name>EDL</Name>
+          <Value>0</Value>
+          <Description>Reset into Emergency Download Mode</Description>
+        </Option>
+        <Option>
+          <Name>HLOS</Name>
+          <Value>1</Value>
+          <Description>Continue to boot to HLOS</Description>
+        </Option>
+      </Options>
+    </Param>
+    <Param>
+      <Name>Number of Commands</Name>
+      <Type>uint32</Type>
+      <Default>0</Default>
+      <Description>The number of total input commands represented in the flash partition</Description>
+    </Param>
+    <Param>
+      <Name>Padding</Name>
+      <Type>uint8</Type>
+      <Default>3</Default>
+      <Description>Padding for alignment. Ignored by QDUTT.</Description>
+    </Param>
+  </Commands_Header>
+  <Commands>
+    <Command>
+      <Name>Read</Name>
+      <CommandID>0</CommandID>
+      <Type>uint64</Type>
+      <Description>Performs a read operation on DDR.</Description>
+      <Input>
+        <Params>
+          <Param>
+            <Name>Start Addr</Name>
+            <Type>uint64</Type>
+            <Default>0</Default>
+            <Description>The starting address. Use 0 for the start of DDR.</Description>
+          </Param>
+          <Param>
+            <Name>End Addr</Name>
+            <Type>uint64</Type>
+            <Default>0</Default>
+            <Description>The ending address. Use 0 for the end of DDR.</Description>
+          </Param>
+          <Param>
+            <Name>Repeat Count</Name>
+            <Type>uint64</Type>
+            <Default>1</Default>
+            <Description>The number of times to repeat the read operation. If 0, test will repeat forever.</Description>
+          </Param>
+        </Params>
+      </Input>
+      <Output>
+        <Params>
+          <Param>
+            <Name>Test Status</Name>
+            <Type>uint8</Type>
+            <BitFields>
+              <BitField>
+                <Name>Command Complete</Name>
+                <NumBits>0</NumBits>
+                <Description>If 1, then DDI command did completed successfully</Description>
+              </BitField>
+              <BitField>
+                <Name>Command Failure</Name>
+                <NumBits>1</NumBits>
+                <Description>If 1, then DDI command failed</Description>
+              </BitField>
+              <BitField>
+                <Name>Invalid Input</Name>
+                <NumBits>2</NumBits>
+                <Description>If 1, then invalid command input was provided</Description>
+              </BitField>
+            </BitFields>
+          </Param>
+        </Params>
+      </Output>
+    </Command>
+    <Command>
+      <Name>Write</Name>
+      <CommandID>1</CommandID>
+      <Type>uint64</Type>
+      <Description>Performs a write operation on DDR.</Description>
+      <Input>
+        <Params>
+          <Param>
+            <Name>Start Addr</Name>
+            <Type>uint64</Type>
+            <Default>0</Default>
+            <Description>The starting address. Use 0 for the start of DDR.</Description>
+          </Param>
+          <Param>
+            <Name>End Addr</Name>
+            <Type>uint64</Type>
+            <Default>0</Default>
+            <Description>The ending address. Use 0 for the end of DDR.</Description>
+          </Param>
+          <Param>
+            <Name>Repeat Count</Name>
+            <Type>uint64</Type>
+            <Default>1</Default>
+            <Description>The number of times to repeat the read operation. If 0, test will repeat forever.</Description>
+          </Param>
+          <Param>
+            <Name>WR Flags</Name>
+            <Type>uint8</Type>
+            <Default>1</Default>
+            <BitFields>
+              <BitField>
+                <Name>Random</Name>
+                <NumBits>0</NumBits>
+                <Description>If 1, then random data is written.</Description>
+              </BitField>
+              <BitField>
+                <Name>Invert Row</Name>
+                <NumBits>1</NumBits>
+                <Description>If 1, then pattern will be flipped on each row. This is only used when random is not set, and it can only be used with a pattern data packet of size 1.</Description>
+              </BitField>
+            </BitFields>
+          </Param>
+          <Param>
+            <Name>Random Seed</Name>
+            <Type>uint32</Type>
+            <Default>0</Default>
+            <Description>Seed to be used for random. If 0, then seed will be dynamically generated using a timestamp.</Description>
+          </Param>
+          <Param>
+            <Name>Random Stride</Name>
+            <Type>uint64</Type>
+            <Default>0</Default>
+            <Description>Number of 64-bit words of random data to generate. Will be memcopied repeatedly to fill entire space between start_addr and end_addr.</Description>
+          </Param>
+          <Param>
+            <Name>Padding</Name>
+            <Type>uint8</Type>
+            <Default>3</Default>
+            <Description>Padding for alignment. Ignored by QDUTT.</Description>
+          </Param>
+        </Params>
+        <ParamArray>
+          <Name>Pattern Data Packet</Name>
+          <Type>uint64</Type>
+          <Default>0</Default>
+          <Description>Pattern to use for writes. If defined, will override random.</Description>
+          <Attributes>
+            <Attribute>
+              <Name>Val</Name>
+              <Type>uint64</Type>
+            </Attribute>
+          </Attributes>
+        </ParamArray>
+      </Input>
+      <Output>
+        <Params>
+          <Param>
+            <Name>Test Status</Name>
+            <Type>uint8</Type>
+            <BitFields>
+              <BitField>
+                <Name>Command Complete</Name>
+                <NumBits>0</NumBits>
+                <Description>If 1, then DDI command did completed successfully</Description>
+              </BitField>
+              <BitField>
+                <Name>Command Failure</Name>
+                <NumBits>1</NumBits>
+                <Description>If 1, then DDI command failed</Description>
+              </BitField>
+              <BitField>
+                <Name>Invalid Input</Name>
+                <NumBits>2</NumBits>
+                <Description>If 1, then invalid command input was provided</Description>
+              </BitField>
+            </BitFields>
+          </Param>
+        </Params>
+      </Output>
+    </Command>
+    <Command>
+      <Name>Read-Write</Name>
+      <CommandID>2</CommandID>
+      <Type>uint64</Type>
+      <Description>Performs a write, followed by a read and optionally a compare.</Description>
+      <Input>
+        <Params>
+          <Param>
+            <Name>Start Addr</Name>
+            <Type>uint64</Type>
+            <Default>0</Default>
+            <Description>The starting address. Use 0 for the start of DDR.</Description>
+          </Param>
+          <Param>
+            <Name>End Addr</Name>
+            <Type>uint64</Type>
+            <Default>0</Default>
+            <Description>The ending address. Use 0 for the end of DDR.</Description>
+          </Param>
+          <Param>
+            <Name>Repeat Count</Name>
+            <Type>uint64</Type>
+            <Default>1</Default>
+            <Description>The number of times to repeat the read operation. If 0, test will repeat forever.</Description>
+          </Param>
+          <Param>
+            <Name>RDWR Flags</Name>
+            <Type>uint8</Type>
+            <Default>3</Default>
+            <BitFields>
+              <BitField>
+                <Name>Verify</Name>
+                <NumBits>0</NumBits>
+                <Description>If 1, then verify the correct data is read.</Description>
+              </BitField>
+              <BitField>
+                <Name>Random</Name>
+                <NumBits>1</NumBits>
+                <Description>If 1, then random data is written.</Description>
+              </BitField>
+              <BitField>
+                <Name>Invert Row</Name>
+                <NumBits>2</NumBits>
+                <Description>If 1, then pattern will be flipped on each row. This is only used when random is not set, and it can only be used with a pattern data packet of size 1.</Description>
+              </BitField>
+            </BitFields>
+          </Param>
+          <Param>
+            <Name>Random Seed</Name>
+            <Type>uint32</Type>
+            <Default>0</Default>
+            <Description>Seed to be used for random. If 0, then seed will be dynamically generated using a timestamp.</Description>
+          </Param>
+          <Param>
+            <Name>Random Stride</Name>
+            <Type>uint64</Type>
+            <Default>0</Default>
+            <Description>Number of 64-bit words of random data to generate. Will be memcopied repeatedly to fill entire space between start_addr and end_addr.</Description>
+          </Param>
+          <Param>
+            <Name>Padding</Name>
+            <Type>uint8</Type>
+            <Default>3</Default>
+            <Description>Padding for alignment. Ignored by QDUTT.</Description>
+          </Param>
+        </Params>
+        <ParamArray>
+          <Name>Pattern Data Packet</Name>
+          <Type>uint64</Type>
+          <Default>0</Default>
+          <Description>Pattern to use for writes. If defined, will override random.</Description>
+          <Attributes>
+            <Attribute>
+              <Name>Val</Name>
+              <Type>uint64</Type>
+            </Attribute>
+          </Attributes>
+        </ParamArray>
+      </Input>
+      <Output>
+        <Params>
+          <Param>
+            <Name>Test Status</Name>
+            <Type>uint8</Type>
+            <BitFields>
+              <BitField>
+                <Name>Command Complete</Name>
+                <NumBits>0</NumBits>
+                <Description>If 1, then DDI command did completed successfully</Description>
+              </BitField>
+              <BitField>
+                <Name>Command Failure</Name>
+                <NumBits>1</NumBits>
+                <Description>If 1, then DDI command failed</Description>
+              </BitField>
+              <BitField>
+                <Name>Invalid Input</Name>
+                <NumBits>2</NumBits>
+                <Description>If 1, then invalid command input was provided</Description>
+              </BitField>
+            </BitFields>
+          </Param>
+          <Param>
+            <Name>Total fail count</Name>
+            <Type>uint32</Type>
+          </Param>
+        </Params>
+        <ParamArray>
+          <Name>Ranks</Name>
+          <Type>uint8</Type>
+            <Attributes>
+              <Attribute>
+                <Name>Rank fail count</Name>
+                <Type>uint32</Type>
+              </Attribute>
+            </Attributes>
+        </ParamArray>
+        <ParamArray>
+          <Name>Channels</Name>
+          <Type>uint8</Type>
+            <Attributes>
+              <Attribute>
+                <Name>Channel fail count</Name>
+                <Type>uint32</Type>
+              </Attribute>
+            </Attributes>
+        </ParamArray>
+        <ParamArray>
+          <Name>Failing Data Packets</Name>
+          <Type>uint32</Type>
+          <Attributes>
+            <Attribute>
+              <Name>Failing Address</Name>
+              <Type>uint64</Type>
+            </Attribute>
+            <Attribute>
+              <Name>Expected Data</Name>
+              <Type>uint64</Type>
+            </Attribute>
+            <Attribute>
+              <Name>Read Data</Name>
+              <Type>uint64</Type>
+            </Attribute>
+          </Attributes>
+        </ParamArray>
+      </Output>
+    </Command>
+    <Command>
+      <Name>Delay</Name>
+      <CommandID>3</CommandID>
+      <Type>uint64</Type>
+      <Description>Insert a ms based delay.</Description>
+      <Input>
+        <Params>
+          <Param>
+            <Name>Delay</Name>
+            <Type>uint32</Type>
+            <Default>0</Default>
+            <Description>The delay in ms</Description>
+          </Param>
+          <Param>
+            <Name>Padding</Name>
+            <Type>uint8</Type>
+            <Default>4</Default>
+            <Description>Padding for alignment. Ignored by QDUTT.</Description>
+          </Param>
+        </Params>
+      </Input>
+      <Output>
+        <Params>
+          <Param>
+            <Name>Test Status</Name>
+            <Type>uint8</Type>
+            <BitFields>
+              <BitField>
+                <Name>Command Complete</Name>
+                <NumBits>0</NumBits>
+                <Description>If 1, then DDI command did completed successfully</Description>
+              </BitField>
+              <BitField>
+                <Name>Command Failure</Name>
+                <NumBits>1</NumBits>
+                <Description>If 1, then DDI command failed</Description>
+              </BitField>
+              <BitField>
+                <Name>Invalid Input</Name>
+                <NumBits>2</NumBits>
+                <Description>If 1, then invalid command input was provided</Description>
+              </BitField>
+            </BitFields>
+          </Param>
+        </Params>
+      </Output>
+    </Command>
+    <Command>
+      <Name>Frequency Switch</Name>
+      <CommandID>4</CommandID>
+      <Type>uint64</Type>
+      <Description>Performs a frequency switch.</Description>
+      <Input>
+        <Params>
+          <Param>
+            <Name>Frequency</Name>
+            <Type>uint32</Type>
+            <Default>200000</Default>
+            <Description>The frequency in kHz</Description>
+          </Param>
+          <Param>
+            <Name>Padding</Name>
+            <Type>uint8</Type>
+            <Default>4</Default>
+            <Description>Padding for alignment. Ignored by QDUTT.</Description>
+          </Param>
+        </Params>
+      </Input>
+      <Output>
+        <Params>
+          <Param>
+            <Name>Test Status</Name>
+            <Type>uint8</Type>
+            <BitFields>
+              <BitField>
+                <Name>Command Complete</Name>
+                <NumBits>0</NumBits>
+                <Description>If 1, then DDI command did completed successfully</Description>
+              </BitField>
+              <BitField>
+                <Name>Command Failure</Name>
+                <NumBits>1</NumBits>
+                <Description>If 1, then DDI command failed</Description>
+              </BitField>
+              <BitField>
+                <Name>Invalid Input</Name>
+                <NumBits>2</NumBits>
+                <Description>If 1, then invalid command input was provided</Description>
+              </BitField>
+            </BitFields>
+          </Param>
+        </Params>
+      </Output>
+    </Command>
+    <Command>
+      <Name>Eye Plot</Name>
+      <CommandID>6</CommandID>
+      <Type>uint64</Type>
+      <Description>Performs a read or write shmoo at a specific frequency to generate a data eye plot.</Description>
+      <Input>
+        <Params>
+          <Param>
+            <Name>Plot Type</Name>
+            <Type>uint8</Type>
+            <Default>0</Default>
+            <Description>Selects what type of data eye to generate</Description>
+            <Options>
+              <Option>
+                <Name>Read</Name>
+                <Value>0</Value>
+                <Description>Read data eye</Description>
+              </Option>
+              <Option>
+                <Name>Write</Name>
+                <Value>1</Value>
+                <Description>Write data eye</Description>
+              </Option>
+            </Options>
+          </Param>
+          <Param>
+            <Name>Frequency</Name>
+            <Type>uint32</Type>
+            <Default>1804800</Default>
+            <Description>The frequency in kHz</Description>
+          </Param>
+          <Param>
+            <Name>Padding</Name>
+            <Type>uint8</Type>
+            <Default>3</Default>
+            <Description>Padding for alignment. Ignored by QDUTT.</Description>
+          </Param>
+        </Params>
+      </Input>
+      <Output>
+        <Params>
+          <Param>
+            <Name>Test Status</Name>
+            <Type>uint8</Type>
+            <BitFields>
+              <BitField>
+                <Name>Command Complete</Name>
+                <NumBits>0</NumBits>
+                <Description>If 1, then DDI command did completed successfully</Description>
+              </BitField>
+              <BitField>
+                <Name>Command Failure</Name>
+                <NumBits>1</NumBits>
+                <Description>If 1, then DDI command failed</Description>
+              </BitField>
+              <BitField>
+                <Name>Invalid Input</Name>
+                <NumBits>2</NumBits>
+                <Description>If 1, then invalid command input was provided</Description>
+              </BitField>
+            </BitFields>
+          </Param>
+        </Params>
+        <ParamArray>
+          <Name>Train Record Packet</Name>
+          <Type>uint16</Type>
+          <Attributes>
+            <Attribute>
+              <Name>Vref</Name>
+              <Type>uint8</Type>
+            </Attribute>
+            <Attribute>
+              <Name>Coarse</Name>
+              <Type>uint8</Type>
+            </Attribute>
+            <Attribute>
+              <Name>Fine</Name>
+              <Type>uint8</Type>
+            </Attribute>
+          </Attributes>
+        </ParamArray>
+        <ParamArray>
+          <Name>Plot Record Packet</Name>
+          <Type>uint16</Type>
+          <Attributes>
+            <Attribute>
+              <Name>Vref</Name>
+              <Type>uint8</Type>
+            </Attribute>
+            <Attribute>
+              <Name>Coarse</Name>
+              <Type>uint8</Type>
+            </Attribute>
+            <Attribute>
+              <Name>Fine</Name>
+              <Type>uint8</Type>
+            </Attribute>
+            <Attribute>
+              <Name>Data</Name>
+              <Type>uint32[4][2]</Type>
+            </Attribute>
+          </Attributes>
+        </ParamArray>
+      </Output>
+    </Command>
+  <Command>
+      <Name>Read eCDT</Name>
+      <CommandID>9</CommandID>
+      <Type>uint64</Type>
+      <Description>Reads eCDT Settings, to be parsed by QDUTT</Description>
+      <Output>
+        <Params>
+          <Param>
+            <Name>Test Status</Name>
+            <Type>uint8</Type>
+            <BitFields>
+              <BitField>
+                <Name>Command Complete</Name>
+                <NumBits>0</NumBits>
+                <Description>If 1, then DDI command did completed successfully</Description>
+              </BitField>
+              <BitField>
+                <Name>Command Failure</Name>
+                <NumBits>1</NumBits>
+                <Description>If 1, then DDI command failed</Description>
+              </BitField>
+              <BitField>
+                <Name>Invalid Input</Name>
+                <NumBits>2</NumBits>
+                <Description>If 1, then invalid command input was provided</Description>
+              </BitField>
+            </BitFields>
+          </Param>
+        </Params>
+        <ParamArray>
+          <Name>eCDT Settings</Name>
+          <Type>uint8</Type>
+            <Attributes>
+              <Attribute>
+                <Name>Frequency</Name>
+                <Type>uint32</Type>
+                <ParamArray>
+                  <Name>eCDT Settings per Frequency</Name>
+                  <Type>uint8</Type>
+                  <Attributes> 
+                    <Attribute>
+                      <Name>Setting ID</Name>
+                      <Type>uint8</Type>
+                    </Attribute>
+                    <Attribute>
+                      <Name>Value</Name>
+                      <Type>uint8</Type>
+                    </Attribute>
+                  </Attributes>
+              </ParamArray>
+              </Attribute>
+            </Attributes>
+        </ParamArray>
+      </Output>
+    </Command>
+  </Commands>
+</DDI>

@@ -1,0 +1,1614 @@
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Copyright (c) 2017-2019 Qualcomm Technologies, Inc.
+// All Rights Reserved.
+// Confidential and Proprietary - Qualcomm Technologies, Inc.
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @file  chxutils.cpp
+/// @brief CHX utility functions
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#include <system/camera_metadata.h>
+
+#include "chxutils.h"
+#include "chxusecaseutils.h"
+#include <sys/prctl.h>
+
+UINT32 g_enableChxLogs = 1;
+
+#if defined (_LINUX)
+
+#if 0
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Operator new
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID* operator new(
+    size_t numBytes)    ///< Number of bytes to allocate
+{
+    return calloc(1, numBytes);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Operator delete
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID operator delete(
+    VOID* pMem)    ///< Memory pointer
+{
+    free(pMem);
+}
+#endif
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Mutex::Create
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+Mutex* Mutex::Create()
+{
+    Mutex* pMutex = NULL;
+
+    pMutex = CHX_NEW Mutex();
+    if (NULL != pMutex)
+    {
+        if (CDKResultSuccess != pMutex->Initialize())
+        {
+            CHX_DELETE(pMutex);
+            pMutex = NULL;
+        }
+    }
+
+    return pMutex;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Mutex::Initialize
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+CDKResult Mutex::Initialize()
+{
+    CDKResult          result      = CDKResultSuccess;
+    pthread_mutexattr_t attr;
+    BOOL                bValidAttr  = FALSE;      // TRUE once attr has been initialized
+
+    if (pthread_mutexattr_init(&attr) == 0)
+    {
+        bValidAttr = TRUE;
+    }
+    else
+    {
+        result = CDKResultEFailed;
+    }
+
+    // Using re-entrant mutexes
+    if ((result == CDKResultSuccess) &&
+        (pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE_NP) != 0))
+    {
+        result = CDKResultEFailed;
+    }
+
+    if ((result == CDKResultSuccess) &&
+        (pthread_mutex_init(&m_mutex, &attr) == 0))
+    {
+        m_validMutex = TRUE;
+    }
+    else
+    {
+        result = CDKResultEFailed;
+    }
+
+    if (TRUE == bValidAttr)
+    {
+        pthread_mutexattr_destroy(&attr);
+    }
+
+    return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Mutex::Destroy
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID Mutex::Destroy()
+{
+    if (TRUE == m_validMutex)
+    {
+        pthread_mutex_destroy(&m_mutex);
+    }
+
+    CHX_DELETE(this);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Mutex::Lock
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID Mutex::Lock()
+{
+    pthread_mutex_lock(&m_mutex);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Mutex::TryLock
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+CDKResult Mutex::TryLock()
+{
+    CDKResult result     = CDKResultSuccess;
+    INT        returnCode = 0;
+
+    returnCode = pthread_mutex_trylock(&m_mutex);
+    if (0 != returnCode)
+    {
+        if (EBUSY == returnCode)
+        {
+            result = CDKResultEBusy;
+        }
+        else
+        {
+            result = CDKResultEFailed;
+        }
+    }
+
+    return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Mutex::Unlock
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID Mutex::Unlock()
+{
+    pthread_mutex_unlock(&m_mutex);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Mutex::GetNativeHandle
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+OSMutexHandle* Mutex::GetNativeHandle()
+{
+    return ((TRUE == m_validMutex) ? &m_mutex : NULL);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Condition::Create
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+Condition* Condition::Create()
+{
+    Condition* pCondition = NULL;
+
+    pCondition = CHX_NEW Condition();
+
+    if (NULL != pCondition)
+    {
+        if (CDKResultSuccess != pCondition->Initialize())
+        {
+            CHX_DELETE(pCondition);
+            pCondition = NULL;
+        }
+    }
+
+    return pCondition;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Condition::Destroy
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID Condition::Destroy()
+{
+    if (TRUE == m_validConditionVar)
+    {
+        pthread_cond_destroy(&m_conditionVar);
+    }
+
+    CHX_DELETE(this);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Condition::Initialize
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+CDKResult Condition::Initialize()
+{
+    CDKResult result = CDKResultSuccess;
+
+    pthread_condattr_t attr;
+    pthread_condattr_init(&attr);
+    pthread_condattr_setclock(&attr, CLOCK_MONOTONIC);
+    if (pthread_cond_init(&m_conditionVar, &attr) == 0)
+    {
+        m_validConditionVar = TRUE;
+    }
+    else
+    {
+        result = CDKResultEFailed;
+    }
+
+    return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Condition::Wait
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+CDKResult Condition::Wait(
+    OSMutexHandle* phMutex)
+{
+    CHX_ASSERT(NULL != phMutex);
+
+    INT         rc      = 0;
+    CDKResult  result  = CDKResultEFailed;
+
+    rc = pthread_cond_wait(&m_conditionVar, phMutex);
+
+    if (0 == rc)
+    {
+        result = CDKResultSuccess;
+    }
+
+    return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Condition::TimedWait
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+CDKResult Condition::TimedWait(
+    OSMutexHandle*  phMutex,
+    UINT            timeoutMilliseconds)
+{
+    CHX_ASSERT(NULL != phMutex);
+
+    CDKResult      result              = CDKResultSuccess;
+    INT             waitResult          = 0;
+    UINT            timeoutSeconds      = (timeoutMilliseconds / 1000UL);
+    UINT            timeoutNanoseconds  = (timeoutMilliseconds % 1000UL) * 1000000UL;
+    struct timespec timeout             = {0};
+
+    // Calculate the timeout time
+    clock_gettime(CLOCK_MONOTONIC, &timeout);
+    timeoutSeconds      += (static_cast<UINT>(timeout.tv_nsec) + timeoutNanoseconds) / 1000000000UL;
+    timeoutNanoseconds  =  (static_cast<UINT>(timeout.tv_nsec) + timeoutNanoseconds) % 1000000000UL;
+    timeout.tv_sec      += static_cast<INT>(timeoutSeconds);
+    timeout.tv_nsec     =  static_cast<INT>(timeoutNanoseconds);
+
+    waitResult = pthread_cond_timedwait(&m_conditionVar, phMutex, &timeout);
+    if (waitResult != 0)
+    {
+        // Check errno for reason for failure
+        if (ETIMEDOUT == waitResult)
+        {
+            result = CDKResultETimeout;
+        }
+        else
+        {
+            result = CDKResultEFailed;
+        }
+    }
+
+    return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Signal the condition variable
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID Condition::Signal()
+{
+    pthread_cond_signal(&m_conditionVar);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Broadcast the signal to all
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID Condition::Broadcast()
+{
+    pthread_cond_broadcast(&m_conditionVar);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// AlignGeneric32
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+UINT32 ChxUtils::AlignGeneric32(
+    UINT32 operand,
+    UINT   alignment)
+{
+    UINT remainder = (operand % alignment);
+
+    return (0 == remainder) ? operand : operand - remainder + alignment;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// EvenCeilingUINT32
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+UINT32 ChxUtils::EvenCeilingUINT32(
+    UINT32 input)
+{
+    UINT32 result;
+
+    if (0xFFFFFFFF == input)
+    {
+        result = input;
+    }
+    else if (0 != (input & 0x00000001))
+    {
+        result = input + 0x00000001;
+    }
+    else
+    {
+        result = input;
+    }
+    return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Checks if a particular bit is set in a number
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+BOOL ChxUtils::IsBitSet(
+    UINT32  number,
+    UINT32  bit)
+{
+    static const UINT32 One = 1;
+
+    CHX_ASSERT(bit < (sizeof(UINT32) * 8));
+
+    return ((number & (One << bit)) != 0) ? TRUE : FALSE;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Resets a bit in a number
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+UINT32 ChxUtils::BitReset(
+    UINT32  number,
+    UINT32  bit)
+{
+    static const UINT32 One = 1;
+
+    CHX_ASSERT(bit < (sizeof(UINT32) * 8));
+
+    return (number & ~(One << bit));
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// OsUtils::GetFileName
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+const CHAR* ChxUtils::GetFileName(
+    const CHAR* pFilePath)
+{
+    const CHAR* pFileName = strrchr(pFilePath, '/');
+
+    if (NULL != pFileName)
+    {
+        // StrRChr will return a pointer to the /, advance one to the filename
+        pFileName += 1;
+    }
+    else
+    {
+        pFileName = pFilePath;
+    }
+
+    return pFileName;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Memcpy
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID* ChxUtils::Memcpy(
+    VOID*       pDst,
+    const VOID* pSrc,
+    SIZE_T      numBytes)
+{
+    CHX_ASSERT((pDst != NULL) && (pSrc != NULL));
+
+    if ((pDst != NULL) && (pSrc != NULL))
+    {
+        return memcpy(pDst, pSrc, numBytes);
+    }
+    return NULL;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Memset
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID* ChxUtils::Memset(
+    VOID*  pDst,
+    INT    value,
+    SIZE_T numBytes)
+{
+    return memset(pDst, value, numBytes);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Allocate zeroed out memory
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID* ChxUtils::Calloc(SIZE_T numBytes)
+{
+    VOID* pMem = malloc(numBytes);
+
+    if (NULL != pMem)
+    {
+        Memset(pMem, 0, numBytes);
+    }
+
+    return pMem;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Free memory
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID ChxUtils::Free(VOID* pMem)
+{
+    free(pMem);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Function to create a thread
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+CDKResult ChxUtils::ThreadCreate(
+    OSThreadFunc    threadEntryFunction,
+    VOID*           pThreadData,
+    OSThreadHandle* phThread)
+{
+    CDKResult result = CDKResultSuccess;
+
+    if (pthread_create(phThread, 0, threadEntryFunction, pThreadData) != 0)
+    {
+        result = CDKResultEFailed;
+    }
+
+    return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Terminate a thread
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID ChxUtils::ThreadTerminate(OSThreadHandle hThread)
+{
+    pthread_join(hThread, NULL);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 64 bit atomic store
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID ChxUtils::AtomicStoreU64(volatile UINT64* pVar,
+                                        UINT64           val)
+{
+    (VOID)__atomic_store_n(pVar, val, __ATOMIC_RELAXED);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 64 bit atomic load
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+UINT64 ChxUtils::AtomicLoadU64(volatile UINT64* pVar)
+{
+    return (__sync_add_and_fetch(pVar, 0));
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 32-bit atomic store
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID ChxUtils::AtomicStoreU32(volatile UINT32* pVar,
+                              UINT32           val)
+{
+    (VOID)__atomic_store_n(pVar, val, __ATOMIC_RELAXED);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 32-bit atomic load
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+UINT32 ChxUtils::AtomicLoadU32(volatile UINT32* pVar)
+{
+    return (__sync_add_and_fetch(pVar, 0));
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Sleep in microseconds
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID ChxUtils::SleepMicroseconds(UINT microseconds)
+{
+    CHX_LOG("Sleeping for %u microseconds", microseconds);
+    usleep(microseconds);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Get the address of the function in the library
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID* ChxUtils::LibGetAddr(OSLIBRARYHANDLE hLibrary,
+                           const CHAR*     pProcName)
+{
+    VOID* pProcAddr = NULL;
+
+    if (hLibrary != NULL)
+    {
+        pProcAddr = dlsym(hLibrary, pProcName);
+    }
+
+    return pProcAddr;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Open the passed in library
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+OSLIBRARYHANDLE ChxUtils::LibMap(const CHAR* pLibraryName)
+{
+    OSLIBRARYHANDLE hLibrary  = NULL;
+
+    const UINT bindFlags = RTLD_NOW | RTLD_LOCAL;
+
+    hLibrary = dlopen(pLibraryName, bindFlags);
+
+    if (NULL == hLibrary)
+    {
+        CHX_LOG_ERROR("Failed to load library %s error %s", pLibraryName, dlerror());
+        CHX_ASSERT(dlerror());
+    }
+
+    return hLibrary;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Check if a vendor tag is present or not
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+BOOL ChxUtils::IsVendorTagPresent(
+    const VOID* pMetadata,
+    VendorTag   tagEnum)
+{
+    BOOL isPresent = FALSE;
+    camera_metadata_entry_t entry;
+
+    UINT32 tagId = ExtensionModule::GetInstance()->GetVendorTagId(tagEnum);
+
+    if (0 == find_camera_metadata_entry((camera_metadata_t*)(pMetadata), tagId, &entry))
+    {
+        isPresent = TRUE;
+    }
+
+    return isPresent;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Check if snapshot is long exposure capture
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+BOOL ChxUtils::IsLongExposureCapture(
+     const VOID* pMetadata)
+{
+    BOOL isLongExposure = FALSE;
+    UINT64 exposureTime = 0;
+    camera_metadata_entry_t entry;
+
+    if (0 == find_camera_metadata_entry((camera_metadata_t*)(pMetadata), ANDROID_SENSOR_EXPOSURE_TIME, &entry))
+    {
+        exposureTime = *(entry.data.i64);
+
+        if (exposureTime / (1000 * 1000 * 1000) >= 2)
+        {
+            CHX_LOG("Long exposure capture %" PRIu64, exposureTime);
+            isLongExposure = TRUE;
+        }
+    }
+        return isLongExposure;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Get vendor tag value
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID ChxUtils::GetVendorTagValue(
+    const VOID* pMetadata,
+    VendorTag   tagEnum,
+    VOID**      ppData)
+{
+    camera_metadata_entry_t entry;
+
+    *ppData = NULL;
+
+    UINT32 tagId = ExtensionModule::GetInstance()->GetVendorTagId(tagEnum);
+
+    if (0 == find_camera_metadata_entry((camera_metadata_t*)(pMetadata), tagId, &entry))
+    {
+        *ppData = static_cast<VOID*>(entry.data.u8);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Set vendor tag value
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+CDKResult ChxUtils::SetVendorTagValue(
+    VOID*     pMetadata,
+    VendorTag tagEnum,
+    UINT      dataCount,
+    VOID*     pData)
+{
+    camera_metadata_entry_t entry;
+    camera_metadata_t*      pDstMetadata = (camera_metadata_t*)(pMetadata);
+    UINT status = 0;
+    UINT32 tagId = ExtensionModule::GetInstance()->GetVendorTagId(tagEnum);
+
+    if (0 == find_camera_metadata_entry(pDstMetadata, tagId, &entry))
+    {
+        camera_metadata_entry_t updatedEntry;
+
+        status = update_camera_metadata_entry(pDstMetadata, entry.index, pData, dataCount, &updatedEntry);
+    }
+    else
+    {
+        status = add_camera_metadata_entry(pDstMetadata, tagId, pData, dataCount);
+    }
+    CHX_ASSERT(status == 0);
+
+    return status;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Merge metadata
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+INT ChxUtils::MergeMetadata(
+    VOID* pMetadata1,
+    VOID* pMetadata2)
+{
+    INT    status       = 0;
+    SIZE_T totalEntries = 0;
+
+    CHX_ASSERT(NULL != pMetadata1);
+    CHX_ASSERT(NULL != pMetadata2);
+
+    if ((NULL == pMetadata1) || (NULL == pMetadata2))
+    {
+        return status;
+    }
+
+    totalEntries = get_camera_metadata_entry_count(reinterpret_cast<const camera_metadata_t *>(pMetadata1));
+
+    for (UINT i = 0; i < totalEntries; i++)
+    {
+        camera_metadata_entry_t srcEntry;
+        camera_metadata_entry_t dstEntry;
+        camera_metadata_entry_t updatedEntry;
+
+        get_camera_metadata_entry(reinterpret_cast<camera_metadata*>(pMetadata1), i, &srcEntry);
+        status = find_camera_metadata_entry(reinterpret_cast<camera_metadata*>(pMetadata2), srcEntry.tag, &dstEntry);
+        if (0 != status)
+        {
+            status = add_camera_metadata_entry(reinterpret_cast<camera_metadata*>(pMetadata2),
+                         srcEntry.tag,
+                         srcEntry.data.i32,
+                         srcEntry.count);
+        }
+        else
+        {
+            if (0 == srcEntry.count)
+            {
+                status = delete_camera_metadata_entry(GetMetadataType(pMetadata2), srcEntry.tag);
+                if (0 == status)
+                {
+                    status = add_camera_metadata_entry(GetMetadataType(pMetadata2),
+                                                       srcEntry.tag,
+                                                       srcEntry.data.i32,
+                                                       srcEntry.count);
+                }
+            }
+            else if ((0 != memcmp(srcEntry.data.u8,
+                             dstEntry.data.u8,
+                             (camera_metadata_type_size[srcEntry.type] * srcEntry.count))) ||
+                (srcEntry.count != dstEntry.count)                                         ||
+                (srcEntry.type  != dstEntry.type))
+            {
+                status = update_camera_metadata_entry(reinterpret_cast<camera_metadata*>(pMetadata2),
+                             dstEntry.index,
+                             srcEntry.data.i32,
+                             srcEntry.count,
+                             &updatedEntry);
+            }
+        }
+
+        if (0 != status)
+        {
+            break;
+        }
+    }
+
+    return status;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// FreeMetaData
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID ChxUtils::FreeMetaData(
+    VOID* pMetadata)
+{
+    if (pMetadata != NULL)
+    {
+        free_camera_metadata((camera_metadata_t *)pMetadata);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// ResetMetadata
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+camera_metadata_t* ChxUtils::ResetMetadata(
+    camera_metadata* pMetadata)
+{
+    UINT entryCapacity = get_camera_metadata_entry_capacity(pMetadata);
+    UINT dataCapacity  = get_camera_metadata_data_capacity(pMetadata);
+    UINT metadataSize  = calculate_camera_metadata_size(entryCapacity, dataCapacity);
+
+    CHX_LOG("Metadata entry capacity : %d, data capacity: %d, metaSize: %d", entryCapacity, dataCapacity, metadataSize);
+
+    // Reset the metadata to empty
+    return place_camera_metadata(pMetadata, metadataSize, entryCapacity, dataCapacity);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// AllocateAndAppendMetaData
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID* ChxUtils::AllocateAppendMetaData(
+    const VOID* pMetadata,
+    UINT32      entry_count,
+    UINT32      data_count)
+{
+    int res;
+
+    if (pMetadata == NULL)
+        return NULL;
+
+    camera_metadata_t *clone = allocate_camera_metadata(
+        get_camera_metadata_entry_count((camera_metadata_t*)pMetadata)+entry_count,
+        get_camera_metadata_data_count((camera_metadata_t*)pMetadata)+data_count);
+
+    if (clone != NULL) {
+        res = append_camera_metadata(clone, (camera_metadata_t*)pMetadata);
+        if (res != 0) {
+            free_camera_metadata(clone);
+            clone = NULL;
+        }
+    }
+    CHX_ASSERT(validate_camera_metadata_structure(clone, NULL) == 0);
+    return clone;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// AllocateCopyMetaData
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID* ChxUtils::AllocateCopyMetaData(
+    const VOID* pSrcMetadata)
+{
+    camera_metadata_t* pMetadata;
+    pMetadata = (camera_metadata_t*)allocate_copy_camera_metadata_checked(reinterpret_cast<const camera_metadata_t*>(pSrcMetadata),
+        get_camera_metadata_size(reinterpret_cast<const camera_metadata_t*>(pSrcMetadata)));
+    return (VOID*)pMetadata;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// GetFeature1Mode
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+ChiModeFeature1SubModeType  ChxUtils::GetFeature1Mode(
+    VOID *  pMetaData,
+    UINT32* pFeature1Value)
+{
+    camera_metadata_entry_t    entry           = { 0 };
+    ChiModeFeature1SubModeType feature1Mode    = ChiModeFeature1SubModeType::None;
+    UINT32                     tagId           = ExtensionModule::GetInstance()->GetVendorTagId(Feature1Mode);
+
+    if (0 == find_camera_metadata_entry((camera_metadata_t*)(pMetaData), tagId, &entry))
+    {
+        feature1Mode    = static_cast<ChiModeFeature1SubModeType>(*(entry.data.u8));
+        *pFeature1Value = static_cast<unsigned int>(feature1Mode);
+    }
+    else
+    {
+        feature1Mode = static_cast<ChiModeFeature1SubModeType>(*pFeature1Value);
+    }
+
+    CHX_LOG("Utils Feature1 mode %d", feature1Mode);
+
+    return feature1Mode;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// GetFeature2Mode
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+ChiModeFeature2SubModeType  ChxUtils::GetFeature2Mode(
+    VOID *  pMetaData,
+    UINT32* pFeature2Value)
+{
+    (VOID)pMetaData;
+
+    ChiModeFeature2SubModeType feature2Mode = static_cast<ChiModeFeature2SubModeType>(*pFeature2Value);
+
+    if (feature2Mode == ChiModeFeature2SubModeType::OISCapture)
+    {
+       return ChiModeFeature2SubModeType::OISCapture;
+    }
+    else if (feature2Mode == ChiModeFeature2SubModeType::HLG)
+    {
+        return ChiModeFeature2SubModeType::HLG;
+    }
+    else if (feature2Mode == ChiModeFeature2SubModeType::HDR10)
+    {
+        return ChiModeFeature2SubModeType::HDR10;
+    }
+    else if (feature2Mode == ChiModeFeature2SubModeType::MFNRBlend)
+    {
+        return ChiModeFeature2SubModeType::MFNRBlend;
+    }
+    else if (feature2Mode == ChiModeFeature2SubModeType::MFNRPostFilter)
+    {
+        return ChiModeFeature2SubModeType::MFNRPostFilter;
+    }
+    else if (feature2Mode == ChiModeFeature2SubModeType::MFSRBlend)
+    {
+        return ChiModeFeature2SubModeType::MFSRBlend;
+    }
+    else if (feature2Mode == ChiModeFeature2SubModeType::MFSRPostFilter)
+    {
+        return ChiModeFeature2SubModeType::MFSRPostFilter;
+    }
+    else if (feature2Mode == ChiModeFeature2SubModeType::FLASH)
+    {
+        return ChiModeFeature2SubModeType::FLASH;
+    }
+    else
+    {
+        return ChiModeFeature2SubModeType::None;
+    }
+
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// ChxUtils::DeepCopyCamera3CaptureRequest
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID ChxUtils::DeepCopyCamera3CaptureRequest(
+    const camera3_capture_request_t*  pSrcReq,
+    camera3_capture_request_t*        pDestReq)
+{
+    pDestReq->frame_number       = pSrcReq->frame_number;
+    pDestReq->settings           = pSrcReq->settings;
+    pDestReq->input_buffer       = pSrcReq->input_buffer;
+    pDestReq->num_output_buffers = pSrcReq->num_output_buffers;
+
+    CHX_ASSERT(NULL != pDestReq->output_buffers);
+
+    if (0 < pSrcReq->num_output_buffers)
+    {
+        for (UINT i = 0; i < pSrcReq->num_output_buffers; i++)
+        {
+            const_cast<camera3_stream_buffer_t*>(&pDestReq->output_buffers[i])->stream        =
+                pSrcReq->output_buffers[i].stream;
+            const_cast<camera3_stream_buffer_t*>(&pDestReq->output_buffers[i])->buffer        =
+                pSrcReq->output_buffers[i].buffer;
+            const_cast<camera3_stream_buffer_t*>(&pDestReq->output_buffers[i])->status        =
+                pSrcReq->output_buffers[i].status;
+            const_cast<camera3_stream_buffer_t*>(&pDestReq->output_buffers[i])->acquire_fence =
+                pSrcReq->output_buffers[i].acquire_fence;
+            const_cast<camera3_stream_buffer_t*>(&pDestReq->output_buffers[i])->release_fence =
+                pSrcReq->output_buffers[i].release_fence;
+        }
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// ChxUtils::GetUsecaseMode
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+ChiModeUsecaseSubModeType ChxUtils::GetUsecaseMode(
+    camera3_capture_request_t* pRequest)
+{
+    UINT                      tuningUsecaseMask    = 0;
+    ChiModeUsecaseSubModeType chiTuningUsecaseMode = ChiModeUsecaseSubModeType::Preview;
+
+    for (UINT streamIndex = 0; streamIndex < pRequest->num_output_buffers; streamIndex++)
+    {
+        if (UsecaseSelector::IsVideoStream(pRequest->output_buffers[streamIndex].stream))
+        {
+            tuningUsecaseMask |= tuningUsecaseVideoMask;
+        }
+        else if (UsecaseSelector::IsYUVSnapshotStream(pRequest->output_buffers[streamIndex].stream) ||
+                 UsecaseSelector::IsJPEGSnapshotStream(pRequest->output_buffers[streamIndex].stream))
+        {
+            tuningUsecaseMask |= tuningUsecaseSnapshotMask;
+        }
+        else if (UsecaseSelector::IsPreviewStream(pRequest->output_buffers[streamIndex].stream))
+        {
+            tuningUsecaseMask |= tuningUsecasePreviewMask;
+        }
+        /// @todo (CAMX-2924) check ZSL usecase as well from app.
+    }
+
+    if ((tuningUsecaseMask & tuningUsecaseVideoMask) &&
+        (tuningUsecaseMask & tuningUsecaseSnapshotMask))
+    {
+        chiTuningUsecaseMode = ChiModeUsecaseSubModeType::Liveshot;
+    }
+    else if (tuningUsecaseMask & (tuningUsecaseSnapshotMask))
+    {
+        chiTuningUsecaseMode = ChiModeUsecaseSubModeType::Snapshot;
+    }
+    else if (tuningUsecaseMask & (tuningUsecaseVideoMask))
+    {
+        chiTuningUsecaseMode = ChiModeUsecaseSubModeType::Video;
+    }
+    else if (tuningUsecaseMask & (tuningUsecaseZSLMask))
+    {
+        chiTuningUsecaseMode = ChiModeUsecaseSubModeType::ZSL;
+    }
+    else if (tuningUsecaseMask & (tuningUsecasePreviewMask))
+    {
+        chiTuningUsecaseMode = ChiModeUsecaseSubModeType::Preview;
+    }
+
+    return chiTuningUsecaseMode;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// ChxUtils::SkipPreviewFrame
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID ChxUtils::SkipPreviewFrame(
+    camera3_stream_buffer_t* pBuffer)
+{
+    // set buffer status to error, so framework will drop this frame
+    pBuffer->status = CAMERA3_BUFFER_STATUS_ERROR;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// Usecase::GetSceneMode
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+ChiModeSceneSubModeType ChxUtils::GetSceneMode(
+    VOID *  pMetaData,
+    UINT32* pEffectModeValue)
+{
+    camera_metadata_entry_t entry     = { 0 };
+    UINT32 modeValue                  = ANDROID_CONTROL_SCENE_MODE_DISABLED;
+
+    if (0 == find_camera_metadata_entry((camera_metadata_t*)(pMetaData), ANDROID_CONTROL_MODE, &entry))
+    {
+        UINT32 controlModeValue = *(entry.data.u8);
+        if ((ANDROID_CONTROL_MODE_USE_SCENE_MODE == controlModeValue) &&
+            (0 == find_camera_metadata_entry((camera_metadata_t*)(pMetaData), ANDROID_CONTROL_SCENE_MODE, &entry)))
+        {
+            modeValue = *(entry.data.u8);
+            *pEffectModeValue = modeValue;
+        }
+        else
+        {
+            modeValue = *pEffectModeValue;
+        }
+    }
+    else
+    {
+        modeValue = *pEffectModeValue;
+    }
+
+    return SceneMap[modeValue].to;
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// ChxUtils::GetZSLMode
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+INT ChxUtils::GetZSLMode(
+    VOID *  pMetaData)
+{
+    camera_metadata_entry_t entry           = { 0 };
+    UINT32 controlZSLValue                  = ANDROID_CONTROL_ENABLE_ZSL_FALSE;
+
+    if (0 == find_camera_metadata_entry((camera_metadata_t*)(pMetaData), ANDROID_CONTROL_ENABLE_ZSL, &entry))
+    {
+        controlZSLValue = *(entry.data.u8);
+    }
+
+    CHX_LOG("Utils ZslMode Value %d", controlZSLValue);
+
+    return controlZSLValue;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// ChxUtils::SetEffectMode
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID ChxUtils::SetEffectMode(
+    camera_metadata_t* pMetaData,
+    VOID*               pData)
+{
+    camera_metadata_entry_t entry      = { 0 };
+
+    if (0 == find_camera_metadata_entry((camera_metadata_t*)(pMetaData), ANDROID_CONTROL_EFFECT_MODE, &entry))
+    {
+        update_camera_metadata_entry(reinterpret_cast<camera_metadata*>(pMetaData),
+                                                entry.index,
+                                                pData,
+                                                1,
+                                                NULL);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// ChxUtils::GetEffectMode
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+ChiModeEffectSubModeType ChxUtils::GetEffectMode(
+    VOID*   pMetaData,
+    UINT32* pSceneModeValue)
+{
+    camera_metadata_entry_t entry      = { 0 };
+    UINT32 modeValue                   = ANDROID_CONTROL_EFFECT_MODE_OFF;
+
+    if (0 == find_camera_metadata_entry((camera_metadata_t*)(pMetaData), ANDROID_CONTROL_EFFECT_MODE, &entry))
+    {
+        modeValue = *(entry.data.u8);
+        *pSceneModeValue = modeValue;
+    }
+    else
+    {
+        modeValue = *pSceneModeValue;
+    }
+
+    return EffectMap[modeValue].to;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// WaitOnAcquireFence
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID ChxUtils::WaitOnAcquireFence(
+    const CHISTREAMBUFFER* pBuffer)
+{
+    NativeFence acquireFence = pBuffer->acquireFence;
+
+    if (InvalidNativeFence != acquireFence)
+    {
+        CHX_LOG("Wait on acquireFence %d ", acquireFence);
+
+        INT error = 1;
+
+        //TODO: backporting-flush resolve this
+        //sync_wait(acquireFence, 5000);
+        if (error < 0)
+        {
+            CHX_LOG_ERROR("sync_wait timedout! error = %s", strerror(errno));
+        }
+
+        CHX_LOG("Close fence fd %d ", acquireFence);
+        close(acquireFence);
+    }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// ChxUtils::FillCameraId
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID ChxUtils::FillCameraId(
+    VOID* pMetaData,
+    UINT32 cameraId)
+{
+    if (pMetaData != NULL)
+    {
+        MultiCameraIdRole* pData         = NULL;
+        MultiCameraIdRole  inputMetadata = {CameraRoleTypeDefault , 0, 0};
+
+        ChxUtils::GetVendorTagValue(pMetaData, MultiCamera, (VOID**)&pData);
+        if (NULL != pData)
+        {
+            inputMetadata = *pData;
+        }
+        inputMetadata.currentCameraId = cameraId;
+        CHX_LOG("FillCameraId %d ", cameraId);
+        ChxUtils::SetVendorTagValue(pMetaData, MultiCamera, sizeof(inputMetadata), &inputMetadata);
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// ChxUtils::FillTuningModeData
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID ChxUtils::FillTuningModeData(
+    VOID* pMetaData,
+    camera3_capture_request_t* pRequest,
+    UINT32              sensorModeIndex,
+    UINT32*             pEffectModeValue,
+    UINT32*             pSceneModeValue,
+    UINT32*             pFeature1Value,
+    UINT32*             pFeature2Value)
+{
+    if (pMetaData != NULL)
+    {
+        ChiTuningModeParameter chiTuningModeParameter = {0};
+
+        CHX_LOG("SensorMode %d", sensorModeIndex);
+        chiTuningModeParameter.noOfSelectionParameter = MaxTuningMode;
+
+        chiTuningModeParameter.TuningMode[0].mode              = ChiModeType::Default;
+        chiTuningModeParameter.TuningMode[0].subMode.value     = 0;
+        chiTuningModeParameter.TuningMode[1].mode              = ChiModeType::Sensor;
+        chiTuningModeParameter.TuningMode[1].subMode.value     = sensorModeIndex;
+        chiTuningModeParameter.TuningMode[2].mode              = ChiModeType::Usecase;
+        chiTuningModeParameter.TuningMode[2].subMode.usecase   = GetUsecaseMode(pRequest);
+        chiTuningModeParameter.TuningMode[3].mode              = ChiModeType::Feature1;
+        chiTuningModeParameter.TuningMode[3].subMode.feature1  = GetFeature1Mode(pMetaData, pFeature1Value);
+        chiTuningModeParameter.TuningMode[4].mode              = ChiModeType::Feature2;
+        chiTuningModeParameter.TuningMode[4].subMode.feature2  = GetFeature2Mode(pMetaData, pFeature2Value);
+        chiTuningModeParameter.TuningMode[5].mode              = ChiModeType::Scene;
+        chiTuningModeParameter.TuningMode[5].subMode.scene     = GetSceneMode(pMetaData, pEffectModeValue);
+        chiTuningModeParameter.TuningMode[6].mode              = ChiModeType::Effect;
+        chiTuningModeParameter.TuningMode[6].subMode.effect    = GetEffectMode(pMetaData, pSceneModeValue);
+
+        ChxUtils::SetVendorTagValue(pMetaData, TuningMode, sizeof(ChiTuningModeParameter), &chiTuningModeParameter);
+    }
+}
+
+#else
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// Main thread function called by the OS for all created threads
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+static DWORD WINAPI OSThreadLauncher(
+    LPVOID pPrivateThreadData)
+{
+    OSThreadParams* pParams             = static_cast<OSThreadParams*>(pPrivateThreadData);
+    OSThreadFunc    threadEntryFunction = pParams->threadEntryFunction;
+    VOID*           pThreadData         = pParams->pThreadData;
+
+    // Once this function returns it means we need to terminate the thread
+    threadEntryFunction(pThreadData);
+
+    CHX_FREE(pParams);
+
+    return 0;   // 0 indicates the thread is terminated
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// Returns a pointer to the global mutex, initializing it if necessary
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+static Mutex* Initialize();
+
+// Singleton global mutex for all atomic operations
+static Mutex* g_pMutex = Initialize();
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Initialize
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+static Mutex* Initialize()
+{
+    if (NULL == g_pMutex)
+    {
+        g_pMutex = Mutex::Create();
+    }
+
+    return g_pMutex;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Operator new
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID* operator new(
+    size_t numBytes)    ///< Number of bytes to allocate
+{
+    /// @todo Hardcoded alignment
+    VOID* pMem = _aligned_malloc(numBytes, 4096);
+
+    if (NULL != pMem)
+    {
+        memset(pMem, 0, numBytes);
+    }
+
+    return pMem;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Operator delete
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID operator delete(
+    VOID* pMem)    ///< Memory pointer
+{
+    _aligned_free(pMem);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Mutex::Create
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+Mutex* Mutex::Create()
+{
+    Mutex* pMutex = NULL;
+
+    pMutex = CHX_NEW Mutex();
+
+    if (NULL != pMutex)
+    {
+        if (CDKResultSuccess != pMutex->Initialize())
+        {
+            CHX_DELETE(pMutex);
+            pMutex = NULL;
+        }
+    }
+
+    return pMutex;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Mutex::Initialize
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+CDKResult Mutex::Initialize()
+{
+    CDKResult result = CDKResultSuccess;
+
+    InitializeCriticalSection(&m_criticalSection);
+
+    return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Mutex::Destroy
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID Mutex::Destroy()
+{
+    DeleteCriticalSection(&m_criticalSection);
+    CHX_DELETE(this);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Mutex::Lock
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID Mutex::Lock()
+{
+    EnterCriticalSection(&m_criticalSection);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Mutex::TryLock
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+CDKResult Mutex::TryLock()
+{
+    CDKResult result = CDKResultSuccess;
+
+    if (FALSE == TryEnterCriticalSection(&m_criticalSection))
+    {
+        result = CDKResultEBusy;
+    }
+
+    return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Mutex::Unlock
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID Mutex::Unlock()
+{
+    LeaveCriticalSection(&m_criticalSection);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Mutex::GetNativeHandle
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+OSMutexHandle* Mutex::GetNativeHandle()
+{
+    return &m_criticalSection;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Condition::Create
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+Condition* Condition::Create()
+{
+    Condition* pCondition = NULL;
+
+    pCondition = CHX_NEW Condition();
+
+    if (NULL != pCondition)
+    {
+        if (CDKResultSuccess != pCondition->Initialize())
+        {
+            CHX_DELETE(pCondition);
+            pCondition = NULL;
+        }
+    }
+
+    return pCondition;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Condition::Destroy
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID Condition::Destroy()
+{
+    WakeAllConditionVariable(&m_conditionVar);
+    CHX_DELETE(this);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Condition::Initialize
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+CDKResult Condition::Initialize()
+{
+    InitializeConditionVariable(&m_conditionVar);
+
+    return CDKResultSuccess;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Condition::Wait
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+CDKResult Condition::Wait(
+    OSMutexHandle* phMutex)
+{
+    SleepConditionVariableCS(&m_conditionVar, phMutex, INFINITE);
+
+    return CDKResultSuccess;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Condition::TimedWait
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+CDKResult Condition::TimedWait(
+    OSMutexHandle*  phMutex,
+    UINT            timeoutMilliseconds)
+{
+    CDKResult result     = CDKResultSuccess;
+    BOOL      waitResult = FALSE;
+
+    waitResult = SleepConditionVariableCS(&m_conditionVar, phMutex, timeoutMilliseconds);
+
+    if (FALSE == waitResult)
+    {
+        result = CDKResultEFailed;
+    }
+
+    return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Condition::Signal
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID Condition::Signal()
+{
+    WakeConditionVariable(&m_conditionVar);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Condition::Broadcast
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID Condition::Broadcast()
+{
+    WakeAllConditionVariable(&m_conditionVar);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// AlignGeneric32
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+UINT32 ChxUtils::AlignGeneric32(
+    UINT32 operand,
+    UINT   alignment)
+{
+    UINT remainder = (operand % alignment);
+
+    return (0 == remainder) ? operand : operand - remainder + alignment;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// EvenCeilingUINT32
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+UINT32 ChxUtils::EvenCeilingUINT32(
+    UINT32 input)
+{
+    UINT32 result;
+
+    if (0xFFFFFFFF == input)
+    {
+        result = input;
+    }
+    else if (0 != (input & 0x00000001))
+    {
+        result = input + 0x00000001;
+    }
+    else
+    {
+        result = input;
+    }
+    return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Checks if a particular bit is set in a number
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+BOOL ChxUtils::IsBitSet(
+    UINT32  number,
+    UINT32  bit)
+{
+    static const UINT32 One = 1;
+
+    CHX_ASSERT(bit < (sizeof(UINT32) * 8));
+
+    return ((number & (One << bit)) != 0) ? TRUE : FALSE;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Resets a bit in a number
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+UINT32 ChxUtils::BitReset(
+    UINT32  number,
+    UINT32  bit)
+{
+    static const UINT32 One = 1;
+
+    CHX_ASSERT(bit < (sizeof(UINT32) * 8));
+
+    return (number & ~(One << bit));
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// OsUtils::GetFileName
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+const CHAR* ChxUtils::GetFileName(
+    const CHAR* pFilePath)
+{
+    const CHAR* pFileName = strrchr(pFilePath, '/');
+
+    if (NULL != pFileName)
+    {
+        // StrRChr will return a pointer to the /, advance one to the filename
+        pFileName += 1;
+    }
+    else
+    {
+        pFileName = pFilePath;
+    }
+
+    return pFileName;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Memcpy
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID* ChxUtils::Memcpy(
+    VOID*       pDst,
+    const VOID* pSrc,
+    SIZE_T      numBytes)
+{
+    CHX_ASSERT((pDst != NULL) && (pSrc != NULL));
+
+    return memcpy(pDst, pSrc, numBytes);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Memset
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID* ChxUtils::Memset(
+    VOID*  pDst,
+    INT    value,
+    SIZE_T numBytes)
+{
+    return memset(pDst, value, numBytes);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Allocate zeroed out memory
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID* ChxUtils::Calloc(SIZE_T numBytes)
+{
+    VOID* pMem = malloc(numBytes);
+    if (NULL != pMem)
+    {
+        Memset(pMem, 0, numBytes);
+    }
+
+    return pMem;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Free memory
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID ChxUtils::Free(VOID* pMem)
+{
+    free(pMem);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Function to create a thread
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+CDKResult ChxUtils::ThreadCreate(
+    OSThreadFunc    threadEntryFunction,
+    VOID*           pThreadData,
+    OSThreadHandle* phThread)
+{
+    HANDLE          hNewThread = NULL;
+    OSThreadParams* pParams    = static_cast<OSThreadParams*>(CHX_CALLOC(sizeof(OSThreadParams)));
+    CDKResult       result     = CDKResultSuccess;
+
+    if (NULL != pParams)
+    {
+        pParams->threadEntryFunction = threadEntryFunction;
+        pParams->pThreadData         = pThreadData;
+
+        hNewThread = CreateThread(NULL, 0, OSThreadLauncher, pParams, 0, NULL);
+
+        if (hNewThread == NULL)
+        {
+            CHX_FREE(pParams);
+            result = CDKResultEFailed;
+        }
+        else
+        {
+            *phThread = hNewThread;
+        }
+    }
+
+    return result;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Terminate a thread
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID ChxUtils::ThreadTerminate(OSThreadHandle hThread)
+{
+    WaitForSingleObject(hThread, INFINITE);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 64 bit atomic store
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID ChxUtils::AtomicStoreU64(volatile UINT64* pVar,
+                              UINT64           val)
+{
+    g_pMutex->Lock();
+    *pVar = val;
+    g_pMutex->Unlock();
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 64 bit atomic load
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+UINT64 ChxUtils::AtomicLoadU64(volatile UINT64* pVar)
+{
+    UINT64 val = 0;
+
+    g_pMutex->Lock();
+    val = *pVar;
+    g_pMutex->Unlock();
+
+    return val;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 32-bit atomic store
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID ChxUtils::AtomicStoreU32(volatile UINT32* pVar,
+                                        UINT32           val)
+{
+    g_pMutex->Lock();
+    *pVar = val;
+    g_pMutex->Unlock();
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// 32-bit atomic load
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+UINT32 ChxUtils::AtomicLoadU32(volatile UINT32* pVar)
+{
+    UINT32 val = 0;
+
+    g_pMutex->Lock();
+    val = *pVar;
+    g_pMutex->Unlock();
+
+    return val;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Sleep in microseconds
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID ChxUtils::SleepMicroseconds(UINT microseconds)
+{
+    ::Sleep(microseconds / 1000);
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Get the address of the function in the library
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+VOID* ChxUtils::LibGetAddr(OSLIBRARYHANDLE hLibrary,
+                           const CHAR*     pProcName)
+{
+    FARPROC pProcAddr = NULL;
+
+    if (hLibrary != NULL)
+    {
+        pProcAddr = GetProcAddress(static_cast<HMODULE>(hLibrary), pProcName);
+    }
+
+    return pProcAddr;
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Open the passed in library
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+OSLIBRARYHANDLE ChxUtils::LibMap(const CHAR* pLibraryName)
+{
+    OSLIBRARYHANDLE hLibrary = NULL;
+
+    hLibrary = LoadLibrary(pLibraryName);
+
+    return hLibrary;
+}
+
+#endif // WIN32
+

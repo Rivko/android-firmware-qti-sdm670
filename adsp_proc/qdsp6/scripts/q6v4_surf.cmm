@@ -1,0 +1,169 @@
+;****************************************************************
+;    filename: q6v4_Surf.cmm
+;
+; This CMM Practice file makes use of either a menu or command-line
+; arguments to specify the Trace32 debugger and SURF Memory 
+; configuration
+;
+;****************************************************************
+TOOLBAR ON
+STATUSBAR ON
+
+;******************************************************************
+; Reset QDSP6 through intercomm command
+;******************************************************************
+
+sys.cpu HexagonV4C
+;sys.mode attach
+;MAP.RESET
+
+;****************************************************************
+; 		--- LOAD SYMBOL FILES ---
+;Load bootimage symbols, bootimg.pbn contains the map for static text section
+;****************************************************************
+
+d.load ..\..\obj\qdsp6v4_ReleaseG\bootimg.pbn /NOCODE /NOREG
+b.s main /onchip
+;b.s QURTK_handle_l2vic_int /onchip
+step
+go
+wait !run()
+
+
+;****************************************************************
+; 		--- Setup environment defaults ---
+;****************************************************************
+Symbol.AsmFrame on
+Symbol.CutLine 3
+Symbol.case off
+
+;global &rtos_dir
+;global &edk_dir
+;global &etm_enable
+;local  &roottask
+;local  &rt_pt
+
+;****************************************************************
+; 		--- T32 issues ---
+;****************************************************************
+; http://qwiki.qualcomm.com/qdsp/Q6_T32_Issues
+;system.OPTION TCMBASE 0x28c00000
+;system.option.dcfreeze off
+;System.option.icflush off
+;MAP.RESET
+
+
+
+;****************************************************************
+; 		--- TURN OFF MMU ---
+;****************************************************************
+;mmu.off
+;mmu.delete
+
+sYmbol.SourcePath.reset
+
+
+
+;****************************************************************
+; 		--- Create MMU mapping ---
+;****************************************************************
+;&Qube_va=0xC0000000
+;&Qube_va=address.offset(start);
+;&Qube_pa=register(EVB)
+
+
+;mmu.map.scan     ; SCAN ELF FILE (bootimg.pbn) TO GET VA to PA TRANSLATION
+	         ; FOR CODE and STATIC DATA
+mmu.create 0xc0000000--0xc1800000 0x8da00000--0x8f200000
+mmu.create 0x80000000--0x80200000 0x80000000--0x80200000
+
+;mmu.protect
+mmu.on
+
+
+;****************************************************************
+; 		--- Load RTOS AWARENESS MODULE ---
+;****************************************************************
+;&edk_dir="..\..\qurt\install\MMv4\debugger\T32"
+
+TASK.CONFIG ..\..\qurt\install\MMv4\debugger\T32\Qurt_model.t32
+MENU.ReProgram ..\..\qurt\install\MMv4\debugger\T32\qurt_model.men
+
+; Enable RTOS debug messages
+;ext.debug 1
+
+
+
+;****************************************************************
+; 		--- print pagetable ---
+;****************************************************************
+wait 1s
+&rt_pt=d.l(QURTK_pagetables)
+print &rt_pt
+
+
+;mmu.format Qurt &rt_pt (&Qube_va)--(&Qube_va+0xffffff) &Qube_pa
+;mmu.autoscan on
+;Mmu.tablewalk on
+;mmu.tlb.scan
+
+;****************************************************************
+; 		--- setup breakpoints ---
+;****************************************************************
+
+b.s QURTK_handle_error
+b.s QURTK_tlb_crash
+b.s QURTK_error
+
+b.s QURTK_user_exit
+b.s QURTK_abort
+b.s abort
+b.s diag_err_fatal
+b.s exit
+b.s qurt_exception_raise_nonfatal
+b.s qurt_exception_raise_fatal
+
+;****************************************************************
+; 		--- setup source path ---
+;****************************************************************
+y.spath.srd + .
+d.list
+register
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

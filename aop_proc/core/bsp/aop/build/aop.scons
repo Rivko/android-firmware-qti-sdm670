@@ -1,0 +1,172 @@
+#===========================================================================
+#
+#  @file aop.scons
+#  @brief Image-level build script for the AOP.
+#
+#  This file can be invoked directly by calling:
+#
+#    build aop
+#
+#  ===========================================================================
+#
+#  Copyright (c) 2011-2016 Qualcomm Technologies, Inc.
+#  All Rights Reserved.
+#  QUALCOMM Proprietary and Confidential.
+#
+#  ===========================================================================
+#
+#  $Header: //components/rel/aop.ho/1.1.c1/aop_proc/core/bsp/aop/build/aop.scons#1 $
+#  $DateTime: 2018/02/16 04:48:18 $
+#  $Author: pwbldsvc $
+#
+#  ===========================================================================
+
+#------------------------------------------------------------------------------
+# Imports
+#------------------------------------------------------------------------------
+
+import sys
+import os
+Import('env')
+
+env = env.Clone()
+
+#------------------------------------------------------------------------------
+# Define the "aop" image
+#------------------------------------------------------------------------------
+
+aliases = ['aop', 'all']
+
+env.InitImageVars(
+   alias_list=aliases,
+   proc='aop',
+   config='aop',
+   build_tags = ['CORE_AOP', 'AOP_IMAGE', 'DAL_DEVCFG_IMG', 'QDSS_EN_IMG',
+                 'IMAGE_TREE_VERSION_AUTO_GENERATE',
+                 'IMAGE_TREE_UUID_AUTO_GENERATE',
+                ],
+   tools = ['${BUILD_ROOT}/core/bsp/aop/build/aoptools_defs.py',
+            '${BUILD_ROOT}/core/bsp/build/scripts/scl_builder.py',
+            '${BUILD_ROOT}/core/bsp/build/scripts/bin_builder.py',
+            '${BUILD_ROOT}/tools/build/scons/sectools/sectools/features/isc/parsegen/mbn_tools.py',
+            '${BUILD_ROOT}/core/bsp/build/scripts/mbn_builder.py',
+            '${BUILD_ROOT}/core/bsp/build/scripts/devcfg_builder.py',
+            '${BUILD_ROOT}/core/bsp/build/scripts/swe_builder.py',
+            '${BUILD_ROOT}/core/bsp/build/scripts/cmm_builder.py',
+            '${BUILD_ROOT}/tools/build/scons/scripts/buildspec_builder.py',
+            '${BUILD_ROOT}/core/bsp/build/scripts/aop_elf_builder.py',
+            '${BUILD_ROOT}/tools/build/scons/sectools/sectools_builder.py',
+#            '${BUILD_ROOT}/core/bsp/build/scripts/rinit_builder.py',
+           ])
+
+env.Replace(USES_QDSS_SWE = 'TRUE')
+
+
+#------------------------------------------------------------------------------
+# Check if we need to load this script or just bail-out
+#------------------------------------------------------------------------------
+
+if not env.CheckAlias(alias_list=aliases):
+   Return()
+
+#------------------------------------------------------------------------------
+# Init defualt values this PROC/Image
+#------------------------------------------------------------------------------
+# Add DAL_CONFIG_TARGET_ID to CPPDEFINES needed by some dal drivers
+if env['MSM_ID'] in ['8994']:
+   env.Append(CPPDEFINES = [
+   "DAL_CONFIG_TARGET_ID=0x8994"
+   ])
+elif env['MSM_ID'] in ['8996']:
+   env.Append(CPPDEFINES = [
+   "DAL_CONFIG_TARGET_ID=0x8996",
+   'VSENSE_FEATURE_ENABLED'
+   ])
+elif env['MSM_ID'] in ['8998']:
+   env.Append(CPPDEFINES = [
+   "DAL_CONFIG_TARGET_ID=0x8998",
+   'VSENSE_FEATURE_ENABLED',
+   'PRE_SILICON_WORKAROUND', # TODO: delete this when real target is available
+   ])
+else:
+   env.Append(CPPDEFINES = [
+   "DAL_CONFIG_TARGET_ID=0x${MSM_ID}"
+   ])
+
+# Enable devcfg feature
+env.Replace(USES_DEVCFG = True)
+env.Replace(USES_MULTI_DEVCFG = True)
+env.Replace(USES_DEVCFG_MULTIPLE_TAGS = True)
+
+#enable sectools option for generating secure image
+if os.environ.has_key("SECPOLICY"):
+  sec_policy_list = os.environ["SECPOLICY"].split()
+  for sec_policy in sec_policy_list:
+    eval("env.Replace(%s = True)"%sec_policy) #to avoid hardcoding all sectool policies
+
+#
+#---------------------------------------------------------------------------
+# Load in uses and path variables
+#---------------------------------------------------------------------------
+
+env.InitBuildConfig()
+
+#env.Replace(USES_NO_STRIP_NO_ODM = 'yes')
+#env.Replace(USES_NO_DEBUG = 'yes')
+
+#---------------------------------------------------------------------------
+# Qmp Test flag 
+#---------------------------------------------------------------------------
+#env.Append(CPPDEFINES = ['XPORT_QMP_TEST'])
+
+#---------------------------------------------------------------------------
+# Load build rules
+#---------------------------------------------------------------------------
+
+# The build scripts always expect posix paths, so ensure that here.
+if env.has_key('FILTER_OPT') and env['FILTER_OPT'] is not None:
+  env['FILTER_OPT'] = env.NormPath(env['FILTER_OPT'], posix=True)
+
+core_libs, core_objs = env.LoadAUSoftwareUnits('core')
+build_libs, build_objs = env.LoadAUSoftwareUnits('build')
+
+#------------------------------------------------------------------------------
+# Create UUID file
+#------------------------------------------------------------------------------
+img_uuid_tag = 'IMAGE_TREE_UUID_AUTO_GENERATE'
+if env.IsKeyEnable(img_uuid_tag):
+  env.LoadToolScript('version_builder', toolpath = ['${BUILD_SCRIPTS_ROOT}'])
+  oem_uuid_c = env.OEM_UUID_Builder(img_uuid_tag, 'oem_uuid.c',
+                                    [core_objs, core_libs],
+                                    TARGET_IMG_PATH = env.RealPath("${TARGET_NAME}"))
+  oem_uuid_o = env.AddObject(img_uuid_tag, oem_uuid_c)
+  core_objs.append(oem_uuid_o)
+
+#------------------------------------------------------------------------------
+# Build the final product
+#------------------------------------------------------------------------------
+env.Replace(AOP_LIBS = [core_libs, build_libs])
+env.Replace(AOP_OBJS = [core_objs, build_objs])
+
+env.Tool('AOP', toolpath = ['${BUILD_ROOT}/core/bsp/aop/build'])
+
+#---------------------------------------------------------------------------
+# Now that we know we need to build something, the first thing we need
+# to do is add our image to BuildProducts.txt, so that tools can verify
+# when our build is successful.
+#---------------------------------------------------------------------------
+
+if env['MSM_ID'] == '670':
+  env.BuildProductsFile ('aop_proc/', '../../../../build/ms/bin/${BUILD_ID}/${MSM_ID}/${CHIPSET_PMIC}/aop.mbn', env)
+else:
+  env.BuildProductsFile ('aop_proc/', '../../../../build/ms/bin/${BUILD_ID}/aop.mbn', env)
+
+#------------------------------------------------------------------------------
+# Generate Scripts
+#------------------------------------------------------------------------------
+env.CMMBuilder(None, None)
+
+#------------------------------------------------------------------------------
+# Generate HWIO files
+#------------------------------------------------------------------------------
+# Moved to core\bsp\build\SConscript since this script cannot be detected for 'hwio' build target

@@ -1,0 +1,141 @@
+;============================================================================
+;  Name:
+;    load_drvr_sym.cmm
+;
+;  Description:
+;     Load symbols for the image loaded into RAM
+;
+; Copyright (c) 2010-2011, 2013-2015 Qualcomm Technologies Incorporated.
+; All Rights Reserved.
+; Qualcomm Confidential and Proprietary
+;
+;----------------------------------------------------------------------------
+;============================================================================
+;
+;                        EDIT HISTORY FOR MODULE
+;
+;
+;
+;when         who     what, where, why
+;----------   ---     ----------------------------------------------------------
+;2015-07-31   vk      Fix path seperator
+;2015-07-17   dg      Fix pathing issues
+;2015-03-10   jb      Reenable interrupts before go
+;2015-01-27   bh      Unifying 32/64-bit scripts
+;2014-08-27   vk      Add INTDIS
+;2014-04-23   vk      Clear LSB for thumb address
+;2013-11-15   vk      Add EfiHeaderOffset parameter
+;2011-05-06   MK      Added image to debug option
+;2011-01-03   yg      Check file before load and resume execution.
+;2010-12-03   yg      Initial Version
+;============================================================================;
+
+local &ModuleAddr
+local &ElfFilePath
+local &LoadFilePath
+local &LoadFilePathPos
+local &ModuleName
+local &chr
+local &EntryPoint
+
+ENTRY &ImageName
+
+  ; Get the Address where the current image got loaded and offset it
+  ; by 0x240 bytes (0x260 for 64 bit) so that we ignore the efi header
+  ; in the image. The structure definitions here are present in the Dxecore
+
+  sys.O.INTDIS ON
+
+  &ModuleAddr=v.value(Image->ImageContext.ImageAddress+&EfiHeaderOffset)
+  ;print "Image address: &ModuleAddr"
+
+  ; Get the image path from the ImageContext structure
+  &ElfFilePath=v.string(Image->ImageContext.PdbPointer)
+  ;print "Image Path: &ElfFilePath"
+
+  ; Extract only the file portion, ignoring where it built,
+  ; ie extract the path relative to current address (Uefi Root)
+  ; Remove ending doubt quote char
+  &ElfFilePath=string.cut("&ElfFilePath",-1)
+
+  ; Search for Build folder in the file path
+  local &scanres
+  &LoadFilePathPos=0.
+  &scanres=0.
+  repeat
+  (
+    &scanres=string.scan("&ElfFilePath","/Build/",&LoadFilePathPos)
+    if (&scanres!=-1.)
+    (
+      &LoadFilePathPos=&scanres+1.
+    )
+    else
+    (
+      &scanres=string.scan("&ElfFilePath","\Build\",&LoadFilePathPos)
+      if (&scanres!=-1.)
+      (
+        &LoadFilePathPos=&scanres+1.
+      )
+    )
+  )
+  while &scanres!=-1.
+
+  ; Extract only the elf file path relative to current location
+  &LoadFilePath=string.cut("&ElfFilePath",&LoadFilePathPos)
+
+  ; Check if the file is existing, attempt to load only if its present
+  if (os.file("&LoadFilePath"))
+  (
+    print "Load  Drvr symbols at &ModuleAddr from &LoadFilePath"
+
+    ; Load the symbols at this address
+    if ((string.scan("&LoadFilePath","ArmCpuDxe", 0)!=-1)&&(&ARCHState!=1))
+    (
+      &NewAddress=&ModuleAddr-0x260+0x800
+      print "Reloading &ImageName, originally loaded at &ModuleAddr to &NewAddress ... "
+      data.load.elf &LoadFilePath  &NewAddress /nocode /noclear /strippart &IgnoreSymPathParts
+    )
+    else
+    (
+      data.load.elf &LoadFilePath &ModuleAddr /nocode /noclear /strippart &IgnoreSymPathParts
+    )
+
+    ; Place bkpt on entry point only if we are interested in debugging any module
+    if (string.len("&ImageName")!=0&&string.scan(string.lwr("&LoadFilePath"),string.lwr("&ImageName"),0)!=-1)
+    (
+       ; Uncomment the following break point to debug from entry point onwards
+       ; b.set v.value(Image->ImageContext.EntryPoint) /disablehit
+
+
+      ; Extract the module name to set bkpt at the module entry point function
+      ;
+      &FileXtnEndPos=string.scan("&LoadFilePath",".dll",0)
+
+      &FileXtnStartPos=&FileXtnEndPos
+      while (&FileXtnStartPos>0)
+      (
+        &chr=string.char("&LoadFilePath",&FileXtnStartPos)
+        if ((&chr==0x5c)||(&chr==0x2f))
+        (
+          &FileXtnStartPos=&FileXtnStartPos+1
+          &ModuleName=string.mid("&LoadFilePath",&FileXtnStartPos,&FileXtnEndPos-&FileXtnStartPos)
+          &EntryPoint="\\&ModuleName\AutoGen\ProcessModuleEntryPointList"
+          ;break
+          &FileXtnStartPos=0
+        )
+        &FileXtnStartPos=&FileXtnStartPos-1
+      )
+
+      b.set &EntryPoint /disablehit
+    )
+  )
+  else
+  (
+    print "Symbol file not found &LoadFilePath"
+  )
+
+  ; Resume execution
+  sys.O.INTDIS OFF
+  go
+enddo
+

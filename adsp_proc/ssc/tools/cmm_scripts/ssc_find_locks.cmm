@@ -1,0 +1,232 @@
+;============================================================================
+;
+; Locks
+;
+;   To be called by ssc_parser.cmm to find the locks used in SSC
+;
+; Version: 1.0
+;
+; Copyright (c) 2017 Qualcomm Technologies, Inc.
+; All Rights Reserved.
+; Qualcomm Technologies, Inc. Confidential and Proprietary.
+;============================================================================
+
+ENTRY
+
+&cm_sensor=0
+&dae_sensor=0
+&total_locks=0
+
+&qurt_error_info=V.VALUE(&QURT_error_info)
+&timerhi=V.VALUE(((struct QURT_error*)&qurt_error_info)->globregs.timerhi)
+&timerlo=V.VALUE(((struct QURT_error*)&qurt_error_info)->globregs.timerlo)
+&qtime=(&timerhi<<32.)+&timerlo
+
+&lock_list_out=OS.PTD()+"\ssc_locks"+".csv"
+&i=1
+while OS.FILE(&lock_list_out)
+(
+  &lock_list_out=OS.PTD()+"\ssc_locks"+format.decimal(1,&i)+".csv"
+  &i=&i+1
+)
+OPEN  #1 &lock_list_out /Create
+WRITE #1 "Address,Thread ID,Lock Time,msB4Crash,Locked,Waits,Object,Identifier"
+
+gosub print_library_locks
+gosub print_lock &heap_info_lock ""
+gosub print_lock &libraries_lock ""
+gosub print_lock &attribute_service.sensor_attributes_lock ""
+gosub print_lock &event_service.buffer_lock ""
+gosub print_lock &gpio_service.lock ""
+gosub print_lock &sns_osa_threads_lock ""
+gosub print_lock &global_timer_id_mutex ""
+gosub print_lock &sns_diag_lock ""
+gosub print_lock &diag_service.circ_buffer_idx_lock ""
+gosub print_lock &diag_service.data_type_list_lock ""
+gosub print_lock &sns_pwr_scpm_mgr.scpm_mgr_lock ""
+gosub print_lock &sns_pwr_sleep_mgr.sleep_mgr_lock ""
+gosub print_lock &pwr_rail_service.rail_mgr_lock ""
+gosub print_lock &island.island_state_lock ""
+
+&island_blocks=V.VALUE(&island.island_blocks)
+&num_island_blocks=V.VALUE(((sns_list*)&island_blocks)->cnt)
+&island_block_idx=0
+&island_block=V.VALUE(((sns_list*)&island_blocks)->item.next->item)
+while &island_block_idx<&num_island_blocks
+(
+  &name=V.VALUE(((sns_island_aggregator_client*)&island_block)->client_name)
+  &extra_string="Island client '"+DATA.STRing(D:&name)+"'"
+  gosub print_lock &(((sns_island_aggregator_client*)&island_block)->lock) "&extra_string"
+
+  &island_block=V.VALUE((*( (*(((sns_island_aggregator_client*)&island_block))).list_entry.next)).item)
+  &island_block_idx=&island_block_idx+1
+)
+
+if &cm_sensor!=0
+(
+  &cm_sensor_state= V.VALUE(&(((sns_sensor*)&cm_sensor)->state->state))
+  gosub print_lock &(((sns_cm_state*)&cm_sensor_state)->expired_timer_events_lock) ""
+)
+if &dae_sensor!=0
+(
+  &dae_sensor_state= V.VALUE(&(((sns_sensor*)&dae_sensor)->state->state))
+  gosub print_lock &(((sns_dae_sensor_state*)&dae_sensor_state)->mailbox.lock) ""
+)
+CLOSE #1
+
+print "##### Locks (sns_osa_qurt_mutex*) #####"
+print
+print "  &lock_list_out"
+print
+print "  Number of locks found = "+format.decimal(1.,&total_locks)
+print
+print "==================================================================================="
+print ""
+
+enddo
+
+; **********************************print_library_locks************************************
+print_library_locks:
+  &lib_idx=0.
+  &sensor_libraries=V.VALUE(&libraries)
+  &num_libs=V.VALUE(((sns_list*)&sensor_libraries)->cnt)
+  &lib=V.VALUE(((sns_list*)&sensor_libraries)->item.next)
+  while &lib_idx<&num_libs
+  (
+    &reg_func=V.VALUE(*&(((sns_sensor_library*)&lib)->register_func))
+    &reg_func_symbol= Y.NAME(D:&reg_func)
+    ;&lib_lock=V.VALUE(((sns_sensor_library*)&lib)->library_lock)
+    gosub print_lock &(((sns_sensor_library*)&lib)->library_lock) "&reg_func_symbol"
+
+    &sensor_list=V.VALUE(&(((sns_sensor_library*)&lib)->sensors))
+    &num_sensors=V.VALUE(((sns_list*)&sensor_list)->cnt)
+    &sensor=V.VALUE(((sns_list*)&sensor_list)->item.next->item)
+    &sensor_idx=0
+    while &sensor_idx<&num_sensors
+    (
+      &is_cm_sensor=0
+      &sensor_streams=V.VALUE(&(((sns_fw_sensor*)&sensor)->data_streams))
+      &num_sensor_streams=V.VALUE(((sns_list*)&sensor_streams)->cnt)
+      &data_type=V.VALUE(((sns_fw_sensor*)&sensor)->attr_info->attr_info->data_type)
+      if STRing.ComPare(STRing.LoWer(DATA.STRing(D:&data_type)),"cm")
+      (
+        &cm_sensor=&sensor
+        &is_cm_sensor=1
+      )
+      else if STRing.ComPare(STRing.LoWer(DATA.STRing(D:&data_type)),"data_acquisition_engine")
+      (
+        &dae_sensor=&sensor
+      )
+      &sensor_stream_idx=0
+      &sensor_stream=V.VALUE(((sns_list*)&sensor_streams)->item.next->item)
+      while &sensor_stream_idx<&num_sensor_streams
+      (
+        if &sensor_stream!=0
+        (
+          gosub print_stream_lock &sensor_stream
+          &sensor_stream=V.VALUE((*((*(((sns_fw_data_stream*)&sensor_stream))).list_entry_client.next)).item)
+        )
+        &sensor_stream_idx=&sensor_stream_idx+1
+      )
+
+      &instances=V.VALUE(&(((sns_fw_sensor*)&sensor)->sensor_instances))
+      &num_instances=V.VALUE(((sns_list*)&instances)->cnt)
+      &inst_idx=0
+      &inst=V.VALUE(((sns_list*)&instances)->item.next->item)
+      while &inst_idx<&num_instances
+      (
+        &streams=V.VALUE(&(((sns_fw_sensor_instance*)&inst)->data_streams))
+        if &is_cm_sensor==0
+        (
+          &num_streams=V.VALUE(((sns_list*)&streams)->cnt)
+          &stream_idx=0
+          &stream=V.VALUE(((sns_list*)&streams)->item.next->item)
+          while &stream_idx<&num_streams
+          (
+            if &stream!=0
+            (
+              gosub print_stream_lock &stream
+              &stream=V.VALUE((*((*(((sns_fw_data_stream*)&stream))).list_entry_client.next)).item)
+            )
+            &stream_idx=&stream_idx+1
+          )
+        )
+        else
+        (
+          &cm_inst_state= V.VALUE(&(((sns_sensor_instance *)&inst)->state->state))
+          &req_list=V.VALUE(&(((sns_cm_inst_state *)&cm_inst_state)->req_list))
+          &num_reqs=V.VALUE(((sns_list*)&req_list)->cnt)
+          &req_idx=0
+          while &req_idx<&num_reqs
+          (
+            &client_req=V.VALUE(((sns_list*)&req_list)->item.next->item)
+            &sensor_stream=V.VALUE(((sns_cm_request*)&client_req)->data_stream)
+            gosub print_stream_lock &sensor_stream
+            &req_idx=&req_idx+1
+          )
+        )
+        &inst=V.VALUE((*((*(((sns_fw_sensor_instance*)&inst))).list_entry.next)).item)
+        &inst_idx=&inst_idx+1
+      )
+
+      &sensor=V.VALUE((*((*(((sns_fw_sensor*)&sensor))).list_entry.next)).item)
+      &sensor_idx=&sensor_idx+1
+    )
+
+    &lib=V.VALUE(((sns_list_item*)&lib)->next->item)
+    &lib_idx=&lib_idx+1.
+  )
+  return
+
+; ***********************************print_stream_lock*************************************
+print_stream_lock:
+  entry &stream
+  &source=V.VALUE(((sns_fw_data_stream*)&stream)->data_source)
+  &data_type=V.VALUE(((sns_fw_sensor*)&source)->attr_info->attr_info->data_type)
+  &extra_string="'"+DATA.STRing(D:&data_type)+"'"
+  &dest=V.VALUE(((sns_fw_data_stream*)&stream)->dst_sensor)
+  if &dest==0
+  (
+    &dest=V.VALUE(((sns_fw_data_stream*)&stream)->dst_instance->sensor)
+  )
+  if &dest!=0
+  (
+    &data_type=V.VALUE(((sns_fw_sensor*)&dest)->attr_info->attr_info->data_type)
+    &extra_string="&extra_string"+" --> '"+DATA.STRing(D:&data_type)+"'"
+  )
+  gosub print_lock &(((sns_fw_data_stream*)&stream)->events_lock) "&extra_string"
+  return
+
+; **************************************print_lock*****************************************
+print_lock:
+  entry &lock_obj &extra
+  &lock=V.VALUE(*(&lock_obj))
+  &thread_id=V.VALUE((*(((sns_osa_qurt_mutex*)&lock))).thread_id)
+  ;&holder=V.VALUE((*(((sns_osa_qurt_mutex*)&lock))).lock_holder)
+  ;&holder_symbol= Y.NAME(D:&holder)
+  &lock_time=V.VALUE((*(((sns_osa_qurt_mutex*)&lock))).lock_timestamp)
+  &ms_from_crash=((&qtime-&lock_time)/19200.0)
+  &holder=V.VALUE((*(((sns_osa_qurt_mutex*)&lock))).mutex.holder)
+  &locked=1
+  if &holder==0xFE
+  (
+    &locked=0
+  )
+  &wait_count=V.VALUE((*(((sns_osa_qurt_mutex*)&lock))).mutex.wait_count)
+
+  &writestring="0x"+format.HEX(8,&lock)
+  &writestring="&writestring"+",0x"+format.HEX(2,&thread_id)
+  &writestring="&writestring"+","+format.decimal(12.,&lock_time)
+  &writestring="&writestring"+","+format.float(12.,3,&ms_from_crash)
+  &writestring="&writestring"+","+format.decimal(1,&locked)
+  &writestring="&writestring"+","+format.decimal(1,&wait_count)
+  &writestring="&writestring"+",&lock_obj"
+  if &extra!=""
+  (
+    &writestring="&writestring"+",&extra"
+  )
+  WRITE #1 "&writestring"
+
+  &total_locks=&total_locks+1
+  return
+

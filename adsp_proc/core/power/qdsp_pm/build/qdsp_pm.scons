@@ -1,0 +1,349 @@
+#===============================================================================
+#
+# QDSP_PM Build Script
+#
+# GENERAL DESCRIPTION
+#    Builds the QSP_PM libraries for all target.
+#
+#   Copyright (c) 2016-2017 Qualcomm Technologies, Inc. (QTI).
+#   All Rights Reserved.
+#   Qualcomm Confidential and Proprietary.
+#   Export of this technology or software is regulated by the U.S. Government.
+#   Diversion contrary to U.S. law prohibited.
+#-------------------------------------------------------------------------------
+#  $Header: //components/rel/core.qdsp6/2.1/power/qdsp_pm/build/qdsp_pm.scons#5 $
+#  $DateTime: 2018/07/25 11:41:25 $
+#===============================================================================
+import glob, os
+import fnmatch
+import itertools
+import subprocess
+
+Import('env')
+env = env.Clone()
+env.Append(CFLAGS = " -Wno-error=unused-function")
+#env.Append(CCFLAGS = " -O0")
+#env.AddUsesFlags('USES_ADSPPM_TEST_SPD')
+#env.AddUsesFlags('USES_ADSPPM_TEST_MPD')
+
+
+# Set target based dir path
+DSPPM_TARGET = env['MSM_ID']
+DSPPM_DIR_ROOT = os.path.join(env['BUILD_ROOT'], 'core/power/qdsp_pm/src/target')
+
+# Check if target directory exists, if not use default target
+if not os.path.exists(os.path.join(DSPPM_DIR_ROOT, DSPPM_TARGET)):
+  env.PrintWarning('DSPPM target ' + DSPPM_TARGET + ' not found, using default')
+  DSPPM_TARGET = env['PWR_TARGET_DFLT']
+
+if DSPPM_TARGET in ['845','670'] and env['IMAGE'] in ['cdsp']:
+    env.Append(CPPDEFINES = 'VAPSS_GDHS_CLOSE')
+    env.Append(CPPDEFINES = 'HVX_SPL_INST')
+    env.Append(CPPDEFINES = 'CDSP_HVX_LPR')
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = ".."
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+COMMON_SRCPATH = SRCPATH + '/src/driver/qdsp_pm_mgr'
+TEST_SRCPATH = SRCPATH + '/src/driver/test'
+IMAGE_SRCPATH = os.path.join(SRCPATH, 'src', 'target', DSPPM_TARGET, env['IMAGE'])
+
+if env['IMAGE'] in ['adsp','cdsp']:
+  env.Append(CPPDEFINES = 'MIPSMGR_AHB_CLOCK_SUPPORT')
+  env.Append(CPPDEFINES = 'BUSMGR_AHB_BW_SUPPORT')
+
+if env['IMAGE'] in ['slpi']:
+  env.Append(CPPDEFINES = 'BUSMGR_AHB_BW_SUPPORT')
+
+#-------------------------------------------------------------------------------
+# CleanPack (Remove) all remaining files for qdsppm unit test case
+#-------------------------------------------------------------------------------
+# Modify from CORE_QDSP6_SW to CORE_ADSP_ROOT to this driver is only built for ADSP,
+# not for SLPI.
+PACK_OUT = env.FindFiles(['*.h', '*.c', '*.s'], TEST_SRCPATH)
+env.CleanPack(['CORE_ADSP_ROOT'], PACK_OUT)
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+    'DAL',
+    'BUSES',
+    'DEBUGTOOLS',
+    'DEBUGTRACE',
+    'MPROC',
+    'POWER',
+    'SERVICES',
+    'SYSTEMDRIVERS',
+    'KERNEL', # needs to be last also contains wrong comdef.h
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+env.RequireRestrictedApi(['QDSP_PM_SETTINGS'])
+env.RequireProtectedApi(['POWER_UTILS'])
+
+env.RequirePublicApi(['TMD'], area='QMIMSGS')
+env.RequirePublicApi(['ADSP_SYSMON'], area='performance')
+
+env.PublishPrivateApi('QDSP_PM', [
+    '${BUILD_ROOT}/core/power/qdsp_pm/inc',
+    '${BUILD_ROOT}/core/power/qdsp_pm/inc/test',
+    '${BUILD_ROOT}/core/power/qdsp_pm/src/driver/qdsp_pm_mgr',
+    '${BUILD_ROOT}/core/power/qdsp_pm/src/driver/qdsp_pm_mgr/hal/inc',
+    '${BUILD_ROOT}/core/power/qdsp_pm/inc/mpd',
+    '${BUILD_ROOT}/core/power/qdsp_pm/inc/public',
+    ]
+)
+
+env.PublishPublicApi('QDSP_PM', [
+   '${BUILD_ROOT}/core/power/qdsp_pm/inc/public',
+    ]
+)
+
+#-------------------------------------------------------------------------------
+# QDSS Tracer definitions
+#-------------------------------------------------------------------------------
+if 'USES_QDSS_SWE' in env:
+    QDSS_IMG = ['QDSS_EN_IMG']
+    EVENTS = [
+        ['ADSPPM_CLK_SET','clk set,clkId=%d reqfreq=%d grantedfreq=%d'],
+        ['ADSPPM_CLK_ENABLE', 'clk enable, clkid=%d'],
+        ['ADSPPM_CLK_DISABLE', 'clk disable, clkid=%d'],
+        ['ADSPPM_PWR_REQ', 'PWR Req, pwrDomain=%d'],
+        ['ADSPPM_PWR_REL', 'PWR Rel, pwrDomain=%d'],
+        ['ADSPPM_BW_REQ', 'BW req, master=%d, slave=%d, ib=%d, ab=%d'],
+        ['ADSPPM_BW_REL', 'BW rel, mater=%d, slave=%d'],
+        ['ADSPPM_DCG_ENABLE', 'DCG enable, clkId=%d'],
+        ['ADSPPM_DCG_DISABLE', 'DCG disable, clkId=%d'],
+        ['ADSPPM_LPASS_CORE_PWR', 'LPASS CORE POWER=%d'],
+        ['ADSPPM_XPU_PROG', 'XPU prog=%d'],
+        ['ADSPPM_MEM_PWR', 'MEMpower,memId=%d,power=%d'],
+        ['ADSPPM_API_PWR_REQ', 'APIPower Req, clientId=%d'],
+        ['ADSPPM_API_PWR_REL', 'APIPower Rel, clientId=%d'],
+        ['ADSPPM_API_MIPS_REQ', 'APIMIPS req, clientId=%d, mipstotal=%d, mipsfloor=%d, codelocation=%d, reqoperation=%d'],
+        ['ADSPPM_API_MIPS_REL', 'APIMIPS Rel clientId=%d'],
+        ['ADSPPM_API_REG_REQ', 'APIReg Request, clientId=%d, master=%d, slave=%d'],
+        ['ADSPPM_API_REG_REL', 'APIReg Release, clientId=%d'],
+        ['ADSPPM_API_BW_REQ', 'APIBW Request, clientId =%d master=%d, slave=%d, BW=%d, percentage=%d'],
+        ['ADSPPM_API_BW_REL', 'APIBW Release, clientId=%d'],
+        ['ADSPPM_API_LATENCY_REQ', 'APILatency Request, clientId=%d, latency=%dus'],
+        ['ADSPPM_API_LATENCY_REL', 'APILatency Release, clientId=%d'],
+        ['ADSPPM_API_MEM_PWR_REQ', 'APIMEMPower Request, clientId=%d memId=%d, power=%d'],
+        ['ADSPPM_API_MEM_PWR_REL', 'APIMEMPower Release, clientId=%d'],
+    ]
+
+    env.Append(CPPDEFINES=['ADSPPM_ENABLE_QDSS'])
+    env.Append(CPPPATH = ['${BUILD_ROOT}/core/power/qdsp_pm/build/${BUILDPATH}/'])
+    env.SWEBuilder(['${BUILD_ROOT}/core/power/qdsp_pm/build/${BUILDPATH}/adsppm_tracer_event_ids.h'], None)
+    env.AddSWEInfo(QDSS_IMG, EVENTS)
+
+
+# Map adsppm's diag message to the sleep category.
+#-------------------------------------------------------------------------------
+# Sources
+#-------------------------------------------------------------------------------
+MPD_ADSPPM_SNS_USER_SRC = [
+    '${BUILDPATH}/src/driver/mpd/qdi_client.c'
+]
+
+MPD_ADSPPM_AUD_USER_SRC = [
+    '${BUILDPATH}/src/driver/mpd/qdi_client.c'
+]
+
+MPD_ADSPPM_GUESTOS_SRC = [
+    '${BUILDPATH}/src/driver/mpd/qdi_srv.c',
+    '${BUILDPATH}/src/driver/mpd/adsppmcb.c',
+    '${BUILDPATH}/src/driver/mpd/client_id_list.c'
+]
+
+source_patterns = ['*.c', '*.cpp']
+sources = []
+
+for root, dirnames, filenames in os.walk(COMMON_SRCPATH):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in source_patterns])
+    matches = ['${BUILDPATH}' + os.path.join(root, filename)[2:] for filename in matches]
+    sources.extend(matches)
+
+print  " IMAGE_SRCPATH = %s " % IMAGE_SRCPATH
+
+for root, dirnames, filenames in os.walk(IMAGE_SRCPATH):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in source_patterns])
+    matches = ['${BUILDPATH}' + os.path.join(root, filename)[2:] for filename in matches]
+    sources.extend(matches)
+
+test_sources = []
+
+for root, dirnames, filenames in os.walk(TEST_SRCPATH):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in source_patterns])
+    matches = ['${BUILDPATH}' + os.path.join(root, filename)[2:] for filename in matches]
+    test_sources.extend(matches)
+
+if 'USES_ADSPPM_TEST_SPD' in env:
+    sources.extend(test_sources)
+
+#qdi adsp pm support max 2 user PDs from single image.
+#QDI_QDSPPM_USER_ID=0 for AUDIO  and QDI_QDSPPM_USER_ID=1 for SENSORS PD
+if DSPPM_TARGET in ['670']:
+	env.Append(CPPDEFINES = ["QDSPPM_NUM_PDS=2"])
+else:
+	env.Append(CPPDEFINES = ["QDSPPM_NUM_PDS=1"])
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+if env['IMAGE'] in ['cdsp'] and 'USES_CORESLEEP_TOOL' in env:
+    xml_dir = env['BUILD_ROOT'] + '/core/power/qdsp_pm/src/target/${MSM_ID}/cdsp'
+    env.AddCoreSleepLPR('CORE_QDSP6_SW', {'sleep_lpr_xml' : [xml_dir]})
+
+if 'USES_SENSOR_IMG' in env:
+    # Library for the sensors user process
+    if 'USES_ADSPPM_TEST_MPD' in env:
+        MPD_ADSPPM_SNS_USER_SRC.extend(test_sources)
+    RCINIT_IMG = ['CORE_QDSP6_SENSOR_SW']
+    env.AddObject(RCINIT_IMG,[MPD_ADSPPM_SNS_USER_SRC])
+
+    if DSPPM_TARGET in ['670']:
+    	env.Append(CPPDEFINES = ["QDI_QDSPPM_USER_ID=1"])
+    else:
+    	env.Append(CPPDEFINES = ["QDI_QDSPPM_USER_ID=0"])
+
+    env.AddRCInitFunc(
+        RCINIT_IMG,
+        {
+            'sequence_group' : 'RCINIT_GROUP_1', # required
+            'init_name'      : 'qdsppm_sensor_client', # required
+            'init_function'  : 'MMPM_Init_Ext', # required
+            'dependencies'   : ['clk_regime','dalsys','npa','icbarb','sleep','smem_log']
+        }
+    )
+    if 'USES_ADSPPM_TEST_MPD' in env:
+        env.AddRCInitTask(
+            RCINIT_IMG,
+            {
+                'sequence_group'      : 'RCINIT_GROUP_2', # required
+                'thread_name'         : 'adsppm_test_mpd', # required
+                'thread_entry'        : 'adsppmtest_main',
+                'thread_type'         : 'RCINIT_TASK_QURTTASK',
+                'stack_size_bytes'    : '8192',
+                'priority_amss_order' : 'SHARED_DRIVER_SERVICE_PRI_ORDER',
+                'dependencies'        : ['clk_regime','vcs','dalsys','npa','icbarb','sleep','smem_log','qmi_fw','qdsp_pm']
+            }
+        )
+elif 'USES_AUDIO_IMG' in env:
+    # Library in audio process
+    if 'USES_ADSPPM_TEST_MPD' in env:
+        MPD_ADSPPM_AUD_USER_SRC.extend(test_sources)
+    RCINIT_IMG = ['CORE_QDSP6_AUDIO_SW']
+    env.AddObject(RCINIT_IMG,[MPD_ADSPPM_AUD_USER_SRC])
+    env.Append(CPPDEFINES = ["QDI_QDSPPM_USER_ID=0"])
+    env.AddRCInitFunc(
+        RCINIT_IMG,
+        {
+            'sequence_group' : 'RCINIT_GROUP_1', # required
+            'init_name'      : 'qdsppm_audio_client', # required
+            'init_function'  : 'MMPM_Init_Ext', # required
+            'dependencies'   : ['clk_regime','vcs','dalsys','npa','icbarb','sleep','smem_log']
+        }
+    )
+    if 'USES_ADSPPM_TEST_MPD' in env:
+        env.AddRCInitTask(
+            RCINIT_IMG,
+            {
+                'sequence_group'      : 'RCINIT_GROUP_2', # required
+                'thread_name'         : 'adsppm_test_mpd', # required
+                'thread_entry'        : 'adsppmtest_main',
+                'thread_type'         : 'RCINIT_TASK_QURTTASK',
+                'stack_size_bytes'    : '8192',
+                'priority_amss_order' : 'SHARED_DRIVER_SERVICE_PRI_ORDER',
+                'dependencies'        : ['clk_regime','vcs','dalsys','npa','icbarb','sleep','smem_log','qmi_fw','qdsp_pm']
+            }
+        )
+else:
+    #if 'USES_QURTOS_IMG' in env:
+    # Image built for Guest OS
+    RCINIT_IMG = ['CORE_ADSP_ROOT','CORE_QDSP6_SW','CORE_SLPI_ROOT','CORE_CDSP_ROOT']
+    if 'USES_MPD' in env:
+        env.AddObject(RCINIT_IMG,[MPD_ADSPPM_GUESTOS_SRC])
+    env.AddLibrary(RCINIT_IMG,'${BUILDPATH}/qdsp_pm',sources)
+    env.AddRCInitFunc(
+        RCINIT_IMG,
+        {
+            'sequence_group' : 'RCINIT_GROUP_2', # required
+            'init_name'      : 'qdsp_pm', # required
+            'init_function'  : 'MMPM_Init_Ext', # required
+            'dependencies'   : ['clk_regime','vcs','dalsys','npa','icbarb','sleep','smem_log','rpm']
+        }
+    )
+    if 'USES_MPD' in env:
+        env.AddRCInitFunc(
+            RCINIT_IMG,
+            {
+                'sequence_group' : 'RCINIT_GROUP_2', # required
+                'init_name'      : 'qdsp_pm_qdi', # required
+                'init_function'  : 'QDI_adsppm_init', # required
+                'dependencies'   : ['clk_regime','vcs','dalsys','npa','icbarb','sleep','smem_log','qdsp_pm']
+            }
+        )
+    env.AddRCInitTask(
+        RCINIT_IMG,
+        {
+            'sequence_group'      : 'RCINIT_GROUP_2', # required
+            'thread_name'         : 'qdsp_pm_asyncmgr', # required
+            'thread_entry'        : 'AM_WorkLoopThread',
+            'thread_type'         : 'RCINIT_TASK_QURTTASK',
+            'stack_size_bytes'    : '4096',
+            'priority_amss_order' : 'SHARED_DRIVER_SERVICE_PRI_ORDER',
+            'dependencies'        : ['clk_regime','vcs','dalsys','npa','icbarb','sleep','smem_log','qdsp_pm']
+        }
+    )
+    env.AddRCInitTask(
+        RCINIT_IMG,
+        {
+            'sequence_group'      : 'RCINIT_GROUP_2', # required
+            'thread_name'         : 'qdsp_pm_cb', # required
+            'thread_entry'        : 'AM_callBackThread',
+            'thread_type'         : 'RCINIT_TASK_QURTTASK',
+            'stack_size_bytes'    : '4096',
+            'priority_amss_order' : 'SHARED_DRIVER_SERVICE_PRI_ORDER',
+            'dependencies'        : ['clk_regime','vcs','dalsys','npa','icbarb','sleep','smem_log','qdsp_pm']
+        }
+    )
+    if 'USES_ADSPPM_TEST_SPD' in env:
+        env.AddRCInitTask(
+            RCINIT_IMG,
+            {
+                'sequence_group'      : 'RCINIT_GROUP_3', # required
+                'thread_name'         : 'qdsp_pm_test_spd', # required
+                'thread_entry'        : 'adsppmtest_main',
+                'thread_type'         : 'RCINIT_TASK_QURTTASK',
+                'stack_size_bytes'    : '16384',
+                'priority_amss_order' : 'SHARED_DRIVER_SERVICE_PRI_ORDER',
+                'dependencies'        : ['clk_regime','dalsys','npa','icbarb','sleep','smem_log','qmi_fw','qdsp_pm']
+            }
+        )
+
+#-------------------------------------------------------------------------------
+# Identify Target for Test Code (if test mode is enabled)
+#-------------------------------------------------------------------------------
+if ('USES_ADSPPM_TEST_SPD' in env) or ('USES_ADSPPM_TEST_MPD' in env):
+    env.Append(CPPDEFINES = 'ADSPPM_TEST');
+    if DSPPM_TARGET in ['8994']:
+        env.Append(CPPDEFINES = 'ADSPPM_TEST_8994');
+    elif DSPPM_TARGET in ['8992']:
+        env.Append(CPPDEFINES = 'ADSPPM_TEST_8992');
+    elif DSPPM_TARGET in ['8996']:
+        env.Append(CPPDEFINES = 'ADSPPM_TEST_8996');
+    elif DSPPM_TARGET in ['845']:
+        env.Append(CPPDEFINES = 'ADSPPM_TEST_845');
+    elif DSPPM_TARGET in ['670']:
+        env.Append(CPPDEFINES = 'ADSPPM_TEST_670');		
+    else:
+        env.Append(CPPDEFINES = 'ADSPPM_TEST_NONE');
+    if env['IMAGE'] in ['cdsp']:
+        env.Append(CPPDEFINES = 'ADSPPM_TEST_COMPUTE');
+    elif env['IMAGE'] in ['slpi']:
+        env.Append(CPPDEFINES = 'ADSPPM_TEST_SLPI');
+

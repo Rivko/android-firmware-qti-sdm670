@@ -1,0 +1,1492 @@
+//============================================================================
+//  Name:                                                                     
+//    std_debug_msm8998.cmm 
+//
+//  Description:                                                              
+//    Top level debug script
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who             what, where, why
+// --------   ---             ---------------------------------------------------------
+// 09/10/2017 MARTHAM       SDM670 ADSP debug settings updated.
+// 06/20/2017 JBILLING      Remove workaround, rpm debug updates
+// 04/19/2017 JBILLING      Updated check for workaround
+// 08/09/2016 JBILLING      Updated MBA debug config register mask
+// 07/27/2016 JBILLING      Add TestPD
+// 07/06/2016 JBILLING      Apps debug cookie added for PIL timeout
+// 04/27/2016 JBILLING      SLPI PMIC commands updated with absolute file access required by pmic scripts
+// 04/08/2016 JBILLING      SLPI PMIC commands updated
+// 04/07/2016 JBILLING      Ported for 8998, wlan added
+// 11/23/2015 JBILLING      Apps symbol usage feature
+// 11/18/2015 JBILLING      Fusion changes
+// 09/14/2015 JBILLING      Changes made for automation
+// 09/03/2015 JBILLING      Updated appsboot bkpt with mask method
+// 06/15/2015 JBILLING      Fixes for std_debug_rpm
+// 05/11/2015 JBILLING      Fixes for command line parsing
+// 01/31/2015 JBILLING      8996 additions, SLPI
+// 05/22/2014 JBILLING      Added fields for all subprocessors
+// 05/20/2014 JBilling      Created for 8994 and beyond. Now is a target-specific library file
+
+
+// Following arguments are supported. 
+// &UTILITY - subroutine to call. GETDEBUGDEFAULTS and SETDEBUGCOOKIE supported. Otherwise exit
+// &OPTION - 
+// ARG0 - Image to debug. 
+// ARG1 - En/Disable Sleep. lpm_enable / lpm_disable
+// ARG2 - Entry point for this debug session. will default to image entry point
+//        if nothing is specified.
+
+
+LOCAL &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+ENTRY &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+
+//    Locals: Local Variables
+//    Input Arguments
+//LOCAL &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4
+
+//    Return values to the caller along with success / fail value specific to utility
+LOCAL &PASS &RVAL0 &RVAL1 &RVAL2
+
+// Name of the utility we are calling
+LOCAL &SUBROUTINE
+LOCAL &err
+// Any subroutine specific options
+// Default exists for each subroutine
+
+// Input Argument 0 is the name of the utility
+&SUBROUTINE="&UTILITY"
+
+
+IF !(("&SUBROUTINE"=="GETDEBUGDEFAULTS")||("&SUBROUTINE"=="SETDEBUGCOOKIE")||("&SUBROUTINE"=="APPSBOOT_BKPT")||("&SUBROUTINE"=="GETALLIMAGELIST")||("&SUBROUTINE"=="GET_IMAGE_BY_SUBSYSTEM")||("&SUBROUTINE"=="DISABLE_CLOCK_GATING")||("&SUBROUTINE"=="BOOTUP_WORKAROUND")||("&SUBROUTINE"=="ADB_WORKAROUND_MESSAGE"))
+(
+    PRINT %ERROR "WARNING: UTILITY &UTILITY DOES NOT EXIST."
+    GOSUB EXIT SUCCESS
+)
+ELSE
+(
+    // This should be created by some top level script. The setupenv for each proc would
+    // set this up
+     AREA.SELECT
+
+     // Debug Print Statement
+    // PRINT "&SUBROUTINE &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG5 &IARG6 &IARG7"
+    // Call the required utility
+    GOSUB &SUBROUTINE &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue 
+
+    //Remove error handler
+    ON ERROR
+    
+    GOSUB EXIT &rvalue
+
+
+    
+)
+
+////////////////////////////////////////////
+//        Name: APPSBOOT_BKPT
+//        Function: Sets or clears debug cookie for desired subsystem
+//        Inputs: 
+//              &ARG0 - image to set debug cookie for
+//              &ACTION - "clear" - clears debug cookie. Else Sets it.
+//
+/////////////////////////////////////////////
+APPSBOOT_BKPT:
+    LOCAL &set_command
+    ENTRY &set_command %LINE &therest
+
+    LOCAL &AppsBootBkpt
+    
+    IF ("&HLOS"=="WP")
+    (
+        &AppsBootBkpt=0x9FC00000
+    )
+    ELSE 
+    (
+        &AppsBootBkpt="NULL"
+        LOCAL &script
+        &script="std_debug_"+STR.LWR("&HLOS")+".cmm"
+        
+        IF FILE.EXIST("&METASCRIPTSDIR\apps\&CHIPSET\&HLOS\&script")
+        (
+            do &METASCRIPTSDIR\apps\&CHIPSET\&HLOS\&script GETAPPSENTRYBREAKPOINT
+            ENTRY &AppsBootBkpt
+        )
+        
+        
+        
+        IF ("&AppsBootBkpt"=="NULL")||(!Y.EXIST(&AppsBootBkpt))
+        (
+            &AppsBootBkpt="0x80080000 0x30b00000 0x90b00000"
+        )
+
+        
+    )
+
+    ON ERROR GOSUB
+    (
+        DO std_fatalexit ATTACH "&FAILURE - std_utils APPSBOOT_BKPT hit some error "
+        PLIST
+        PSTEP
+    )
+    IF "&set_command"=="remove"
+    (
+        PRINT "Removing apps breakpoints"
+        B.DELETE &AppsBootBkpt
+        RETURN
+    )
+    ELSE
+    (
+        PRINT "Disabling other breakpoints, setting appsboot entry breakpoint"
+        BREAK.DISABLE /ALL
+
+        B.DELETE &AppsBootBkpt
+        B.S &AppsBootBkpt /o     //appsboot entry
+    )
+    
+    IF "&FUSION_PLATFORM"=="TRUE"
+    (
+    
+        DIALOG.OK "Please issue hard reset to device and  press OK"
+        Sys.up
+    )
+    
+    GO
+    &counter=0
+    LOCAL &counter2 &exitflag
+    &counter2=0
+    &exitflag=0
+    PRINT "Waiting to get to appsboot. Please Wait..."
+    
+    
+    //Depending on if we're able to use apps symbols, wait loop is different
+    IF ("&MULTIPROC_DBG_FLAG"=="TRUE")
+    (
+        WHILE (STATE.RUN()&&(&counter<6000.)&&(&exitflag==0))
+        (
+            WAIT.100ms
+            &counter=&counter+1
+            
+            
+            if &counter==100
+            (
+            
+                        LOCAL &hlos_boot_filename
+                        IF "&HLOS"=="LA"
+                        (
+                            &hlos_boot_filename="VMLINUX"
+                        )
+                        ELSE
+                        (
+                            &hlos_boot_filename="boot-symbols"
+                        )
+                        
+                        AREA.CREATE apps_entry_sym_mismatch 50. 10.
+                        AREA.SELECT apps_entry_sym_mismatch
+                        WINPOS 0. 0. 50. 10.
+                        AREA.VIEW apps_entry_sym_mismatch
+                        
+                        PRINT %ERROR "   Apps has not yet hit entry breakpoint"
+                        PRINT " "
+                        PRINT %ERROR "   Please Check if:"
+                        PRINT %ERROR "       - Apps &hlos_boot_filename mismatch, or"
+                        PRINT %ERROR "       - Device may need a hard-reset"
+                        PRINT " "
+                        PRINT " "
+                        PRINT " "
+                        
+                        AREA.SELECT A000
+            )
+            
+            
+            
+        )
+    )
+    ELSE
+    (
+            
+            //To disable PIL timeouts
+            ON ERROR CONTINUE
+            D.S EZAXI:&RELOCATION_DATA_start %LE %Long &DEBUG_COOKIE_VALUE
+            ON ERROR DEFAULT
+            
+            WHILE (STATE.RUN()&&(&counter<6000.)&&(&exitflag==0))
+            (
+                WAIT.100ms
+                &counter=&counter+1
+                &counter2=&counter2+1
+                
+                if &counter2>5.
+                (
+                    &counter2=0
+                    //Break processor, get PC
+                    BREAK
+                    &r=register(pc)
+
+                    if (&r&0xFFF0000000000000)!=0x0
+                    (
+                        &exitflag=1.
+                    )
+                    //If we're not in HLOS yet, GO. if we are, keep broken.
+                    else
+                    (
+                        GO
+                    )
+                
+                )
+            )
+    )
+    
+    IF &counter>=6000.
+    (
+        
+        PRINT "Error - apps could not stop. Please check if USB was connected across reset"
+        do std_fatalexit SYSTEM "std_debug_&CHIPSET APPSBOOT_BKPT: Error - Couldn't stop apps at appsboot entry. Please check if device was able to boot up correctly or if Appsboot breakpoints are still valid"
+        PLIST
+        PSTEP
+    )
+    
+    B.DELETE &AppsBootBkpt
+    
+    //FIXME - this is Android specific. Need WP equivalent
+    ///////Setup apps to prevent PIL timeout//////
+    IF "&MULTIPROC_DBG_FLAG"=="TRUE"
+    (
+            
+            ON ERROR CONTINUE
+            D.S EZAXI:&RELOCATION_DATA_start %LE %Long &DEBUG_COOKIE_VALUE
+            v \\vmlinux\subsystem_restart\enable_debug=1
+            v pbl_mba_boot_timeout_ms = 0
+            v \watchdog_v2\enable = 0
+            v modem_auth_timeout_ms = 0
+            v rcu_cpu_stall_suppress=1 
+            ON ERROR
+            
+    )
+    
+RETURN SUCCESS
+
+////////////////////////////////////////////
+//        Name: BOOTUP_WORKAROUND
+//        Function: Workaround for sdm845 bootup pbl.
+//        Inputs: 
+//              &ARG0 - image to set debug cookie for
+//              &ACTION - "clear" - clears debug cookie. Else Sets it.
+//
+/////////////////////////////////////////////
+//________________address|________0________4________8________C_0123456789ABCDEF
+//NSD:00000000007801C0| 0005A800>24010000 00000000 00000000 .......$........
+
+BOOTUP_WORKAROUND:
+    //Just return  now that out of bringup.
+    RETURN 
+    
+    //Original workaround code.
+    LOCAL &fuseval &bitcheckval &result
+    &bitcheckval=0x1<<29.
+    &fuseval=d.l(ezaxi:0x7801C4)
+    &result=(&bitcheckval)&(&fuseval)
+    if &result==0x0
+    (
+        IF "&RUMI"=="TRUE"
+        (
+            //Silver debugger instability issue related to APB accesses on the new CPUSS drop.
+            //Loading images, scripts, semihosting, etc can cause stability issues on silver cores
+            //confirmed ARM bug and fixed on a later release, please do the following WA for now after sys.u on apps0 T32
+            d.s 0x17810054 %LE %Long 0x556
+        )
+        //Workaround until PBL patch implemented.
+        b.s 0x31E038 /cmd "r.s x0 0x20000000" /resume 
+        b.s 0x31E054 /cmd "r.s x0 0x20000000" /resume
+        b.s 0x30F92C /cmd "r.s x0 1" /resume
+        b.s 0x1469C000 
+        GO
+        wait.500ms
+        wait.500ms
+        wait.500ms
+        wait.500ms
+        //do std_utils WAIT_TO_STOP 0x1469C000 100 &APPS0_PORT
+
+        b.d 0x31E038 
+        b.d 0x31E054 
+        b.d 0x30F92C 
+        b.d 0x1469C000
+    
+    
+    
+        winclear
+        term.reset
+        term.size 200 20000.
+        term.scroll on
+        term.mode VT100
+        term.method dcc
+        term.view 
+    )
+    RETURN 
+////////////////////////////////////////////
+//        Name: ADB_WORKAROUND_MESSAGE
+//        Function: Workaround for sdm845 adb and terminal commands
+//        Inputs: 
+//              &ARG0 - image to set debug cookie for
+//              &ACTION - "clear" - clears debug cookie. Else Sets it.
+//
+/////////////////////////////////////////////    
+ADB_WORKAROUND_MESSAGE:
+    
+    LOCAL &image
+    ENTRY &image %LINE &therest
+    
+    GO
+    
+    WINPOS 10. 5. 60. 10.
+    DIALOG
+    (&
+        HEADER "Terminal and ADB prompt request"
+        POS 1. 0. 58. 1.
+        TEXT "Please enter required commands into TERM.VIEW window to enable ADB. "
+        
+        TEXT "(Note that it will take a few minutes for Linux to be able to"
+        TEXT "  receive commands, else you'll get permission denied errors)."
+        TEXT " "
+        
+        TEXT "Then click CONTINUE,"
+        TEXT "  Then enter required ADB commands to bring subsystem "
+        TEXT "  out of reset. You should then see subsystem come up"
+        
+        continue: DEFBUTTON "CONTINUE" "GOSUB ADB_WORKAROUND_MESSAGE_return"
+        
+    )
+    STOP
+ADB_WORKAROUND_MESSAGE_return:
+    CONTINUE
+    RETURN
+
+    
+////////////////////////////////////////////
+//        Name: DISABLE_CLOCK_GATING
+//        Function: Disables clock gating based on desired core
+//        Inputs: 
+//              &ARG0 - image to set debug cookie for
+//              &ACTION - "clear" - clears debug cookie. Else Sets it.
+//
+/////////////////////////////////////////////
+DISABLE_CLOCK_GATING:
+    LOCAL &image &targetprocessorport &enableflag
+    ENTRY &image &targetprocessorport &enableflag
+    
+    LOCAL &reg_suffix &cgc_reg
+    &reg_suffix="_QDSP6SS_CGC_OVERRIDE"
+    &image=STR.LWR("&image")
+    
+    IF "&image"=="mpss"
+    (
+        &cgc_reg="MSS"+"&reg_suffix"
+    )
+    ELSE IF "&image"=="adsp"
+    (
+		LOCAL &chipset_upr
+		&chipset_upr=STR.UPR("&CHIPSET")
+		IF ("&chipset_upr"=="SDM670")
+		(
+			&cgc_reg="SSC"+"&reg_suffix"
+		)
+		ELSE
+		(
+			&cgc_reg="LPASS"+"&reg_suffix"
+		)
+    )
+    ELSE IF "&image"=="cdsp"
+    (
+        &cgc_reg="TURING"+"&reg_suffix"
+    )
+    ELSE IF "&image"=="slpi"
+    (
+        &cgc_reg="SSC"+"&reg_suffix"
+    )
+    ELSE
+    (
+        RETURN "FAILURE"
+    )
+    IF "&enableflag"=="ENABLE"
+    (
+        do std_intercom_do &targetprocessorport std_utils HWIO_OUTF &cgc_reg CORE_RCLK_EN 0x0
+        do std_intercom_do &targetprocessorport std_utils HWIO_OUTF &cgc_reg CORE_CLK_EN  0x0
+    )
+    ELSE
+    (
+        do std_intercom_do &targetprocessorport std_utils HWIO_OUTF &cgc_reg CORE_RCLK_EN 0x1
+        do std_intercom_do &targetprocessorport std_utils HWIO_OUTF &cgc_reg CORE_CLK_EN  0x1
+    )    
+    RETURN "SUCCESS"
+    
+////////////////////////////////////////////
+//        Name: GETALLCORELIST
+//        Function: Sets or clears debug cookie for desired subsystem
+//        Inputs: 
+//              &ARG0 - image to set debug cookie for
+//              &ACTION - "clear" - clears debug cookie. Else Sets it.
+//
+/////////////////////////////////////////////
+
+GETALLIMAGELIST:
+
+ENDDO TZ,XBL,AOP,MPSS,ADSP,CDSP,WLAN,&HLOS
+////////////////////////////////////////////
+//        Name: GET_IMAGE_BY_SUBSYSTEM
+//        Function: Gets image by given subsystem
+//        Inputs: 
+//              &ARG0 - image to set debug cookie for
+//              &ACTION - "clear" - clears debug cookie. Else Sets it.
+//
+/////////////////////////////////////////////
+
+GET_IMAGE_BY_SUBSYSTEM:
+    LOCAL &given_subsystem
+    ENTRY &given_subsystem
+    
+    LOCAL &subsystemlist
+    
+    IF "&given_subsystem"=="LPASS-Q6"
+    (
+        &subsystemlist="ADSP"
+    )
+    IF "&given_subsystem"=="CDSP-Q6"
+    (
+        &subsystemlist="CDSP"
+    )
+    ELSE IF "&given_subsystem"=="MSS-Q6"
+    (
+        &subsystemlist="MPSS"
+    )
+    ELSE IF "&given_subsystem"=="SSC-Q6"
+    (
+        &subsystemlist="SLPI"
+    )
+    ELSE IF "&given_subsystem"=="APPS-ARMV8-WP"
+    (
+        &subsystemlist="TZ,XBL,appsboot"
+    )
+    ELSE IF "&given_subsystem"=="APPS-ARMV8-LA"
+    (
+        &subsystemlist="TZ,XBL,appsboot"
+    )
+    ELSE IF "&given_subsystem"=="APPS-ARMV8"
+    (
+        &subsystemlist="TZ,XBL,appsboot"
+    )
+    ELSE IF "&given_subsystem"=="RPM-CORTEXM3"
+    (
+        &subsystemlist="RPM"
+    )
+    ELSE 
+    (
+        PRINT "Warning! Unknown subsystem given. Using images for &CURRENT_HW_BLOCK_NAME"
+        GOSUB GET_IMAGE_BY_SUBSYSTEM &CURRENT_HW_BLOCK_NAME
+        ENTRY &subsystemlist
+    )
+    
+    RETURN &subsystemlist
+////////////////////////////////////////////
+//        Name: SETDEBUGCOOKIE
+//        Function: Sets or clears debug cookie for desired subsystem
+//        Inputs: 
+//              &ARG0 - image to set debug cookie for
+//              &ACTION - "clear" - clears debug cookie. Else Sets it.
+//
+/////////////////////////////////////////////
+
+SETDEBUGCOOKIE:
+    LOCAL &ACTION &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5 &ARG6 &ARG7 &ARG8 &ARG9 &ARG10 &ARG11
+    ENTRY &ACTION &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5 &ARG6 &ARG7 &ARG8 &ARG9 &ARG10 &ARG11
+
+    LOCAL &DebugCookieAddress
+    &Loc_ARG0=string.lwr("&ARG0")
+    //&Action should be "None"
+    do hwio
+    LOCAL &rvalue
+    
+          //############RPM DEBUG#############        
+            IF ("&Loc_ARG0"=="rpm")||("&Loc_ARG0"=="aop")
+            (
+                &DebugCookieAddress=&RPM_DEBUG_COOKIE
+            )
+            //############APPS PROCESSOR DEBUG#############
+            ELSE IF ("&Loc_ARG0"=="appspbl")
+            (
+                RETURN
+            )
+            ELSE IF ("&Loc_ARG0"=="xbl")
+            (
+                &DebugCookieAddress=&XBL_DEBUG_COOKIE
+            )
+            ELSE IF ("&Loc_ARG0"=="tz")
+            (
+                &DebugCookieAddress=&XBL_DEBUG_COOKIE
+            )
+            ELSE IF ("&Loc_ARG0"=="appsboot")
+            (
+                &DebugCookieAddress=&XBL_DEBUG_COOKIE
+            )
+            
+            //############MODEM_Q6 DEBUG#############    
+            ELSE IF ("&Loc_ARG0"=="mpss-fus")
+            (
+                //No point in debug cookie if it's a fusion platform - mpss is on different chip.
+                RETURN
+            )
+            ELSE IF ("&Loc_ARG0"=="mpss")||("&Loc_ARG0"=="wlan")||("&Loc_ARG0"=="testpd")
+            (
+                
+                
+                &DebugCookieAddress=&MPSS_DEBUG_COOKIE
+                do std_utils HWIO_OUTF GCC_MSS_CFG_AHB_CBCR CLK_ENABLE 0x1 EZAXI fatalexit
+                
+                wait.200ms
+                do std_utils HWIO_OUTF MSS_QDSP6SS_DBG_CFG DBG_SW_REG 0x20 EZAXI fatalexit
+
+
+            )
+            ELSE IF ("&Loc_ARG0"=="mba")
+            (
+                &DebugCookieAddress=&MBA_DEBUG_COOKIE
+
+                do std_utils HWIO_OUTF GCC_MSS_CFG_AHB_CBCR CLK_ENABLE 0x1 EZAXI fatalexit
+                wait.200ms
+                do std_utils HWIO_OUTF MSS_QDSP6SS_DBG_CFG DBG_SW_REG 0xC0 EZAXI fatalexit
+            )
+
+            //############ADSP_Q6 DEBUG#############                                
+            ELSE IF (("&Loc_ARG0"=="adsp"))
+            (
+			   //NOTE: On SDM670 LPASS integrated into SSC-Q6SS, set SSC Q6 debug_cfg register.
+
+                &DebugCookieAddress=&ADSP_DEBUG_COOKIE
+                BREAK
+								
+                DO std_utils ENABLE_CBCR_AND_SPIN GCC_SSC_XO_CBCR EZAXI fatalexit
+                 
+				//Turn on SSC interface clocks.
+                do std_utils ENABLE_CBCR_AND_SPIN GCC_LPASS_Q6_AXI_CBCR
+                do std_utils ENABLE_CBCR_AND_SPIN GCC_LPASS_CORE_AXIM_CBCR
+                do std_utils ENABLE_CBCR_AND_SPIN GCC_LPASS_SWAY_CBCR
+                //do std_utils ENABLE_CBCR_AND_SPIN GCC_SSC_CNOC_MPU_CBCR
+                
+                do std_utils ENABLE_CBCR_AND_SPIN SSC_SCC_Q6_AHBS_CBCR
+                do std_utils ENABLE_CBCR_AND_SPIN SSC_SCC_Q6_AHBM_CBCR
+                do std_utils ENABLE_CBCR_AND_SPIN SSC_SCC_AT_CBCR
+                do std_utils ENABLE_CBCR_AND_SPIN SSC_SCC_PCLKDBG_CBCR
+				
+				do std_utils HWIO_OUTF SCC_SSC_APB_LOW_POWER_HANDSHAKE REQUEST 0x1
+				do std_utils HWIO_OUTF SCC_SSC_DAP_LOW_POWER_HANDSHAKE REQUEST 0x1
+				do std_utils HWIO_OUTF SCC_SSC_NTS_LOW_POWER_HANDSHAKE REQUEST 0x1
+                           
+                wait.200ms
+                
+                do std_utils HWIO_OUTF SSC_QDSP6SS_DBG_CFG DBG_SW_REG 0x20 EZAXI fatalexit  
+            )
+            //############CDSP_Q6 DEBUG#############     
+            ELSE IF (("&Loc_ARG0"=="cdsp"))
+            (
+                &DebugCookieAddress=&CDSP_DEBUG_COOKIE
+                BREAK
+               						
+                do std_utils ENABLE_CBCR_AND_SPIN GCC_TURING_CFG_AHB_CBCR
+   
+                //2. Enable the Turing TBU clock branch  
+                do std_utils ENABLE_CBCR_AND_SPIN GCC_TURING_TBU_CBCR
+                // 3. Enable the Turing AHB-AON bus CBC by default at power-up. 
+                do std_utils ENABLE_CBCR_AND_SPIN TURING_TURING_WRAPPER_AON_CBCR
+                // 4. Configure the AHB-AON clock root to be sourced by CXO.
+                do std_utils HWIO_OUTF TURING_AON_CFG_RCGR SRC_SEL 0x0
+                // 5. Enable Q6 Turing resources in preparation for a QDSP boot.
+                // Turn on the Q6SS Slave clock. 
+                do std_utils ENABLE_CBCR_AND_SPIN TURING_Q6SS_AHBS_AON_CBCR
+                // Turn on the Q6SS Master clock. 
+                do std_utils ENABLE_CBCR_AND_SPIN TURING_Q6SS_AHBM_AON_CBCR
+                
+                //Additional clocks required for CDSP debug
+                do std_utils ENABLE_CBCR_AND_SPIN TURING_TURING_WRAPPER_CDSP_NOC_AXI_CBCR
+                do std_utils ENABLE_CBCR_AND_SPIN TURING_Q6SS_Q6_AXIM_CBCR
+                
+                //-----------------------------------------------------------------------
+                //  QDSPV65SS Out-Of-Reset sequence.                                     
+                //-----------------------------------------------------------------------
+                // 1. Turn on the XO clock, required for boot FSM. 
+                do std_utils HWIO_OUTF TURING_QDSP6SS_XO_CBCR CLKEN 0x1
+                // Enable the QDSP6SS sleep clock for the Q6 watchdog enablement. 
+                do std_utils HWIO_OUTF TURING_QDSP6SS_SLEEP_CBCR CLKEN 0x1
+                
+                //Needed?
+                // 2. Configure QDSP6 core CBC to enable clock.
+                //do std_utils HWIO_OUTF TURING_QDSP6SS_CORE_CBCR CLKEN 0x1
+   
+                wait.200ms
+                do std_utils HWIO_OUTF TURING_QDSP6SS_DBG_CFG DBG_SW_REG 0x20 EAZNC fatalexit
+
+
+            )
+            //############SLPI_Q6 DEBUG#############                                
+            ELSE IF (("&Loc_ARG0"=="slpi"))
+            (
+                &DebugCookieAddress=&SLPI_DEBUG_COOKIE
+                BREAK
+                
+                //FIXME - workaround for EL exception on apps
+                LOCAL &el_register
+                ON ERROR GOSUB
+                (
+                    do std_fatalexit ATTACH "std_debug_&CHIPSET - couldn't set APPS EL registers"
+                    PLIST
+                    PSTEP
+                ) 
+                &el_register=REGISTER(M)
+                REGISTER.SET M 0XD
+                ON ERROR
+                
+                //SMPS7
+                //do std_utils EXECUTESCRIPT EXIT &METASCRIPTSDIR\common\&CHIPSET\PMICPeek.cmm  0x12640  0x0 0x04
+                //do std_utils EXECUTESCRIPT EXIT &METASCRIPTSDIR\common\&CHIPSET\PMICPeek.cmm  0x12641  0x0 0x04
+                //Write SSC SMPS7 set on
+                //do std_utils EXECUTESCRIPT EXIT &METASCRIPTSDIR\common\&CHIPSET\PMICPeek.cmm  0x12646 0x0 0x80
+                
+                //LDO4
+                //Write SSC CX set voltage .896 volts => 0x380
+                //write low range (not ultra low range)
+                //do std_utils EXECUTESCRIPT EXIT &METASCRIPTSDIR\common\&CHIPSET\PMICPeek.cmm  0x14340  0x0 0x80
+                //do std_utils EXECUTESCRIPT EXIT &METASCRIPTSDIR\common\&CHIPSET\PMICPeek.cmm  0x14341  0x0 0x03
+                 //LDO27A
+                //Write SSC MX set voltage - .928 volts => 0x3A0
+                //write low range (not ultra low range)
+                //do std_utils EXECUTESCRIPT EXIT &METASCRIPTSDIR\common\&CHIPSET\PMICPeek.cmm  0x15A40 0x0 0xA0
+                //do std_utils EXECUTESCRIPT EXIT &METASCRIPTSDIR\common\&CHIPSET\PMICPeek.cmm  0x15A41 0x0 0x03
+                
+                //Write SSC MX set on
+                //do std_utils EXECUTESCRIPT EXIT &METASCRIPTSDIR\common\&CHIPSET\PMICPeek.cmm  0x15A46 0x0 0x80
+                //Write SSC CX set on
+                //do std_utils EXECUTESCRIPT EXIT &METASCRIPTSDIR\common\&CHIPSET\PMICPeek.cmm  0x14346 0x0 0x80
+                
+                
+                DO std_utils ENABLE_CBCR_AND_SPIN GCC_SSC_XO_CBCR EZAXI fatalexit
+                
+                do std_utils HWIO_IN MPM_SSCAON_CONFIG1
+                LOCAL &nMpmRegVal
+                ENTRY &nMpmRegVal
+                &nMpmRegVal=(&nMpmRegVal)&(0x7FFFFFFF)
+                do std_utils HWIO_OUT MPM_SSCAON_CONFIG1 &nMpmRegVal EZAXI fatalexit
+                //nMpmRegVal = HWIO_IN(MPM_SSCAON_CONFIG0);
+                //nMpmRegVal &= 0x7FFFFFFF;
+                //HWIO_OUT(MPM_SSCAON_CONFIG1 nMpmRegVal);
+
+                do std_utils HWIO_OUTF GCC_SSC_RESET SSC_ARES 0x1
+
+                do std_utils HWIO_OUTF GCC_SSC_RESET SSC_ARES 0x0
+
+                do std_utils HWIO_OUT AOSS_CC_SENSORS_RESTART 0x1
+                wait.10ms
+                do std_utils HWIO_OUT AOSS_CC_SENSORS_RESTART 0x0
+
+                do std_utils ENABLE_CBCR_AND_SPIN GCC_AGGRE_NOC_SSC_Q6_AXI_CBCR
+                do std_utils ENABLE_CBCR_AND_SPIN GCC_SSC_AGGRE_NOC_AHBM_CBCR
+                do std_utils ENABLE_CBCR_AND_SPIN GCC_SSC_CNOC_AHBS_CBCR
+                do std_utils ENABLE_CBCR_AND_SPIN GCC_SSC_CNOC_MPU_CBCR
+                
+                do std_utils ENABLE_CBCR_AND_SPIN SSC_SCC_Q6_AHBS_CBCR
+                do std_utils ENABLE_CBCR_AND_SPIN SSC_SCC_Q6_AHBM_CBCR
+                do std_utils ENABLE_CBCR_AND_SPIN SSC_SCC_AT_CBCR
+                do std_utils ENABLE_CBCR_AND_SPIN SSC_SCC_PCLKDBG_CBCR
+                
+                do std_utils HWIO_OUTF SSC_QDSP6SS_XO_CBCR CLKEN 0x1
+                do std_utils HWIO_OUTF SSC_QDSP6SS_SLEEP_CBCR CLKEN 0x1
+                
+                //Needed?
+                //do std_utils HWIO_OUTF SSC_QDSP6SS_CORE_CBCR CLKEN 0x1
+                
+                wait.200ms
+                
+                do std_utils HWIO_OUTF SSC_QDSP6SS_DBG_CFG DBG_SW_REG 0x20 EZAXI fatalexit 
+                
+                
+          
+                ON ERROR GOSUB
+                (
+                    do std_fatalexit ATTACH "std_debug_&CHIPSET - couldn't restore APPS EL registers"
+                    PLIST
+                    PSTEP
+                )
+                REGISTER.SET M &el_register
+                ON ERROR
+                
+                
+            )
+            //############WCNSS_ARM9 DEBUG#############                                
+            ELSE IF (("&Loc_ARG0"=="wcnss"))
+            (
+                &DebugCookieAddress=&WCNSS_DEBUG_COOKIE
+            )
+            ELSE
+            (
+                
+                PRINT %ERROR "Error! Unknown image: &ARG0 specified"
+                GOSUB 
+                (
+                    do std_fatalexit USER "Error! Unknown image: &ARG0 specified"
+                )
+            )
+            
+            
+            //Fatal out if we have an error here
+            
+            ON ERROR GOSUB
+            (
+                do std_fatalexit ATTACH "Error: Couldn't clear debug cookie for &Loc_ARG0"
+                PLIST
+                PSTEP
+            )
+            //set the value
+            IF STR.LWR("&ACTION")!="clear"
+            (
+                DATA.SET EZAXI:&DebugCookieAddress %LONG %LE &DEBUG_COOKIE_VALUE
+            )
+            ELSE //user wants cookie cleared
+            (
+                DATA.SET EZAXI:&DebugCookieAddress %LONG %LE 0x0
+				
+				IF (("&Loc_ARG0"=="adsp"))
+				(
+					//SDM670 Specific settings.
+					//These registers must be set to attach debugger to LPASS-Q6.
+					//Ideal place to configure these registers is while ADSP Out of reset in TZ PIL.
+					
+					D.S EZAXI:0x62b05018 %LONG 0x7
+					D.S EZAXI:0x62b0501c %LONG 0x7
+					D.S EZAXI:0x62b05020 %LONG 0x5
+					
+					d.s EZAXI:0x624000b0 %le %long 0x140b
+				)
+            )
+            ON ERROR
+            
+    RETURN //SETDEBUGCOOKIE. 
+  
+
+////////////////////////////////////////////
+//            Function: GETDEBUGDEFAULTS
+//
+//
+//               &rvalue_targetprocessor="RPM" -> 
+//                      Multiple images may map to same processor (e.g. MBA and MPSS on the modem Q6)
+//               &rvalue_symbolloadscript="std_loadsyms_rpm"
+//                      Specifies the load script that std_debug will call to load symbols on your target processor
+//               &rvalue_buildpath="&AOP_BUILDROOT"
+//                      The Build Path for your image's symbols.
+//               &rvalue_debugscript="std_debug_rpm" 
+//                      Debug script for your image, which std_debug will call once the target image is in initialization.
+//               &rvalue_peripheral_processor="FALSE"
+//                      Indicates if the target is a peripheral processor, in which case CTI is used to communicate with the boot processor that it initialized.
+//                      Currently only Q6's use this.
+//               &rvalue_targetprocessorport=&RPM_PORT
+//                      The JTag intercom port to execute intercom commands on the remote JTag window
+//               &rvalue_processortimeoutvalue=0x1
+//                      Once the system starts booting up, it will wait for either a CTI signal or timeout, then JTag attempts to break.
+//                      Q6's take a while to load, depending on how long apps takes to load them (say 20 seconds), whereas RPM and bootchain are nearly immediate
+//                      timeout value is in increments of 100 milliseconds.
+//                      
+//
+////////////////////////////////////////////
+GETDEBUGDEFAULTS:
+    LOCAL &ACTION &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5 &ARG6 &ARG7 &ARG8 &ARG9 &ARG10 &ARG11 &ARG12
+    ENTRY &ACTION &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5 &ARG6 &ARG7 &ARG8 &ARG9 &ARG10 &ARG11 &ARG12
+        
+            //QURT VTLB toggle
+            GLOBAL &ENABLE_VTLB_FLAG
+            &ENABLE_VTLB_FLAG="TRUE"
+            
+            //locals for given parameters
+            LOCAL &given_image &given_lpm_option &given_cti_enable &given_alternateelf &given_extraoption
+            
+            
+            &given_image=string.lwr("&ARG0")
+            &given_lpm_option=string.lwr("&ARG1")
+            &given_cti_enable=string.lwr("&ARG2")
+            &given_alternateelf=string.lwr("&ARG3")
+            &given_extraoption=string.lwr("&ARG4")
+
+            //return value variables
+            LOCAL &rvalue_image &rvalue_targetprocessor &rvalue_targetprocessorport &rvalue_bootprocessor &rvalue_bootprocessorport &rvalue_peripheral_processor &rvalue_processortimeoutvalue &rvalue_debugscript &rvalue_symbolloadscript &rvalue_buildpath &rvalue_entry_bkpt &rvalue_error_bkpts &rvalue_lpm_option &rvalue_sleep_disable_command &rvalue_cti_enable &rvalue_multi_elf_option &rvalue_alternateelf &rvalue_extraoption
+
+                    
+
+            
+            &rvalue_image="&given_image"
+            
+            
+            //For simulator, intercom ports are not initialized.
+            IF (STRING.SCAN("&MPSS_PORT","P",0)!=-1)
+            (
+                GLOBAL &AOP_PORT &MPSS_PORT &ADSP_PORT &CDSP_PORT &SLPI_PORT &APPS0_PORT &APPSC0_PORT
+                
+                &AOP_PORT=0x0
+                &MPSS_PORT=0x0
+                &ADSP_PORT=0x0
+                &CDSP_PORT=0x0
+                &SLPI_PORT=0x0
+                &APPS0_PORT=0x0
+                &APPSC0_PORT=0X0
+            )
+            
+            //Turn on logging if specified. Only execute this logic first time through
+            
+            IF (STRING.SCAN("&given_extraoption","resultslog->",0)!=-1)&&("&LOGGINGSETUP"!="1.")
+            (
+                &LOGSENABLED="TRUE"
+                GLOBAL &LOGGINGSETUP
+                &LOGGINGSETUP=1.
+                
+                //affects operation of std_fatalexit
+                &DEBUGLEVEL="AUTOMATION"
+                
+                
+                
+                LOCAL &string_length &string_size &value_to_cut &current_slave &size_of_slave &tempfile
+                &current_string="&given_extraoption"
+                &current_key="resultslog->"
+
+                &string_length=String.Length("&current_key")
+                &string_size=string.scan("&current_string","&current_key",0)
+
+                //Cut up to current_key
+                &value_to_cut=&string_size+&string_length
+                &current_string=string.cut("&current_string",&value_to_cut)
+
+                //Now cut away ','
+                &string_length=String.Length("&current_string")
+                
+                IF STRING.SCAN("&current_string",",",0)!=-1
+                (
+                    &string_size=string.scan("&current_string",",",0)
+                
+                    //separate the first slave from the rest of the string
+                    &value_to_cut=&string_size-&string_length
+                    &tempfile=STRING.CUT("&current_string",&value_to_cut)
+                )
+                ELSE
+                (
+                    &tempfile="&current_string"
+                )
+                    //&size_of_slave=STRING.LENGTH("&tempfile")
+                    
+                //above ten lines can be replaced by these two lines if newer t32 version used (=>6/22/15)
+                //&tempfile=STRing.SPLIT("&extraoptions","resultslog->",1)
+                //&tempfile=STRing.SPLIT("&tempfile",",",0)
+                &tempdir=OS.FILE.PATH("&tempfile")
+                IF (OS.DIR(&tempdir))
+                (
+                    &OUTPUTFILE="&tempfile"
+                    PRINT "Using log file &tempfile"
+                )
+                ELSE
+                (
+                    PRINT "Warning: Could not find specified directory for log file &tempfile. Using &OUTPUTFILE for logging instead"
+                )
+            )
+
+            
+            IF ("&LOCALHOST"=="&APPSC0_PORT")
+            (
+                &rvalue_bootprocessor="APPSC0"
+                &rvalue_bootprocessorport="&APPSC0_PORT"
+            )
+            ELSE
+            (
+                &rvalue_bootprocessor="APPS0"
+                &rvalue_bootprocessorport=&APPS0_PORT
+            )
+            
+            
+            //############RPM DEBUG#############        
+            IF ("&given_image"=="rpm")||("&given_image"=="aop")
+            (
+               &rvalue_targetprocessor="RPM"
+               &rvalue_targetprocessorport="&AOP_PORT"
+               &rvalue_peripheral_processor="true"
+               &rvalue_processortimeoutvalue=0x1
+               &rvalue_debugscript="std_debug_rpm"
+               &rvalue_symbolloadscript="std_loadsyms_rpm"
+               &rvalue_buildpath="&AOP_BUILDROOT"
+               &rvalue_entry_bkpt="main"
+               &rvalue_error_bkpts="abort"
+               &rvalue_sleep_disable_command="NULL"
+               
+               //defaults. rvalues are modified below depending on user input.
+               &rvalue_lpm_option="lpm_enable"
+               &rvalue_cti_enable="false"
+               &rvalue_multi_elf_option="false"
+               &rvalue_extraoption="stopatentry"
+            )
+
+            
+            //############APPS PROCESSOR DEBUG#############
+            ELSE IF ("&given_image"=="appspbl")
+            (
+                IF ("&LOCALHOST"=="&APPSC0_PORT")
+                (
+                    &rvalue_targetprocessor="APPSC0"
+                    &rvalue_targetprocessorport="&APPSC0_PORT"
+                )
+                ELSE
+                (
+                    &rvalue_targetprocessor="APPS0"
+                    &rvalue_targetprocessorport=&APPS0_PORT
+                )
+
+                &rvalue_peripheral_processor="false"
+                &rvalue_processortimeoutvalue=0x14
+                &rvalue_debugscript="std_debug_boot"
+                &rvalue_symbolloadscript="NULL"
+                &rvalue_buildpath="&BOOT_BUILDROOT"
+                &rvalue_entry_bkpt="NULL"
+                &rvalue_error_bkpts="NULL"
+                &rvalue_sleep_disable_command="NULL"
+
+                //defaults. rvalues are modified below depending on user input.
+                &rvalue_lpm_option="lpm_enable"
+                &rvalue_cti_enable="false"
+                &rvalue_multi_elf_option="false"
+            )
+            ELSE IF ("&given_image"=="xbl")
+            (
+                IF ("&LOCALHOST"=="&APPSC0_PORT")
+                (
+                    &rvalue_targetprocessor="APPSC0"
+                    &rvalue_targetprocessorport="&APPSC0_PORT"
+                )
+                ELSE
+                (
+                    &rvalue_targetprocessor="APPS0"
+                    &rvalue_targetprocessorport=&APPS0_PORT
+                )
+                &rvalue_peripheral_processor="false"
+                &rvalue_processortimeoutvalue=0x140
+                &rvalue_debugscript="std_debug_boot"
+                &rvalue_symbolloadscript="std_loadsyms_xbl"
+                &rvalue_buildpath="&BOOT_BUILDROOT"
+                &rvalue_entry_bkpt="\\XBLLoader\sbl1_mc\sbl1_main_ctl"
+                &rvalue_error_bkpts="\\XBLLoader\boot_error_handler\boot_error_handler"
+                &rvalue_sleep_disable_command="NULL"
+
+                //defaults. rvalues are modified below depending on user input.
+                &rvalue_lpm_option="lpm_enable"
+                &rvalue_cti_enable="false"
+                &rvalue_multi_elf_option="false"
+            )
+            ELSE IF ("&given_image"=="tz")
+            (
+                IF ("&LOCALHOST"=="&APPSC0_PORT")
+                (
+                    &rvalue_targetprocessor="APPSC0"
+                    &rvalue_targetprocessorport="&APPSC0_PORT"
+                )
+                ELSE
+                (
+                    &rvalue_targetprocessor="APPS0"
+                    &rvalue_targetprocessorport=&APPS0_PORT
+                )
+                &rvalue_peripheral_processor="false"
+                &rvalue_processortimeoutvalue=0x140
+                &rvalue_debugscript="std_debug_tz"
+                &rvalue_symbolloadscript="std_loadsyms_tz"
+                &rvalue_buildpath="&TZ_BUILDROOT"
+                &rvalue_entry_bkpt="mon_cold_entry"
+                &rvalue_error_bkpts="tzbsp_err_fatal"
+                &rvalue_sleep_disable_command="NULL"
+
+                //defaults. rvalues are modified below depending on user input.
+                &rvalue_lpm_option="lpm_enable"
+                &rvalue_cti_enable="false"
+                &rvalue_multi_elf_option="false"
+            )
+            ELSE IF ("&given_image"=="appsboot")
+            (
+                IF ("&LOCALHOST"=="&APPSC0_PORT")
+                (
+                    &rvalue_targetprocessor="APPSC0"
+                    &rvalue_targetprocessorport="&APPSC0_PORT"
+                )
+                ELSE
+                (
+                    &rvalue_targetprocessor="APPS0"
+                    &rvalue_targetprocessorport=&APPS0_PORT
+                )
+                
+                &rvalue_peripheral_processor="false"
+                &rvalue_processortimeoutvalue=0x20
+                &rvalue_debugscript="std_debug_&HLOS"
+                &rvalue_symbolloadscript="std_loadsyms_apps"
+                &rvalue_buildpath="&APPS_BUILDROOT"
+                LOCAL &script
+                &script="std_debug_"+STR.LWR("&HLOS")+".cmm"
+                do &METASCRIPTSDIR\apps\&CHIPSET\&HLOS\&script GETAPPSENTRYBREAKPOINT
+                ENTRY &rvalue_entry_bkpt
+                &rvalue_error_bkpts="0xFFFFFFFF"
+                &rvalue_sleep_disable_command=""
+
+                //defaults. rvalues are modified below depending on user input.
+                &rvalue_lpm_option="lpm_enable"
+                &rvalue_cti_enable="false"
+                &rvalue_multi_elf_option="false"
+                &rvalue_extraoption="stopatentry"
+            )
+            //Unverified
+            ELSE IF ("&given_image"=="ipa")
+            (
+               &rvalue_targetprocessor="ipa"
+               &rvalue_targetprocessorport="NULL"
+               &rvalue_peripheral_processor="true"
+               &rvalue_processortimeoutvalue=0x928
+               &rvalue_debugscript="NULL"
+               &rvalue_symbolloadscript="std_loadsyms_ipa"
+               &rvalue_buildpath="&MPSS_BUILDROOT"
+               &rvalue_entry_bkpt="main"
+               &rvalue_error_bkpts="NULL"
+               &rvalue_sleep_disable_command="NULL"
+               
+               //defaults. rvalues are modified below depending on user input.
+               &rvalue_lpm_option="lpm_enable"
+               &rvalue_cti_enable="false"
+               &rvalue_multi_elf_option="false"
+            )            
+            //############MODEM_Q6 DEBUG#############                    
+            ELSE IF ("&given_image"=="mpss")
+            (
+            
+                IF ("&MULTIPROC_DBG_FLAG"=="TRUE")
+                (
+                    &rvalue_targetprocessor="APPS0,mpss"
+                    &rvalue_targetprocessorport="&APPS0_PORT,&MPSS_PORT"
+                    &rvalue_peripheral_processor="mproc"
+                    &rvalue_processortimeoutvalue=0x928
+                    &rvalue_debugscript="std_debug_&HLOS,std_debug_mpss"
+
+                    IF "&FUSION_PLATFORM"=="TRUE"
+                    (
+                        &rvalue_symbolloadscript="std_loadsyms_xbl,std_loadsyms_mpss"
+                        &rvalue_buildpath="&BOOT_BUILDROOT_MDM,&MPSS_BUILDROOT_MDM"
+                        &rvalue_entry_bkpt="rcinit_task"
+                    )
+                    ELSE
+                    (
+                        &rvalue_symbolloadscript="std_loadsyms_apps,std_loadsyms_mpss"
+                        &rvalue_buildpath="&APPS_BUILDROOT,&MPSS_BUILDROOT"
+                        &rvalue_entry_bkpt="main"
+                    )
+                )
+                ELSE
+                (
+            
+
+                    &rvalue_targetprocessor="mpss"
+                    &rvalue_targetprocessorport=&MPSS_PORT
+                    &rvalue_peripheral_processor="true"
+                    &rvalue_processortimeoutvalue=0x2000
+                    &rvalue_debugscript="std_debug_mpss"
+                    &rvalue_symbolloadscript="std_loadsyms_mpss"
+                    &rvalue_buildpath="&MPSS_BUILDROOT"
+
+                    IF "&FUSION_PLATFORM"=="TRUE"
+                    (
+                        &rvalue_entry_bkpt="rcinit_task"
+                    )
+                    ELSE
+                    (
+                        &rvalue_entry_bkpt="rcinit_init"
+                    )
+                )
+                
+                &rvalue_error_bkpts="QURTK_handle_error,QURTK_tlb_crash,QURTK_error,QURTK_user_fatal_exit,QURTK_fatal_hook,err_fatal_lock,err_fatal_handler,err_SaveFatal3,QURTK_handle_nmi,QURTK_handle_nmi_local,QURTK_fatal_stop"
+                &rvalue_sleep_disable_command="v g_sleepAllowLowPowerModes=0"
+
+                //defaults. rvalues are modified below depending on user input.
+                &rvalue_lpm_option="lpm_enable"
+                &rvalue_cti_enable="false"
+                &rvalue_multi_elf_option="false"
+                &rvalue_extraoption="stopatentry"
+               
+            )
+            //For fusion multiproc
+            ELSE IF (("&given_image"=="mpss,apps")||("&given_image"=="apps,mpss"))&&("&FUSION_PLATFORM"=="TRUE")
+            (
+               &rvalue_targetprocessor="APPS0,mpss"
+               &rvalue_targetprocessorport="&MDM_APPS0_PORT,&MPSS_PORT"
+               &rvalue_peripheral_processor="mproc"
+               &rvalue_processortimeoutvalue=0x1
+               &rvalue_debugscript="std_debug_&HLOS,std_debug_mpss"
+               &rvalue_symbolloadscript="std_loadsyms_apps,std_loadsyms_mpss"
+               &APPS_BUILDROOT="&APPS_BUILDROOT"
+               &APPS_ELF="&APSS_ELF"
+               &rvalue_buildpath="&APPS_BUILDROOT,&MPSS_BUILDROOT"
+               &rvalue_entry_bkpt="main"
+               &rvalue_error_bkpts="QURTK_handle_error,QURTK_tlb_crash,QURTK_error,QURTK_user_fatal_exit,QURTK_fatal_hook,err_fatal_lock,err_fatal_handler,err_fatal_jettison_core,err_SaveFatal3,QURTK_handle_nmi"
+               &rvalue_sleep_disable_command="v g_sleepAllowLowPowerModes=0"
+               &rvalue_extraoption="stopatentry"
+               
+               //defaults. rvalues are modified below depending on user input.
+               &rvalue_lpm_option="lpm_disable"
+               &rvalue_cti_enable="false"
+               &rvalue_multi_elf_option="true"
+            )
+            //Fusion from 8998 standpoint is between 8998 apps and 9x55 apps
+            ELSE IF ("&given_image"=="mpss-fus")
+            (
+               &rvalue_targetprocessor="APPS0,mpss"
+               &rvalue_targetprocessorport="&APPS0_PORT,&MDM_APPS0_PORT"
+               &rvalue_peripheral_processor="fusion"
+               &rvalue_processortimeoutvalue=0x928
+               &rvalue_debugscript="std_debug_&HLOS,std_debug_fus"
+               &rvalue_symbolloadscript="std_loadsyms_apps,std_loadsyms_fus"
+               //&rvalue_buildpath="&APPS_BUILDROOT,&APPS_BUILDROOT_MDM"
+               //uses sbl1 to attach prior to modem bringup
+               &rvalue_buildpath="&APPS_BUILDROOT,&BOOT_BUILDROOT_MDM"
+               &rvalue_entry_bkpt="sbl1_main_ctl"
+               &rvalue_error_bkpts="QURTK_handle_error,QURTK_tlb_crash,QURTK_error,QURTK_user_fatal_exit,QURTK_fatal_hook,err_fatal_lock,err_fatal_handler,err_SaveFatal3,QURTK_handle_nmi,QURTK_handle_nmi_local"
+               &rvalue_sleep_disable_command="v g_sleepAllowLowPowerModes=0"
+
+               //we want processor to stop at entrypoint. Multi-processor debug mode
+               &rvalue_extraoption="mproc,stopatentry"
+               
+               //defaults. rvalues are modified below depending on user input.
+               &rvalue_lpm_option="lpm_enable"
+               &rvalue_cti_enable="false"
+               &rvalue_multi_elf_option="false"
+            )
+            //ELSE IF ("&given_image"=="mpss-fus")
+            //(
+            //   &rvalue_targetprocessor="mpss"
+            //   &rvalue_targetprocessorport="&APPS0_PORT,&MDM_APPS0_PORT,&MDM_MPSS_PORT"
+            //   &rvalue_peripheral_processor="fusion"
+            //   &rvalue_processortimeoutvalue=0x928
+            //   &rvalue_debugscript="std_debug_&HLOS,std_debug_fus"
+            //   &rvalue_symbolloadscript="std_loadsyms_apps,std_loadsyms_fus"
+            //   &rvalue_buildpath="&APPS_BUILDROOT,&APPS_BUILDROOT_MDM,&MPSS_BUILDROOT_MDM"
+            //   &rvalue_entry_bkpt="main"
+            //   &rvalue_error_bkpts="QURTK_handle_error,QURTK_tlb_crash,QURTK_error,QURTK_user_fatal_exit,QURTK_fatal_hook,err_fatal_lock,err_fatal_handler,err_SaveFatal3,QURTK_handle_nmi,QURTK_handle_nmi_local"
+            //   &rvalue_sleep_disable_command="v g_sleepAllowLowPowerModes=0"
+            //   &rvalue_extraoption="mproc"
+            //   
+            //   //defaults. rvalues are modified below depending on user input.
+            //   &rvalue_lpm_option="lpm_enable"
+            //   &rvalue_cti_enable="false"
+            //   &rvalue_multi_elf_option="false"
+            //)
+            ELSE IF ("&given_image"=="mba") 
+            (
+        
+                IF ("&MULTIPROC_DBG_FLAG"=="TRUE")
+                (
+                    &rvalue_targetprocessor="APPS0,mpss"
+                    &rvalue_targetprocessorport="&APPS0_PORT,&MPSS_PORT"
+                    &rvalue_peripheral_processor="mproc"
+                    &rvalue_processortimeoutvalue=0x928
+                    &rvalue_debugscript="std_debug_&HLOS,std_debug_mpss"
+                    &rvalue_symbolloadscript="std_loadsyms_apps,std_loadsyms_mpss"
+                    &rvalue_buildpath="&APPS_BUILDROOT,&MPSS_BUILDROOT"
+                    &rvalue_entry_bkpt="main"
+                )
+                ELSE
+                (
+                   &rvalue_targetprocessor="mpss"
+                   &rvalue_targetprocessorport=&MPSS_PORT
+                   &rvalue_peripheral_processor="true"
+                   &rvalue_processortimeoutvalue=0x928
+                   &rvalue_debugscript="std_debug_mpss"
+                   &rvalue_symbolloadscript="std_loadsyms_mpss"
+                   &rvalue_buildpath="&MPSS_BUILDROOT"  //FIXME - std_loadsyms should be smarter, and could point directly to build.
+                   &rvalue_entry_bkpt="main"
+
+
+               
+               )
+               
+               &rvalue_error_bkpts="QURTK_handle_error,QURTK_tlb_crash,QURTK_error,QURTK_user_fatal_exit,QURTK_fatal_hook,err_fatal_lock,err_fatal_handler,err_SaveFatal3,QURTK_handle_nmi,QURTK_handle_nmi_local"
+               &rvalue_sleep_disable_command="NULL"
+               //defaults. rvalues are modified below depending on user input.
+               &rvalue_lpm_option="lpm_enable"
+               &rvalue_cti_enable="false"
+               &rvalue_multi_elf_option="false"
+               
+               //we want processor to stop at entrypoint
+               &rvalue_extraoption="stopatentry"
+            )
+
+            ELSE IF ("&given_image"=="wlan")||("&given_image"=="testpd")
+            (
+            
+                IF ("&MULTIPROC_DBG_FLAG"=="TRUE")
+                (
+                    &rvalue_targetprocessor="APPS0,mpss"
+                    &rvalue_targetprocessorport="&APPS0_PORT,&MPSS_PORT"
+                    &rvalue_peripheral_processor="mproc"
+                    &rvalue_processortimeoutvalue=0x2000
+                    &rvalue_debugscript="std_debug_&HLOS,std_debug_mpss"
+
+                    IF "&FUSION_PLATFORM"=="TRUE"
+                    (
+                        &rvalue_symbolloadscript="std_loadsyms_xbl,std_loadsyms_mpss"
+                        &rvalue_buildpath="&BOOT_BUILDROOT_MDM,&MPSS_BUILDROOT_MDM"
+                        &rvalue_entry_bkpt="rcinit_task"
+                    )
+                    ELSE
+                    (
+                        &rvalue_symbolloadscript="std_loadsyms_apps,std_loadsyms_mpss"
+                        &rvalue_buildpath="&APPS_BUILDROOT,&MPSS_BUILDROOT"
+                        &rvalue_entry_bkpt="main"
+                    )
+                )
+                ELSE
+                (
+            
+
+                    &rvalue_targetprocessor="mpss"
+                    &rvalue_targetprocessorport=&MPSS_PORT
+                    &rvalue_peripheral_processor="true"
+                    &rvalue_processortimeoutvalue=0x928
+                    &rvalue_debugscript="std_debug_mpss"
+                    &rvalue_symbolloadscript="std_loadsyms_mpss"
+                    &rvalue_buildpath="&MPSS_BUILDROOT"
+
+                    IF "&FUSION_PLATFORM"=="TRUE"
+                    (
+                        &rvalue_entry_bkpt="rcinit_task"
+                    )
+                    ELSE
+                    (
+                        &rvalue_entry_bkpt="main"
+                    )
+                )
+                
+                &rvalue_error_bkpts="QURTK_handle_error,QURTK_tlb_crash,QURTK_error,QURTK_user_fatal_exit,QURTK_fatal_hook,err_fatal_lock,err_fatal_handler,err_SaveFatal3,QURTK_handle_nmi,QURTK_handle_nmi_local"
+                &rvalue_sleep_disable_command="v g_sleepAllowLowPowerModes=0"
+
+                //defaults. rvalues are modified below depending on user input.
+                &rvalue_lpm_option="lpm_enable"
+                &rvalue_cti_enable="false"
+                &rvalue_multi_elf_option="false"
+                &rvalue_extraoption="nosymreuse"
+                
+            )
+            //############ADSP_Q6 DEBUG#############    
+            ELSE IF (("&given_image"=="adsp"))
+            (
+        
+                IF ("&MULTIPROC_DBG_FLAG"=="TRUE")
+                (
+                    &rvalue_targetprocessor="APPS0,adsp"
+                    &rvalue_targetprocessorport="&APPS0_PORT,&ADSP_PORT"
+                    &rvalue_peripheral_processor="mproc"
+                    &rvalue_processortimeoutvalue=0x928
+                    &rvalue_debugscript="std_debug_&HLOS,std_debug_adsp"
+                    &rvalue_symbolloadscript="std_loadsyms_apps,std_loadsyms_adsp"
+                    &rvalue_buildpath="&APPS_BUILDROOT,&ADSP_BUILDROOT"
+                    
+                )
+                ELSE
+                (
+                    &rvalue_targetprocessor="adsp"
+                    &rvalue_targetprocessorport=&ADSP_PORT
+                    &rvalue_peripheral_processor="true"
+                    &rvalue_processortimeoutvalue=0x928
+                    &rvalue_debugscript="std_debug_adsp"
+                    &rvalue_symbolloadscript="std_loadsyms_adsp"
+                    &rvalue_buildpath="&ADSP_BUILDROOT"
+                )
+               &rvalue_entry_bkpt="main"
+               &rvalue_error_bkpts="QURTK_handle_error,QURTK_tlb_crash,QURTK_error,QURTK_user_fatal_exit,QURTK_fatal_hook,err_fatal_lock,err_fatal_handler,err_SaveFatal3,QURTK_handle_nmi,QURTK_handle_nmi_local"
+               &rvalue_sleep_disable_command="v g_sleepAllowLowPowerModes=0"
+               
+               //defaults. rvalues are modified below depending on user input.
+               &rvalue_lpm_option="lpm_enable"
+               &rvalue_cti_enable="false"
+               &rvalue_multi_elf_option="true"
+            )            
+            ELSE IF (("&given_image"=="cdsp"))
+            (
+        
+                IF ("&MULTIPROC_DBG_FLAG"=="TRUE")
+                (
+                    &rvalue_targetprocessor="APPS0,cdsp"
+                    &rvalue_targetprocessorport="&APPS0_PORT,&CDSP_PORT"
+                    &rvalue_peripheral_processor="mproc"
+                    &rvalue_processortimeoutvalue=0x928
+                    &rvalue_debugscript="std_debug_&HLOS,std_debug_cdsp"
+                    &rvalue_symbolloadscript="std_loadsyms_apps,std_loadsyms_cdsp"
+                    &rvalue_buildpath="&APPS_BUILDROOT,&CDSP_BUILDROOT"
+                    
+                )
+                ELSE
+                (
+                    &rvalue_targetprocessor="cdsp"
+                    &rvalue_targetprocessorport=&CDSP_PORT
+                    &rvalue_peripheral_processor="true"
+                    &rvalue_processortimeoutvalue=0x928
+                    &rvalue_debugscript="std_debug_cdsp"
+                    &rvalue_symbolloadscript="std_loadsyms_cdsp"
+                    &rvalue_buildpath="&CDSP_BUILDROOT"
+                )
+               &rvalue_entry_bkpt="rcinit_init"
+               &rvalue_error_bkpts="QURTK_handle_error,QURTK_tlb_crash,QURTK_error,QURTK_user_fatal_exit,QURTK_fatal_hook,err_fatal_lock,err_fatal_handler,err_SaveFatal3,QURTK_handle_nmi,QURTK_handle_nmi_local"
+               &rvalue_sleep_disable_command="v g_sleepAllowLowPowerModes=0"
+               
+               //defaults. rvalues are modified below depending on user input.
+               &rvalue_lpm_option="lpm_enable"
+               &rvalue_cti_enable="false"
+               &rvalue_multi_elf_option="false"
+            )    
+            ELSE IF (("&given_image"=="sensor")||("&given_image"=="slpi")) //currently this case is same as adsp debug
+            (
+            
+                IF ("&MULTIPROC_DBG_FLAG"=="TRUE")
+                (
+                    &rvalue_targetprocessor="APPS0,slpi"
+                    &rvalue_targetprocessorport="&APPS0_PORT,&SLPI_PORT"
+                    &rvalue_peripheral_processor="mproc"
+                    &rvalue_processortimeoutvalue=0x928
+                    &rvalue_debugscript="std_debug_&HLOS,std_debug_slpi"
+                    &rvalue_symbolloadscript="std_loadsyms_apps,std_loadsyms_slpi"
+                    &rvalue_buildpath="&APPS_BUILDROOT,&SLPI_BUILDROOT"
+                    
+                    
+                )
+                ELSE
+                (
+            
+                    &rvalue_targetprocessor="slpi"
+                    &rvalue_targetprocessorport=&SLPI_PORT
+                    &rvalue_peripheral_processor="true"
+                    &rvalue_processortimeoutvalue=0x928
+                    &rvalue_debugscript="std_debug_slpi"
+                    &rvalue_symbolloadscript="std_loadsyms_slpi"
+                    &rvalue_buildpath="&SLPI_BUILDROOT"
+                )
+                &rvalue_entry_bkpt="main"
+                &rvalue_error_bkpts="QURTK_handle_error,QURTK_tlb_crash,QURTK_error,QURTK_user_fatal_exit,QURTK_fatal_hook,err_fatal_lock,err_fatal_handler,err_SaveFatal3,QURTK_handle_nmi,QURTK_handle_nmi_local"
+                &rvalue_sleep_disable_command="v g_sleepAllowLowPowerModes=0"
+
+                //defaults. rvalues are modified below depending on user input.
+                &rvalue_lpm_option="lpm_enable"
+                &rvalue_cti_enable="false"
+                &rvalue_multi_elf_option="true"
+               
+            )
+            ELSE
+            (
+                PRINT %ERROR "Error! Unknown image: &ARG0 specified"
+                GOSUB 
+                (
+                    do std_fatalexit USER "Error! Unknown image: &ARG0 specified"
+                )
+            )
+        
+        
+            IF ("&given_lpm_option"=="lpm_disable")
+            (
+                &rvalue_lpm_option="lpm_disable"
+            )
+            IF ("&given_lpm_option"=="lpm_enable")
+            (
+                &rvalue_lpm_option="lpm_enable"
+            )
+
+            IF ("&given_cti_enable"=="true")
+            (
+                &rvalue_cti_enable="true"
+            )
+            IF ("&given_cti_enable"=="false")
+            (
+                &rvalue_cti_enable="false"
+            )
+
+            IF ("&given_alternateelf"=="")
+            (
+                &rvalue_alternateelf="NULL"
+            )
+            ELSE
+            (
+                &rvalue_alternateelf="&given_alternateelf"
+            )
+            do std_utils SANITIZEQUOTATIONS NULL &given_extraoption
+            ENTRY &given_extraoption
+            IF ("&given_extraoption"!="")&&(STR.UPR("&given_extraoption")!="NULL")
+            (
+                //Append to extraoption if needed. Clear out extra quotations
+                IF (STRING.SCAN("&given_extraoption","&rvalue_extraoption",0)==-1)
+                (
+                    &rvalue_extraoption="&given_extraoption"+",&rvalue_extraoption"
+                )
+                ELSE
+                (
+                    &rvalue_extraoption="&given_extraoption"
+                )
+            )
+            IF (STRING.SCAN("&Usb_Boot_Flashless","True",0)!=-1)
+            (
+                &rvalue_extraoption= "&rvalue_extraoption"+","+"usbboot"
+            )
+
+            ELSE IF (STRING.SCAN("&Pcie_Boot_Flashless","True",0)!=-1)
+            (
+                &rvalue_extraoption= "&rvalue_extraoption"+","+"pcieboot"
+            )
+        
+ 
+            IF (STRING.SCAN("&rvalue_extraoption","appsimemdebugsupported",0)==-1)
+            (
+                &rvalue_extraoption="&rvalue_extraoption"+",appsimemdebugsupported"
+            )
+
+           
+            ENDDO &rvalue_image &rvalue_targetprocessor &rvalue_targetprocessorport &rvalue_bootprocessor &rvalue_bootprocessorport &rvalue_peripheral_processor &rvalue_processortimeoutvalue &rvalue_debugscript &rvalue_symbolloadscript &rvalue_buildpath &rvalue_entry_bkpt &rvalue_error_bkpts &rvalue_lpm_option "&rvalue_sleep_disable_command" &rvalue_cti_enable &rvalue_multi_elf_option &rvalue_alternateelf &rvalue_extraoption
+        
+        
+        
+        
+        
+        
+    RETURN //GETDEBUGDEFAULTS
+
+EXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    ENDDO &rvalue
+    
+
+//Should never get here. 
+FATALEXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    IF STRING.SCAN("&FAILUREKEYWORD","FAILUREKEYWORD",0)==-1
+    (
+        GOSUB EXIT &FAILUREKEYWORD - &rvalue
+    )
+    ELSE
+    (
+        GOSUB EXIT &rvalue
+    )
+    
+//Should never get here
+    END
+
+
+
+
+
+
+
+ 

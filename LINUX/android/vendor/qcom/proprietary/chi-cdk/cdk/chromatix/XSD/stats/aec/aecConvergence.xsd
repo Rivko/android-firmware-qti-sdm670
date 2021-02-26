@@ -1,0 +1,461 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--========================================================================-->
+<!-- Copyright (c) 2016-2017 Qualcomm Technologies, Inc.                    -->
+<!-- All Rights Reserved.                                                   -->
+<!-- Confidential and Proprietary - Qualcomm Technologies, Inc.             -->
+<!--========================================================================-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+	<xs:include schemaLocation="..\..\common\globalelements.xsd"/>
+	<xs:include schemaLocation="aecglobalelements.xsd"/>
+	<!--
+
+Core Convergence Tuning Definition
+
+-->
+	<xs:element name="Convergence" type="AECCoreConvergenceType"/>
+	<xs:complexType name="AECCoreConvergenceType">
+		<xs:sequence>
+			<xs:element name="module_version">
+				<xs:complexType>
+					<xs:sequence>
+						<xs:element name="major_revision" type="xs:int" fixed="1"/>
+						<xs:element name="minor_revision" type="xs:int" fixed="0"/>
+						<xs:element name="incr_revision" type="xs:int" fixed="0"/>
+					</xs:sequence>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="algoSelect">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="AECConvAlgoType">
+							<xs:attribute name="description" type="xs:string" default="Specifies which algorithm to run in preview state: AECConvSlowConv or AECConvFastConv. Slow is recommeded for smooth video capture and Fast for preview"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="often_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="fastConv" type="FastConvType"/>
+			<xs:element name="slowConv" type="SlowConvType"/>
+			<xs:element name="unitStepSize">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Base exposure index unit"/>
+							<xs:attribute name="range" type="xs:string" default="[0.1,1.0]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="enableConvergeGainFirst">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:boolean">
+							<xs:attribute name="type" default="bool"/>
+							<xs:attribute name="description" type="xs:string" default="Speeds up dark to bright convergence by increasing gain first"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="often_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+		<xs:attribute name="description" type="xs:string" default="Convergence Module controls how AEC adjusts the exposure in order to reach the desired exposure index target"/>
+	</xs:complexType>
+	<xs:complexType name="FastConvType">
+		<xs:sequence>
+			<xs:element name="tolMultUnitStepSize">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Exposure index tolerance is tolMultUnitStepSize * unitStepSize; exposure index range within which AEC will not adjust"/>
+							<xs:attribute name="range" type="xs:string" default="[1,5]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="often_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="frameSkipMethod">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="ConvFrameSkipType">
+							<xs:attribute name="description" type="xs:string" default="Specifies which type of frame skip is desired: SmoothNoSkip for smooth convergence, SkipOne if there are synchronization concerns, SkipSystemLatency if speed is preferred to smoothness"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="aggressiveness">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Controls convergence speed; 0.0 is slowest and 1.0 is fastest"/>
+							<xs:attribute name="range" type="xs:string" default="[0.0,1.0]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="often_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="enableBrightDarkSpeedAdj">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:boolean">
+							<xs:attribute name="type" default="bool"/>
+							<xs:attribute name="description" type="xs:string" default="Enable adjusting convergence speed when there are saturated regions"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="darkRatioAdjStrength">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Strength of speed adjustment when there are dark clipped regions"/>
+							<xs:attribute name="range" type="xs:string" default="[0,1.0]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="brightRatioAdjStrength">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Strength of speed adjustment when there are dark clipped regions"/>
+							<xs:attribute name="range" type="xs:string" default="[0,1.0]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="thresDarkExpIndexDelta">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="When image is dark and absolute index target delta is larger than this absolute threshold we will adjust convergence speed"/>
+							<xs:attribute name="range" type="xs:string" default="[40,80]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="never_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="thresBrightExpIndexDelta">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="When image is bright and absolute index target delta is larger than this absolute threshold we will adjust convergence speed"/>
+							<xs:attribute name="range" type="xs:string" default="[10,30]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="never_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="ADRCConvSpeed">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Convergence speed for short and long exposures. Smaller value yields slower convergence."/>
+							<xs:attribute name="range" type="xs:string" default="[0.0,0.5]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+		<xs:attribute name="description" type="xs:string" default="Fast algorithm converges by measuring the delta to exposure target and adjusting to take into account system delay."/>
+	</xs:complexType>
+	<xs:complexType name="SlowConvType">
+		<xs:sequence>
+			<xs:element name="tolMultUnitStepSize">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Exposure index tolerance is tolMultUnitStepSize * unitStepSize; exposure index range within which AEC will not adjust"/>
+							<xs:attribute name="range" type="xs:string" default="[1,5]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="often_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="frameSkipMethod">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="ConvFrameSkipType">
+							<xs:attribute name="description" type="xs:string" default="Specifies which type of frame skip is desired: SmoothNoSkip for smooth convergence, SkipOne if there are sync issues. Slow convergence does not implement SkipSystemLatency"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="stepFactorWhenFrameSkipEnabled">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Increase in step size when skip is enabled"/>
+							<xs:attribute name="range" type="xs:string" default="[1.5,2.5]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="convSpeed">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Controls convergence speed; larger value will result in larger step sizes and therefore faster convergence"/>
+							<xs:attribute name="range" type="xs:string" default="[0.0,1.0]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="often_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="refFrameRate">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Reference frame rate at which the tuning settings were computed"/>
+							<xs:attribute name="range" type="xs:string" default="[15.0,120.0]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="stepRegular">
+				<xs:complexType>
+					<xs:complexContent>
+						<xs:extension base="StartEndType">
+							<xs:attribute name="description" type="xs:string" default="Range of step sizes for slow convergence when there are no dark or bright regions. Final step size is interpolated based on convSpeed parameter"/>
+							<xs:attribute name="range" type="xs:string" default="[2.0,6.0]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:complexContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="stepDark">
+				<xs:complexType>
+					<xs:complexContent>
+						<xs:extension base="StartEndType">
+							<xs:attribute name="description" type="xs:string" default="Range of step sizes for slow convergence when exposure is too dark and there are dark regions. Final step size is interpolated based on convSpeed parameter"/>
+							<xs:attribute name="range" type="xs:string" default="[6.0,30.0]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:complexContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="stepBright">
+				<xs:complexType>
+					<xs:complexContent>
+						<xs:extension base="StartEndType">
+							<xs:attribute name="description" type="xs:string" default="Range of step sizes for slow convergence when exposure is too bright and there are bright regions. Final step size is interpolated based on convSpeed parameter"/>
+							<xs:attribute name="range" type="xs:string" default="[5.0,18.0]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:complexContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="thresSlowDownAbsExpIndexDeltaDark">
+				<xs:complexType>
+					<xs:complexContent>
+						<xs:extension base="StartEndType">
+							<xs:attribute name="description" type="xs:string" default="Range of absolute exposure delta from target whithin which algorithm step size will be decreased to smoothly converge to target. Large value means slower approach. Final step size is interpolated based on convSpeed parameter"/>
+							<xs:attribute name="range" type="xs:string" default="[6.0,20.0]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:complexContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="thresSlowDownAbsExpIndexDeltaBright">
+				<xs:complexType>
+					<xs:complexContent>
+						<xs:extension base="StartEndType">
+							<xs:attribute name="description" type="xs:string" default="Range of absolute exposure delta from target whithin which algorithm step size will be decreased to smoothly converge to target. Large value means slower approach. Final step size is interpolated based on convSpeed parameter"/>
+							<xs:attribute name="range" type="xs:string" default="[6.0,20.0]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:complexContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="maxRawStepAdj">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Slow convergence algorithm is designed to maintain the same convergence speed, regardless of skip and frame rate. To that effect, the step size is adjusted by a factor. Parameter maxRawStepAdj controls the range of that factor: [1/maxRawStepAdj, maxRawStepAdj]"/>
+							<xs:attribute name="range" type="xs:string" default="[1.0,2.5]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="tolExpIndexDeltaForceAdj">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="If computed step size is zero we will force it to unitStepSize when absolute delta from target is larger than this threshold"/>
+							<xs:attribute name="range" type="xs:string" default="[2,4]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="thresNumBrightRgn">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="The minimal ratio of bright regions required for bright step size to be used during convergence"/>
+							<xs:attribute name="range" type="xs:string" default="[0.03,0.1]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="thresNumDarkRgn">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="The minimal ratio of dark regions required for dark step size to be used during convergence"/>
+							<xs:attribute name="range" type="xs:string" default="[0.03,0.2]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="holdTimeTuning" type="SlowConvHoldTimeType"/>
+			<xs:element name="ADRCConvSpeed">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Convergence speed for short and long exposures. Smaller value yields slower convergence."/>
+							<xs:attribute name="range" type="xs:string" default="[0.0,0.5]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+		<xs:attribute name="description" type="xs:string" default="Slow algorithm converges smoothly by using exposure index steps the size of which increases or decreases gracefully at the expense of convergence speed"/>
+	</xs:complexType>
+	<xs:complexType name="SlowConvHoldTimeType">
+		<xs:sequence>
+			<xs:element name="enableHoldTime">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:boolean">
+							<xs:attribute name="type" default="bool"/>
+							<xs:attribute name="description" type="xs:string" default="Enable holding off exposure adjustments when motion and exposure changes are small"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="thresAbsExpDelta">
+				<xs:complexType>
+					<xs:complexContent>
+						<xs:extension base="StartEndType">
+							<xs:attribute name="description" type="xs:string" default="Range within which hold time is adjusted based on exposure deviation from target. Below this range: hold time is adjusted by expDeltaBasedHTAdjFactor.start; above this range hold time is adjusted by expDeltaBasedHTAdjFactor.end"/>
+							<xs:attribute name="range" type="xs:string" default="[2.0,6.0]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:complexContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="expDeltaBasedHTAdjFactor">
+				<xs:complexType>
+					<xs:complexContent>
+						<xs:extension base="StartEndType">
+							<xs:attribute name="description" type="xs:string" default="Exposure-based hold time adjustment factor range, start needs to be larger than end!"/>
+							<xs:attribute name="range" type="xs:string" default="[1.0,0.3]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:complexContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="tolAdjFactor">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:int">
+							<xs:attribute name="type" default="int"/>
+							<xs:attribute name="description" type="xs:string" default="Hold time is not allowed if exposure index absolute delta from target is larger than tolerance times this threshold"/>
+							<xs:attribute name="range" type="xs:string" default="[1,4]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="holdTimeEnterDelay">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="The amount of time AEC needs to be stable before holding time gets activated"/>
+							<xs:attribute name="range" type="xs:string" default="[1.0,10.0]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="maxHoldTime">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:float">
+							<xs:attribute name="type" default="float"/>
+							<xs:attribute name="description" type="xs:string" default="Maximum amount of time AEC will hold off exposure adjustments when large disturbance is measured"/>
+							<xs:attribute name="range" type="xs:string" default="[0,3]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="enableGyroBasedHT">
+				<xs:complexType>
+					<xs:simpleContent>
+						<xs:extension base="xs:boolean">
+							<xs:attribute name="type" default="bool"/>
+							<xs:attribute name="description" type="xs:string" default="Enable using gyro to determine amount of disturbance"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:simpleContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="thresGyroMagnitude">
+				<xs:complexType>
+					<xs:complexContent>
+						<xs:extension base="StartEndType">
+							<xs:attribute name="description" type="xs:string" default="Range within which hold time is adjusted based on gyro magnitude. Amount of adjustment is controlled by gyroBasedHTAdjFactor"/>
+							<xs:attribute name="range" type="xs:string" default="[0.1,10.0]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:complexContent>
+				</xs:complexType>
+			</xs:element>
+			<xs:element name="gyroBasedHTAdjFactor">
+				<xs:complexType>
+					<xs:complexContent>
+						<xs:extension base="StartEndType">
+							<xs:attribute name="description" type="xs:string" default="Gyro-based hold time adjustment factor range, start needs to be larger than end!"/>
+							<xs:attribute name="range" type="xs:string" default="[1.0,0.3]"/>
+							<xs:attribute name="tuning_parameter_level" type="tuning_level" default="rarely_tune"/>
+						</xs:extension>
+					</xs:complexContent>
+				</xs:complexType>
+			</xs:element>
+		</xs:sequence>
+		<xs:attribute name="description" type="xs:string" default="These parameters control how long the algorithm will hold off adjusting in the presence of stats changes"/>
+	</xs:complexType>
+</xs:schema>

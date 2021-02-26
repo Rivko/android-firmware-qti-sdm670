@@ -1,0 +1,91 @@
+;****************************************************************
+;    filename: DSP_connectV4.cmm
+;
+;    please enter phys start address	
+; usage:
+;    DSP_connect <physical start address>
+;****************************************************************
+
+entry &p_start_address
+
+print "You have entered &p_start_address as physical start address"
+
+TOOLBAR ON
+STATUSBAR ON
+;WINPAGE.RESET
+
+;******************************************************************
+; Reset QDSP6 through intercomm command
+;******************************************************************
+
+
+
+;sys.cpu HexagonV4C
+;sys.mode attach
+
+
+global &rtos_dir
+global &edk_dir
+global &etm_enable
+local  &roottask
+local  &rt_pt
+
+
+
+system.option.icflush OFF
+system.option.dcfreeze OFF 
+
+
+; TURN OFF MMU
+;mmu.off
+;mmu.delete
+; RESET PATHS
+sYmbol.SourcePath.reset
+
+; LOAD SYMBOL FILES
+; Load bootimage symbols, bootimg.pbn contains the map for static text section
+;d.load.elf &rtos_dir\bootimg.pbn /NOCODE /NOREG 
+d.load.elf .\obj\qdsp6v4_ReleaseG\bootimg.pbn /NOCODE /NOREG 
+
+&Qube_va=address.offset(start);
+&Qube_pa=&p_start_address;
+
+; LOAD RTOS AWARENESS MODULE
+TASK.CONFIG qurt\install\8960\debugger\T32\Qurt_model.t32
+MENU.ReProgram qurt\install\8960\debugger\T32\Qurt_model.men
+
+; Enable RTOS debug messages
+;ext.debug 1
+
+;MMU and System SETUP
+system.option PC 0x8da00000 ; PARK PC AT A VALID PHYSICAL ADDRESSS
+			                ; TYPICALLY THIS LOCATION COULD BE WHERE YOU LOAD THE CODE
+
+
+; CREATE DEFAULT TRANSLATION
+; YOU HAVE TO KNOW THE PHYSICAL MEMORY WHERE THE KERNEL IS MAPPED
+mmu.off
+mmu.create 0xc0000000--0xc1800000 0x8da00000--0x8f200000
+mmu.create 0x80000000--0x80200000 0x80000000--0x80200000
+
+mmu.on
+
+mmu.format Qurt QURTK_pagetables 0xc0000000--0xc0ffffff 0x8da00000
+
+y.spath.srd + .
+enddo
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

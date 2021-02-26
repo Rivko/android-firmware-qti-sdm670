@@ -1,0 +1,220 @@
+/*
+ * Copyright (c) 2017 Qualcomm Technologies, Inc.
+ * All Rights Reserved.
+ * Confidential and Proprietary - Qualcomm Technologies, Inc.
+ *
+ */
+
+package com.qualcomm.qti.imscmservice@1.0;
+
+import IImsCmServiceListener;
+import IImsCMConnectionListener;
+import IImsCMConnection;
+
+interface  IImsCmService {
+
+/**
+ * Initialize Service to work with. This returns a status code.
+ * Onsuccessful initialize, OnServiceReady() is triggered with a
+ * Service handle.
+ *
+ * @param[in] subId        SubscriptionID the service is requested.
+ * @param[in] userData    user data/request ID.
+ *
+ * @return
+ *   Status code. See #IMSCM_STATUSCODE.
+ *
+ * @dependencies
+ *   None.
+ */
+InitializeService(string iccId, IImsCmServiceListener cmListener, uint32_t userData) generates (IMSCM_STATUSCODE status);
+
+/**
+ * Adds a listener containing the list of
+ * function pointers to be invoked to notify clients of the
+ * various events from the connection manager.
+ * Status of the request is returned in QIMSCM_COMMAND_STATUS
+ *
+ * @param[in] connectionManager    Handle Received in OnServiceReady()
+ * @param[in] cmListener           Structure with the list of callbacks.
+ * @param[in] userdata             user data/request ID.
+ *
+ * @return
+ *   Status code. See #IMSCM_STATUSCODE.
+ *
+ * @dependencies
+ *   None.
+ */
+addListener (IMSCM_SERVICE_HANDLE connectionManager, IImsCmServiceListener cmListener) generates (IMSCM_STATUSCODE status);
+
+/**
+ * Removes a listener from the IMS connection manager. Status of
+ * the request is returned in QIMSCM_COMMAND_STATUS
+ *
+ * @param[in] connectionManager    Handle Received in OnServiceReady()
+ * @param[in] pIMSCmListener        Structure with the list of callbacks.
+ * @param[in] pUserData             user data/request ID.
+ *
+ * @return
+ *   Status code. See #IMSCM_STATUSCODE.
+ *
+ * @dependencies
+ *   None.
+ */
+removeListener (IMSCM_SERVICE_HANDLE connectionManager, IImsCmServiceListener cmListener) generates (IMSCM_STATUSCODE status);
+
+/**
+ * Creates a new IMS connection object.
+ *
+ * There must be a corresponding connection object for each feature tag.
+ * The URI passed as part of this call is validated with the standard
+ * RCS 5.1 URIs, and the connection objects are created only for supported
+ * URIs. Registration for the URI is triggered after this API is invoked.
+ *
+ * <b>URI format for a single URI:</b>
+ *
+ * @indent FeatureTagName="FeatureTagValue"
+ *
+ *   Example
+ *   @code
+ *   +g.3gpp.icsi-ref="urn%3Aurn-7%3A3gpp-service.ims.icsi.oma.cpm.session" @endcode
+ *   @newpage
+ * <b>URI format for multiple URIs:</b>
+ *
+ *   @indent FeatureTagName1="FeatureTagValue1"; FeatureTagName2="FeatureTagValue2"
+ *
+ *   Example
+ *   @code
+ *   "+g.oma.sip-im";"+g.3gpp.cs-voice";"+g.3gpp.iari-ref="urn%3Aurn-7%3A3gpp-
+ *   application.ims.iari.gsma-is"";"+g.3gpp.iari-ref="urn%3Aurn-7%3A3gpp-
+ *   application.ims.iari.rcse.ft""" @endcode
+ *
+ *   @note1hang FeatureTagName and FeatureTagValue are defined in the RCS 5.1
+ *   Specification.
+ *
+ *   Upon successful Connection Creatiion
+ *   QIMSCONNECTION_ON_CONNECTION_CREATED is called on the
+ *   connection listener object
+ *
+ * @param[in] pListener listener for the connection object**
+ * @param[in] pIMSConnectionManager Handle to the IMSConnectionManager
+ *      interface object.
+ * @param[in] uriStr NULL-terminated Uniform Resource Identifier (URI)
+ *      associated with a particular application.
+ * @param[in] userdata/request ID for the create request
+ * @return
+ *    Status code. See #IMSCM_STATUSCODE.
+ *
+ * @dependencies
+ *  None.
+ */
+createConnection (IMSCM_SERVICE_HANDLE connectionManager,
+                  IImsCMConnectionListener cmConnListener,
+                  string uriStr) generates (IImsCMConnection connection);
+
+/**
+ * Closes the connection and triggers deregistration of the associated URI.
+ *
+ * @param[in] pIMSConnection Handle to the IMSConnection
+ *                           interface object.
+ *
+ * @return
+ *   Status code. See #QIMSCM_STATUSCODE.
+ *
+ * @dependencies
+ *   None.
+ */
+closeConnection(IMSCM_SERVICE_HANDLE connectionManager,
+                IImsCMConnection connection) generates (IMSCM_STATUSCODE status);
+
+/**
+ * Queries the configuration structure
+ * consisting of various parameters the client will be interested in
+ * to form the SIP messages.Some of these configuration parameters
+ * are populated once the UE is successfully registered, so
+ * clients should wait for successful registration of at least one
+ * of the URIs before calling this API.
+ *
+ * The configuration is asynchronously provided through
+ * QIMSCM_HANDLECONFIGURATIONCHANGE
+ *
+ * @param[in] pIMSConnectionManager Handle to the IMSConnectionManager
+ *     interface object.
+ * @param[in] config_type           Configuration type.
+ *
+ * @return
+ *   Status code. See #IMSCM_STATUSCODE.
+ *
+ * @dependencies
+ *   None.
+ */
+getConfiguration (IMSCM_SERVICE_HANDLE connectionManager,
+                  IMSCM_ConfigType configType,
+                  uint32_t userdata) generates (IMSCM_STATUSCODE status);
+
+/**
+ * Used to trigger registration. This must be
+ * done once all the connections are created so that
+ * trigger registration with all the required FTs is done at one time.
+ *
+ * @param[in] pIMSConnectionManager Handle to the IMSConnectionManager
+ *       interface object.
+ *
+ * @return
+ *   Status code. See #IMSCM_STATUSCODE.
+ *
+ * @dependencies
+ *   None.
+ */
+triggerRegistration(IMSCM_SERVICE_HANDLE connectionManager,
+                    uint32_t userdata) generates (IMSCM_STATUSCODE status);
+
+/**
+ * Used to trigger deregistration. This method will trigger a de-registration on all
+ * the feature tags. This method then does a pdn release followed by pdn bringup.
+ *
+ * @param[in] pIMSConnectionManager Handle to the IMSConnectionManager
+ *       interface object.
+ *
+ * @return
+ *    Status code. See #IMSCM_STATUSCODE.
+ *
+ * @dependencies
+ *    None.
+ */
+triggerDeRegistration(IMSCM_SERVICE_HANDLE connectionManager,
+                      uint32_t userdata) generates (IMSCM_STATUSCODE status);
+
+/**
+ * Closes the connection manager. Closing the
+ * manager forces pending connection objects to be
+ * immediately deleted, regardless of what state they are in.
+ *
+ * @param[in] pIMSConnectionManager Handle to the IMSConnectionManager
+ *                                  interface object
+ *
+ * @return
+ *   Status code. See #IMSCM_STATUSCODE.
+ *
+ * @dependencies
+ *   None.
+ */
+closeService(IMSCM_SERVICE_HANDLE connectionManager) generates (IMSCM_STATUSCODE status);
+
+/**
+ * Provides support for triggering Registration Restoration, this method should be called in case
+ * we receive 403 kind of permanent error for non-registration sip transactions
+ * and also in case timer B/F is fired in the SIP stack used.
+ * Triggers registration based on the provided method name and error codes of non-registration sip messages.
+ * the success of this request is posted in onCommandStatus()
+ *
+ * @param[in] method -- SIP Method for which we got error response or timer B/F is fired
+ * @param[in] responceCode -- response code for the above SIP method
+ *
+ * @return QIMSCM_SUCCESS if the call is successful, otherwise returns an error code
+ * from #IMSCM_STATUSCODE.
+ */
+methodResponse(IMSCM_SERVICE_HANDLE connectionManager,
+               string method, uint16_t responseCode,
+               uint32_t userdata) generates (IMSCM_STATUSCODE status);
+};

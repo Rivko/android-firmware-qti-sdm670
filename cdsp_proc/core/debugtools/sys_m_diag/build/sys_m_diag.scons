@@ -1,0 +1,95 @@
+#===============================================================================
+#
+# SYS_M_DIAG Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2014-2017 by Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 11/05/14   dav     Created separate folder for sys_m_diag 
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# SUPPORTED IMAGES
+#-------------------------------------------------------------------------------
+
+SYS_M_DIAG_IMGS = [
+    'MODEM_MODEM',
+    'CORE_MODEM',
+]
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/debugtools/sys_m_diag/src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Features and Definitions
+#-------------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
+# External depends outside CoreBSP
+#-------------------------------------------------------------------------------
+
+env.RequireExternalApi([
+])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+CBSP_API = [
+   'DAL',
+   'DEBUGTOOLS',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'MPROC',
+
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Sources
+#-------------------------------------------------------------------------------
+
+SYS_M_DIAG_SOURCES = [
+   '${BUILDPATH}/sys_m_diag.c',
+]
+
+#-------------------------------------------------------------------------------
+# Libraries
+#-------------------------------------------------------------------------------
+
+env.AddLibrary(
+    SYS_M_DIAG_IMGS,
+    '${BUILDPATH}/sys_m_diag', SYS_M_DIAG_SOURCES )
+      
+if 'USES_RCINIT' in env:
+   env.AddRCInitFunc( 
+    SYS_M_DIAG_IMGS, 
+    {
+     'sequence_group'             : 'RCINIT_GROUP_2',             # required
+     'init_name'                  : 'sys_m_diag_init',            # required
+     'init_function'              : 'sys_m_diag_init',            # required
+     'dependencies'               : ['gencbctxtinit']
+    })
+

@@ -1,0 +1,191 @@
+#===============================================================================
+#
+# GPIO INTERRUPT CONTROLLER Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2017 by QUALCOMM Technologies Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1/systemdrivers/GPIOInt/build/gpioint.scons#4 $
+#  $DateTime: 2017/11/02 02:02:39 $
+#  $Author: pwbldsvc $
+#  
+#                      EDIT HISTORY FOR FILE
+#                      
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#  
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 03/24/17   cpaulo  Merged for all of Q6.
+#===============================================================================
+import os
+
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/systemdrivers/GPIOInt/src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Image Definitions
+#-------------------------------------------------------------------------------
+GPIOINT_USER_IMAGES = ['CORE_SLPI_USER',
+                       'CORE_ADSP_USER',
+                       'CORE_CDSP_USER',
+                       'CORE_SSC_ADSP_USER',
+                       'CORE_AVS_ADSP_USER']
+GPIOINT_KERNEL_IMAGES = ['CORE_Q6_ROOT']
+GPIOINT_KERNEL_UIMAGES = ['CORE_SLPI_ROOT','CORE_SLPI_ADSP_ROOT']
+
+#-------------------------------------------------------------------------------
+# External depends within CoreBSP
+#-------------------------------------------------------------------------------
+env.RequireExternalApi([
+  'CS_INC',
+])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+env.Append(CPPPATH = [
+   "${INC_ROOT}/core/systemdrivers/GPIOInt/inc",
+   "${INC_ROOT}/core/systemdrivers/GPIOInt/src/kernel",
+   "${INC_ROOT}/core/systemdrivers/GPIOInt/src/kernel/uimage",
+   "${INC_ROOT}/core/api/systemdrivers",
+   "${INC_ROOT}/core/systemdrivers/GPIOInt/src/user",
+   "${INC_ROOT}/core/systemdrivers/GPIOInt/src/user/uimage",
+   "${INC_ROOT}/core/systemdrivers/GPIOMgr/inc",
+])
+
+CBSP_API = [
+  'HAL',
+  'DAL',
+  'DEBUGTOOLS',
+  'MPROC',
+  'POWER',
+  'POWER_PDC',
+  'SERVICES',
+  'GPIOINT_DEVCFG_INTERFACE',
+  'GPIOMGR_DEVCFG_INTERFACE',
+  'SYSTEMDRIVERS',
+  'HALGPIOINT',
+  'KERNEL',
+]
+ 
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+env.Append(CCFLAGS = " -DGPIOINT_USE_NPA")
+# Need to fix this and make it completely dynamic
+env.Append(CPPDEFINES = ["GPIOINT_NUM_PDS=3"])
+
+if 'USES_SENSOR_IMG' not in env and 'USES_AUDIO_IMG' not in env:
+  env.Append(CCFLAGS = " -DGPIOINT_REG_SUMMARY")
+
+# GPIOInt Logs to Enable
+env.Append(CCFLAGS = " -DGPIOINTLOG_REG_ENABLE")
+env.Append(CCFLAGS = " -DGPIOINTLOG_MPM_ENABLE")
+env.Append(CCFLAGS = " -DGPIOINTLOG_NPAREQ_ENABLE")
+env.Append(CCFLAGS = " -DGPIOINTLOG_SETTRIGGER_ENABLE")
+env.Append(CCFLAGS = " -DGPIOINTLOG_ENABLE_ENABLE")
+env.Append(CCFLAGS = " -DGPIOINTLOG_CLEAR_ENABLE")
+env.Append(CCFLAGS = " -DGPIOINTLOG_TRIGGER_ENABLE")
+env.Append(CCFLAGS = " -DGPIOINTLOG_SUMMARYISR_ENABLE")
+
+if ( env['CHIPSET'] in ['sdm845','sdm855','sdm1000'] and env['IMAGE'] == 'slpi' ) or ( env['CHIPSET'] == 'sdm670' and env['IMAGE'] == 'adsp' ):
+   env.Append(CCFLAGS = " -DUGPIOTIMESTAMP_EN")
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+GPIO_INTERRUPT_KERNEL_SOURCES = [
+   '${BUILDPATH}/kernel/GPIOIntFwk.c',
+   '${BUILDPATH}/kernel/GPIOIntInfo.c',
+   '${BUILDPATH}/kernel/GPIOInt.c',
+   '${BUILDPATH}/kernel/GPIOInt_DirConn.c',
+   '${BUILDPATH}/kernel/GPIOInt_Summary.c',
+   '${BUILDPATH}/kernel/GPIOIntLog.c',
+]
+
+GPIO_INTERRUPT_KERNEL_SUM_SOURCES = [
+   '${BUILDPATH}/kernel/GPIOInt_SummaryKernel.c',
+   '${BUILDPATH}/kernel/GPIOIntQDI.c',
+]
+
+GPIO_ROOTPD_UIMAGE_STUB_SOURCES = [
+   '${BUILDPATH}/kernel/uGPIOIntStub.c',
+]
+
+GPIO_INTERRUPT_USER_SUM_SOURCES = [
+   '${BUILDPATH}/kernel/GPIOInt_SummaryUser.c',
+]
+
+GPIO_USERPD_UIMAGE = [
+ '${BUILDPATH}/user/uimage/uGPIOIntUser.c',
+]
+GPIO_USERPD_UIMAGE_ISLAND = [
+ '${BUILDPATH}/user/uimage/uGPIOIntUserIsland.c',
+]
+
+#-------------------------------------------------------------------------------
+# RCInit Dependencies
+#-------------------------------------------------------------------------------
+
+if 'USES_RCINIT' in env:
+  RCINIT_IMG = GPIOINT_USER_IMAGES
+  env.AddRCInitFunc(       # Code Fragment in TMC: NO
+  RCINIT_IMG,              # define TMC_RCINIT_INIT_GPIOINT_INIT
+  {
+    'sequence_group'             : 'RCINIT_GROUP_0',       # required
+    'init_name'                  : 'GPIOInt',              # required
+    'init_function'              : 'GPIOInt_Init',         # required
+    'dependencies'               : ['dalsys','npa','island_mgr','pdcTS_clnt']
+  })
+  RCINIT_IMG = GPIOINT_KERNEL_IMAGES
+  env.AddRCInitFunc(       # Code Fragment in TMC: NO
+  RCINIT_IMG,              # define TMC_RCINIT_INIT_GPIOINT_INIT
+  {
+    'sequence_group'             : 'RCINIT_GROUP_0',       # required
+    'init_name'                  : 'GPIOInt',              # required
+    'init_function'              : 'GPIOInt_Init',         # required
+    'dependencies'               : ['dalsys','npa','island_mgr','PDCInt','PDCTimestamp']
+  })
+
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+if 'USES_SENSOR_IMG' in env or 'USES_AUDIO_IMG' in env:
+    ugpiointislanduserlib = env.AddLibrary(GPIOINT_USER_IMAGES, 
+                             '${BUILDPATH}/GPIOInt/ugpioint/uGPIOIntuserisland', 
+                             GPIO_USERPD_UIMAGE_ISLAND)
+    if 'USES_ISLAND' in env:
+       env.AddIslandLibrary(GPIOINT_USER_IMAGES, ugpiointislanduserlib)
+
+    env.AddLibrary(GPIOINT_USER_IMAGES, '${BUILDPATH}/GPIOInt/ugpioint/uGPIOIntuser', GPIO_USERPD_UIMAGE)
+else:
+    if env.IsTargetEnable(GPIOINT_KERNEL_UIMAGES):
+        ugpiointislandkernellib = env.AddLibrary(GPIOINT_KERNEL_UIMAGES, 
+                                 '${BUILDPATH}/GPIOInt/ugpioint/uGPIOIntkernelisland', 
+                                 GPIO_USERPD_UIMAGE_ISLAND)
+        if 'USES_ISLAND' in env:
+           env.AddIslandLibrary(GPIOINT_KERNEL_UIMAGES, ugpiointislandkernellib)
+        env.AddLibrary(GPIOINT_KERNEL_UIMAGES, '${BUILDPATH}/uGPIOInt/ugpiointkernel', GPIO_USERPD_UIMAGE)
+    else:
+        env.AddLibrary(GPIOINT_KERNEL_IMAGES, '${BUILDPATH}/uGPIOInt/ugpiointkernelstubs', GPIO_ROOTPD_UIMAGE_STUB_SOURCES)
+
+env.AddLibrary(GPIOINT_KERNEL_IMAGES, '${BUILDPATH}/GPIOInt/kernel', GPIO_INTERRUPT_KERNEL_SOURCES)
+env.AddLibrary(GPIOINT_KERNEL_IMAGES, '${BUILDPATH}/GPIOInt/Summary/kernel', GPIO_INTERRUPT_KERNEL_SUM_SOURCES)
+env.AddLibrary(GPIOINT_USER_IMAGES, '${BUILDPATH}/GPIOInt/user', GPIO_INTERRUPT_KERNEL_SOURCES)
+env.AddLibrary(GPIOINT_USER_IMAGES, '${BUILDPATH}/GPIOInt/Summary/user', GPIO_INTERRUPT_USER_SUM_SOURCES)

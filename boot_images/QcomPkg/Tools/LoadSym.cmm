@@ -1,0 +1,504 @@
+;============================================================================
+;  Name:
+;    LoadSym.cmm
+;
+;  Description:
+;     Called to load UEFI symbols at run-time, after target is halted
+;
+; Copyright (c) 2012-2015 Qualcomm Technologies, Inc.  All
+; Rights Reserved. Qualcomm Technologies Proprietary and
+; Confidential.
+;
+;----------------------------------------------------------------------------
+;============================================================================
+;
+;                        EDIT HISTORY FOR MODULE
+;
+;
+;
+;when         who     what, where, why
+;----------   ---     ----------------------------------------------------------
+;2015-07-31   vk      Fix path seperator
+;2015-07-24   vk      Support Linux T32
+;2015-07-17   dg      Fix pathing issues
+;2015-07-09   bh      Fix UEFI_Logs area issues
+;2015-07-09   dg      Add checks for 64 bit platforms
+;2015-02-20   vk      Do not reset sym
+;2015-02-12   bh      Change RD: to A:
+;2015-01-27   bh      Unifying 32/64-bit scripts
+;2014-12-16   vk      Update offset and merge debug script changes
+;2013-04-11   yg      Dxe Symbols Loading
+;2013-02-11   niting  Added support for RVCT5.01
+;2012-02-08   plc     Initial version
+;============================================================================;
+
+;  README: Do not use this script unless the values are known, instead use the
+;          script in the target\tools\symbol_load.cmm that calls this script
+;          with proper parameter values
+;
+
+local &TblPtr
+local &CfgCnt
+local &DbgGuid
+local &DbgImgHdr
+local &DbgImgInfoPtr
+local &DbgImgInfoCnt
+local &SysTbl_ptr
+local &IgnoreSymPathParts
+
+;---------------------------------------------------
+; Script Entry Point
+;---------------------------------------------------
+
+ENTRY &UefiBase &InfoBlkPtrOffset
+
+
+  &InfoBlkAddr=&UefiBase+&InfoBlkPtrOffset
+
+  &SysTblPtrAddr=&InfoBlkAddr+&IBlkSystemTablePtr
+  if (&ARCHState==1)
+  (
+   &SysTbl_ptr=data.long(A:&SysTblPtrAddr)
+  )
+  else
+  (
+   &SysTbl_ptr=data.quad(A:&SysTblPtrAddr)
+  )
+
+  gosub CheckInfoBlkSignature &InfoBlkAddr
+
+  if (&SysTbl_ptr==0)
+  (
+    print %ERROR "Unable to find System Table header"
+    enddo
+  )
+
+  ; Get the pointer to the System Configuration Table
+  gosub GetCfgTblPtr &SysTbl_ptr
+
+  entry &TblPtr &CfgCnt
+  ;gosub PrintCfgList &TblPtr &CfgCnt
+
+  &MaxCfgCnt=0x100
+  if (&CfgCnt>&MaxCfgCnt)
+  (
+    print %ERROR "Invalid Config Count, CfgCnt = &CfgCnt"
+    enddo
+  )
+
+  ;
+  ;  gEfiDebugImageInfoTableGuid =  0x49152E77, 0x1ADA, 0x4764, 0xB7, 0xA2, 0x7A, 0xFE, 0xFE, 0xD9, 0x5E, 0x8B
+  ;
+  &DbgGuid=0x49152E77
+
+  ; Extract the Debug Image Info Table header location from the System Configuration Table
+  gosub GetConfigPtr &TblPtr &CfgCnt &DbgGuid
+  entry &DbgImgHdr
+
+  if (&DbgImgHdr==0)
+  (
+    print "Unable to find Debug Image Info table header"
+  )
+
+  ; print "Dbg Img Hdr : &DbgImgHdr"
+
+  &DbgImgInfoCnt=data.long(A:&DbgImgHdr+0x4)
+
+  if (&ARCHState==1)
+  (
+    &DbgImgInfoPtr=data.long(A:&DbgImgHdr+0x8)
+  )
+  else
+  (
+    &DbgImgInfoPtr=data.quad(A:&DbgImgHdr+0x8)
+  )
+
+  ; Call ParseDbgImgTbl to actually traverse the table to load symbols for each driver
+  gosub ParseDbgImgTbl &DbgImgInfoPtr &DbgImgInfoCnt &UefiBase
+
+enddo
+
+
+;--------------------------------------------------------------------------
+;   Local functions
+;--------------------------------------------------------------------------
+
+;---------------------------------------------------
+; ParseDbgImgTbl
+;---------------------------------------------------
+ParseDbgImgTbl:
+  entry &DbgInfoPtr &DbgInfoCnt &UefiBase
+
+  local &NormImg
+  local &ImgInfoType
+  local &LoadedImgProtocol
+  local &ImgBase
+  local &HdrSize
+
+  cd ../..
+
+  ; First load the DxeCore and Sec symbol files
+  gosub LoadDxeAndSec &UefiBase
+
+  ; Now load the remainder of the drivers symbol files
+  while (&DbgInfoCnt>0)
+  (
+    if (&ARCHState==1) 
+    (
+      &NormImg=data.long(A:&DbgInfoPtr+&PtrSize)
+    )
+    else
+    (
+      &NormImg=data.quad(A:&DbgInfoPtr+&PtrSize)
+    )
+
+    if (&NormImg!=0)
+    (
+      if (&ARCHState==1)
+      (
+        &ImgInfoType=data.long(A:&NormImg)
+        &LoadedImgProtocol=data.long(A:&NormImg+&PtrSize)
+      )
+      else
+      (
+        &ImgInfoType=data.quad(A:&NormImg)
+        &LoadedImgProtocol=data.quad(A:&NormImg+&PtrSize)
+      )
+
+      if (&ImgInfoType==0x1)&&(&LoadedImgProtocol!=0)
+      (
+        if (&ARCHState==1)
+        (
+          &ImgBase=data.long(A:&LoadedImgProtocol+(0x8*&PtrSize))
+        )
+        else
+        (
+          &ImgBase=data.quad(A:&LoadedImgProtocol+(0x8*&PtrSize))
+        )
+
+        gosub LoadDll &ImgBase
+      )
+    )
+
+    &DbgInfoPtr=&DbgInfoPtr+&PtrSize
+    &DbgInfoCnt=&DbgInfoCnt-1
+  )
+
+  cd QcomPkg/Tools/
+
+return
+
+;---------------------------------------------------
+; LoadDxeAndSec
+;---------------------------------------------------
+LoadDxeAndSec:
+  entry &UefiBaseAddr
+
+  local &ImgBase
+  local &Rva
+  local &ElfFilePath
+  local &LoadFilePathPos
+  local &LoadFilePath
+  local &DxeAddr
+  local &PathSep
+  local &ScanLocation
+
+  ; Load Sec symbols first
+  &Rva=data.long(A:&UefiBaseAddr+0x11C)
+  &Rva=&Rva-&RvaOffsetSub
+  &ElfFilePath=data.string(A:&UefiBaseAddr+&Rva)
+  &ImgBase=&UefiBaseAddr+&SecLoadAddrOffset
+
+  ; Search for Build folder in the file path
+  local &scanres
+  &LoadFilePathPos=0.
+  &scanres=0.
+  repeat
+  (
+    &scanres=string.scan("&ElfFilePath","/Build/",&LoadFilePathPos)
+    if (&scanres!=-1.)
+    (
+      &LoadFilePathPos=&scanres+1.
+    )
+    else
+    (
+      &scanres=string.scan("&ElfFilePath","\Build\",&LoadFilePathPos)
+      if (&scanres!=-1.)
+      (
+        &LoadFilePathPos=&scanres+1.
+      )
+    )
+
+  )
+  while &scanres!=-1.
+  &PathSep=string.mid("&ElfFilePath",&LoadFilePathPos-1,1)
+
+  ;y.spath.reset
+  y.spath.SETBASEDIR .
+
+  &IgnoreSymPathParts=0
+  &ScanLocation=string.scan("&ElfFilePath","&PathSep",0)
+  while &ScanLocation<&LoadFilePathPos
+  (
+    &IgnoreSymPathParts=&IgnoreSymPathParts+1
+    &ScanLocation=string.scan("&ElfFilePath","&PathSep",&ScanLocation+1)
+  )
+
+  ; Extract only the elf file path relative to current location
+  &LoadFilePath=string.cut("&ElfFilePath",&LoadFilePathPos)
+
+  ; Check if the DxeCore Symbol file is existing, attempt to load only if its present
+  if (os.file("&LoadFilePath"))
+  (
+    print "Loading &LoadFilePath &ImgBase"
+
+    data.load.elf &LoadFilePath &ImgBase /nocode /strippart &IgnoreSymPathParts
+  )
+  else
+  (
+    print "COULD NOT LOCATE &LoadFilePath"
+  )
+
+  ; Now try to load Dxe symbols
+  if (&ARCHState==1)
+  (
+    &DxeAddr=data.long(A:&InfoBlkAddr+&IBlkDxeSymbolAddr)
+  )
+  else
+  (
+    &DxeAddr=data.quad(A:&InfoBlkAddr+&IBlkDxeSymbolAddr)
+  )
+ &Rva=data.long(A:&DxeAddr+&RvaOffsetAdd)
+  &Rva=&Rva+0x2C
+  &ElfFilePath=data.string(A:&DxeAddr+&Rva)
+
+  &ImgBase=&DxeAddr+&EfiHeaderOffset
+
+  ; Search for Build folder in the file path
+  local &scanres
+  &LoadFilePathPos=0.
+  &scanres=0.
+  repeat
+  (
+    &scanres=string.scan("&ElfFilePath","/Build/",&LoadFilePathPos)
+    if (&scanres!=-1.)
+    (
+      &LoadFilePathPos=&scanres+1.
+    )
+    else
+    (
+      &scanres=string.scan("&ElfFilePath","\Build\",&LoadFilePathPos)
+      if (&scanres!=-1.)
+      (
+        &LoadFilePathPos=&scanres+1.
+      )
+    )
+  )
+  while &scanres!=-1.
+
+  ; Extract only the elf file path relative to current location
+  &LoadFilePath=string.cut("&ElfFilePath",&LoadFilePathPos)
+
+  ; Check if the DxeCore Symbol file is existing, attempt to load only if its present
+  if (os.file("&LoadFilePath"))
+  (
+    print "Loading &LoadFilePath &ImgBase"
+
+    data.load.elf &LoadFilePath &ImgBase /nocode /noclear  /strippart &IgnoreSymPathParts
+  )
+  else
+  (
+    print "COULD NOT LOCATE &LoadFilePath"
+  )
+
+return
+
+;---------------------------------------------------
+; LoadDll
+;---------------------------------------------------
+LoadDll:
+  entry &ImgBase
+
+  local &HdrSize
+  local &DbgEntryOffset
+  local &Rva
+  local &ElfFilePath
+  local &LoadFilePathPos
+  local &LoadFilePath
+  local &Pdb
+
+  ; Lets assume only NT headers, no DOS headers, so PE header is at the image base
+  ; Lets also assume no TE headers, only PE32 headers
+  ; Lets also assume only compiled for ARM
+  &HdrSize=data.long(A:&ImgBase+0xAC)
+  &DbgEntryOffset=data.long(A:&ImgBase+&ImgBaseDbgEntryOffset)
+  &Rva=&ImgBase+&DbgEntryOffset+0x1C
+  &Pdb=data.long(A:&Rva+0x10) ;0x10 is the NB10 Tag size, assume only NB10 tags
+  &ElfFilePath=data.string(A:&Rva+0x10)
+
+;        print "ImgBase : &ImgBase"
+;        print "DbgEntryOffset : &DbgEntryOffset"
+;        print "Rva : &Rva"
+;        print "ElfFilePath : &ElfFilePath"
+
+
+  &ImgBase=&ImgBase+&HdrSize
+
+  ; ArmCpuDxe uses special alignment for exception vector
+  if ((string.scan("&ElfFilePath","ArmCpuDxe", 0)!=-1)&&(&ARCHState!=1))
+  (
+    &ImgBase=&ImgBase-0x260+0x800
+  )
+
+  ; Extract only the file portion, ignoring where it built,
+  ; ie extract the path relative to current address (Uefi Root)
+  ; Remove ending doubt quote char
+
+  ; Search for Build folder in the file path
+  local &scanres
+  &LoadFilePathPos=0.
+  &scanres=0.
+  repeat
+  (
+    &scanres=string.scan("&ElfFilePath","/Build/",&LoadFilePathPos)
+    if (&scanres!=-1.)
+    (
+      &LoadFilePathPos=&scanres+1.
+    )
+    else
+    (
+      &scanres=string.scan("&ElfFilePath","\Build\",&LoadFilePathPos)
+      if (&scanres!=-1.)
+      (
+        &LoadFilePathPos=&scanres+1.
+      )
+    )
+  )
+  while &scanres!=-1.
+
+  ; Extract only the elf file path relative to current location
+  &LoadFilePath=string.cut("&ElfFilePath",&LoadFilePathPos)
+
+  ; Check if the file is existing, attempt to load only if its present
+  if (os.file("&LoadFilePath"))
+  (
+    print "Load &LoadFilePath &ImgBase"
+
+    data.load.elf &LoadFilePath &ImgBase /nocode /noclear /strippart &IgnoreSymPathParts
+  )
+  else
+  (
+      print "COULDN'T LOCATE &LoadFilePath"
+  )
+return
+
+GetCfgTblPtr:
+  entry &STPtr
+
+  local &CfgTbl
+  local &CfgItemCnt
+
+  &CfgItemCnt=data.long(A:&STPtr+&STCfgItemCnt)
+  if (&ARCHState==1)
+  (
+    &CfgTbl=data.long(A:&STPtr+&STCfgTbl)
+  )
+  else
+  (
+    &CfgTbl=data.quad(A:&STPtr+&STCfgTbl)
+  )
+
+  print "Cfg Item Count : &CfgItemCnt   Table Addr : &CfgTbl"
+
+return &CfgTbl &CfgItemCnt
+
+;---------------------------------------------------
+; GetConfigPtr
+;---------------------------------------------------
+GetConfigPtr:
+  entry &TempPtr &TempCnt &ReqGuid
+
+  local &Guid1
+  local &Guid2
+  local &Guid3
+  local &Guid4
+  local &Ptr
+
+  while (&TempCnt>0)
+  (
+    &Guid1=data.long(A:&TempPtr)
+    &Guid2=data.long(A:&TempPtr+0x4)
+    &Guid3=data.long(A:&TempPtr+0x8)
+    &Guid4=data.long(A:&TempPtr+0xC)
+    if (&ARCHState==1)
+    (
+     &Ptr=data.long(A:&TempPtr+0x10)
+    )
+    else
+    (
+     &Ptr=data.quad(A:&TempPtr+0x10)
+    )
+
+    print "&Guid1 &Guid2 &Guid3 &Guid4  :  &Ptr"
+    if (&Guid1==&ReqGuid)
+      return &Ptr
+
+    &TempCnt=&TempCnt-1
+    &TempPtr=&TempPtr+0x10+&PtrSize
+  )
+
+return 0
+
+;---------------------------------------------------
+; PrintCfgList
+;---------------------------------------------------
+PrintCfgList:
+  entry &TempPtr &TempCnt
+
+  local &Guid1
+  local &Guid2
+  local &Guid3
+  local &Guid4
+  local &Ptr
+
+
+  print "Configuration Table entries: &CfgCnt"
+  print "GUID : Ptr"
+
+  while (&TempCnt>0)
+  (
+    &Guid1=data.long(A:&TempPtr)
+    &Guid2=data.long(A:&TempPtr+0x4)
+    &Guid3=data.long(A:&TempPtr+0x8)
+    &Guid4=data.long(A:&TempPtr+0xC)
+    &Ptr=data.long(A:&TempPtr+0x10)
+
+    print "&Guid1 &Guid2 &Guid3 &Guid4  :  &Ptr"
+
+    &TempCnt=&TempCnt-1
+    &TempPtr=&TempPtr+0x10+&PtrSize
+  )
+
+return
+
+;---------------------------------------------------
+; Verify Info Block Signature
+;---------------------------------------------------
+CheckInfoBlkSignature:
+  ENTRY &InfoBlkAddr
+
+  ;Read signature and verify
+  &Sig=data.long(A:&InfoBlkAddr)
+
+  ;Check signature before dereference
+  if (&Sig!=0x6B6C4249)
+  (
+    PRINT %ERROR "Unable to locate UEFI Info Block with ref to the Base Addr : &InfoBlkAddr"
+    END
+  )
+  else
+  (
+    PRINT "InfoBlock Signature OK"
+  )
+
+return

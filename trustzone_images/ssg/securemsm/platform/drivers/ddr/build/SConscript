@@ -1,0 +1,81 @@
+Import('env')
+env = env.Clone()
+
+env.LoadSoftwareUnits()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "../"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'HAL',
+   'DAL',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'KERNEL'
+]
+
+env.RequirePublicApi(CBSP_API, area='core')
+
+SSG_API = [
+   'AC',
+   'TZCHIPSET',
+   'SECUREMSM',
+   'MINK',
+   'TZMRM',	
+   'QSEE',
+   'SSGPLATFORM',
+]
+env.RequirePublicApi(SSG_API, area = 'ssg')
+env.RequireRestrictedApi(SSG_API)
+
+# -------------------------------------------------------------------------------
+# Local Include Path. 
+# -------------------------------------------------------------------------------
+
+INC_PATH = ['${INC_ROOT}/ssg/securemsm/platform/drivers/inc/ddr'            
+]
+
+env.Append(CPPPATH = INC_PATH)
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+# The value of TZBSP_NUM_DDR_REGIONS is not defined in 'tzbsp_ddr.c'. 
+# Depending on the chipset, it can change in future. Hence defined here.
+if env['CHIPSET'] in ['sdm670', 'sdm845',  'sdx24', 'sdm1000' , 'qcs6200', 'sdm640']:
+   env.Append(CPPDEFINES = ['TZBSP_NUM_DDR_REGIONS=4'])
+
+SOURCES = ['${BUILDPATH}/src/ddr.c',
+]
+
+if 'USES_DEVCFG' in env:
+    DEVCFG_IMG = ['DAL_DEVCFG_IMG']
+    env.AddDevCfgInfo(DEVCFG_IMG,
+    {
+       'devcfg_xml' : '${BUILD_ROOT}/ssg/securemsm/platform/drivers/ddr/cfg/ddr.xml'
+    })
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+env.AddBinaryObject('TZOS_IMAGE', SOURCES)
+
+if 'USES_RCINIT' in env:
+  RCINIT_IMGS = ['CTZL64_IMAGE', 'TZOS_IMAGE', 'CTZL_IMAGE']
+  env.AddRCInitFunc(
+    RCINIT_IMGS,
+    {
+      'sequence_group'             : 'RCINIT_GROUP_0',
+      'init_name'                  : 'ddr',
+      'init_function'              : 'ddr_init',
+      'dependencies'               : ['diag'],
+      'policy_optin'               : ['default']
+    })

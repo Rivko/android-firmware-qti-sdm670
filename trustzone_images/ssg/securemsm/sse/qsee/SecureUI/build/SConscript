@@ -1,0 +1,96 @@
+#===============================================================================
+#
+# QSEE Secure UI Service
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2015-2017 Qualcomm Technologies, Inc.  All Rights Reserved.
+# Qualcomm Technologies Proprietary and Confidential.
+#
+#-------------------------------------------------------------------------------
+#
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 07/07/16   dr      Added display manager
+# 08/19/15   ng      Added secure_ui_sample64
+# 06/15/15   sn      Added chipset specific definition header
+# 05/05/15   sn      Moved the layouts to dedicated lib
+# 26/01/15   gs      Modified layouts for 8994 compatibility
+# 25/06/14   rz      Added secure indicator support
+# 05/09/13   sn      Initial version
+#  2/13/17           move sse from core to ssg
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+
+env.Append(CCFLAGS = " -DPNG_SEQUENTIAL_READ_SUPPORTED")
+
+includes = ['../inc',
+    "${BUILD_ROOT}/core/api/services",
+    "${BUILD_ROOT}/ssg/api/securemsm/trustzone/qsee",
+    "${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/services/inc/",
+    "${BUILD_ROOT}/core/api/kernel/libstd/stringl/",
+    "${BUILD_ROOT}/ssg/securemsm/sse/qsee/SecureUI/src/chipset/${CHIPSET}/inc/",
+    "${BUILD_ROOT}/ssg/securemsm/accesscontrol/api/",
+    "${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/include/",
+    "${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/mink/include/",
+    "${BUILD_ROOT}/core/kernel/smmu/ACv3.0/common/inc/",
+    "${BUILD_ROOT}/apps/securemsm/trustzone/qsapps/secureindicator/inc/",
+    "${BUILD_ROOT}/ssg/securemsm/sse/qsee/SecureDisplay/libgd/include/",
+    "${BUILD_ROOT}/ssg/securemsm/sse/qsee/SecureDisplay/libpng/include/",
+    "${BUILD_ROOT}/ssg/securemsm/sse/qsee/SecureDisplay/zlib/include/",
+    "${BUILD_ROOT}/ssg/securemsm/sse/SecureTouch/layout/include/",
+    "${BUILD_ROOT}/ssg/securemsm/sse/SecureTouch/common/include/",
+    "${BUILD_ROOT}/ssg/securemsm/sse/qsee/SecureTouch/drTs/include/",
+    "${BUILD_ROOT}/ssg/securemsm/sse/common/include/",
+    "${BUILD_ROOT}/ssg/securemsm/sse/qsee/SecureUILib/include"]
+
+SOURCES_LIB = [
+  '../src/SecureUI.c',
+  '../src/misr.c',
+]
+
+SOURCES_TUI = [
+  '../src/secure_display_renderer.c',
+  '../src/layout_manager.c',
+  '../src/display_manager.c',
+  '../src/font_manager.c',
+  '../src/qsee_tui_dialogs.c',
+  '../src/tests/unittest_stub.c',
+]
+
+# sources for UT version of the SUI library
+SOURCES_UNITTESTS_TUI = [
+  '../src/qsee_tui_dialogs.c',
+  '../src/secure_display_renderer.c',
+  '../src/tests/font_manager_unittests.c',
+  '../src/tests/layout_manager_unittests.c',
+  '../src/tests/display_manager_unittests.c',
+  '../src/tests/sui_unittests_main.c',
+ ]
+
+secure_ui_lib = env.SecureAppLibBuilder(includes, SOURCES_LIB, 'secure_ui')
+
+if env.get('sui_unittests', '0') == '1':
+    tui_lib = env.SecureAppLibBuilder(includes, SOURCES_UNITTESTS_TUI, 'secure_ui_tui')
+else:
+    tui_lib = env.SecureAppLibBuilder(includes, SOURCES_TUI, 'secure_ui_tui')
+    env.Deploy(tui_lib)
+  
+if secure_ui_lib:
+    env.Deploy([secure_ui_lib,
+                'SConscript',
+                env.Glob('../inc/*.h'),
+               ])
+
+  
+ret = [secure_ui_lib, tui_lib]
+  
+Return('ret')

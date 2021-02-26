@@ -1,0 +1,186 @@
+//============================================================================
+//  Name:                                                                     
+//    std_debug_boot.cmm 
+//
+//  Description:                                                              
+//    Boot debug script
+//                                                                            
+// Copyright (c) 2012 - 2017 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who             what, where, why
+// --------   ---             ---------------------------------------------------------
+// 02/02/2016 JBILLING        Created/Updated for sdm845. PBL workaround added.
+
+
+
+//####################Declarations#######################
+
+LOCAL &ArgumentLine
+LOCAL &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+LOCAL &string_length
+LOCAL &SubRoutine &Port
+LOCAL &Unused1 &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &extraoption &Unused2 &Unused3
+LOCAL &BootProcessor &DefBkpts
+
+//###################Arguments passed #####################
+ENTRY %LINE &ArgumentLine
+ENTRY &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+
+
+
+//##################Defaults##########################
+&targetprocessor="apps0"
+
+//#####################Select Subroutine###################
+// Name of the utility we are calling
+LOCAL &SUBROUTINE
+// Any subroutine specific options
+// Default exists for each subroutine
+LOCAL &OPTION
+
+//* Check if we need to call for help or do some work *//
+IF ("&ArgumentLine"=="")
+(
+    &SUBROUTINE="HELP"
+)
+ELSE
+(
+    &SUBROUTINE="MAIN"
+)
+
+    GOSUB &SUBROUTINE
+    LOCAL &Rvalue
+    ENTRY %LINE &Rvalue
+
+    GOSUB EXIT &Rvalue
+
+
+////////////////////////////////////////
+//
+//          MAIN
+//          Main std_debug_boot logic
+//
+/////////////////////////////////////////
+MAIN:
+
+    LOCAL &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+    //note that optextract has a limit of 10 entries
+    do optextract Img,Lpm,Bkpts,CTI_Enable,alternateelf,extraoption &ArgumentLine
+        ENTRY &image &lpm_option &user_defined_bkpts &cti_enable &alternateelf &extraoption //expect 6 returns from optextract
+
+    // Get the target processor for this port
+    do std_debug_&CHIPSET GETDEBUGDEFAULTS NONE &image &lpm_option &cti_enable &alternateelf &extraoption
+    ENTRY &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+    
+
+    do hwio
+
+
+
+    // We have work to do if it is SBL
+    IF ("&image"=="xbl")
+    (
+        
+
+        // Attach to Apps Core 0 and break
+        do std_intercom_do &targetprocessorport std_utils BREAKPROC
+
+        // Now set the entry and exit breakpoints
+        do std_intercom_cmds &targetprocessorport NOWAIT Break.Set &entry_bkpt &error_bkpts /onchip
+        
+        GO
+        
+        LOCAL &counter
+        &counter=0x0
+        WHILE (STATE.RUN())&&(&counter<&processortimeoutvalue)
+        (
+            &counter=&counter+1.
+            wait.100ms
+        
+        )
+
+        IF &counter==50.
+        (
+            WINPOS 0. 0. 50. 10.
+            area.reset
+            area
+            PRINT %ERROR "   Apps Processor did not stop at entry. "
+            PRINT " "
+            PRINT %ERROR "   Please Check if:"
+            PRINT %ERROR "       - Symbols mismatch,"
+            PRINT %ERROR "       - XBL image loaded"
+            PRINT " "
+            PRINT " "
+            PRINT " "
+            //Don't use same symbols on next run
+            &USEEXISTINGSYMS_TARGET="FALSE"
+            &ENTRYHEXADDR_TARGET="NULL"
+            do std_fatalexit USER "std_debug_&targetprocessor - symbol mismatch; processor didn't halt at &entry_bkpt"
+        )
+        
+        /////////////////////////////////////////////////////////////////////////////////////////////////////
+        ////////////////////////////////Debug Logic - after first bp hit ////////////////////////////////////
+        /////////////////////////////////////////////////////////////////////////////////////////////////////
+        ////////////////////////////////This section sets all the options (LPM, CTI, breakpoints etc.)///////
+        /////////////////////////////////////////////////////////////////////////////////////////////////////
+        
+        
+        // Set the breakpoints specified by the user
+        IF ("&user_defined_bkpts"!="NULL")
+        (
+            do std_intercom_do &targetprocessorport std_utils SETBREAKPOINTS ONCHIP &user_defined_bkpts
+        )
+        
+        WINPOS 0. 0. 
+        DATA.LIST
+        WINPOS 0. 50%
+        REGISTER /SL
+        //If user did not specify entry breakpoint, then go.
+        IF (STRING.SCAN("&user_defined_bkpts","&entry_bkpt",0)!=-1)
+        (
+            GO
+        )
+        
+        
+    )
+    &USEEXISTINGSYMS_TARGET="TRUE"
+    &USEEXISTINGSYMS_LOCAL="TRUE"
+    RETURN SUCCESS
+    
+HELP:
+    AREA
+    PRINT "This is helpful"
+    RETURN SUCCESS
+    
+EXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    ENDDO &rvalue
+    
+
+//Should never get here. 
+FATALEXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    IF STRING.SCAN("&FAILUREKEYWORD","FAILUREKEYWORD",0)==-1
+    (
+        GOSUB EXIT &FAILUREKEYWORD - &rvalue
+    )
+    ELSE
+    (
+        GOSUB EXIT &rvalue
+    )
+    
+//Should never get here
+    END
+
+
+    
+        

@@ -1,0 +1,364 @@
+#==============================================================================
+#
+#                   S M E M    B U I L D    S C R I P T
+#
+# SMEM driver Build Script
+#
+# Copyright (c) 2012-2017 Qualcomm Technologies, Inc. All Rights Reserved.
+# Qualcomm Technologies, Inc. Confidential and Proprietary.
+#
+#==============================================================================
+
+#==============================================================================
+#
+#  $Header: //components/rel/core.qdsp6/2.1/mproc/smem/build/smem.scons#2 $
+#  $DateTime: 2017/09/14 03:40:04 $
+#  $Author: pwbldsvc $
+#  $Change: 14371357 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ----------------------------------------------------------
+# 02/09/17   vr      SMEM Version 0x000C0000 changes. 
+# 02/29/16   rv      Used USES_MULTI_PD and USES_MPSS_MULTI_PD flags instead 
+#                    USES_QURTOS_IMG to enable QDI driver.
+# 08/17/15   db      Selectively compile smem_tz.c for bear and honeybadger
+# 06/07/15   rs      Provide RO access to APSS for collecting crashdump
+# 04/27/15   rv      Add support for Bear targets.
+# 04/27/15   rv      Move target specific files to different folders.
+# 04/07/15   db      Added full smem core for TZ image to support SMP2P
+#                     Added MPROC_TZ_PROC macro to define SPINLOCK_PID for TZ
+# 03/30/15   db      Add smem_hwio_common.h in PACK_OUT files
+# 03/25/15   rs      Integrated SMEM to hypervisor
+# 03/17/15   db      Add target specific include files under MSM_ID folder
+#                    Removed SMEM_TARG_<target> macro
+# 01/06/15   bm      Add smem_list.c to boot sources to support glink
+# 08/28/14   rv      Implement SMEM QDI. Added to the CORE_USER_PD.
+# 11/22/13   bt      Add smem_boot_target.c for Bootloader builds.
+# 11/13/13   bt      Add OS-specific page mapping source file for Rex images.
+# 10/11/13   bt      Remove unneeded smem_diag.c.
+# 10/09/13   bt      Add OS-specific page mapping source files.
+# 09/19/13   bt      Added SMEM config for B-family APQ/MPQs.
+# 08/22/13   bt      Added SMEM config setup for other B-family, 8916 targets.
+# 07/03/13   bt      Add MDM config for 9x35.
+# 06/03/13   bt      Add new header for files to ship in pack builds.
+# 04/30/13   bt      Add Pack exception flags for HY31 pack builds.
+# 04/24/13   pa      Add source files for SMEM partitions.
+# 04/13/13   bt      Add DevConfig to SBL for setting up TOC.
+# 04/12/13   bt      Add smem_list.c to Core SMEM lib and smem_rex.c to Boot.
+# 03/14/13   bt      CleanPack for Boot and TZ as well.
+# 03/06/13   bt      Deliver DevConfig xml files in packed builds.
+# 02/08/13   bt      Fix edit history comment.
+# 01/22/13   bt      Ship source for TN spinlock lib.
+# 01/08/13   pa      Add SW Spinlocks to Q6 processors.
+# 12/17/12   bt      Add SW Spinlocks to Arm processors.
+# 12/06/12   bt      Add smem_qurt.c for SMEM mapping in QURT, and smem_rex.c
+#                    for processors using the default target.builds defines.
+# 12/04/12   bt      Explicitly CleanPack all relevant files.
+# 11/15/12   bt      Ship sources for TN Apps.
+# 10/25/12   bt      Add libs for TZ build flags, adding SMEM lib to TZ image.
+# 10/15/12   bt      Add Modem sources only to Core images, not to MBA.
+# 08/09/12   bt      Remove smem_dal.c from Bootloaders.
+# 08/02/12   bt      Add FEATURE_SMEM_BOOT_ENV for Bootloaders.
+# 08/01/12   bt      Add RCINIT to Apps Images, for Sparrow.
+# 05/14/12   bt      Remove RequireExternalApi references, not needed.
+# 05/01/12   bt      Add ADSP libs to CORE_QDSP6_SW, not ADSP_PROC, to avoid 
+#                    non-Core images on multi-PD.
+# 03/30/12   pa      Use RCINIT for WCN builds
+# 03/13/12   bt      8974 Sconscript update to use SconsPack.
+# 01/20/12   pa      Minor update for BOOTLOADERS
+# 01/09/12   bt      Initial Revision for 8974/Badger
+#
+#==============================================================================
+
+import os
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+UNITPATH = "${BUILD_ROOT}/core/mproc/smem"
+env.VariantDir('${BUILDPATH}', UNITPATH, duplicate=0)
+
+# TZ Build system set target family as badger for 9x45 eventhough it's a bear target.
+if env['CHIPSET'] == 'mdm9x45':
+  env.Replace(TARGET_FAMILY = 'bear')
+elif env['CHIPSET'] == 'mdm9x07':
+  env.Replace(TARGET_FAMILY = 'bear')
+elif env['CHIPSET'] == 'msm8909':
+  env.Replace(TARGET_FAMILY = 'bear')
+elif env['CHIPSET'] == 'mdm9x55':
+  env.Replace(TARGET_FAMILY = 'bear')
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+  'BOOT',
+  'DAL',
+  'DEBUGTOOLS',
+  'MPROC',
+  'KERNEL',
+  'POWER',
+  'SERVICES',
+  'SYSTEMDRIVERS',
+]
+
+env.RequirePublicApi(CBSP_API, area = 'core')
+env.RequireRestrictedApi(CBSP_API)
+
+SSG_API = [
+    'SECUREMSM',
+    'AC',
+    'MINK',
+    'SSGPLATFORM',
+]
+env.RequirePublicApi(SSG_API, area = 'ssg')
+env.RequireRestrictedApi(['MPROC', 'MPROC_SMEM_SETTINGS'])
+env.RequireProtectedApi(['SMEM_PRIVATE_API'])
+env.PublishPrivateApi('SMEM_PRIVATE_API', ["${INC_ROOT}/core/mproc/smem/inc"])
+
+#-------------------------------------------------------------------------------
+# SMEM version and features support
+#-------------------------------------------------------------------------------
+# Feature to enable the support for SMEM legacy version(0x000B)
+SMEM_FEATURE_LEGACY_VERSION_SUPPORT = True
+env.Append(CPPDEFINES=['SMEM_FEATURE_GET_ADDRS_SUPPORT'])
+
+# Feature to enable the support for SMEM allocations
+if env['MPROC_PROC_NAME'] != 'rpm':
+  env.Append(CPPDEFINES=['SMEM_FEATURE_ALLOC_SUPPORT'])
+
+# Feature to support partition allocations/get address
+if env['MPROC_PROC_NAME'] != 'rpm':
+  env.Append(CPPDEFINES=['SMEM_FEATURE_PARTITION_SUPPORT'])  
+
+# TZ not supported chipsets
+if env['CHIPSET'] == 'msm8996' or (env['TARGET_FAMILY'] == 'bear' and env['CHIPSET'] != 'mdm9x45'):
+   env.Append(CPPDEFINES=['SMEM_TZ_HOST_NOT_SUPPORTED'])
+
+# DLL_API_GLOBAL is defined only in WLAN PD
+if 'USES_WLAN_PD' not in env:
+   env.Append(CPPDEFINES=['DLL_API_GLOBAL='])
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+SMEM_SOURCES = [
+  '${BUILDPATH}/src/smem.c',
+  '${BUILDPATH}/src/smem_partition.c',
+]
+
+if SMEM_FEATURE_LEGACY_VERSION_SUPPORT is True:
+  env.Append(CPPDEFINES=['SMEM_FEATURE_LEGACY_VERSION_SUPPORT'])  
+  SMEM_SOURCES.append('${BUILDPATH}/src/smem_legacy.c')
+
+SMEM_LIST_SOURCES = [
+  '${BUILDPATH}/src/smem_list.c',
+]
+
+SMEM_BOOT_SOURCES = [
+  '${BUILDPATH}/src/smem_boot.c',
+]
+
+SMEM_TARGET_SOURCES = [
+  '${BUILDPATH}/src/smem_target.c',
+]
+
+SMEM_BOOT_TARG_SOURCES = [
+  '${BUILDPATH}/src/smem_boot_targ.c',
+]
+
+SPINLOCK_SOURCES = [
+  '${BUILDPATH}/src/spinlock.c',
+]
+
+SMEM_SPINLOCK_STM_SOURCES = [
+   '${BUILDPATH}/src/spinlock_stm.c'
+]
+
+SPINLOCK_STUBS_SOURCES = [
+  '${BUILDPATH}/src/spinlock_stubs.c',
+]
+
+SMEM_OS_QURT_SOURCES = [
+  '${BUILDPATH}/src/smem_os_qurt.c',
+]
+
+SMEM_OS_DAL_SOURCES = [
+  '${BUILDPATH}/src/smem_os_dal.c',
+]
+
+if env['CHIPSET'] == 'mdm9x45':
+  SPINLOCK_TZ_SOURCES = SPINLOCK_SOURCES
+else:
+  SPINLOCK_TZ_SOURCES = SPINLOCK_STUBS_SOURCES
+if env['CHIPSET'] == 'mdm9x07':
+  SPINLOCK_TZ_SOURCES = SPINLOCK_SOURCES
+else:
+  SPINLOCK_TZ_SOURCES = SPINLOCK_STUBS_SOURCES
+if env['CHIPSET'] == 'msm8909':
+  SPINLOCK_TZ_SOURCES = SPINLOCK_SOURCES
+else:
+  SPINLOCK_TZ_SOURCES = SPINLOCK_STUBS_SOURCES
+if env['CHIPSET'] == 'mdm9x55':
+  SPINLOCK_TZ_SOURCES = SPINLOCK_SOURCES
+else:
+  SPINLOCK_TZ_SOURCES = SPINLOCK_STUBS_SOURCES
+
+SMEM_OS_TZHYP_SOURCES = [
+  '${BUILDPATH}/src/smem_os_tzhyp.c',
+]
+
+SMEM_OS_STUBS_SOURCES = [
+  '${BUILDPATH}/src/smem_os_stubs.c',
+]
+
+SMEM_QDI_DRIVER_SOURCES = [
+   '${BUILDPATH}/src/smem_qdi_driver.c',
+]
+
+SMEM_QDI_USER_SOURCES = [
+   '${BUILDPATH}/src/smem_qdi_user.c',
+]
+
+SMEM_LOG_SOURCES = [
+   '${BUILDPATH}/src/smem_log.c',
+]
+
+if os.path.exists(env.subst("${INC_ROOT}/core/mproc/smem/src/${TARGET_FAMILY}/smem_tz.c")):
+   SMEM_AC_SOURCES = [
+      '${BUILDPATH}/src/${TARGET_FAMILY}/smem_tz.c'
+   ]
+else:
+   SMEM_AC_SOURCES = [
+      '${BUILDPATH}/src/smem_ac.c'
+   ]
+
+PACK_FLAGS = ['USES_COMPILE_SMD_SMEM_PROTECTED_LIBS']
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+env.AddBinaryLibrary(['SMEM_BOOT_DRIVER'], '${BUILDPATH}/smem',
+                     [SMEM_BOOT_SOURCES, SMEM_BOOT_TARG_SOURCES,
+                      SMEM_SOURCES, SMEM_LIST_SOURCES, SMEM_TARGET_SOURCES,
+                      SMEM_OS_STUBS_SOURCES, SPINLOCK_STUBS_SOURCES], 
+                     pack_exception=PACK_FLAGS)
+					 
+env.AddBinaryLibrary(['RPM_IMAGE'], '${BUILDPATH}/smem', 
+                     [SMEM_SOURCES, SMEM_LIST_SOURCES, SMEM_TARGET_SOURCES,
+                      SMEM_OS_DAL_SOURCES, SPINLOCK_SOURCES],
+                     pack_exception=PACK_FLAGS)
+
+env.AddBinaryLibrary(['TZOS_IMAGE'], 
+                     '${BUILDPATH}/smem',
+                     [SMEM_SOURCES, SMEM_LIST_SOURCES, SMEM_TARGET_SOURCES,
+                      SMEM_OS_TZHYP_SOURCES, SPINLOCK_TZ_SOURCES,
+                      SMEM_AC_SOURCES],
+                     pack_exception=PACK_FLAGS)
+
+env.AddBinaryLibrary(['HYPERVISOR_IMAGE'],
+                     '${BUILDPATH}/smem',
+                     [SMEM_SOURCES, SMEM_LIST_SOURCES, SMEM_TARGET_SOURCES,
+                      SMEM_OS_TZHYP_SOURCES, SPINLOCK_STUBS_SOURCES,
+                      SMEM_AC_SOURCES],
+                     pack_exception=PACK_FLAGS)
+
+env.AddBinaryLibrary(['CORE_QDSP6_SW', 'CORE_ADSP_ROOT', 'CORE_SLPI_ROOT', 
+                      'CORE_ADSP_SLPI_ROOT', 'CORE_CDSP_ROOT'], 
+                       '${BUILDPATH}/smem', 
+                       [SMEM_SOURCES, SMEM_LIST_SOURCES, SMEM_TARGET_SOURCES, 
+                        SMEM_OS_QURT_SOURCES, SMEM_LOG_SOURCES, SPINLOCK_SOURCES], 
+                       pack_exception=PACK_FLAGS)
+
+if env.has_key('MODEM_PROC'):
+  env.AddBinaryLibrary(['CORE_QDSP6_SW'], '${BUILDPATH}/smem_spinlock_stm',
+                       [SMEM_SPINLOCK_STM_SOURCES], 
+                       pack_exception=PACK_FLAGS)
+
+# Add SMEM QDI Driver interface to MultiPD image.
+if 'USES_MULTI_PD' in env or 'USES_MPSS_MULTI_PD' in env:
+  env.AddBinaryLibrary(['CORE_QDSP6_SW', 'CORE_ADSP_ROOT', 'CORE_SLPI_ROOT', 
+                        'CORE_ADSP_SLPI_ROOT', 'CORE_CDSP_ROOT'],
+                       '${BUILDPATH}/smem_qdi_driver',
+                       [SMEM_QDI_DRIVER_SOURCES])
+
+# Add SMEM QDI User interface.
+env.AddBinaryLibrary(['CORE_USER_PD', 'CORE_ADSP_USER', 
+                      'CORE_SLPI_USER', 'CORE_ADSP_SSC_USER'], 
+                     '${BUILDPATH}/smem_qdi_user', 
+                     [SMEM_QDI_USER_SOURCES], pack_exception=PACK_FLAGS)
+
+env.AddBinaryLibrary(['CORE_USER_PD', 'CORE_ADSP_USER', 
+                      'CORE_SLPI_USER', 'CORE_ADSP_SSC_USER'], 
+                     '${BUILDPATH}/smem_list', 
+                     [SMEM_LIST_SOURCES], pack_exception=PACK_FLAGS)
+
+#-------------------------------------------------------------------------------
+# CleanPack
+#-------------------------------------------------------------------------------
+PACK_OUT = env.FindFiles(['*.h', '*.c', '*.s'], UNITPATH + '/src')
+# Don't include RPM in this list, because it already does what we want 
+env.CleanPack(['CORE_QDSP6_SW', 'CORE_ADSP_ROOT', 'CORE_SLPI_ROOT', 
+               'CORE_ADSP_SLPI_ROOT', 'CORE_CDSP_ROOT''WCN_IMAGE', 
+               'SMEM_BOOT_DRIVER', 'TZOS_IMAGE'], 
+              PACK_OUT, pack_exception=PACK_FLAGS)
+
+#-------------------------------------------------------------------------------
+# RCINIT Task and Init Fields and Initialization
+#-------------------------------------------------------------------------------
+RCINIT_INIT_SMEM_INIT = {
+  'sequence_group'             : 'RCINIT_GROUP_0',             # required
+  'init_name'                  : 'smem',                       # required
+  'init_function'              : 'smem_init',                  # required
+  'dependencies'               : ['dalsys',]
+}
+
+RCINIT_INIT_SMEM_LOG_INIT = {
+  'sequence_group'             : 'RCINIT_GROUP_0',             # required
+  'init_name'                  : 'smem_log',                   # required
+  'init_function'              : 'smem_log_init',              # required
+  'dependencies'               : ['smem',]
+}
+
+RCINIT_INIT_SMEM_SPINLOCK_STM_INIT = {
+  'sequence_group'             : 'RCINIT_GROUP_0',             # required
+  'init_name'                  : 'smem_spin_lock_stm',         # required
+  'init_function'              : 'smem_spin_lock_stm_init',    # required
+  'dependencies'               : ['smem',]
+}
+
+if 'USES_RCINIT' in env:
+  RCINIT_IMG = ['CORE_QDSP6_SW', 'WCN_IMAGE', 'CBSP_APPS_IMAGE', 'APPS_IMAGE',
+                'CORE_SLPI_ROOT', 'CORE_ADSP_ROOT', 'CORE_MPSS_ROOT',
+                'CORE_CDSP_ROOT', 'CORE_ADSP_SLPI_ROOT']
+  # SMEM INIT
+  env.AddRCInitFunc( RCINIT_IMG, RCINIT_INIT_SMEM_INIT )
+  # SMEM LOG INIT
+  env.AddRCInitFunc( RCINIT_IMG, RCINIT_INIT_SMEM_LOG_INIT )
+   
+  # SMEM SPINLOCK STM INIT
+  if env.has_key('MODEM_PROC'):
+    env.AddRCInitFunc( ['CORE_QDSP6_SW'], RCINIT_INIT_SMEM_SPINLOCK_STM_INIT )  
+  
+  if 'USES_MULTI_PD' in env or 'USES_MPSS_MULTI_PD' in env:
+    env.AddRCInitFunc( ['CORE_QDSP6_SW', 'CORE_ADSP_ROOT', 'CORE_SLPI_ROOT', 
+                        'CORE_ADSP_SLPI_ROOT', 'CORE_CDSP_ROOT'],
+      {
+        'sequence_group'      : 'RCINIT_GROUP_0',             # required
+        'init_name'           : 'smem_qdi_driver',            # required
+        'init_function'       : 'smem_qdi_driver_init',       # required
+        'dependencies'        : ['smem']
+      })
+  env.AddRCInitFunc( ['CORE_USER_PD', 'CORE_ADSP_USER', 
+                      'CORE_SLPI_USER', 'CORE_ADSP_SSC_USER'],
+    {
+      'sequence_group'      : 'RCINIT_GROUP_0',               # required
+      'init_name'           : 'smem_qdi_user',                # required
+      'init_function'       : 'smem_qdi_user_init',           # required
+      'dependencies'        : []
+    })

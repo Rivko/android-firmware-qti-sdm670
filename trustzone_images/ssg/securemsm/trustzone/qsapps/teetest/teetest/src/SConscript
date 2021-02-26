@@ -1,0 +1,93 @@
+#===============================================================================
+#
+# teetest Build Script
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2015-2017 Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/ssg.tz/1.0.2/securemsm/trustzone/qsapps/teetest/teetest/src/SConscript#1 $
+#  $DateTime: 2018/02/06 03:00:17 $
+#  $Author: pwbldsvc $
+#  $Change: 15399933 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+#===============================================================================
+import os
+Import('env')
+env = env.Clone()
+is64bit = not (env['PROC'] == 'scorpion')
+arch_source_dir = 'aarch64' if is64bit else 'aarch32'
+
+if is64bit:
+  env.Replace(LIB_OUT_DIR = '${BUILD_ROOT}/ssg/bsp/trustzone/qsapps/teetest64/build/${SHORT_BUILDPATH}')
+else:
+  env.Replace(LIB_OUT_DIR = '${BUILD_ROOT}/ssg/bsp/trustzone/qsapps/teetest/build/${SHORT_BUILDPATH}')
+
+includes = [
+   "./",
+   "${CHIPSET}",
+   '${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/include/',
+   '${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/mink/include/',
+   arch_source_dir,
+   "${COREBSP_ROOT}/api/kernel/libstd/stringl",
+]
+
+#----------------------------------------------------------------------------
+# Disable the optimizer for the MINK PVC integration. This code is too darn
+# hard to follow otherwise. This can be disabled from commandline as well,
+# but that is a good idea only if you are building teetest; not when you
+# are compiling everything with tzbsptest
+#----------------------------------------------------------------------------
+env.Replace(ARMCC_OPT = "")
+
+if not is64bit:
+  env.Append(CCFLAGS = " -mfpu=none -DTEETEST32 ")
+else:
+  env.Append(CCFLAGS = " -mgeneral-regs-only -mno-implicit-float -fno-vectorize-loops -DTEETEST64 ")
+
+# Skip HDMI tests for targets that will fail due to tzbsp_mmss_dp_is_clk_on() returning false
+if env['CHIPSET'] not in ['msm8998', 'sdm660', 'sdm845']:  
+   env.Append(CPPFLAGS = ' -DTEETEST_SKIP_HDMI -DTEETEST_GIC_V1 ')
+else: 
+   env.Append(CPPFLAGS = ' -DTEETEST_GIC_V3 ')
+
+libs = [
+  env.SConscript('$BUILD_ROOT/ssg/securemsm/trustzone/qsee/mink/libstd/build/SConscript',exports='env')
+]
+   
+#----------------------------------------------------------------------------
+# App core Objects
+#----------------------------------------------------------------------------   
+aarch_sources = env.Glob(os.path.join(arch_source_dir, '*.[cs]'), strings=True)
+common_sources = env.Glob('*.[c]', strings=True)
+
+sources = common_sources + aarch_sources
+
+teetest_units = env.SecureTEEBuilder(
+  sources = sources,
+  includes = includes,
+  image = 'teetest64' if is64bit else 'teetest',
+  deploy_sources = [sources, 
+                    'SConscript',
+                    env.Glob('*.h'),
+                    env.Glob(os.path.join(arch_source_dir,'*.h')),
+                    env.Glob(os.path.join(arch_source_dir,'*.inc')),
+                    env.subst('${CHIPSET}/teetest_hwio.h'),
+                    '../build/teetest.ld',
+                    '../build/teetest64.ld',
+                   ],
+  deploy_variants = env.GetDefaultPublicVariants(),
+  user_libs=libs
+)
+
+for image in env['IMAGE_ALIASES']:
+  op = env.Alias(image, teetest_units)

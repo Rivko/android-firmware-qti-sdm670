@@ -1,0 +1,267 @@
+;============================================================================
+;  Name:
+;    dxe_dbg.cmm
+;
+;  Description:
+;     Debug Dxe runtime loading and dispatching
+;
+; Copyright (c) 2010-2017 Qualcomm Technologies Incorporated.
+; All Rights Reserved.
+; Qualcomm Technologies Confidential and Proprietary
+;
+;----------------------------------------------------------------------------
+;============================================================================
+;
+;                        EDIT HISTORY FOR MODULE
+;
+;
+;
+;when         who     what, where, why
+;----------   ---     ----------------------------------------------------------
+;2017-09-12   vk      Remove PATH
+;2016-07-21   bh      Support SDM845 (move win loading above for DCC)
+;2010-12-03   yg      Initial Version
+;============================================================================;
+
+global &ChipsetFamily
+global &ChipsetName
+global &ChipsetID
+global &IgnoreSymPathParts
+global &PathSep
+local &SecSymFile
+local &SecPath
+local &DxeAddr
+local &TargetPkg
+local &UefiElf
+local &Target
+local &RamEntryAddr
+local &SecXtn
+local &DebugDxe
+local &DebugDxeCore
+local &UefiDebugCookieAddr
+local &IncrBkptSym
+local &SymLoadAll
+local &SupportedOptionalArgs
+local &Tools
+local &Tests
+local &FvElfName
+local &FvElfLoc
+local &DebugFvFolder
+
+;
+;  [ImageName] can be one of the following options:
+;  SEC : Debug Sec initialization code
+;  DXE : Debug Dxe initialization code
+;  <str> : Where str is free string that can match to any part of the image name
+;          that we want to debug. eg: timer will let debug RealTimeClock and TimerDxe
+;
+entry &Target &TargetPkg &RamEntryAddr &RamFvAddr &UefiDebugCookieAddr &OptArgs &Modules
+  ; NOTE: when adding support for other arguments, add to this list
+  &SupportedOptionalArgs="RAM,REL,TOOLS,MENU,TESTS"
+  &IncrBkptSym=0x0
+  &SymLoadAll=0x1
+  &Tools=0x0
+  &Tests=0x0
+  
+  &CwDir=os.ppd()
+  &TmpDir=os.ptd()
+
+  cd &CwDir/../../
+
+  ; Initialize variables
+  &DebugDxe=0
+  &DebugDxeCore=0
+
+  gosub SanitizeArgs
+
+  ; Break at UEFI Sec entry point
+  ;b.d
+  b.sel program onchip
+
+
+  do &CwDir/InitOffsets.cmm
+  &InfoBlkPtrOffset=0x03FF000
+  &InfoBlkAddr=&RamEntryAddr+&InfoBlkPtrOffset
+
+  if ((string.scan("&OptArgs", "RAM",0)!=-1))
+  (
+    &UefiElf="&CwDir/../&TargetPkg/Bin/&Target/&Variant/&RelFolder/uefi.elf"
+    if (!os.file("&UefiElf"))
+    (
+      print %String %ERROR "Unable to find &UefiElf exiting"
+      area.view UEFI_Logs
+      enter
+      END
+    )
+
+    print "Loading uefi.elf"
+    data.load.elf &UefiElf ezaxi:
+    r.s PC &RamEntryAddr
+  )
+
+  if ((string.scan("&OptArgs", "TOOLS",0)!=-1))
+  (
+    &Tools=1.
+    &DebugFvFolder="QcomTools"
+    &FvElfName="tools.fv"
+    &FvElfLoc="&CwDir/../&DebugFvFolder"+"Pkg/Bin/&DebugFvFolder/&RelFolder"
+  )
+
+  if ((string.scan("&OptArgs", "TESTS",0)!=-1))
+  (
+    &Tests=1.
+    &DebugFvFolder="QcomTest"
+    &FvElfName="tests.fv"
+    &FvElfLoc="&CwDir/../&DebugFvFolder"+"Pkg/Bin/&DebugFvFolder/&RelFolder"
+  )
+
+  if ((string.scan("&OptArgs", "SOCTESTS",0)!=-1))
+  (
+    &Tests=1.
+    &DebugFvFolder="QcomSocPlatTest"
+    &FvElfName="soc_tests.fv"
+    &FvElfLoc="&CwDir/../&DebugFvFolder"+"Pkg/Bin/&DebugFvFolder/&RelFolder"
+  )
+
+  if ((&Tools==1.)||(&Tests==1))
+  ( 
+    &FvElfFile="&FvElfLoc/&FvElfName"
+    if (!os.file("&FvElfFile"))
+    (
+      print %String %ERROR "Unable to find &FvElfName exiting"
+      area.view UEFI_Logs
+      enter
+      END
+    )
+    print "Loading &FvElfName"
+    data.load.binary &FvElfFile ezaxi:&RamFvAddr
+  )
+
+  ; Setup windows
+  if (os.file("&TmpDir/win.cmm"))
+  (    
+    do &TmpDir/win.cmm
+  )
+  else 
+  (
+    if (os.file("&CwDir/../&TargetPkg/Tools/win.cmm"))
+    (
+      do &CwDir/../&TargetPkg/Tools/win.cmm
+    )
+    else
+    (
+      do &CwDir/win.cmm
+    )
+  )
+
+  ; Clear UEFI Debug Cookie
+  D.S A:&UefiDebugCookieAddr %LE %LONG 0x0
+  
+  ; if name says go then we should just execute without loading any symbols
+  if ("&Modules"=="GO")
+  (
+    &Modules=""
+    if ((string.scan("&OptArgs", "MENU",0)==-1))
+    (
+      go
+      enddo
+    )
+  )
+
+  ; Get the symbol file path
+  do &CwDir/load_sec_sym.cmm &RamEntryAddr &RamEntryAddr+&SecLoadAddrOffset
+  
+  area.view UEFI_Logs
+  Print "Loaded image, target setup complete."
+  
+  print
+  print "You are stopped in CENTRY() before Main() in UEFI"
+
+  go Main
+  print "go Main ..."
+  wait !run()
+  print "Break at Main, ok ..."
+
+  if ("&Modules"=="SEC")
+  (
+    ; Stop at SEC entry point to allow user to do some stuff before continuing
+    print
+    print "Press enter in area window to continue debugging Dxe..."
+    print "Execute ""continue"" to get focus in area window"
+    &DebugDxe=1
+    area.select UEFI_Logs
+    enter
+  )
+
+  ; If Dxe is the param make sure it doesnt stop on all drivers having dxe in string
+  if ("&Modules"=="DXE")
+  (
+    &Modules=""
+    &DebugDxe=1
+    &DebugDxeCore=1
+  )
+
+  b.d
+
+  ; Execute until the Dxe core is loaded into memory
+  ; This could change when EDK II sync changes code
+  ; TODO: make sure this is no longer hardcoded
+  go LoadDxeCoreFromFfsFile\51
+  wait !run()
+
+  &DrvrAddr=&InfoBlkAddr+&IBlkDbgStopDrvrStr
+  &BdsHotkeyAddr=&InfoBlkAddr+&IBlkBdsHotkey
+
+  data.set &DrvrAddr "&Modules" 0x0
+
+  if ((string.scan("&OptArgs", "MENU",0)!=-1))
+  (
+    data.set &BdsHotkeyAddr 0x1
+  )
+  else
+  (
+    data.set &BdsHotkeyAddr 0x0
+  )
+
+
+  ; Set Breakpoint at which the Dxe drivers would be loaded into RAM.
+  ; The script will load appropriate image symbols at that location and set
+  ; Break point into the entrypoint so that the driver could be debugged.
+  B.S   BreakPointFunction /P /disablehit /CMD "do &CwDir/sym.cmm &RamEntryAddr &IncrBkptSym"
+  
+  ; Stop in DXE entry
+  if (&DebugDxeCore==1)
+  (
+    do &CwDir/sym.cmm &RamEntryAddr &SymLoadAll
+    go DxeMain
+    wait !run()
+  )
+
+  ; Execute to start loading the Dxe drivers
+  if (&DebugDxe!=1)
+  (
+    go
+  )
+
+enddo
+
+SanitizeArgs:
+  local &ChopArg
+
+  &Modules=convert.toupper("&Modules")
+  &OptArgs=convert.toupper("&OptArgs")
+
+  if ("&Modules"!="")
+  (
+    return &OptArgs &Modules
+  )
+
+  &ChopArg=string.split("&OptArgs", ",", 0)
+  
+  if ((string.scan("&SupportedOptionalArgs", "&ChopArg", 0))==-1)
+  (
+    &Modules="&OptArgs"
+    &OptArgs=""
+  ) 
+  return &OptArgs &Modules
+

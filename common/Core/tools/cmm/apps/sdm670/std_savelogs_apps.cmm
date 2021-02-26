@@ -1,0 +1,102 @@
+//============================================================================
+//  Name:                                                                     
+//    std_savelogs_apps.cmm 
+//
+//  Description:                                                              
+//    Script to save APPS memory locations
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who     		what, where, why
+// --------   ---     		---------------------------------------------------------
+// 09/27/2012 AJCheriyan	Fixed filename in the header
+// 07/10/2012 AJCheriyan    Created for B-family 
+
+
+// We support one argument for this script
+// &ARG0 - Output location for the logs
+ENTRY &ARG0
+
+LOCAL &LOGLOCATION
+
+MAIN:
+	&LOGLOCATION="&ARG0"
+
+	// Sanity check
+	IF ("&LOGLOCATION"=="")
+	(
+	    PRINT %ERROR "Location to save logs not provided"
+		GOTO FATALEXIT
+	)
+
+	// Load the memory map
+	do std_memorymap
+
+	// Flush the caches or anything else we need to do 
+	// before we save the binaries 
+	GOSUB SYNCSTATE
+
+	// Save the memories first
+	GOSUB SAVEBIN
+
+	// Save the registers
+	GOSUB SAVESTATE
+
+	GOTO EXIT
+
+SAVEBIN:
+	do std_utils SAVEBIN &LOGLOCATION &HLOS_1_log &HLOS_1_start &HLOS_1_size
+	do std_utils SAVEBIN &LOGLOCATION &HLOS_2_log &HLOS_2_start &HLOS_2_size
+	do std_utils SAVEBIN &LOGLOCATION &HLOS_3_log &HLOS_3_start &HLOS_3_size
+	do std_utils SAVEBIN &LOGLOCATION &HLOS_4_log &HLOS_4_start &HLOS_4_size
+	RETURN 
+
+SYNCSTATE:
+	// Flush the cache
+	do std_flushcache KRAIT
+	RETURN 
+
+SAVESTATE:
+	// Check which cores are open. If open, save the regs
+	do std_intercom_init CHECKSESSION 1 APPS0
+	IF  ("&APPS0_ALIVE"=="1.")
+	(
+		do std_intercom_do &APPS0_PORT std_utils BREAKPROC
+	 	do std_intercom_do &APPS0_PORT std_utils SAVEREGS &LOGLOCATION &KPSS_Core0_regs
+		do std_intercom_do &APPS0_PORT std_utils SAVEMMU ARM &LOGLOCATION &KPSS_Core0_mmu
+	)
+	do std_intercom_init CHECKSESSION 1 APPS1
+	IF  ("&APPS1_ALIVE"=="1.")
+	(
+		do std_intercom_do &APPS1_PORT std_utils BREAKPROC
+	 	do std_intercom_do &APPS1_PORT std_utils SAVEREGS &LOGLOCATION &KPSS_Core1_regs
+		do std_intercom_do &APPS1_PORT std_utils SAVEMMU ARM &LOGLOCATION &KPSS_Core1_mmu
+	)
+	do std_intercom_init CHECKSESSION 1 APPS2
+	IF  ("&APPS2_ALIVE"=="1.")
+	(
+		do std_intercom_do &APPS2_PORT std_utils BREAKPROC
+	 	do std_intercom_do &APPS2_PORT std_utils SAVEREGS &LOGLOCATION &KPSS_Core2_regs
+		do std_intercom_do &APPS2_PORT std_utils SAVEMMU ARM &LOGLOCATION &KPSS_Core2_mmu
+	)
+	do std_intercom_init CHECKSESSION 1 APPS3
+	IF  ("&APPS3_ALIVE"=="1.")
+	(
+		do std_intercom_do &APPS3_PORT std_utils BREAKPROC
+		do std_intercom_do &APPS3_PORT std_utils SAVEREGS &LOGLOCATION &KPSS_Core3_regs
+		do std_intercom_do &APPS3_PORT std_utils SAVEMMU ARM &LOGLOCATION &KPSS_Core3_mmu
+	)
+	RETURN
+
+FATALEXIT:
+	END
+
+EXIT:
+	ENDDO

@@ -1,0 +1,102 @@
+#===============================================================================
+#
+# AVS AU
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2012-2016 Qualcomm Technologies, Inc.  All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: $
+#  $DateTime: $
+#  $Author:  $
+#  $Change:  $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+
+if 'USES_ENABLE_FUNCTION_SECTIONS' in env:
+   env.Append(CFLAGS = '-ffunction-sections')
+
+core_public_apis = [
+   'DEBUGTOOLS',
+   'SERVICES',
+   'KERNEL',
+   ]
+
+env.PublishPrivateApi('AVS',[
+   '${AVS_ROOT}/aud/algorithms/audproc/effects/Virtualizer/VirtualizerCapi/inc',
+   '${AVS_ROOT}/aud/algorithms/audproc/volumecontrol/capi_v2_soft_vol/inc',
+   '${AVS_ROOT}/aud/algorithms/audproc/ratematching/SampleSlipCapi_V2/inc',
+   ])
+
+
+env.RequirePublicApi(core_public_apis, area='core')
+env.RequireRestrictedApi(['AVS', 'SHARED_LIBRARY_INC_PATHS', 'MODULE_INTERFACES_UTILS', 'CAPI_V2_LIBRARY_FACTORY'])
+env.RequireProtectedApi('AVS')
+env.RequireRestrictedApi('AUDPROC_RESAMPLER')
+env.RequirePublicApi([
+  'ADSP_AMDB',
+])
+#env.Append(CFLAGS = ' -Werror ')
+
+
+platform_public_apis = [
+    'QAIC',
+    'STDDEF',
+    'HAPSDK'
+    ]
+
+env.RequirePublicApi(platform_public_apis, area='platform') # This has to be the last include command, so that the Elite_CAPI.h and Elite_APPI.h are not overridden
+
+env.PublishPrivateApi('AVS',[
+   '../inc',
+   '../src',
+   '../build',
+   ])
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = '..'
+LIBNAME = 'audio_proc_svc'
+#import pdb; pdb.set_trace()
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+source_listing = ['src/*.cpp', 'src/*.c']
+
+if 'USES_AUDIO_PROC_SVC_TEST' in env:
+   env.Append(CFLAGS = ' -DAUDPPSVC_TEST ')
+   env.Append(CPPFLAGS = '-DAUDPPSVC_TEST')
+   source_listing.extend(['tst/*.cpp', 'tst/*.c'])
+   env.PublishPrivateApi('AVS',[ '../src'])
+   env.AddOEMLibrary(['AVS_ADSP','AVS_ADSP_USER'], env.get('QDSP6_RELEASE_DIR')+'/Tools/target/hexagon/lib/'+env.get('Q6VERSION')+'/libhexagon.a')
+
+# Generate regular source file list
+if env.get('hy22') == True:
+   avs_reg_sources = env.GlobSourceFiles(['src/*.cpp', 'src/*.c', 'src/public/*.cpp', 'src/public/*.c'], SRCPATH,posix=True)
+else:
+   avs_reg_sources = env.GlobSourceFiles(['src/*.cpp', 'src/*.c', 'src/prop/*.cpp', 'src/prop/*.c'], SRCPATH,posix=True)
+   
+# Generate stub source file list
+avs_stub_sources = env.GlobSourceFiles(['stub_src/*.cpp', 'stub_src/*.c', 'stub_src/*.S'], SRCPATH,posix=True)
+
+# Genate proprietary source file list
+avs_prop_sources = []
+
+if 'USES_AVS_LIBRARY_BUILDER' in env:
+   env.AddAvsLibrary(['AVS_ADSP','AVS_ADSP_USER'], '${BUILDPATH}/'+LIBNAME,
+      [avs_reg_sources, avs_stub_sources, avs_prop_sources], PACK_SRC=True)
+
+

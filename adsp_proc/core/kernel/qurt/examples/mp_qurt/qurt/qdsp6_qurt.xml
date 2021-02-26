@@ -1,0 +1,169 @@
+<!-- =============================================================================
+
+                                    qdsp6_qurt.xml
+
+GENERAL DESCRIPTION
+
+EXTERNAL FUNCTIONS
+        None.
+
+INITIALIZATION AND SEQUENCING REQUIREMENTS
+        None.
+
+             Copyright (c) 2013  by Qualcomm Technologies, Inc.  All Rights Reserved.
+============================================================================= -->
+<?xml version="1.0"?>
+<!DOCTYPE image SYSTEM "weaver-1.0.dtd">
+<image>
+    <machine>
+
+      <interrupt>
+       
+        <irq num ="0"  trigger="edge"  polarity="rising"/>
+        <irq num ="1"  trigger="edge"  polarity="rising"/>
+        <irq num ="2"  trigger="edge"  polarity="rising"/>
+        <irq num ="3"  trigger="edge"  polarity="rising"/>
+        <irq num ="4"  trigger="edge"  polarity="rising"/>
+        <irq num ="5"  trigger="edge"  polarity="rising"/>
+        <irq num ="6"  trigger="edge"  polarity="rising"/>
+        <irq num ="7"  trigger="edge"  polarity="rising"/>
+        <irq num ="8"  trigger="edge"  polarity="rising"/>
+        <irq num ="9"  trigger="edge"  polarity="rising"/>
+        <irq num ="10" trigger="edge"  polarity="rising"/>
+        <irq num ="11" trigger="edge"  polarity="rising"/>
+        <irq num ="12" trigger="edge"  polarity="rising"/>
+        <irq num ="13" trigger="edge"  polarity="rising"/>
+        <irq num ="14" trigger="edge"  polarity="rising"/>
+        <irq num ="15" trigger="edge"  polarity="rising"/>
+        <irq num ="16" trigger="edge"  polarity="rising"/>
+        <irq num ="17" trigger="edge"  polarity="rising"/>
+        <irq num ="18" trigger="edge"  polarity="rising"/>
+        <irq num ="19" trigger="edge"  polarity="rising"/>
+        <irq num ="20" trigger="edge"  polarity="rising"/>
+        <irq num ="21" trigger="level" polarity="rising"/>
+        <irq num ="22" trigger="edge"  polarity="rising"/>
+        <irq num ="23" trigger="edge"  polarity="rising"
+          l2base = "0xab010000" l2trigger = "0xffdfffff"
+          l2polarity = "0xffffffff" />
+
+        <irq num ="24" trigger="edge" polarity="high"
+          l2base = "0xab010400" l2trigger = "0xffdfffff"
+          l2polarity = "0xffffffff" />
+
+        <irq num ="25" trigger="edge" polarity="high"/>
+
+        <irq num ="26" trigger="edge" polarity="high"/>
+
+        <irq num ="27" trigger="edge" polarity="high"/>
+
+        <irq num ="28" trigger="edge" polarity="high"/> 
+
+        <irq num ="29" trigger="edge" polarity="high"/>
+
+        <irq num ="30" trigger="edge" polarity="rising"/>
+
+        <irq num ="31" trigger="edge" polarity="rising"/>
+
+      </interrupt>
+
+      <Hexagon_ss_base value = "0xAB000000" />
+      <tcxo intmask="0x10000000"/>
+      
+      <timer>
+        <base value = "0xAB020000" />
+        <intno value = "3" />
+        <priority value="253" />
+        <bitmask value="0xff" />
+        <IST_priority value="254" />
+        <IST_bitmask value="0xff" />
+      </timer>
+
+      <timetest_port value="0x90000002" />
+
+      <chicken_bits>
+        <rgdr value = "0x00400000" />
+        <acc0 value = "0xd013d013" />
+        <acc1 value = "0x00020d01" />
+        <chicken value = "0x10" />
+      </chicken_bits>
+      
+      <cache>
+        <l1_iprefetch     enabled="true" lines="1"/>
+        <l2_iprefetch     enabled="true"/>
+
+        <l1_ipartition    main="full"/>
+        <l1_dpartition    main="full"/>
+        <l2_partition     main="full"/>
+
+        <l2_size          value="256"/>
+      </cache>
+        
+
+      <cache_policy name="writeback" value="0x0"/>
+      <cache_policy name="writethrough" value="0x1"/>
+      <cache_policy name="l1_wt_l2_cacheable" value="0x5"/>
+      <cache_policy name="l1_wb_l2_cacheable" value="0x7"/> 
+      <cache_policy name="l1_wb_l2_uncacheable" value="0x0"/>
+      <cache_policy name="uncached" value="0x4"/>
+      
+    </machine>
+
+    <kernel>
+      <hthread_mask value = "0x3f" />
+      <heap_size value = "0X80000"/>
+      <max_threads value = "80"/>
+      <max_threads_in_tcm value = "10"/>
+      <max_futexes value = "1024"/>      
+      <trace_mask value = "0X01"/>  
+      <trace_size value = "4096" />
+    </kernel>
+
+    <physical_pool name="DEFAULT_PHYSPOOL">
+        <region base="0x00100000" size="0x10000000" />
+    </physical_pool>
+
+    <physical_pool name="DRIVER_POOL">
+        <region base="0x90000000" size="0x40000000" />
+    </physical_pool>
+
+    <physical_pool name="TCM_PHYSPOOL">
+        <region base="0xd8020000" size="0x20000" />
+    </physical_pool>
+
+    <program name="AMSS">
+
+      <stack_size value = "0x1000" />
+      <heap_size name="heap_size" value = "0x100000" />
+      <main_priority value = "1" />
+      <main_bitmask value = "0xfF" />
+    
+      <memsection   tlb_lock = "1"
+                    glob = "1"
+                    direct="true" 
+                    attach="RWX" 
+    	            physpool="DRIVER_POOL"
+                    virt_addr="0x90000000"
+    	            size="0x00001000"
+                    cache_policy="uncached" />
+      <memsection   tlb_lock = "1"
+	                glob = "1"
+                    direct="true" 
+                    attach="RWX" 
+                    virt_addr="0xab000000"
+    	            size="0x01000000"
+                    cache_policy="uncached" />
+      <memsection   direct="true" 
+                    attach="RWX" 
+    	            physpool="TCM_PHYSPOOL"
+                    virt_addr="0xd8020000"
+                    size="0x00010000"
+    	            cache_policy="l1_wb_l2_uncacheable" />    
+      <memsection   direct="true" 
+                    attach="RWX" 
+    	            physpool="TCM_PHYSPOOL"
+                    virt_addr="0xd8030000"
+                    size="0x00010000"
+    	            cache_policy="l1_wb_l2_uncacheable" />
+    </program>
+
+</image>

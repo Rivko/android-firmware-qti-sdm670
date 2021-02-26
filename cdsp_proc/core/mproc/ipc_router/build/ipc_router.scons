@@ -1,0 +1,197 @@
+#===============================================================================
+#
+# IPC ROUTER Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009-2014, 2017 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //source/qcom/qct/core/pkg/2H09/halcyon_modem/main/latest/AMSS/products/7x30/core/mproc/oncrpc/build/SConscript#11 $
+#  $DateTime: 2010/09/22 18:42:11 $
+#  $Author: coresvc $
+#  $Change: 1450404 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 01/26/17   jlg     Move settings to core/settings directory
+# 05/16/14    sm     Added TISE image support.  Note that 'USES_MSVC' and
+#                    'USES_TISE' are used to specify a subset of files from this
+#                    driver to compile for the Windows (MSVC) compiler.  Please
+#                    do not remove these definitions from this file.
+#
+#===============================================================================
+import os.path
+Import('env')
+env = env.Clone()
+env.Append(CPPDEFINES=['MSG_BT_SSID_DFLT=MSG_SSID_ONCRPC'])
+
+# This is to remove any -Werror declarations in the environmnent for the MSVC
+# compiler.
+if 'USES_MSVC' in env:
+    env.Replace(CFLAGS= '-Dinline="__inline",-DSTATIC="static"')
+    env.Append(CPPDEFINES = [
+    'CUST_H=custaaaaaaaaq.h',
+    'MY_GCC_FILE=__FILE__',
+    '__FILENAME__=__FILE__',
+    ])
+    
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+UNITPATH = "${BUILD_ROOT}/core/mproc/ipc_router"
+SRCPATH = UNITPATH + "/src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Publish Private APIs
+#-------------------------------------------------------------------------------
+env.PublishPrivateApi('IPC_ROUTER', [
+   "${INC_ROOT}/core/mproc/ipc_router/inc",
+   "${INC_ROOT}/core/mproc/ipc_router/src",
+])
+
+#-------------------------------------------------------------------------------
+# External depends within CoreBSP
+#-------------------------------------------------------------------------------
+env.RequireExternalApi([
+   'DSM',
+   'MODEM_DATA',
+   'MODEM_HDR',
+])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'BOOT',
+   'DEBUGTOOLS',
+   'HAL',
+   'DAL',
+   'MEMORY',
+   'MPROC',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'WIREDCONNECTIVITY',
+   'DSM',
+
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',   
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(['MPROC', 'MPROC_IPC_ROUTER_SETTINGS'])
+
+# Treat all warnings as errors
+if 'HEXAGON_TOOLS' in env:
+   env.Append(CFLAGS = "-Werror ")
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+IPC_ROUTER_SOURCES = [
+   '${BUILDPATH}/ipc_router_core.c',
+   '${BUILDPATH}/ipc_router_protocol.c',
+   '${BUILDPATH}/ipc_router_database.c',
+   '${BUILDPATH}/ipc_router_packet.c',
+   '${BUILDPATH}/ipc_router_log.c',
+   '${BUILDPATH}/ipc_router_init.c',
+   '${BUILDPATH}/ipc_router_policy.c',
+]
+
+IPC_ROUTER_XAL_SMDL_SOURCES = [
+   '${BUILDPATH}/ipc_router_xal_smdl_common.c',
+]
+
+if os.path.isfile("../src/ipc_router_xal_smdl_rex.c"):
+   IPC_ROUTER_XAL_SMDL_SOURCES += ["${BUILDPATH}/ipc_router_xal_smdl_rex.c"]
+else:
+   IPC_ROUTER_XAL_SMDL_SOURCES += ["${BUILDPATH}/ipc_router_xal_smdl_qurt.c"]
+
+IPC_ROUTER_XAL_GLINK_SOURCES = [
+   '${BUILDPATH}/ipc_router_xal_glink_common.c',
+]
+
+if os.path.isfile("../src/ipc_router_xal_glink_rex.c"):
+   IPC_ROUTER_XAL_GLINK_SOURCES += ["${BUILDPATH}/ipc_router_xal_glink_rex.c"]
+else:
+   IPC_ROUTER_XAL_GLINK_SOURCES += ["${BUILDPATH}/ipc_router_xal_glink_qurt.c"]
+
+IPC_ROUTER_QDI_DRIVER_SOURCES = [
+   '${BUILDPATH}/ipc_router_qdi_driver.c',
+]
+
+IPC_ROUTER_QDI_USER_SOURCES = [
+   '${BUILDPATH}/ipc_router_qdi_user.c',
+]
+
+# Use the socket API which is independent of QDI for TISE
+if 'USES_TISE' in env:
+   IPC_ROUTER_SOURCES += ['${BUILDPATH}/qsocket_ipcr.c']
+else:
+   IPC_ROUTER_QDI_DRIVER_SOURCES += ['${BUILDPATH}/qsocket_ipcr_qdi.c']
+   IPC_ROUTER_QDI_USER_SOURCES += ['${BUILDPATH}/qsocket_ipcr_qdi.c']
+   env.Append(CPPDEFINES=['FEATURE_IPC_ROUTER_QDI_DRIVER'])
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+GUEST_OS_IMAGES = ['QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'CORE_QDSP6_SW', 
+                   'CORE_ADSP_ROOT', 'CORE_SLPI_ROOT', 'CORE_ADSP_SLPI_ROOT', 
+                   'CORE_CDSP_ROOT', 'CORE_TISE_SW']
+MODEM_IMAGES = ['MODEM_IMAGE', 'CBSP_MODEM_IMAGE']
+SENSOR_IMAGES = ['CORE_QDSP6_SENSOR_SW']
+AUDIO_IMAGES = ['CORE_QDSP6_AUDIO_SW']
+GENERIC_USER_PD = ['CORE_USER_PD']
+OTHER_USER_PD = ['CORE_ADSP_USER', 'CORE_SLPI_USER', 'CORE_ADSP_SSC_USER']
+
+ALL_GUEST_IMAGES = MODEM_IMAGES + GUEST_OS_IMAGES
+ALL_USER_IMAGES = SENSOR_IMAGES + AUDIO_IMAGES + GENERIC_USER_PD + OTHER_USER_PD
+
+env.AddLibrary(ALL_GUEST_IMAGES, '${BUILDPATH}/ipc_router_core', IPC_ROUTER_SOURCES)
+
+if os.path.isfile("../src/ipc_router_xal_smdl_common.c"):
+   env.AddLibrary(ALL_GUEST_IMAGES, '${BUILDPATH}/ipc_router_xal_smdl', IPC_ROUTER_XAL_SMDL_SOURCES)
+   env.Append(CPPDEFINES=['FEATURE_IPC_ROUTER_XAL_SMDL_SUPPORTED'])
+
+# Enable the GLink xport only if the sources exist and this is a non-9x45 target
+# (Temp hack for Thor modem since glink is used in 8996 uses GLink while 9x45 does not)
+if os.path.isfile("../src/ipc_router_xal_glink_common.c") and not (env['MSM_ID'] in ['9x45']) :
+   env.AddLibrary(ALL_GUEST_IMAGES, '${BUILDPATH}/ipc_router_xal_glink', IPC_ROUTER_XAL_GLINK_SOURCES)
+   env.Append(CPPDEFINES=['FEATURE_IPC_ROUTER_XAL_GLINK_SUPPORTED'])
+
+# Do not enable QDI support for TISE images
+if not('USES_TISE' in env):
+   env.AddLibrary(ALL_GUEST_IMAGES, '${BUILDPATH}/ipc_router_qdi_driver', IPC_ROUTER_QDI_DRIVER_SOURCES)
+env.AddLibrary(ALL_USER_IMAGES, '${BUILDPATH}/ipc_router_qdi_user', IPC_ROUTER_QDI_USER_SOURCES)
+
+#-------------------------------------------------------------------------------
+
+if 'USES_RCINIT' in env:
+   RCINIT_IMG = ['CORE_MODEM', 'CORE_QDSP6_SW', 'CORE_GSS']
+   env.AddRCInitFunc(           # Code Fragment in TMC: NO
+    RCINIT_IMG,                 # define TMC_RCINIT_INIT_IPC_ROUTER_INIT
+    {
+     'sequence_group'             : 'RCINIT_GROUP_0',                   # required
+     'init_name'                  : 'ipc_router',                       # required
+     'init_function'              : 'ipc_router_init',                  # required
+     'dependencies'               : ['sio','smd','smem_log','glink','xport_smem','xport_smd']
+    })
+   env.AddRCInitFunc(           # Code Fragment in TMC: NO
+    ALL_USER_IMAGES,   # define TMC_RCINIT_INIT_QMI_FW_INIT
+    {
+     'sequence_group'             : 'RCINIT_GROUP_0',                   # required
+     'init_name'                  : 'ipc_router_user',                  # required
+     'init_function'              : 'ipc_router_qdi_init',              # required
+     'dependencies'               : []
+    })

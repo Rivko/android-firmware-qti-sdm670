@@ -1,0 +1,97 @@
+/************************************************
+ * File: QCA_Debug.dec
+ * QCA Bluetooth Firmware Logging Parser.  
+ * 
+ * Copyright (c) 2015-2016 Qualcomm Atheros, Inc.
+ * All Rights Reserved. 
+ * Qualcomm Atheros Confidential and Proprietary.
+************************************************/
+
+
+"QCA Legacy Logs" 0x1f000003 HOST_DATA_ORDER
+PAYLOAD_IS_BYTE_STREAM
+
+SUMMARY_COLUMNS
+{
+    "Seq Num"   100
+    "Length"    100
+	"Msg Type"  100
+}
+
+/*
+** This identifies the next protocol.
+*/
+//NEXT_PROTOCOL (FromField sQca_Proto)
+
+/*
+** The length for the next protocol. 
+*/
+//NEXT_PROTOCOL_SIZE (ThisLayerLength fQca_ProtoLen)
+
+/*
+** Start of Decoding the Protocol
+*/
+DECODE
+
+GROUP gQCA_LegacyLog
+{
+	GROUP gQca_LegacyLogHeader;
+}
+
+END_MAIN_PATH
+
+
+GROUP gQca_LegacyLogHeader "Legacy Log Header"
+{
+    FIELD fQca_LegacyHdr_Code    (Fixed 1 Byte)     	(Hex)                                   "Event Code"
+    FIELD fQca_LegacyHdr_Len     (Fixed 1 Byte)     	(Hex)                                   "Log Length"
+    FIELD fQca_LegacyHdr_LogCode (Fixed 1 Byte)     	(Hex)                                   "Log Code/Event SubCode"	
+    FIELD fQca_LegacyHdr_MsgType (Fixed 1 Byte)     	RETRIEVE (StoreIntraframeField sQca_Legacy_LogMsgType) (TABLE tLegacyMsgType)        IN_SUMMARY "Msg Type"                            "Msg Type"
+    FIELD fQca_LegacyHdr_SeqNum  (Fixed 1 Byte)      (Decimal)       IN_SUMMARY "Seq Num"    	"Seq Num"
+	RESERVED 					 (Fixed 1 Byte)
+	BRANCH (FromTable   tLegacyMsgType   fQca_LegacyHdr_MsgType)
+}
+
+TABLE tLegacyMsgType
+    { 0x01    "C String"    	"C String"    	0   gQca_LegacyDefault }
+	{ 0x02    "V String"    	"V String"    	0   gQca_VString }
+	{ 0x03    "Variable"    	"Variable"    	0   gQca_LegacyDefault }
+	{ 0x04    "HexDump"    	    "HexDump"    	0   gQca_HexDump }
+	{ 0x05    "Packet"    	    "Packet"    	0   gQca_LegacyDefault }	
+ENDTABLE
+
+TABLE tLegacyModuleType
+    { 0x00    "OSRLM_OS"    	"OSRLM_OS"   }
+	{ 0x01    "OSRLM_HCI"    	"OSRLM_HCI"   }
+	{ 0x02    "OSRLM_PRHL"    	"OSRLM_PRHL"   }
+	{ 0x03    "OSRLM_LLM"    	"OSRLM_LLM"   }
+	{ 0x04    "OSRLM_HID"    	"OSRLM_HID"   }
+	{ 0x05    "OSRLM_WIP"    	"OSRLM_WIP"   }
+	{ 0x06    "OSRLM_LLME"    	"OSRLM_LLME"   }
+	{ 0x07    "OSRLM_MCI"    	"OSRLM_MCI"   }
+	{ 0x08    "OSRLM_MWS"    	"OSRLM_MWS"   }	
+	{ 0x09    "OSRLM_BKGD"    	"OSRLM_BKGD"   }		
+ENDTABLE
+
+TABLE tLegacyLevelType
+    { 0x00    "OSLC_ERR "    	"OSLC_ERR "   }
+	{ 0x01    "OSLC_WARN "    	"OSLC_WARN "   }
+	{ 0x02    "OSLC_INFO"    	"OSLC_INFO "   }
+ENDTABLE
+GROUP gQca_VString
+{
+    FIELD fQca_LegacyHdr_Mod    	(Fixed 1 Byte)     	(TABLE tLegacyModuleType)               "Module"
+    FIELD fQca_LegacyHdr_Level     	(Fixed 1 Byte)     	(TABLE tLegacyLevelType)                "Level"
+
+	FIELD fQca_VString		 (ToEndofLayer)		 (StringofAscii)			"V String"
+}
+
+GROUP gQca_HexDump
+{
+	FIELD fQca_HexDump		 (ToEndofLayer)		 (StringofHex)			"Hex Dump"
+}
+
+GROUP gQca_LegacyDefault
+{
+	FIELD fQca_LegacyDefault		 (ToEndofLayer)		 (StringofHex)			"Hex Dump"
+}

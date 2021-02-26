@@ -1,0 +1,65 @@
+#===============================================================================
+#
+# SSG Platform APIs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2013 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/ssg.tz/1.0.2/securemsm/platform/build/platform.api#1 $
+#  $DateTime: 2018/02/06 03:00:17 $
+#  $Author: pwbldsvc $
+#  $Change: 15399933 $
+#                      EDIT HISTORY FOR FILE
+#                      
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#  
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+import os
+Import('env')
+env = env.Clone()
+
+#Find PLATFORM_CPUS / different ARM/QCOM implemented CPU used in the target.
+env.SConscript('arch.scons', exports='env')
+
+# Public APIs these are accecible by anyone internal or external to Platform
+env.PublishPublicApi('SSGPLATFORM', [
+    '${INC_ROOT}/ssg/api/securemsm/platform/arch',
+    '${INC_ROOT}/ssg/api/securemsm/platform/arch/legacy',
+    '${INC_ROOT}/ssg/api/securemsm/platform/utils',
+    '${INC_ROOT}/ssg/api/securemsm/platform/drivers',
+    '${INC_ROOT}/ssg/api/securemsm/platform/init',
+    '${INC_ROOT}/ssg/api/securemsm/platform/services',
+    '${INC_ROOT}/ssg/api/securemsm/platform/services/legacy',
+
+])
+
+# Restricted API's supposed to be accessed by ssg platform folders sources only.
+SSGPLATFORM_RESTRICTED_PATH = [
+    '${INC_ROOT}/ssg/api/securemsm/platform/arch',
+    '${INC_ROOT}/ssg/api/securemsm/platform/arch/legacy',
+    '${INC_ROOT}/ssg/api/securemsm/platform/utils',
+    '${INC_ROOT}/ssg/securemsm/platform/init/inc',
+    '${INC_ROOT}/ssg/securemsm/platform/arch/arm/${TZ_EXEC_MODE}/inc',
+    '${INC_ROOT}/ssg/securemsm/platform/services/log/inc',
+]
+if os.path.exists(env.subst("${INC_ROOT}/ssg/securemsm/platform/init/cfg/${CHIPSET}")):
+    SSGPLATFORM_RESTRICTED_PATH += ['${INC_ROOT}/ssg/securemsm/platform/init/cfg/${CHIPSET}',]
+else:
+    SSGPLATFORM_RESTRICTED_PATH += ['${INC_ROOT}/ssg/securemsm/platform/init/cfg/stubs',]
+
+env.PublishRestrictedApi('SSGPLATFORM', SSGPLATFORM_RESTRICTED_PATH)
+
+env.PublishRestrictedApi('CCLIB', [
+    '${INC_ROOT}/ssg/securemsm/platform/tools/codecoverage/bullseye/inc'
+])
+env.LoadAPIUnits()

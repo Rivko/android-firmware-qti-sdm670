@@ -1,0 +1,163 @@
+#===============================================================================
+#
+# micro diagbuffer build script
+#
+# GENERAL DESCRIPTION
+#    Builds the micro_diagbuffer library for Micro diagbuffer on ADSP Sensor Island Image.
+#
+# Copyright (c) 2014-2018 Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary and Confidential
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+env.PrintInfo("micro_diagbuffer.scons") 
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+
+SRCPATH = "${BUILD_ROOT}/core/services/diag/micro_diagbuffer/src"
+SRCPATHSCRIPTS = env['BUILD_ROOT']+'/core/services/diag/micro_diagbuffer/scripts'
+
+env.VariantDir('${BUILDPATH}/micro_diagbuffer/src', SRCPATH, duplicate=0) 
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'MPROC',
+   'POWER',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'DEBUGTOOLS',
+   'DEBUGTRACE',
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+   'WIREDCONNECTIVITY',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+env.RequireProtectedApi(['POWER_UTILS'])
+
+env.Append(CCFLAGS = "-G0")
+
+#-------------------------------------------------------------------------------
+# Defines
+#-------------------------------------------------------------------------------
+if 'USES_ISLAND' in env:
+   env.Append(CPPDEFINES=["DIAG_UIMAGE_MODE"])
+   env.Append(CPPDEFINES=['FEATURE_SAVE_DEBUG_TRACE'])
+   if 'CORE_Q6_ROOT' in env:
+    # Add DIAG_UIMAGE_MODE_ROOT to environment to distinguish Root Island code from User Island code
+    env.Append(CPPDEFINES=["DIAG_UIMAGE_MODE_ROOT"])
+   #We don't support island functions with '-fstack-protector'
+   if "-fstack-protector" in env['HEXAGON_STKPRO']:
+     env.Replace(HEXAGON_STKPRO = "")
+    
+# Define enable QDSS flag if this build supports QDSS
+if 'USES_QDSS_SWE' in env:
+  env.Append(CPPDEFINES=['MICRO_ENABLE_QDSS'])
+
+#-------------------------------------------------------------------------------
+# Source code
+#-------------------------------------------------------------------------------
+
+# SLPI User PD Only, non-island
+# These files are used to drain data out of SDC. micro_diagbuffer.c is also needed for this feature.
+MICRO_DIAGBUFFER_SLPI_PD_SOURCES = [
+   '${BUILDPATH}/micro_diagbuffer/src/micro_diagbuffer_client_read.c',
+   '${BUILDPATH}/micro_diagbuffer/src/micro_diagbuffer_parser.c',
+]
+
+# Goes in SLPI User PD Only, island
+MICRO_DIAGBUFFER_PD_ISLAND_BUFFERING_SOURCE = [
+   '${BUILDPATH}/micro_diagbuffer/src/diag_micro_buffering.c',
+] 
+
+# Root and non-SLPI PDs if Island is Enabled
+MICRO_DIAGBUFFER_PD_ISLAND_BUFFERING_STUB = [
+   '${BUILDPATH}/micro_diagbuffer/src/diag_micro_buffering_stub.c',
+]
+
+# Island, Root + User PD (All Q6s)
+MICRO_DIAGBUFFER_UIMAGE_SOURCES = [
+   '${BUILDPATH}/micro_diagbuffer/src/micro_diagbuffer_uimage.c',
+]
+
+# This is the main micro diagbuffer / micro ulog feature.
+# Needed in SLPI User PD Only, non-island for draining out of SDC.
+# Also needed everywhere if island is supported.
+MICRO_DIAGBUFFER_UIMAGE_CUSTOM_SOURCE = [
+   '${BUILDPATH}/micro_diagbuffer/src/micro_diagbuffer.c', 
+]
+
+# Root if Island is Enabled
+MICRO_DIAGBUFFER_FULL_SOURCE = [
+   '${BUILDPATH}/micro_diagbuffer/src/micro_diagbuffer_read.c',
+   '${BUILDPATH}/micro_diagbuffer/src/micro_diagbuffer_drain.c',
+]
+
+# Goes in both full image and uimage for root and user
+MICRO_DIAGBUFFER_SHARED_SOURCE = [
+   '${BUILDPATH}/micro_diagbuffer/src/micro_diagbuffer_log_api.c',
+   '${BUILDPATH}/micro_diagbuffer/src/micro_diagbuffer_event_api.c',
+   '${BUILDPATH}/micro_diagbuffer/src/micro_diagbuffer_msg_api.c',
+   '${BUILDPATH}/micro_diagbuffer/src/diag_micro.c',
+] 
+
+#-------------------------------------------------------------------------------
+# Symbols to whitelist
+#------------------------------------------------------------------------------- 
+# From MICRO_DIAGBUFFER_SHARED_SOURCE
+SYMBOLS_TO_WHITELIST = ['event_report_core', 'event_report_payload_core', 
+                        'log_submit_ext_core', 'log_submit_core', 
+                        'log_shorten_core', 'log_commit_core', 
+                        'log_alloc_core', 'log_alloc_ext_core',  
+                        'log_set_timestamp_ex',
+                        'qsr_int_msg_send', 'qsr_int_msg_send_1', 'qsr_int_msg_send_2', 'qsr_int_msg_send_3', 'qsr_int_msg_send_var']
+                        
+#-------------------------------------------------------------------------------
+# Add libraries to full image and uimage
+#------------------------------------------------------------------------------- 
+
+# CORE_Q6_ROOT is equivalent to CORE_SLPI_ROOT, CORE_ADSP_ROOT, CORE_CDSP_ROOT
+# There's currently no user pd for CDSP
+DIAG_BUFFER_ALL_IMGS = ['CORE_Q6_ROOT',
+                        'CORE_SLPI_USER', 'CORE_ADSP_USER']
+
+DIAG_BUFFER_PD_IMGS = ['CORE_SLPI_USER', 'CORE_ADSP_USER']
+                        
+diagbuffer_micro_shared = env.AddLibrary(DIAG_BUFFER_ALL_IMGS,'${BUILDPATH}/diagbuffer_micro_shared', MICRO_DIAGBUFFER_SHARED_SOURCE)
+
+if 'USES_ISLAND' in env:
+  diagbuffer_micro_slpi_pd = env.AddLibrary('CORE_SLPI_USER', '${BUILDPATH}/diagbuffer_micro_slpi_pd_island', 
+                                            MICRO_DIAGBUFFER_SLPI_PD_SOURCES+MICRO_DIAGBUFFER_PD_ISLAND_BUFFERING_SOURCE)
+  diagbuffer_micro_adsp_pd = env.AddLibrary('CORE_ADSP_USER', '${BUILDPATH}/diagbuffer_micro_adsp_pd', MICRO_DIAGBUFFER_SLPI_PD_SOURCES+MICRO_DIAGBUFFER_PD_ISLAND_BUFFERING_STUB)
+  env.AddIslandLibraryObject(['CORE_SLPI_USER'], diagbuffer_micro_slpi_pd, 'diag_micro_buffering.o')
+else:
+  # Supposed to be in CORE_SLPI_USER only, but need to add to all PDs for now to resolve linker errors
+  diagbuffer_micro_slpi_pd = env.AddLibrary(DIAG_BUFFER_PD_IMGS, '${BUILDPATH}/diagbuffer_micro_slpi_pd', MICRO_DIAGBUFFER_SLPI_PD_SOURCES)
+
+if 'USES_ISLAND' in env:
+  diagbuffer_micro_full = env.AddLibrary(['CORE_Q6_ROOT'], '${BUILDPATH}/diagbuffer_micro_full', MICRO_DIAGBUFFER_FULL_SOURCE+MICRO_DIAGBUFFER_PD_ISLAND_BUFFERING_STUB)
+  diagbuffer_micro_uimage = env.AddLibrary(DIAG_BUFFER_ALL_IMGS, '${BUILDPATH}/diagbuffer_micro_uimage', MICRO_DIAGBUFFER_UIMAGE_SOURCES)
+  diagbuffer_micro_uimage_custom = env.AddLibrary(DIAG_BUFFER_ALL_IMGS, '${BUILDPATH}/diagbuffer_micro_uimage_custom', MICRO_DIAGBUFFER_UIMAGE_CUSTOM_SOURCE)
+  env.AddIslandLibraryObject(['CORE_Q6_ROOT'], diagbuffer_micro_full, 'diag_micro_buffering_stub.o')
+  env.AddIslandLibrary(DIAG_BUFFER_ALL_IMGS, diagbuffer_micro_shared)
+  env.AddIslandLibrary(DIAG_BUFFER_ALL_IMGS, diagbuffer_micro_uimage)
+  env.AddIslandLibrary(DIAG_BUFFER_ALL_IMGS, diagbuffer_micro_uimage_custom)
+  env.AddSymbolToIslandWhitelist(DIAG_BUFFER_ALL_IMGS, diagbuffer_micro_shared, SYMBOLS_TO_WHITELIST)
+else:
+  # Supposed to be in CORE_SLPI_USER only, but need to add to all PDs for now to resolve linker errors
+  env.AddLibrary(DIAG_BUFFER_PD_IMGS, '${BUILDPATH}/diagbuffer_micro_uimage_custom', MICRO_DIAGBUFFER_UIMAGE_CUSTOM_SOURCE) 
+   
+#--------------------------------------------------------------------------------
+# Enable this to remove compile optimizations (for debugging)
+# DO NOT leave enabled when checking in file
+#--------------------------------------------------------------------------------
+#env.Replace(HEXAGONCC_OPT = "-O0")
+

@@ -1,0 +1,88 @@
+#===============================================================================
+#                    Copyright 2010 - 2013 QUALCOMM Incorporated.
+#                           All Rights Reserved.
+#                         QUALCOMM Proprietary/GTDR
+#===============================================================================
+# STD Libs
+#-------------------------------------------------------------------------------
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/kernel/libstd"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+IMAGE_SOURCES = ['CORE_QDSP6_SW', 'CORE_QDSP6_SENSOR_SW', 'CORE_QDSP6_AUDIO_SW']
+
+#-------------------------------------------------------------------------------
+# External depends within CoreBSP
+#-------------------------------------------------------------------------------
+env.RequireExternalApi([
+])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'SERVICES',
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+LIBSTD_SOURCES =  [
+   '${BUILDPATH}/src/libstd_std_scanul.c',
+   '${BUILDPATH}/src/memscpy.c',
+   '${BUILDPATH}/src/memsmove.c',
+   '${BUILDPATH}/src/strcasecmp.c',
+   '${BUILDPATH}/src/strncasecmp.c',
+   '${BUILDPATH}/src/strlcat.c',
+   '${BUILDPATH}/src/wcslcat.c',
+   '${BUILDPATH}/src/wstrlcat.c',
+   '${BUILDPATH}/src/strlcpy.c',
+   '${BUILDPATH}/src/wcslcpy.c',
+   '${BUILDPATH}/src/wstrlcpy.c',
+   '${BUILDPATH}/src/wstrlen.c',
+   '${BUILDPATH}/src/wstrcmp.c',
+   '${BUILDPATH}/src/wstrncmp.c',
+   '${BUILDPATH}/src/secure_memset.c',
+   '${BUILDPATH}/src/timesafe_memcmp.c',
+   '${BUILDPATH}/src/timesafe_strncmp.c',
+   '${BUILDPATH}/src/strnlen.c',
+]
+
+# Uncomment this line to define key LIBSTD_TEST which builds LIBSTD test lib
+# Alternatively, define this at command line when building as a coreimage
+# build using USES_FLAGS=LIBSTD_TEST,....
+#env.Replace(LIBSTD_TEST = "yes")
+if 'LIBSTD_TEST' in env:
+    LIBSTD_TEST_SOURCES =  [
+        '${BUILDPATH}/test/libstd_test_internal.c',
+        '${BUILDPATH}/test/libstd_test_main.c',
+    ]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+libstd_lib = env.AddBinaryLibrary(IMAGE_SOURCES,'${BUILDPATH}/libstd',LIBSTD_SOURCES)
+
+if 'LIBSTD_TEST' in env:
+    env.AddBinaryLibrary(IMAGE_SOURCES,
+                   '${BUILDPATH}/libstd_test',
+                   LIBSTD_TEST_SOURCES)
+
+if 'USES_ISLAND' in env:
+   env.AddIslandLibraryObject(IMAGE_SOURCES, libstd_lib, ["memscpy.o", "strlcat.o", "strlcpy.o"])
+
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles('stringl_internal.h', '${COREBSP_ROOT}/kernel/libstd/src'))
+CLEAN_LIST.extend(env.FindFiles('*', '${COREBSP_ROOT}/kernel/libstd/test'))
+env.CleanPack(IMAGE_SOURCES, CLEAN_LIST) 

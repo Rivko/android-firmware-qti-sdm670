@@ -1,0 +1,188 @@
+//============================================================================
+//  Name:                                                                     
+//    std_trace.cmm 
+//
+//  Description:                                                              
+//    Top level tracing script
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who             what, where, why
+// --------   ---             ---------------------------------------------------------
+// 06/18/2015 JBILLING        Fixes for 8996 GPIO TLMM settings
+// 12/29/2014 JBILLING        Bug fixes for 8996
+// 12/29/2014 JBILLING        Updated for 8996
+// 01/07/2014 JBILLING        Major Logic Update
+// 07/10/2012 AJCheriyan        Created for B-family.
+
+// Following arguments are supported. 
+// ARG0 - Processor to debug. 
+// ARG1 - Tracing Type . Currently supports TPIU, ETB
+// ARGn - n > 1 - Any other arguments to be passed to the script 
+
+//####################Declarations#######################
+
+LOCAL &ArgumentLine
+LOCAL &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+LOCAL &TargetProcessor
+
+//###################Arguments passed #####################
+ENTRY %LINE &ArgumentLine
+ENTRY &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+
+//##################Defaults##########################
+
+
+//#####################Select Subroutine###################
+// Name of the utility we are calling
+LOCAL &SUBROUTINE
+// Any subroutine specific options
+// Default exists for each subroutine
+LOCAL &OPTION
+
+// Input Argument 0 is the name of the utility
+&SUBROUTINE="&UTILITY"
+IF ("&SUBROUTINE"!="SETUPGPIOS")
+(
+    //no MAIN in target-specific trace routine
+    //&SUBROUTINE="MAIN"
+    
+    print "Warning - no subroutine found in std_trace_&CHIPSET"
+    GOTO EXIT
+    
+)
+ELSE
+(
+    // This should be created by some top level script. The setupenv for each proc would
+    // set this up
+     AREA.SELECT
+    // Call the required utility
+    GOSUB &SUBROUTINE &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+    ENTRY &PASS &RVAL0 &RVAL1 &RVAL2
+
+    GOTO EXIT
+)
+
+
+
+
+LOCAL &SubSystem &Lpm_Option &CTI_enabled &Qurt_Breakpoints &PDOPTION &ExtraOption &fromfastboot
+LOCAL &Trace_Mode &TraceSource &CycleAccurate_Command &CycleAccurate_Mode &TraceConfiguration &PortSize
+
+//trace specific configurations
+local &Trace_Mode &TraceSource &CycleAccurate_Command &TraceConfiguration &PortSize 
+//extra configurations
+local &Lpm_Option &ExtraOption &fromfastboot
+
+
+////////////////////////////////////////
+//
+//            SETUPGPIOS
+//            
+//          write to target-specific GPIOs  for TPIU sink to make it to TPIU connector on CDP
+
+//          Assumes: attached to RPM, hwio is set up
+//
+/////////////////////////////////////////           
+SETUPGPIOS:
+            LOCAL &ACTION &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5 &ARG6 &ARG7 &ARG8 &ARG9 &ARG10 &ARG11
+            
+            ENTRY &ACTION &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5 &ARG6 &ARG7 &ARG8 &ARG9 &ARG10 &ARG11
+            LOCAL &Loc_ARG0 &Loc_ARG1 &Loc_ARG2 &Loc_ARG3 &Loc_ARG4 &Loc_ARG5 &Loc_ARG6 &Loc_ARG7 &Loc_ARG8 &Loc_ARG9 &Loc_ARG10 &Loc_ARG11
+            LOCAL &TraceSink 
+            
+            &TraceSink="&ARG0"
+
+            // We always need HWIO    
+            do hwio
+
+
+            //Increase QDSS Clock speed for all cases
+            // F=86MHz
+            //INTERNAL QDSS SPEED
+            //CLK_CTL_QDSS_AT_CFG_RCGR 0x102
+            //DO std_utils HWIO_OUT GCC_QDSS_TRACECLKIN_CFG_RCGR 0x103
+            //DO std_utils HWIO_OUT GCC_QDSS_TRACECLKIN_CMD_RCGR 0x1
+            //CLK_CTL_QDSS_AT_CMD_RCGR 0x1
+            //DO std_utils HWIO_OUT GCC_QDSS_AT_CMD_RCGR 0x1
+            
+            // For ETM tracing over TPIU, we need to configure the TLMM and this needs to happen just once
+            IF (("&TraceSink"=="tpiua")||("&TraceSink"=="tpiub"))
+            (
+
+
+//                DO std_utils HWIO_OUT TLMM_ETM_MODE 0x1
+//                DO std_utils HWIO_OUT TLMM_SDC2_HDRV_PULL_CTL 0x16D
+                
+                if "&TraceSink"=="tpiua"
+                (
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  27.     0x1FF&(0x7<<6)|(0x4<<2)|(0)   //  qdss_traceclk_a:5
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  28.     0x1FF&(0x7<<6)|(0x4<<2)|(0)   //  qdss_tracectl_a:5
+                                                            
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  63.     0x1FF&(0x7<<6)|(0x4<<2)|(0)  //  qdss_tracedata_a[0]   63   4
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  64.     0x1FF&(0x7<<6)|(0x4<<2)|(0)  //  qdss_tracedata_a[1]   64   4
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  65.     0x1FF&(0x7<<6)|(0x4<<2)|(0)  //  qdss_tracedata_a[2]   65   4
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  66.     0x1FF&(0x7<<6)|(0x4<<2)|(0)  //  qdss_tracedata_a[3]   66   4
+                                                                                                                              
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  67.     0x1FF&(0x7<<6)|(0x5<<2)|(0)  //  qdss_tracedata_a[4]   67   5
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  74.     0x1FF&(0x7<<6)|(0x4<<2)|(0)  //  qdss_tracedata_a[5]   74   4
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  75.     0x1FF&(0x7<<6)|(0x4<<2)|(0)  //  qdss_tracedata_a[6]   75   4
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  76.     0x1FF&(0x7<<6)|(0x4<<2)|(0)  //  qdss_tracedata_a[7]   76   4
+                                                                                                                              
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  77.     0x1FF&(0x7<<6)|(0x4<<2)|(0)  //  qdss_tracedata_a[8]   77   4
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  85.     0x1FF&(0x7<<6)|(0x4<<2)|(0)  //  qdss_tracedata_a[9]   85   4
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  86.     0x1FF&(0x7<<6)|(0x2<<2)|(0)  //  qdss_tracedata_a[10]  86   2
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  87.     0x1FF&(0x7<<6)|(0x1<<2)|(0)  //  qdss_tracedata_a[11]  87   1
+                                                                                                                              
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  89.     0x1FF&(0x7<<6)|(0x5<<2)|(0)  //  qdss_tracedata_a[12]  89   5
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  90.     0x1FF&(0x7<<6)|(0x5<<2)|(0)  //  qdss_tracedata_a[13]  90   5
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  53.     0x1FF&(0x7<<6)|(0x4<<2)|(0)  //  qdss_tracedata_a[14]  53   4
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  54.     0x1FF&(0x7<<6)|(0x5<<2)|(0)  //  qdss_tracedata_a[15]  54   5
+
+
+                )
+                ELSE if "&TraceSink"=="tpiub"
+                (
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  91.   0x1FF&(0x7<<6)|(0x4<<2)|(0)    //qdss_traceclk_b:     4
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  94.   0x1FF&(0x7<<6)|(0x5<<2)|(0)    //qdss_tracectl_b:     5
+                                                                                                                      
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  93.   0x1FF&(0x7<<6)|(0x5<<2)|(0)    //qdss_tracedata_b[0]  5
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  92.   0x1FF&(0x7<<6)|(0x5<<2)|(0)    //qdss_tracedata_b[1]  5 
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  13.   0x1FF&(0x7<<6)|(0x4<<2)|(0)    //qdss_tracedata_b[2]  4 
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  14.   0x1FF&(0x7<<6)|(0x4<<2)|(0)    //qdss_tracedata_b[3]  4 
+                                                                                                                      
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  15.   0x1FF&(0x7<<6)|(0x3<<2)|(0)    //qdss_tracedata_b[4]  3 
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  16.   0x1FF&(0x7<<6)|(0x3<<2)|(0)    //qdss_tracedata_b[5]  3 
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  17.   0x1FF&(0x7<<6)|(0x3<<2)|(0)    //qdss_tracedata_b[6]  3 
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  18.   0x1FF&(0x7<<6)|(0x3<<2)|(0)    //qdss_tracedata_b[7]  3 
+                                                                                                                      
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  19.   0x1FF&(0x7<<6)|(0x3<<2)|(0)    //qdss_tracedata_b[8]  3 
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  21.   0x1FF&(0x7<<6)|(0x3<<2)|(0)    //qdss_tracedata_b[9]  3 
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  22.   0x1FF&(0x7<<6)|(0x3<<2)|(0)    //qdss_tracedata_b[10] 3 
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  23.   0x1FF&(0x7<<6)|(0x4<<2)|(0)    //qdss_tracedata_b[11] 4 
+                                                                                                                      
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  26.   0x1FF&(0x7<<6)|(0x6<<2)|(0)    //qdss_tracedata_b[12] 6 
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  29.   0x1FF&(0x7<<6)|(0x3<<2)|(0)    //qdss_tracedata_b[13] 3 
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  57.   0x1FF&(0x7<<6)|(0x4<<2)|(0)    //qdss_tracedata_b[14] 4 
+                    do std_utils HWIO_OUTI TLMM_GPIO_CFG  58.   0x1FF&(0x7<<6)|(0x8<<2)|(0)    //qdss_tracedata_b[15] 8 
+
+
+                )
+            )
+
+RETURN
+
+
+    
+EXIT:
+    ENDDO
+
+FATALEXIT:
+    END

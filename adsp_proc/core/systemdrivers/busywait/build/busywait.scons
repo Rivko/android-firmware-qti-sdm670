@@ -1,0 +1,91 @@
+#=============================================================================
+# BUSYWAIT
+#
+# Targets:    Hoya
+# Processors: SSC
+#
+#=============================================================================
+# Copyright (c) 2014-2017 Qualcomm Technologies, Inc.
+#         All Rights Reserved.
+# Qualcomm Technologies, Inc. Confidential and Proprietary.
+#=============================================================================
+#  $Header: //components/rel/core.qdsp6/2.1/systemdrivers/busywait/build/busywait.scons#1 $
+#  $DateTime: 2017/07/21 22:10:47 $
+#  $Author: pwbldsvc $
+#  $Change: 13907704 $
+#
+#                      EDIT HISTORY FOR FILE
+#                      
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#  
+# when       who     what, where, why
+# --------   ---     -----------------------------------------------------------
+# 12/12/14   cmd     Initial version.
+#===============================================================================
+
+Import('env')
+env = env.Clone()
+
+#-----------------------------------------------------------------------------
+# Define paths
+#-----------------------------------------------------------------------------
+
+SRCPATH = "${BUILD_ROOT}/core/systemdrivers/busywait/src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+#-------------------------------------------------------------------------------
+# External depends outside CoreBSP
+#-------------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+CBSP_API = [
+   'HAL',
+   'DAL',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+
+   # Must be last due to comdef.h issues
+   'KERNEL'
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+BUSYWAIT_SOURCES =  [
+  '${BUILDPATH}/busywait.c'
+]
+
+BUSYWAIT_IMAGES = ['CORE_Q6_ROOT',
+                   'CORE_SLPI_USER',
+                   'CORE_ADSP_USER',
+                   'CORE_CDSP_USER',
+                   'CORE_SSC_ADSP_USER',
+                   'CORE_AVS_ADSP_USER']
+
+#-------------------------------------------------------------------------------
+#  RC INIT
+#-------------------------------------------------------------------------------
+
+if 'USES_RCINIT' in env:
+  RCINIT_IMG = BUSYWAIT_IMAGES
+  env.AddRCInitFunc(       # Code Fragment in TMC: NO
+  RCINIT_IMG,              # define TMC_RCINIT_INIT_BUSYWAIT_INIT
+  {
+    'sequence_group'             : 'RCINIT_GROUP_0',       # required
+    'init_name'                  : 'busywait',              # required
+    'init_function'              : 'busywait_init',         # required
+    'dependencies'               : ['dalsys']
+  })
+
+
+BusywaitIsland_lib   = env.AddLibrary(BUSYWAIT_IMAGES, '${BUILDPATH}/busywait', BUSYWAIT_SOURCES)
+
+if 'USES_ISLAND' in env:
+  env.AddIslandLibrary(BUSYWAIT_IMAGES, BusywaitIsland_lib)
+
+

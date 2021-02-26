@@ -1,0 +1,138 @@
+#===============================================================================
+#
+# Basic skeleton image scrip
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009-2012 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/dspbuild.adsp/5.0/bsp/chre_shared_libs/build/chre_shared_libs.scons#1 $
+#  $DateTime: 2018/05/07 05:31:42 $
+#  $Change: 16104912 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+
+#------------------------------------------------------------------------------
+# Init image vars 
+#------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
+# Init aliases array.
+# first alias (0th elemten in array) is always unique name, there should 
+# never be two images with the same unique name
+aliases = [ 'chre_shared_libs', 'sdm670_ADSP']
+
+build_tools = ['buildspec_builder.py',
+]           
+#------------------------------------------------------------------------------
+# Init environment variables
+env.InitImageVars(
+   alias_list=aliases,  # aliases list
+   proc='qdsp6',      # proc (depending on tool chain arm, hexago, etc)
+   config='adsp',
+   plat='qurt',           # platform (l4, blast, foo, bar, etc)
+#build_tags = ['BASIC_IMAGE_EXAMPLE'],
+   build_tags = ['ADSP_SHARED_LIBS' ],
+ #  deprecated_build_tags = ['CBSP_QDSP6_SW_IMAGE'],
+   tools = build_tools
+)
+
+#------------------------------------------------------------------------------
+# Check if we need to load this script or just bail-out
+#------------------------------------------------------------------------------
+if not env.CheckAlias():
+   Return()
+
+
+#---------------------------------------------------------------------------
+# Load in CBSP uses and path variables
+#---------------------------------------------------------------------------
+env.LoadToolScript('build_utils', toolpath = ['${BUILD_ROOT}/build/scripts'])
+env.InitTargetVariation()
+env.InitBuildConfig()
+env.Replace(USES_FASTRPC_SHELL = 'yes')
+
+
+
+#------------------------------------------------------------------------------
+# Check if we need to load this script or just bail-out
+#------------------------------------------------------------------------------
+if 'USES_CHRE' not in env or 'BUILD_BAREBONE' in env or not env.PathExists('${BUILD_ROOT}/chre'):
+   # import pdb; pdb.set_trace()
+   Return()
+
+#---------------------------------------------------------------------------
+# Load in the tools-set init scripts
+#---------------------------------------------------------------------------
+
+#Add ADSP Image specific linker inputs here
+env.LoadToolScript('hexagon_adsp', toolpath = ['${BUILD_ROOT}/build'])
+env.Tool('sharedlib_builder', toolpath = ['${BUILD_ROOT}/build'])
+
+
+#---------------------------------------------------------------------------
+# Libs/Objs
+#---------------------------------------------------------------------------
+image_sharedobjs = []
+image_sharedobjs_non_deliverables = []
+
+
+#---------------------------------------------------------------------------
+# Libraries Section
+#---------------------------------------------------------------------------
+
+if env.PathExists('${BUILD_ROOT}/chre'):
+    if 'USES_CHRE' in env:
+        env.AddUsesFlags('CHRE')
+    au_name_items = env.LoadAreaSoftwareUnits('chre')
+    image_sharedobjs.extend(au_name_items['SHARED_LIBS'])
+
+image_units = image_sharedobjs
+
+#Generate Hash xml for the libraries to be added by AddDevcfgInfo during static image creation
+hash_out = env.HashXmlBuilder("${BUILD_MS_ROOT}/${TARGET_NAME}_HASH.xml", image_units)
+# Generate strict XML variant for Strict XML feature
+strict_env = env.Clone()
+strict_env.AddUsesFlags('USES_DEVCFG_STRICT_XML')
+hash_out_strict = strict_env.HashXmlBuilder("${BUILD_MS_ROOT}/${TARGET_NAME}_HASH_strict_xml.xml", image_units)
+
+#------------------------------------------------------------------------------
+# Putting the image toghther
+#------------------------------------------------------------------------------
+
+if 'IMAGE_BUILD_LINK' in env:
+   #-------------------------------------------------------------------------
+   # Link image
+   #-------------------------------------------------------------------------
+
+   # this is where the rule to "link" is done.
+   #image_elf = env.AddProgram("${SHORT_BUILDPATH}/${TARGET_NAME}", image_objs, LIBS=image_libs)
+   
+   # this is just to create something for testing
+   # import pdb; pdb.set_trace() 
+   print 'Generating shared libraries list',  env.subst("${SHORT_BUILDPATH}/${TARGET_NAME}.txt")
+   list_file = env.ListFileBuilder("${SHORT_BUILDPATH}/${TARGET_NAME}.txt", image_units, 
+         add_header=False, relative_path="${BUILD_MS_ROOT}", posix=True)
+   install_file = env.InstallMySharedLib("${SHORT_BUILDPATH}/${TARGET_NAME}.txt")
+   image_units += [
+      list_file,
+      install_file,
+   ]   
+#=========================================================================
+# Finish up...
+image_units += [hash_out, hash_out_strict]
+image_units += image_sharedobjs_non_deliverables
+env.BindAliasesToTargets(image_units)

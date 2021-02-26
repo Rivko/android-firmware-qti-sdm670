@@ -1,0 +1,90 @@
+#===============================================================================
+#
+#                             Edit History
+#
+# $Header: //components/rel/aop.ho/1.1.c1/aop_proc/core/systemdrivers/icb/build/icb.scons#1 $
+# when         who     what, where, why
+# ----------   ---     ---------------------------------------------------------
+# 2016/09/21   sds     Initial Creation
+#
+#===============================================================================
+#                 Copyright (c) 2016, 2017 by Qualcomm Technologies, Inc.
+#                              All Rights Reserved.
+#           Proprietary and Confidential - Qualcomm Technologies, Inc/GTDR
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+#SDM640_CHANGES
+if env['MSM_ID'] in ['640']:
+   env['MSM_ID'] = '670'
+
+#-------------------------------------------------------------------------------
+# Python library imports
+#-------------------------------------------------------------------------------
+import os, glob
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+BUILDPATH = '..'
+env.VariantDir('${BUILDPATH}', BUILDPATH, duplicate=0)
+SRCPATH = os.path.join( BUILDPATH, 'src' )
+
+#855au for now compiles with 855 config
+if env['MSM_ID'] == '855au': 
+  env['MSM_ID'] = '855'
+  env['CHIPSET'] = 'sdm855'
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_APIS = [
+  'HAL',
+  'POWER',
+  'SYSTEMDRIVERS',
+   # needs to be last also contains wrong comdef.h
+  'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_APIS)
+env.RequireRestrictedApi(CBSP_APIS)
+
+#-------------------------------------------------------------------------------
+# Private depends within ICB
+#-------------------------------------------------------------------------------
+env.PublishPrivateApi('ICB_API', [
+    os.path.join(SRCPATH, 'common'),
+    os.path.join(SRCPATH, '${MSM_ID}'),
+    ])
+
+#-------------------------------------------------------------------------------
+# Compiler options
+#-------------------------------------------------------------------------------
+env.Append(CCFLAGS = '${ARMCC_STDC99_CMD}')
+
+#-------------------------------------------------------------------------------
+# Settings files for R-init builder
+#-------------------------------------------------------------------------------
+if 'USES_RINIT_PARSER' in env:
+    env.AddRinitInfo('CORE_AOP', 
+      {'files' : '${BUILD_ROOT}/core/systemdrivers/icb/cfg/${MSM_ID}'})
+
+#-------------------------------------------------------------------------------
+# Sources
+#-------------------------------------------------------------------------------
+# Add common code
+icb_src = glob.glob( os.path.join(SRCPATH, 'common', '*.c') )
+
+#-------------------------------------------------------------------------------
+# Target sources
+#-------------------------------------------------------------------------------
+icb_src.extend( glob.glob( os.path.join(SRCPATH, env['MSM_ID'], '*.c') ) )
+
+#-------------------------------------------------------------------------------
+# Images
+#-------------------------------------------------------------------------------
+# Prepend build path
+icb_src = ['${BUILDPATH}' + filename[2:] for filename in icb_src]
+
+env.AddLibrary(['CORE_AOP'], '${BUILDPATH}/icb', icb_src)

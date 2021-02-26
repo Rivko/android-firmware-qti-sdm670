@@ -1,0 +1,140 @@
+;============================================================================
+; Name: mmu_pt.cmm
+;
+; Description: Dump MMU Page tables into a file
+;     
+; Copyright (c) 2014 Qualcomm Technologies, Inc.
+; All Rights Reserved. 
+; Qualcomm Technologies Proprietary and Confidential. 
+;
+;----------------------------------------------------------------------------
+
+;============================================================================
+;
+;                        EDIT HISTORY FOR MODULE
+;
+;
+;
+;  when         who     what, where, why
+;  ----------   ---     -----------------------------------------------------
+;  2015-02-12   bh      Change RD: to A:
+;  2014-03-18   yg      Initial version
+;============================================================================;
+
+;
+;
+;   Usage : do mmu_pt <file_name>
+;     
+;     file_name : is where the page tables are dumped into
+;
+
+entry  &MmuPtFile
+
+local &Prev
+local &Till
+local &PTaddr
+local &PTdat
+local &Saddr
+
+  OPEN #1 &MmuPtFile  /Write /Create
+
+  ; Read TTBR0
+  &TtbrBase=data.long(C15:0x2)
+
+  ; Override the value if needed if TTBR is not set yet
+  ;&TtbrBase=0x3FA4000
+
+  &PtBase=&TtbrBase&0xFFFFFF80
+  &EndPtr=&PtBase+0x4000
+  &Prev=0xFFFF
+
+  WRITE #1 "MMU Table TTBR @ &PtBase"
+  
+  gosub DumpPage &PtBase 0x4000 
+
+  &PtBase=&TtbrBase&0xFFFFFF80
+  while (&PtBase<&EndPtr)
+  (
+    &PTdat=data.long(A:&PtBase)
+
+    &PType=&PTdat&0x3
+    &PTaddr=&PTdat&0xFFFFFC00
+
+  ;  if (&PType!=&Prev)
+  ;  (
+  ;    &Till=&PtBase-4
+  ;    print "  --  &Till"
+
+      ;if ((&PType&0x2)==2 )
+      ;(
+      ;  if ((&PType&0x40000)==1)
+      ;  (
+      ;    WRITE #1 "&PtBase &PType  &PTdat: Super Section Entry &PTdat"
+      ;  )
+      ;  else
+      ;  (
+      ;    &Saddr=(&PTdat&0xFFF00000)
+      ;    WRITE #1 "&PtBase &PType  &PTdat: Section " FORMAT.HEX(8.,&Saddr)
+      ;  )
+      ;)
+      if ((&PType&0x3)==1)
+      (
+        WRITE #1 "&PtBase &PType " FORMAT.HEX(8.,&PTdat) " : Page Table @ " FORMAT.HEX(8.,&PTaddr)
+        gosub DumpPage &PTaddr 0x400 
+        WRITE #1 " "
+      )
+      ;if ((&PType&0x3)==3)
+      ;(
+      ;  WRITE #1 "&PtBase &PType &PTdat : Reserved entry!!"
+      ;)
+      ;if ((&PType&0x3)==0)
+      ;(
+      ;  WRITE #1 "&PtBase &PType: Invalid Entry"
+      ;)
+   ;   &Prev=&PType
+   ; )
+    &PtBase=&PtBase+4
+  )
+
+  CLOSE #1
+  print "Done"
+
+enddo
+
+
+DumpPage:
+  entry &PgPtr &DumpSize
+
+  local &EndPtr
+  local &Dat
+  local &Cnt
+
+  &EndPtr=&PgPtr+&DumpSize
+  &Cnt=0
+
+  while (&PgPtr<&EndPtr)
+  (
+    if (&Cnt==0)
+    (
+      WRITE #1 " "
+      WRITE #1  %CONT "    &PgPtr : "
+    )
+    &Dat=data.long(A:&PgPtr)
+
+    WRITE #1 %CONT " " FORMAT.HEX(8.,&Dat)
+
+    &PgPtr=&PgPtr+4
+    &Cnt=&Cnt+1
+    if (&Cnt>=8)
+    (
+      &Cnt=0
+    )
+
+  )
+  WRITE #1 " "
+  
+return
+
+enddo
+
+

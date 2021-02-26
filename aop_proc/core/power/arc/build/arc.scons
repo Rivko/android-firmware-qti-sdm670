@@ -1,0 +1,66 @@
+#===========================================================================
+# ARC build script
+#
+# Copyright (c) 2016 by Qualcomm Technologies, Incorporated
+# All Rights Reserved
+# Qualcomm Proprietary/GTDR
+#===========================================================================
+
+Import('env')
+
+env = env.Clone()
+#SDM640_CHANGES
+if env['MSM_ID'] in ['640']:
+   env['MSM_ID'] = '670'
+   
+SRCPATH = '..'
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#855au for now compiles with 855 config
+if env['MSM_ID'] == '855au': 
+  env['MSM_ID'] = '855'
+
+# APIs
+CBSP_API = [
+    'DAL',
+    'SYSTEMDRIVERS',
+    'POWER',
+    'POWER_UTILS',
+    'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+env.RequireProtectedApi(CBSP_API)
+env.PublishPrivateApi('ARC', [
+    '${BUILD_ROOT}/core/power/arc/inc',
+    '${BUILD_ROOT}/core/power/arc/common',
+    '${BUILD_ROOT}/core/power/arc/hal/inc',
+    '${BUILD_ROOT}/core/power/arc/hal/hwio/${MSM_ID}',
+    '${BUILD_ROOT}/core/power/arc/target/${MSM_ID}/inc'
+])
+
+# Compilation options
+env.Append(CFLAGS = '${ARMCC_STDC99_CMD}')
+
+if env['CHIPSET_PMIC'] == 'pm605':
+    env['MSM_ID'] = '670_rd_lc'
+	
+# Sources
+ARC_SOURCES = [
+    '${BUILDPATH}/common/arc.c',
+    '${BUILDPATH}/common/arc_internal.c',
+    '${BUILDPATH}/hal/src/arc_hal.c',
+    '${BUILDPATH}/cfg/${MSM_ID}/arc_cfg.c',
+    '${BUILDPATH}/common/arc_runtime.c'
+]
+if env['MSM_ID'] == '845':
+    ARC_SOURCES = ARC_SOURCES + ['${BUILDPATH}/target/${MSM_ID}/src/gpu_clk_workaround.c' ]
+
+# Adding settings files to R-init builder
+if 'USES_RINIT_PARSER' in env:
+	env.AddRinitInfo('CORE_AOP', 
+					 {'files' : '${BUILD_ROOT}/core/power/arc/cfg/${MSM_ID}'})
+
+# Add sources to compile
+env.AddLibrary(['CORE_AOP'], '${BUILDPATH}/arc', ARC_SOURCES)

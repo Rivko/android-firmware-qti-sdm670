@@ -1,0 +1,128 @@
+#===============================================================================
+#                    Copyright 2014-2015 Qualcomm Technologies Incorporated.
+#                           All Rights Reserved.
+#                      Qualcomm Confidential and Proprietary
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1/systemdrivers/InterruptController/build/interruptcontroller.scons#1 $
+#  $DateTime: 2017/07/21 22:10:47 $
+#  $Author: pwbldsvc $
+#  $Change: 13907704 $
+#
+#===============================================================================
+# DAL InterruptController Lib
+#-------------------------------------------------------------------------------
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/systemdrivers/InterruptController"
+SRCPATHSCRIPTS = env['BUILD_ROOT']+'/core/systemdrivers/InterruptController/scripts'
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+INTC_IMAGES = ['CORE_Q6_ROOT', 'CORE_SLPI_USER', 'CORE_SSC_ADSP_USER', 'CORE_AVS_ADSP_USER', 'CORE_ADSP_USER', 'CORE_CDSP_USER']
+INTC_IMAGES_ROOT = ['CORE_Q6_ROOT']
+
+#-------------------------------------------------------------------------------
+# Source Code
+#-------------------------------------------------------------------------------
+
+env.PublishPrivateApi('DAL_INTERRUPTCONTROLLER', [
+   "${INC_ROOT}/core/api/kernel/libstd/stringl",
+   "${INC_ROOT}/core/api/kernel/qurt",
+   "${INC_ROOT}/core/systemdrivers/InterruptController/src",
+   "${INC_ROOT}/core/systemdrivers/InterruptController/inc",
+   "${INC_ROOT}/core/systemdrivers/InterruptController/src/qurt",
+   "${INC_ROOT}/core/systemdrivers/InterruptController/src/qurt/uimage",
+])
+
+env.Append(CPPDEFINES = ["DALINTERRUPT_LOG"])
+env.Append(CPPDEFINES = ["INTERRUPT_LOG_ENTRIES=0"])
+env.Append(CPPPATH = [
+   "${INC_ROOT}/core/api/kernel/qurt",
+ ])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'DEBUGTOOLS',
+   'MPROC',
+   'POWER',
+   'DEBUGTRACE',
+   # needs to be last also contains wrong comdef.h      
+   'KERNEL',
+   'POWER_PDC',
+]
+
+CBSP_RESTRICTED_API = [
+   'DAL',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'DEBUGTOOLS',
+   'MPROC',
+   'POWER',
+   # needs to be last also contains wrong comdef.h      
+   'KERNEL',
+   'INTERRUPTCONTROLLER_DEVCFG_INTERFACE',
+   'POWER_PDC',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_RESTRICTED_API)
+
+# Interrupt Controller Logs to Enable
+env.Append(CCFLAGS = " -DINTLOG_REG_ENABLE")
+env.Append(CCFLAGS = " -DINTLOG_PDC_ENABLE")
+env.Append(CCFLAGS = " -DINTLOG_SETTRIGGER_ENABLE")
+env.Append(CCFLAGS = " -DINTLOG_ENABLE_ENABLE")
+env.Append(CCFLAGS = " -DINTLOG_CLEAR_ENABLE")
+env.Append(CCFLAGS = " -DINTLOG_TRIGGER_ENABLE")
+
+#-------------------------------------------------------------------------------
+# Source Code
+#-------------------------------------------------------------------------------
+DAL_INTERRUPT_CONTROLLER_SOURCES = [
+   '${BUILDPATH}/src/DALInterruptControllerInfo.c',
+   '${BUILDPATH}/src/DALInterruptControllerFwk.c',
+   '${BUILDPATH}/src/qurt/DALInterruptController.c',
+   '${BUILDPATH}/src/qurt/DALInterruptControllerLog.c',
+   '${BUILDPATH}/src/utils/DALInterruptController_utils.c'
+]
+
+if 'USES_AUDIO_IMG' in env:
+  INTERRUPT_UIMAGE = [
+    '${BUILDPATH}/src/qurt/uimage/uInterruptControllerStub.c'
+  ]
+else:
+  INTERRUPT_UIMAGE = [
+    '${BUILDPATH}/src/qurt/uimage/uInterruptController.c',
+  ]
+  INTERRUPT_ISLAND_UIMAGE = [
+    '${BUILDPATH}/src/qurt/uimage/uInterruptControllerIsland.c',
+  ]  
+  uint_island_lib = env.AddLibrary( INTC_IMAGES, 
+                      '${BUILDPATH}/InterruptController/uimage/uintkernelIsland',
+                      INTERRUPT_ISLAND_UIMAGE )
+
+  if ( 'USES_ISLAND' in env ):
+    env.AddIslandLibrary( INTC_IMAGES, uint_island_lib )
+
+env.AddLibrary( INTC_IMAGES, 
+                '${BUILDPATH}/InterruptController/uimage/uintkernel',
+                INTERRUPT_UIMAGE )
+
+try:
+  env.AddCMMScripts (env['IMAGE'].upper(), [SRCPATHSCRIPTS], { 'InterruptController.cmm' : ' Interrupt Controller', 'InterruptLog.cmm' : ' Interrupt Log' }, 'DAL')
+except:
+  pass
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+env.AddLibrary(INTC_IMAGES, '${BUILDPATH}/DALInterruptController', DAL_INTERRUPT_CONTROLLER_SOURCES)
+

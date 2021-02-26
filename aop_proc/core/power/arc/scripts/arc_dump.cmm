@@ -1,0 +1,1119 @@
+;***************************************************************************
+; arc_dump.cmm
+;
+; Initial script to dump ARC module
+;
+; Copyright 2016-2017 Qualcomm Technologies Incorporated
+;***************************************************************************
+
+
+; variable command line args
+entry %line &args
+
+GLOBAL &group_by &op_file &op_fmt &op_area 
+GLOBAL &ip_drvs &ip_rms &ip_drv_ids &ip_rm_ids
+
+GLOBAL &g_indent_level &temp_indent_str 
+GLOBAL &soc &op_cmd &offset &access_view
+
+; command line arg parser
+&args_lwr=string.lwr("&args")
+&group_by=string.scanandextract("&args_lwr", "group=", "")
+&op_file=string.scanandextract("&args", "op=", "stdout")        ; Can be case-sensitive
+&ip_drvs=string.scanandextract("&args_lwr", "drvs=", "")
+&ip_drv_ids=string.scanandextract("&args_lwr", "drv_ids=", "")
+&ip_rms=string.scanandextract("&args_lwr", "rms=", "")
+&ip_rm_ids=string.scanandextract("&args_lwr", "rm_ids=", "")
+&op_area=string.scanandextract("&args", "area=", "ARC")
+&op_fmt=string.scanandextract("&args_lwr", "fmt=", "default")
+&access=string.scanandextract("&args_lwr", "access=", "")
+&soc=string.scanandextract("&args_lwr", "soc=", "sdm845")
+&op_cmd=""
+
+; calling entry point
+gosub arc_dump_entry
+enddo 0
+
+;-------------------------------------------------------------------------------
+; arc_dump_entry
+;
+; This is a main entry point - all subsequent functions are dispatched from 
+; here.
+;-------------------------------------------------------------------------------
+arc_dump_entry:
+    ; declare arc register symbols
+    gosub arc_def_reg_syms
+    
+    ; command line arg validate/update - depedent on the arc symbols from above
+    gosub cl_args_update
+
+    &g_indent_level=0
+
+    &iter=0
+    WHILE (&iter<&arc_drv_count)
+    (
+        &req_drv=v.value(\arc_req_drvs[&iter])
+        IF (&req_drv!=-1)
+        (
+            gosub arc_op_drv &req_drv
+        )
+        &iter=&iter+1
+    )
+
+    &iter=0
+    WHILE (&iter<&arc_rm_count)
+    (
+        &req_rm=v.value(\arc_req_rms[&iter])
+        IF (&req_rm!=-1)
+        (
+            gosub arc_op_rm &req_rm
+        )
+        &iter=&iter+1
+    )
+
+    gosub ddraux_op_seq
+
+    gosub arc_op_map
+    
+    gosub close_op_file &op_file
+    return
+
+;-------------------------------------------------------------------------------
+; arc_op_rm
+;
+; @brief This function outputs all the details of an RM - resource manager. 
+;
+; @param rm_id: RM id for the resource
+;-------------------------------------------------------------------------------
+arc_op_rm:
+    entry &rm_id &indent_level
+
+    LOCAL &drv_id &indent0 &indent1 &indent2
+
+    IF ("&rm_id"=="")||(&rm_id>=&arc_rm_count)
+    (
+        return
+    )
+    
+    IF ("&indent_level"=="")
+    (
+        &indent_level=&g_indent_level
+    )
+    gosub get_indent_str &indent_level
+    &indent0="&temp_indent_str"                  ; copy indent_str locally
+    gosub get_indent_str &indent_level+1
+    &indent1="&temp_indent_str"
+    gosub get_indent_str &indent_level+2
+    &indent2="&temp_indent_str"
+
+    &op_cmd "&(indent0)RM" FORMAT.DECIMAL(0, &rm_id) " : " \
+            v.str(\arc_rm_map[&rm_id])
+
+    ; RM status
+    &op_cmd "&(indent1)Status"
+    gosub arc_rm_status &rm_id
+    entry &rm_enable
+    &en_marker=""
+    IF &rm_enable==0
+    (
+        &en_marker="*"
+    )
+    &op_cmd "&(indent2)Enable : " &(rm_enable) "&(en_marker)"
+
+    ; Printing RM's formatted operating levels - this would have been much
+    ; simpler had PRACTICE allowed returning more than 4 values.
+    &op_cmd "&(indent1)OLs"
+
+    gosub arc_query_ols &rm_id "curr"
+    entry &curr_ol
+    &op_cmd "&(indent2)Curr : &(curr_ol)"
+
+    gosub arc_query_ols &rm_id "aggr"
+    entry &aggr_ol
+    &op_cmd "&(indent2)Agg : &(aggr_ol)"
+
+    gosub arc_query_ols &rm_id "dest"
+    entry &dest_ol
+    &op_cmd "&(indent2)Dest : &(dest_ol)"
+
+    gosub arc_query_ols &rm_id "solved"
+    entry &solved_ol
+    &op_cmd "&(indent2)Solved : &(solved_ol)"
+
+    gosub arc_query_ols &rm_id "seq"
+    entry &seq_ol
+    &op_cmd "&(indent2)Seq : &(seq_ol)"
+
+    ; Printing Sequencer state
+    gosub arc_query_seq_sts &rm_id
+    entry &seq_busy &seq_pc &seq_instr
+    
+    &op_cmd "&(indent1)Sequencer"
+    &op_cmd "&(indent2)Busy : " &seq_busy
+    &op_cmd "&(indent2)PC : &(seq_pc)"
+    &op_cmd "&(indent2)Instr : &(seq_instr)"    ; Can add a function to dissamble
+
+    ; Printing DRV votes - too much info, prefer to keep it last
+    &count=0
+    &op_cmd "&(indent1)Votes"
+    WHILE (&count<&arc_drv_count)
+    (
+        &drv_id=v.value(\arc_drv_props[&count][&arc_drv_id_f])
+        &cc=v.value(\arc_drv_props[&count][&arc_drv_cc_f])
+
+        &icount=0
+        WHILE (&icount<&cc)
+        (
+            gosub arc_query_vote &rm_id &drv_id &icount
+            entry &drv_vote
+
+            &vote_marker=""
+            IF (&drv_vote==&dest_ol)&&(&dest_ol!=0)
+            (
+                &vote_marker="*"
+            )
+
+            IF (&cc==1)
+            (
+                &op_cmd "&(indent2)DRV" FORMAT.DECIMAL(0, &drv_id) \
+                        " : &(drv_vote)&(vote_marker)"
+            )
+            ELSE
+            (
+                &op_cmd "&(indent2)DRV" FORMAT.DECIMAL(0, &drv_id) "-" \
+                        FORMAT.DECIMAL(0, &icount) " : &(drv_vote)&(vote_marker)"
+            )
+
+            &icount=&icount+1
+        )
+
+        &count=&count+1
+    )
+
+    return
+
+
+;-------------------------------------------------------------------------------
+; arc_op_drv
+;
+; @brief This function outputs relevant information for an input drv.
+;
+; @param drv_id: DRV ID for which we are dumping information
+;-------------------------------------------------------------------------------
+arc_op_drv:
+    entry &drv_id &indent_level
+
+    LOCAL &rm_id &iter
+    LOCAL &indent0 &indent1 &indent2 
+
+    gosub arc_drv_id_valid &drv_id
+    entry &valid
+    IF &valid==0
+    (
+        return
+    )
+
+    IF ("&indent_level"=="")
+    (
+        &indent_level=&g_indent_level
+    )
+    gosub get_indent_str &indent_level
+    &indent0="&temp_indent_str"                 ; copy indent_str locally
+    gosub get_indent_str &indent_level+1
+    &indent1="&temp_indent_str"
+    gosub get_indent_str &indent_level+2
+    &indent2="&temp_indent_str"
+
+    ; Query clients count and index for the drv_id - it is already validated
+    gosub arc_drv_props_query &drv_id &arc_drv_cc_f
+    entry &cc &index
+
+    ; Formatted printing of relevant DRV information
+    &op_cmd "&(indent0)DRV" FORMAT.DECIMAL(0, &drv_id) " : " \
+            v.str(\arc_drv_map[&index])
+    &rm_id=0
+    WHILE (&rm_id<&arc_rm_count)
+    (
+        &op_cmd "&(indent1)RM" FORMAT.DECIMAL(0, &rm_id) " : " \
+                v.str(\arc_rm_map[&rm_id])
+
+        gosub arc_rm_status &rm_id
+        entry &rm_enable
+        &en_marker=""
+        IF &rm_enable==0
+        (
+            &en_marker="*"
+        )
+        &op_cmd "&(indent2)enable : " &(rm_enable) "&(en_marker)"
+
+        gosub arc_query_ols &rm_id "curr"
+        entry &curr_ol
+        gosub arc_query_ols &rm_id "dest"
+        entry &dest_ol
+
+        &op_cmd "&(indent2)curr_ol : &(curr_ol)"
+        &op_cmd "&(indent2)dest_ol : &(dest_ol)"
+
+        gosub arc_query_seq_sts &rm_id
+        entry &seq_busy &seq_pc &seq_instr
+        &op_cmd "&(indent2)seq_busy : " &(seq_busy)
+
+        ; Iterating through DRV and sub-clients to print their votes
+        &iter=0
+        WHILE (&iter<&cc)
+        (
+            gosub arc_query_vote &rm_id &drv_id &iter
+            entry &rm_vote
+
+            &vote_marker=""
+            IF (&rm_vote==&dest_ol)&&(&dest_ol!=0)
+            (
+                &vote_marker="*"
+            )
+
+            IF (&cc==1)
+            (
+                &op_cmd "&(indent2)vote : &(rm_vote)&(vote_marker)"
+            )
+            ELSE
+            (
+                &op_cmd "&(indent2)vote-" FORMAT.DECIMAL(0, &iter) \
+                        " : &(rm_vote)&(vote_marker)"
+            )
+            &iter=&iter+1
+        )
+
+        &rm_id=&rm_id+1
+    )
+
+    return
+
+
+;-------------------------------------------------------------------------------
+; arc_rm_status
+;
+; @brief Reads the control register for ARC rm and returns if RM is enabled.
+;
+; @param drv_id: DRV id
+;
+; @return 1 if arc rm is enabled else 0
+;-------------------------------------------------------------------------------
+arc_rm_status:
+    entry &rm_id
+
+    IF ("&rm_id"=="")||(&rm_id>=&arc_rm_count)
+    (
+        return 0
+    )
+
+    &arc_en=data.long(ARC_EN)
+    &arc_en=v.value(ARC_ENABLE(&arc_en))
+
+    &rm_ctrl=data.long(ARC_RMm_CTRL+0x4*(&rm_id))
+    &rm_en=v.value(ARC_RMm_CTRL_EN(&rm_ctrl))
+
+    ; RM is enabled only if ARC is enabled at TOP and RM itself is enabled
+    &rm_en=(&rm_en)&(&arc_en)
+
+    return &rm_en
+
+;-------------------------------------------------------------------------------
+; arc_query_vote
+;
+; @brief Function to return operating level (OL) vote by a DRV for a given 
+;        ARC RM.
+;
+; @param rm_id: RM id
+; @param drv_id: DRV id
+; @param client_id: Client id using the above DRV id (applicable only for
+;                   internal DRV like BCM which is shared by multiple clients).
+;                   Unused for external DRVs.
+;
+; @return Vote(drv_id, rm_id) if inputs are valid else empty/null value.
+;-------------------------------------------------------------------------------
+arc_query_vote:
+    entry &rm_id &drv_id &client_id
+
+    &drv_vote=data.long(DRVd_RMm_VOTE+0x10000*(&drv_id)+0x10*(&rm_id)+0x1000*(&client_id))
+    &drv_vote=v.value(DRVd_RMm_VOTE_OL(&drv_vote))
+
+    return &drv_vote
+
+
+;-------------------------------------------------------------------------------
+; arc_query_ols
+;
+; @brief This function returns various operational levels (OL) for an input 
+;        ARC RM.
+;
+; @param rm_id: ARC RM id for which we are querying OL.
+; @param ip_ol: OL to be queried.
+;   "curr" - Current OL
+;   "solved" - Solver selected OL
+;   "aggr" - Aggregated OL
+;   "seq" - Sequencer OL
+;   "dest" - Destination OL
+;
+; @return 
+;   OL corresponding to input if valid input else empty/null value
+;-------------------------------------------------------------------------------
+arc_query_ols:
+    entry &rm_id &ip_ol
+
+    LOCAL &ret_ol
+    &ret_ol=""
+
+    IF ("&rm_id"=="")||(&rm_id>=&arc_rm_count)
+    (
+        ; Invalid input - simply return empty values - any processing
+        ; on those will result in to error/exception.
+        return &ret_ol
+    )
+
+    &rm_ols=data.long(RMm_OPERATIONAL_LEVEL+0x4*(&rm_id))
+    IF &ip_ol=="curr"
+    (
+        &ret_ol=v.value(RMm_OPERATIONAL_LEVEL_CURRENT_OL(&rm_ols))
+    )
+    ELSE IF &ip_ol=="solved"
+    (
+       &ret_ol=v.value(RMm_OPERATIONAL_LEVEL_SOLVED_OL(&rm_ols))
+    )
+    ELSE IF &ip_ol=="aggr"
+    (
+        &ret_ol=v.value(RMm_OPERATIONAL_LEVEL_AGGREGATED_OL(&rm_ols))
+    )
+    ELSE IF &ip_ol=="seq" 
+    (
+        &ret_ol=v.value(RMm_OPERATIONAL_LEVEL_SEQUENCE_OL(&rm_ols))
+    )
+    ELSE IF &ip_ol=="dest"
+    (
+        &ret_ol=v.value(RMm_OPERATIONAL_LEVEL_DESTINATION_OL(&rm_ols))
+    )
+    ; Any other value will result in to ret_ol staying empty/null.
+    
+    return &ret_ol
+
+
+;-------------------------------------------------------------------------------
+; arc_query_seq_sts
+;
+; @brief Returns important status values regarding sequencer for an input ARC
+;        RM.
+;
+; @param rm_id: ARC RM id for which we are querying OL.
+;
+; @return
+;   seq_busy - 0 if sequencer is not busy else 1
+;   seq_pc - Sequencer Program Counter
+;   seq_instr - Instruction at program counter
+;-------------------------------------------------------------------------------
+arc_query_seq_sts:
+    &entry &rm_id
+
+    LOCAL &seq_busy &seq_pc &seq_instr
+
+    IF ("&rm_id"=="")||(&rm_id>=&arc_rm_count)
+    (
+        ; Invalid input - simply return empty values - any processing
+        ; on those will result in to error/exception.
+        return &ret_ol
+    )
+
+    &seq_sts=data.long(RMm_SEQ_STS_CSR+0x40*(&rm_id))
+    &seq_busy=v.value(RMm_SEQ_STS_CSR_BUSY(&seq_sts))
+    &seq_pc=v.value(RMm_SEQ_STS_CSR_PC(&seq_sts))
+    &temp_pc=&seq_pc
+    IF &seq_busy!=0
+    (
+        ; Typically a hang. Check back the previous instruction
+        &temp_pc=(&temp_pc-&arc_seq_instr_size)
+    )
+    &seq_instr=data.long(ARC_SEQ_MEM+((&temp_pc)/4)*4)    ; (x/4)*4 for word boundary
+    &seq_instr=(&seq_instr>>(16.*((&temp_pc/2)%2.)))&0xFFFF
+
+    return &seq_busy &seq_pc &seq_instr
+
+
+;-------------------------------------------------------------------------------
+; ddraux_seq_sts
+;
+; @brief Returns various information regarding ddr_aux sequencer.
+;
+; @param seq_idx: DDR AUX sequencer index (0 or 1).
+;
+; @return
+;   seq_busy - 0 if sequencer is not busy else 1
+;   seq_pc - Sequencer Program Counter
+;   seq_instr - Instruction at program counter
+;-------------------------------------------------------------------------------
+ddraux_seq_sts:
+    entry &seq_idx
+
+    IF ("&seq_idx"=="")||(&seq_idx>1.)
+    (
+        ; Invalid input - simply return empty values - any processing
+        ; on those will result in to error/exception.
+        return
+    )
+
+    &seq_sts=data.long(DDRAUX_SEQ_STS+0x4*(&seq_idx))
+    &seq_busy=v.value(DDRAUX_SEQ_STSi_BUSY(&seq_sts))
+    &seq_pc=v.value(DDRAUX_SEQ_STSi_PC(&seq_sts))
+    &temp_pc=&seq_pc
+    IF &seq_busy!=0
+    (
+        ; Typically a hang. Check back on the previous instruction
+        &temp_pc=(&temp_pc-2)
+    )
+    &seq_instr=data.long(DDRAUX_SEQ_MEM+((&temp_pc)/4)*4)
+    &seq_instr=(&seq_instr>>(16.*((&temp_pc/2)%2)))&0xFFFF
+
+    return &seq_busy &seq_pc &seq_instr
+
+
+;-------------------------------------------------------------------------------
+; ddraux_op_seq
+;
+; @brief Dumps the DDRAUX sequencers' info.
+;-------------------------------------------------------------------------------
+ddraux_op_seq:
+    entry &indent_level
+
+    IF ("&indent_level"=="")
+    (
+        &indent_level=&g_indent_level
+    )
+    gosub get_indent_str &indent_level
+    &indent0="&temp_indent_str"                  ; copy indent_str locally
+    gosub get_indent_str &indent_level+1
+    &indent1="&temp_indent_str"
+    gosub get_indent_str &indent_level+2
+    &indent2="&temp_indent_str"
+
+    &op_cmd "&(indent0)DDRAux"
+    &i=0
+    WHILE (&i<2)
+    (
+        gosub ddraux_seq_sts &i
+        entry &seq_busy &seq_pc &seq_instr
+
+        &op_cmd "&(indent1)Seq : " FORMAT.DECIMAL(0, &i)
+        &op_cmd "&(indent2)Busy : " &seq_busy
+        &op_cmd "&(indent2)PC : &(seq_pc)"
+        &op_cmd "&(indent2)Instr : &(seq_instr)"    ; Can add a function to dissamble
+
+        &i=&i+1
+    )
+
+    return
+
+
+;-------------------------------------------------------------------------------
+; arc_op_map
+;
+; @brief This function outputs the RM and DRV maps.
+;-------------------------------------------------------------------------------
+arc_op_map:
+    entry &indent_level
+
+    IF ("&indent_level"=="")
+    (
+        &indent_level=&g_indent_level
+    )
+    gosub get_indent_str &indent_level
+    &indent0="&temp_indent_str"                  ; copy indent_str locally
+    gosub get_indent_str &indent_level+1
+    &indent1="&temp_indent_str"
+
+    ; Printing RM map
+    &op_cmd ""
+    &count=0; 
+    &op_cmd "&(indent0)ARC_RMs"
+    while (&count<&arc_rm_count)
+    (
+        &op_cmd "&(indent1)RM" FORMAT.DECIMAL(0, &count) " : " \
+                v.str(\arc_rm_map[&count])
+        &count=&count+1
+    )
+
+    &op_cmd ""
+
+    ; Printing DRV map
+    &count=0
+    &op_cmd "&(indent0)ARC_DRVs"
+    while (&count<&arc_drv_count)
+    (
+        &drv_name=v.str(\arc_drv_map[&count])
+        &drv_id=v.value(\arc_drv_props[&count][&arc_drv_id_f])
+
+        &op_cmd "&(indent1)DRV" FORMAT.DECIMAL(0, &drv_id) " : &(drv_name)" 
+
+        ; Check if DRV id is shared (i.e Internal DRV)
+        &client_count=v.value(\arc_drv_props[&count][&arc_drv_cc_f])
+        if &client_count>1
+        (
+            &icount=0
+            while (&icount<&client_count)
+            (
+                &op_cmd "&(indent1)DRV" FORMAT.DECIMAL(0, &drv_id) "-" \
+                        FORMAT.DECIMAL(0, &icount) " : &(drv_name)-" \
+                        FORMAT.DECIMAL(0, &icount)
+
+                &icount=&icount+1
+            )
+
+        )
+
+        &count=&count+1
+    )
+    return
+
+
+;-------------------------------------------------------------------------------
+; arc_def_reg_syms
+;
+; @brief This function invokes ARC target script that is responsible for
+;        declaring the register symbols and global variables which will be 
+;        used by this common script.
+;
+; @dependency:
+;   This function must be called before start dumping ARC registers.
+;-------------------------------------------------------------------------------
+arc_def_reg_syms:
+    LOCAL &target_ret
+
+    &target_ret=0
+
+    ; Since we will call external script, it may not be present and in that
+    ; case Practice will throw an exception. Catch it and set the error code.
+    ON ERROR gosub
+    (
+        &target_ret=1
+        return
+    )
+
+    ; Calling an external script. Path is constructed based on where this
+    ; script resides. 
+    &script_path=os.ppd()
+    &target_script_path="&(script_path)/arc_target.cmm"
+
+    do &target_script_path "soc=&(soc)"
+    entry &target_ret
+
+    if &target_ret!=0
+    (
+        ; Error from setting up target specifc data/config - stop
+        print "ARC: Error during target setup (&(soc))"
+        enddo &target_ret
+    )
+
+    return
+
+
+cl_args_update:
+    if "&op_file"=="stdout"
+    (
+        &arc_area_name="&op_area"
+        &arc_area_cols=60.
+        &arc_area_rows=2048.      ; Group by DRV outputs large text
+
+        gosub op_area_exists &arc_area_name
+        entry &area_exists
+
+        if &area_exists==0
+        (
+            ; ARC output area does not exist - try creating it
+            gosub op_area_create &arc_area_name &arc_area_cols &arc_area_rows
+            entry &area_err
+            
+            if &area_err!=0
+            (
+                area.select      ; Generic display area
+                print "ARC SCRIPT ERR: Failed to create Output Area. " \
+                      "Close one or more areas."
+                enddo 1
+            )
+        )
+
+        area.select &arc_area_name
+        area.clear &arc_area_name
+        area.view &arc_area_name
+        
+        &op_file="stdout"
+        &op_cmd="print"
+    )
+    else
+    (
+        if os.dir("&op_file")
+        (
+            ; op_file is a directory - create a file with default name
+            &last_char = string.char("&op_file", string.len("&op_file")-1)
+            if ("&last_char"!="\")||("&last_char"!="/")
+            (
+                if os.version(0)==0x0X
+                (
+                    ; Windows OS
+                    &op_file="&(op_file)\arc_dump.txt"
+                )
+                else
+                (
+                    ; *nix OS
+                    &op_file="&(op_file)/arc_dump.txt"
+                )
+            )
+        )
+        open #1 "&op_file" /create
+        &op_cmd="write #1"
+    )
+
+    ; process input drv and rm list
+    gosub process_ip_drv_rm_list
+
+    ; default output if none of the inputs are present
+    IF ("&ip_drvs"=="")&&("&ip_drv_ids"=="")&&("&ip_rms"=="")&&("&ip_rm_ids"=="")
+    (
+        IF (str.lwr("&group_by")!="drv")
+        (
+            &group_by="rm"
+            &rm_id=0
+            WHILE (&rm_id<&arc_rm_count)
+            (
+                gosub arc_add_req_rm &rm_id
+                &rm_id=&rm_id+1
+            )
+        )
+        ELSE
+        (
+            &group_by="drv"
+            &iter=0
+            WHILE (&iter<&arc_drv_count)
+            (
+                &drv_id=v.value(\arc_drv_props[&iter][&arc_drv_id_f])
+                gosub arc_add_req_drv &drv_id
+                &iter=&iter+1
+            )
+        )
+    )
+
+    return
+
+
+process_ip_drv_rm_list:
+    ; Processing DRVs by name
+    &start_pos=0
+    &loop=1
+    WHILE (&loop==1)
+    (
+        gosub string_next_token "&ip_drvs" "," &start_pos
+        entry &token_len &drv
+        IF (&token_len==-1)
+        (
+            ; find a better way to break infinite loop
+            &loop=0
+        )
+        ELSE
+        (
+            ; Got a token - potential DRV name
+            gosub arc_drv_index "&drv"
+            entry &drv_index
+            gosub arc_add_req_drv &drv_index
+        )
+        &start_pos=&start_pos+&token_len+1
+    )
+
+    ; Processing DRVs by ids
+    &start_pos=0
+    &loop=1
+    WHILE (&loop==1)
+    (
+        gosub string_next_token "&ip_drv_ids" "," &start_pos
+        entry &token_len &drv_id
+        IF (&token_len==-1)
+        (
+            &loop=0
+        )
+        ELSE
+        (
+            ; Got a token - Potential DRV id
+            &drv_id=v.value(&drv_id)
+            gosub arc_add_req_drv &drv_id
+        )
+        &start_pos=&start_pos+&token_len+1
+    )
+
+    ; Processing RMs by name
+    &start_pos=0
+    &loop=1
+    WHILE (&loop==1)
+    (
+        gosub string_next_token "&ip_rms" "," &start_pos
+        entry &token_len &rm
+        IF (&token_len==-1)
+        (
+            &loop=0
+        )
+        ELSE
+        (
+            ; Got a token - potential RM
+            gosub arc_rm_index "&rm"
+            entry &rm_index
+            gosub arc_add_req_rm &rm_index
+        )
+        &start_pos=&start_pos+&token_len+1
+    )
+
+    ; Processing RMs by id
+    &start_pos=0
+    &loop=1
+    WHILE (&loop==1)
+    (
+        gosub string_next_token "&ip_rm_ids" "," &start_pos
+        entry &token_len &rm_id
+        IF (&token_len==-1)
+        (
+            &loop=0
+        )
+        ELSE
+        (
+            ; Got a token - potential RM id
+            &rm_id=v.value(&rm_id)
+            gosub arc_add_req_rm &rm_id
+        )
+        &start_pos=&start_pos+&token_len+1
+    )
+
+    return
+
+
+close_op_file:
+    entry &opf
+    
+    if "&opf"!="stdout"
+    (
+        close #1        ; ID must match with file opening ID
+    )
+    else
+    (
+        area.select     ; Generic output area
+    )
+    return
+
+
+;-------------------------------------------------------------------------------
+; string_token
+;
+; @brief Return the token within an input string delimated by a given delimiter.
+;
+; @param ip_str: String to get token from
+; @param delim: Delimiter to use for tokenizing
+; @param start_pos: Index (0 based) in the ip string from which start 
+;                   extracting token
+;
+; @return
+;   token_len: Length of extracted token - >=0 if found else -1
+;   token: Actual extracted token, valid only when token_len >= 0
+;-------------------------------------------------------------------------------
+string_next_token:
+    entry &ip_str &delim &start_pos
+    LOCAL &token &index &token_len
+
+    &index=STRING.SCAN(&ip_str, &delim, &start_pos)
+    IF &index!=-1
+    (
+        &token_len=&index-&start_pos
+    )
+    ELSE
+    (
+        &token_len=STRING.LEN(&ip_str)
+        IF &token_len<=&start_pos
+        (
+            ; we reached to end of string
+            &token_len=-1
+        )
+        ELSE
+        (
+            &token_len=&token_len-&start_pos
+        )
+    )
+    IF &token_len!=-1
+    (
+        ; Valid token is available
+        &token=STRING.MID(&ip_str,&start_pos, &token_len)
+    )
+
+    return &token_len &token
+
+;-------------------------------------------------------------------------------
+; get_indent_str
+;
+; Returns the indentation string corresponding to input indentation level
+;-------------------------------------------------------------------------------
+get_indent_str:
+    entry &ip_indent_level
+
+    LOCAL &level &indent_str
+
+    &indent_str=""
+    &indent="    "
+    &level=0
+
+    WHILE (&level<&ip_indent_level)
+    (
+        ; Dumb thing does not allow appending tab/space, not at least directly
+        &indent_str="&(indent_str)&(indent)"
+        &level=&level+1
+    )
+
+    &temp_indent_str="&indent_str"
+    return
+
+ 
+;-------------------------------------------------------------------------------
+; arc_drv_index
+;
+; @brief Iterates over ARC DRV array to see if an input DRV exists
+;
+; @param drv_name: DRV name to search for
+;
+; @return index of first occurance of string in the input array (>=0) if 
+;         present, else -1
+;-------------------------------------------------------------------------------
+arc_drv_index:
+    entry &drv_name
+
+    &iter=0
+    WHILE (&iter<&arc_drv_count)
+    (
+        IF V.STR(\arc_drv_map[&iter])==&drv_name
+        (
+            &drv_idx=v.value(\arc_drv_props[&iter][&arc_drv_id_f])
+            return &drv_idx
+        )
+        &iter=&iter+1
+    )
+
+    return -1
+
+
+;-------------------------------------------------------------------------------
+; arc_add_req_drv
+;
+; @brief Appends the drv id to global list 
+;-------------------------------------------------------------------------------
+arc_add_req_drv:
+    entry &drv_idx
+
+    ; Validate the input drv id and return w/o adding if it fails
+    gosub arc_drv_id_valid &drv_idx
+    entry &valid_drv
+    if &valid_drv==0
+    (
+        return
+    )
+
+    &iter=0
+    WHILE (&iter<&arc_drv_count)
+    (
+        IF v.value(\arc_req_drvs[&iter])==-1
+        (
+            ; Found an empty slot - add entry and return
+            v.a \arc_req_drvs[&iter]=&drv_idx
+            return
+        )
+        &iter=&iter+1
+    )
+
+    &op_cmd "Requested DRV&(drv_idx) caused overlow. Skipping..."
+    return
+
+
+;-------------------------------------------------------------------------------
+; arc_drv_id_valid
+;
+; @brief Function to see if a given DRV id is a valid external/soc wide DRV.
+;
+; @param drv_id: DRV id to check
+;
+; @return 1 if it is valid else 0
+;-------------------------------------------------------------------------------
+arc_drv_id_valid:
+    entry &drv_id
+
+    LOCAL &temp_drv_id
+
+    IF ("&drv_id"=="")
+    (
+        return 0
+    )
+
+    &iter=0
+    WHILE (&iter<&arc_drv_count)
+    (
+        &temp_drv_id=v.value(\arc_drv_props[&iter][&arc_drv_id_f])
+        if &temp_drv_id==&drv_id
+        (
+            return 1
+        )
+        &iter=&iter+1
+    )
+
+    return 0
+
+
+;-------------------------------------------------------------------------------
+; arc_drv_props_query
+;
+; @brief Returns property value for an input drv.
+;
+; @param drv_id: DRV id
+; @param prop_id: Property id
+;
+; @return Actual value of property/attr and DRV index in list if valid, 
+;         None otherwise.
+;-------------------------------------------------------------------------------
+arc_drv_props_query:
+    entry &drv_id &prop_id
+
+    if ("&drv_id"=="")||("&prop_id"=="")||(&prop_id>&arc_drv_props_count)
+    (
+        return ""
+    )
+
+    &iter=0
+    WHILE (&iter<&arc_drv_count)
+    (
+        IF v.value(\arc_drv_props[&iter][&arc_drv_id_f])==&drv_id
+        (
+            &ret_val=v.value(\arc_drv_props[&iter][&prop_id])
+            return &ret_val &iter
+        )
+        &iter=&iter+1
+    )
+
+    return ""
+
+
+;-------------------------------------------------------------------------------
+; arc_rm_index
+;
+; @brief Iterates over ARC RM array to see if an input RM exists
+;
+; @param rm_name: RM name to search for
+;
+; @return index of first occurance of string in the input array (>=0) if 
+;         present, else -1
+;-------------------------------------------------------------------------------
+arc_rm_index:
+    entry &rm_name
+
+    &iter=0
+    WHILE (&iter<&arc_rm_count)
+    (
+        IF V.STR(\arc_rm_map[&iter])==&rm_name
+        (
+            return &iter
+        )
+        &iter=&iter+1
+    )
+
+    return -1
+
+
+;-------------------------------------------------------------------------------
+; arc_add_req_rm
+;
+; @brief Appends the input rm id to global rm list 
+;-------------------------------------------------------------------------------
+arc_add_req_rm:
+    entry &rm_idx
+
+    &iter=0
+    WHILE (&iter<&arc_rm_count)
+    (
+        IF v.value(\arc_req_rms[&iter])==-1
+        (
+            ; Found an empty slot - add entry and return
+            v.a \arc_req_rms[&iter]=&rm_idx
+            return
+        )
+        &iter=&iter+1
+    )
+
+    &op_cmd "Requested RM&(rm_idx) caused overlow. Skipping..."
+    return
+
+
+;---------------------------------------------------------------------------
+; op_area_exists 
+;
+; @brief Checks if the area by the given name exists
+;
+; @note 
+; OP Window management - keep related functions together
+;
+; @param area_name: Name of the area we are looking for
+;---------------------------------------------------------------------------
+op_area_exists:
+    entry &area_name
+    local &exists
+
+    &exists=1
+
+    ON ERROR gosub
+    (
+        &exists=0
+
+        ; dummy print to handle warning message
+        print " "
+
+        return
+    )
+
+    ; Try selecting input area - if it does not exist error handler
+    ; defined above in 'ON ERROR' will be called
+    area.select &area_name
+
+    return &exists
+
+
+;---------------------------------------------------------------------------
+; op_area_create
+;
+; @brief Function to create an area by given name. It is a best effort case
+;        (read note for more details).
+;
+; @note 
+; T32 has a limitation on how many concurrent areas can be created/
+; opened (~10). If script(s) ran previously have exhausted this limit
+; attempt to create a separate output area will fail. 
+;
+; One of the ways to handle this is to use 'area.reset' but that impacts all
+; open areas. And it may not be desirable to clear output from previously
+; ran script(s).
+;
+; This ARC script reuses the area if it already exists (i.e. when this script
+; is run multiple times on a target w/o closing T32).
+;
+; @param area_name: Name of the output area to be created.
+; @param cols: Width of the output area.
+; @param rows: Length of the output area.
+;
+; @return 0 if op area creation is successful else non-zero.
+;---------------------------------------------------------------------------
+op_area_create:
+    entry &area_name &cols &rows
+    local &err_code
+
+    &err_code=0
+
+    ON ERROR gosub
+    (
+        &err_code=1
+        return
+    )
+
+    area.create &area_name &cols &rows
+
+    return &err_code

@@ -1,0 +1,88 @@
+#===============================================================================
+#
+# PDC Logging system
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+#   Copyright (c) 2016 Qualcomm Technologies, Inc. (QTI).
+#   All Rights Reserved.
+#   Qualcomm Confidential and Proprietary.
+#   Export of this technology or software is regulated by the U.S. Government.
+#   Diversion contrary to U.S. law prohibited.
+#-------------------------------------------------------------------------------
+#  $Header: //components/rel/aop.ho/1.1.c1/aop_proc/core/power/pdc/log/build/pdclog.scons#1 $
+#  $DateTime: 2018/02/16 04:48:18 $
+#===============================================================================
+import os
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+TARGET_ROOTPATH = "${BUILD_ROOT}/core/power/pdc/log"
+TARGET_SRCPATH  = TARGET_ROOTPATH + "/src"
+
+env.VariantDir('${BUILDPATH}', TARGET_SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Target Options
+#-------------------------------------------------------------------------------
+#start with empty list
+PDC_LOG_DEFINES=[]
+
+#Disable logging for targets listed here
+if env['POWER_SUBSYSTEM'].lower() not in ['aop']:
+  PDC_LOG_DEFINES = ['ENABLE_PDC_LOG']
+  env.Replace(PDC_LOGGING_ENABLED = 1)
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'DEBUGTOOLS',
+   'POWER',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'POWER_PDC',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Global source settings
+#-------------------------------------------------------------------------------
+MAIN_IMG_TAG = ['CORE_AOP']
+
+PDCLOG_SOURCES =  [
+   '${BUILDPATH}/pdclog.c',
+]
+
+#-------------------------------------------------------------------------------
+# Add target specific defines to build options
+#-------------------------------------------------------------------------------
+env.Append(CPPDEFINES = PDC_LOG_DEFINES)
+
+#-------------------------------------------------------------------------------
+# Create libraries
+#-------------------------------------------------------------------------------
+pdc_log_lib = env.AddLibrary(MAIN_IMG_TAG,
+                             os.path.join('${BUILDPATH}', 'pdclog'),
+                             PDCLOG_SOURCES)
+
+#-------------------------------------------------------------------------------
+# Add init function to RCINIT
+#-------------------------------------------------------------------------------
+# rpm driver properties
+RCINIT_PROPS = {
+  'sequence_group'             : 'RCINIT_GROUP_0',
+  'init_name'                  : 'PDCLog',
+  'init_function'              : 'pdcLog_initialize',
+  'dependencies'               : ['ulog_backend'],
+}
+
+if 'USES_RCINIT' in env and 'PDC_LOGGING_ENABLED' in env:  
+  env.AddRCInitFunc(MAIN_IMG_TAG, RCINIT_PROPS)

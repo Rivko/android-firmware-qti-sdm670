@@ -1,0 +1,108 @@
+#===============================================================================
+#
+# AVS AU
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2013-2016 Qualcomm Technologies, Inc.  All Rights Reserved.
+# Qualcomm Technologies Proprietary and Confidential.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: $
+#  $DateTime: $
+#  $Author:  $
+#  $Change:  $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+import os
+env.Replace(HEXAGONCC_OPT = "-Os")
+#-------------------------------------------------------------------------------
+# Make all warnings into errors
+#-------------------------------------------------------------------------------
+env.Append(CFLAGS = ' -Werror ')
+env.Append(CPPFLAGS = ' -Werror ')
+env.Append(ASMFLAGS = ' -Werror ')
+
+#If compiled for 5.x tools, suppress the unused function error in sysmon include
+if os.environ.get('HEXAGON_RTOS_RELEASE').startswith('5'):
+   env.Append(CFLAGS = ' -Wno-error=unused-function ')
+   env.Append(CPPFLAGS = '-Wno-error=unused-function ')
+
+core_public_apis = [
+   'DEBUGTOOLS',
+   'KERNEL',
+   'POWER',
+   'SERVICES',
+   'DAL',
+   ]
+
+
+env.RequirePublicApi(core_public_apis, area='core')
+env.RequirePublicApi('ULTRASOUND',area='ultrasound')
+env.RequirePublicApi(['ADSP_SYSMON',], area='qdsp6')
+env.RequireRestrictedApi(['AVS', 'MODULE_INTERFACES_API', 'CVD_PROTECTED'])
+env.RequireProtectedApi('AVS')
+env.RequirePublicApi(['ADSP_AMDB','ADSP_MODULE_MGR'])
+env.RequireRestrictedApi('AVS_LICENSE_HANDLER')
+
+platform_public_apis = [
+    'RTLD',
+    'HAPSDK',
+    ]
+
+env.RequirePublicApi(platform_public_apis, area='platform') # This has to be the last include command, so that the Elite_CAPI.h and Elite_APPI.h are not overridden
+
+env.PublishPrivateApi('AVS',[
+   '../inc',
+   '../src',
+   '../build',
+   '../tst',
+   '${AVS_ROOT}/aud/services/dynamic_svcs/audio_proc_svc/inc',
+   '${AVS_ROOT}/voice/services/voice_proc_mgr/inc',
+   '${AVS_ROOT}/voice/services/voice_common/inc',
+   '${AVS_ROOT}/voice/services/voice_mixer/inc',
+   '${AVS_ROOT}/voice/services/voice_timer/inc',
+   '${AVS_ROOT}/module_mgmt/amdb/inc',
+   '${AVS_ROOT}/module_mgmt/module_mgr/inc',
+   '${AVS_ROOT}/dynl/inc'
+   ])
+
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = ".."
+LIBNAME = 'avcs'
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+#Yefei: We need this change to support both MPD and SPD flavor of dynamic loading in MPD SIM
+if 'USES_AVS_TEST' in env and 'AUDIO_IN_USERPD' in env:
+   env.Append(CDEFINES="SIM_DYNAMIC_LOADING")
+   env.Append(CPPDEFINES="SIM_DYNAMIC_LOADING")
+
+# Generate regular source file list
+if env.get('hy22') == True:
+   avs_reg_sources = env.GlobSourceFiles(['src/*.cpp', 'src/*.c', 'src/public/*.cpp', 'src/public/*.c'], SRCPATH,posix=True)
+else:
+   avs_reg_sources = env.GlobSourceFiles(['src/*.cpp', 'src/*.c', 'src/prop/*.cpp', 'src/prop/*.c'], SRCPATH,posix=True)
+
+
+# Generate stub source file list
+avs_stub_sources = env.GlobSourceFiles(['stub_src/*.cpp', 'stub_src/*.c', 'stub_src/*.S'], SRCPATH,posix=True)
+
+# Genate proprietary source file list
+avs_prop_sources = []
+
+if 'USES_AVS_LIBRARY_BUILDER' in env:
+   env.AddAvsLibrary(['AVS_ADSP','AVS_ADSP_USER'], '${BUILDPATH}/'+LIBNAME,
+      [avs_reg_sources, avs_stub_sources, avs_prop_sources], PACK_SRC=True)

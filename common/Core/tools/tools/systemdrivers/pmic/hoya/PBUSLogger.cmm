@@ -1,0 +1,1070 @@
+; ============================================================================
+;
+;  PBUSLogger.cmm
+;
+;  Script to print PMIC PBUS logger and save to a text file.
+;
+;  Execution:
+;    PBUSLogger.cmm [pbus_index] [enable/disable - optional] [loggerfile - optional]
+;
+;  example: do PBUSLogger.cmm 0 enable c:\temp\pbuslogger.txt
+;
+;  If no parameters are provided then the interactive dialog window will be shown.
+;  [pbus_index] is the index of the PMIC and starts from 0 for primary PMIC.
+;  [enable/disable] is to enable/disable the PBUS logger post log collection. 
+;  [loggerfile] is the output log file name which is optional.  It will default to c:\temp\pbuslogger.txt  
+;
+;  ====================================================================
+;
+;  Copyright (c) 2016 - 2017 QUALCOMM Technologies Incorporated.  All Rights Reserved.
+;  QUALCOMM Proprietary and Confidential.
+;
+;  ====================================================================
+;
+;  $Header: //components/rel/core.glue/1.2/tools/tools/systemdrivers/pmic/hoya/PBUSLogger.cmm#3 $
+;  $DateTime: 2017/11/15 17:28:44 $
+;  $Author: pwbldsvc $
+;
+; ============================================================================
+;
+
+local &pmic_index &pbus_enable &loggerfile
+ENTRY &pmic_index &pbus_enable &loggerfile
+
+;-----------------------------------------------------------------------------
+; Default bus access mode and owner
+;-----------------------------------------------------------------------------
+
+local &SPMIOwnerChannel
+&SPMIOwnerChannel=3  ; LPASS Channel by default
+
+local &BusAccessMode
+&BusAccessMode="EZAXI"
+
+local &CurrentDir
+&CurrentDir=OS.PWD()
+
+local &PmicIoScript
+&PmicIoScript="&CurrentDir"+"\pmic_io.cmm"
+
+local &PM_SPMI_CFG_TARGET
+&PM_SPMI_CFG_TARGET=""
+
+local &pm_date
+&pm_date=FORMAT.DECIMAL(0,DATE.DAY())+FORMAT.DECIMAL(0,DATE.MONTH())+FORMAT.DECIMAL(0,DATE.YEAR())+"_"+FORMAT.DECIMAL(0,DATE.SECONDS())
+
+;-----------------------------------------------------------------------------
+; Determine the file name to save to.
+;-----------------------------------------------------------------------------
+
+IF "&loggerfile"==""
+(
+  &loggerfile="c:\temp\pbuslogger_"+"&pm_date"+".txt"
+)
+
+;-----------------------------------------------------------------------------
+; PBUS LOGGER ADDRESS
+;-----------------------------------------------------------------------------
+
+LOCAL &PBUS_BASE_ADDR &PBUS_PERPH_TYPE &PBUS_PERPH_SUBTYPE
+LOCAL &PBUS_STATUS1 &PBUS_FIFO_SIZE &PBUS_LOGGER_EN &PBUS_LOGGER_CTL 
+LOCAL &PBUS_LOGGER_PID &PBUS_LOGGER_SID &PBUS_MEM_INTF_ADDR &PBUS_CAPTURE_INC
+LOCAL &PBUS_MEM_INTF_DATA0 &PBUS_MEM_INTF_DATA1 &PBUS_MEM_INTF_DATA2 &PBUS_MEM_INTF_DATA3
+LOCAL &PBUS_MEM_INTF_DATA4 &PBUS_MEM_INTF_DATA5 &PBUS_MEM_INTF_DATA6 &PBUS_MEM_INTF_DATA7
+
+&PBUS_BASE_ADDR=0x400
+&PBUS_PERPH_TYPE=&PBUS_BASE_ADDR+0x4
+&PBUS_PERPH_SUBTYPE=&PBUS_BASE_ADDR+0x5
+&PBUS_STATUS1=&PBUS_BASE_ADDR+0x8
+&PBUS_FIFO_SIZE=&PBUS_BASE_ADDR+0xB
+&PBUS_LOGGER_EN=&PBUS_BASE_ADDR+0x46
+&PBUS_LOGGER_CTL=&PBUS_BASE_ADDR+0x50
+&PBUS_LOGGER_PID=&PBUS_BASE_ADDR+0x52
+&PBUS_LOGGER_SID=&PBUS_BASE_ADDR+0x53
+&PBUS_MEM_INTF_ADDR=&PBUS_BASE_ADDR+0x54
+&PBUS_CAPTURE_INC=&PBUS_BASE_ADDR+0x56
+&PBUS_MEM_INTF_DATA0=&PBUS_BASE_ADDR+0x58
+&PBUS_MEM_INTF_DATA1=&PBUS_BASE_ADDR+0x59
+&PBUS_MEM_INTF_DATA2=&PBUS_BASE_ADDR+0x5A
+&PBUS_MEM_INTF_DATA3=&PBUS_BASE_ADDR+0x5B
+&PBUS_MEM_INTF_DATA4=&PBUS_BASE_ADDR+0x5C
+&PBUS_MEM_INTF_DATA5=&PBUS_BASE_ADDR+0x5D
+&PBUS_MEM_INTF_DATA6=&PBUS_BASE_ADDR+0x5E
+&PBUS_MEM_INTF_DATA7=&PBUS_BASE_ADDR+0x5F
+
+local &PBUS_MAGIC_ADDR &PBUS_MAGIC_DATA &PBUS_MAGIC_STR1 &PBUS_MAGIC_STR2
+&PBUS_MAGIC_ADDR=0x100
+&PBUS_MAGIC_DATA=0xA1
+&PBUS_MAGIC_STR1="SPMI Write Addr:0x100 Data:0xA1"
+&PBUS_MAGIC_STR2="#####"
+
+local &PBUS_CTL_DATA
+&PBUS_CTL_DATA=0x1
+
+local &PBUS_LOGGER_POST_ENABLE
+&PBUS_LOGGER_POST_ENABLE=0x1
+
+local &pbus_interactive
+&pbus_interactive=0x1
+
+;-----------------------------------------------------------------------------
+; Check for non-interactive mode.
+;-----------------------------------------------------------------------------
+
+IF ("&pmic_index"!="")
+(
+  &pbus_interactive=0x0
+
+  AREA.CREATE PBUSLogger 70. 600.
+  AREA.VIEW PBUSLogger
+  AREA.SELECT PBUSLogger
+
+  local &pbus_status &pbus_data &pbus_index
+
+  &pbus_status=0
+  &pbus_data=0
+  &pbus_index=&pmic_index
+
+  GOSUB PbusStartDump
+
+  PRINT " "
+  WRITE #3 " "
+  PRINT "*******"+"PMIC_INDEX &pmic_index"+"*******"
+  WRITE #3 "*******"+"PMIC_INDEX &pmic_index"+"*******"
+
+  GOSUB PbusLoggerCollectData &pbus_index
+  ENTRY &pbus_status
+  IF (&pbus_status!=0x1)
+  (    
+    PRINT "LOG COLLECTION FAILED!"
+    WRITE #3 "LOG COLLECTION FAILED!"
+  )
+
+  IF "&pbus_enable"!=""
+  (
+    &pbus_enable=string.lower("&pbus_enable")
+    IF "&pbus_enable"=="enable"
+    (
+      GOSUB PbusLoggerEnable &pbus_index 0x1
+      ENTRY &pbus_status
+
+      IF (&pbus_status!=0x1)
+      (
+        PRINT "PBUS_LOGGER ENABLE FAILED!"
+        WRITE #3 "PBUS_LOGGER ENABLE FAILED!"
+      )
+      ELSE
+      (
+        PRINT "PBUS_LOGGER ENABLED!"
+        WRITE #3 "PBUS_LOGGER ENABLED!"
+      )
+    )
+    ELSE
+    (
+      GOSUB PbusLoggerEnable &pbus_index 0x0
+      ENTRY &pbus_status
+
+      IF (&pbus_status!=0x1)
+      (
+        PRINT "PBUS_LOGGER DISABLE FAILED!"
+        WRITE #3 "PBUS_LOGGER DISABLE FAILED!"
+      )
+      ELSE
+      (
+        PRINT "PBUS_LOGGER DISABLED!"
+        WRITE #3 "PBUS_LOGGER DISABLED!"
+      )
+    )
+  )
+  PRINT "PBUSLogger dump copied to &loggerfile"
+  GOSUB PbusCloseDump
+  ENDDO
+)
+
+;-----------------------------------------------------------------------------
+; Create the dialog
+;-----------------------------------------------------------------------------
+
+
+AREA.CREATE PBUSLogger 70. 600.
+
+DIALOG
+(
+  HEADER "PBUS LOGGER"
+   
+  POS 0. 0. 37. 16.
+  BOX "Configuration"
+  
+  POS 1. 1.5 10. 1.
+  TEXT "LOGGER FILE:"
+  POS 11.5 1.5 25. 1.
+  PBUS_LOGFILE: EDIT "c:\temp\pbuslogger.txt" ""
+  
+  POS 1. 3. 4. 1.
+  PBUS_PMIC_INDEX_TXT: TEXT "PMIC:"
+  POS 5.5 3. 8.5 1.
+  PBUS_PMIC_INDEX_PD: PULLDOWN "PMIC A,PMIC B,PMIC C,PMIC D,PMIC E,PMIC F,PMIC G"
+  (
+  )
+  
+  POS 19. 3. 6. 1.
+  PBUS_SPMI_CFG_TARGET_TXT: TEXT "Target:"
+  POS 25.15 3. 7. 1.
+  PBUS_SPMI_CFG_TARGET_PD: DYNPULLDOWN ",845" "GOSUB SpmiCfgUpdateTarget"
+  (
+  )
+
+  POS 19. 4.5 6. 1.
+  TEXT20: TEXT "Owner:"
+  POS 25.5 4.5 10. 1.
+  PBUS_OWNER: PULLDOWN "DEFAULT,AOP"
+  (
+  )
+
+  POS 19. 6. 6. 1.
+  TEXT20: TEXT "Access:"
+  POS 25.5 6. 10. 1.
+  PBUS_ACCESSMODE: PULLDOWN "EZAXI,A"
+  (
+  )
+
+  POS 1. 4.5 11. 1.
+  PBUS_TS_TEXT: TEXT "TIMESTAMP:"
+  POS 12.5 4.5 1.5 1.
+  PBUS_TS.CHK: CHECKBOX "" ""
+
+  POS 1. 6. 11. 1.
+  PBUS_WRAP_TEXT: TEXT "WRAP LOGS:"
+  POS 12.5 6. 1.5 1.
+  PBUS_WRAP.CHK: CHECKBOX "" ""
+
+  POS 1. 7.5 11. 1.5
+  PBUS_WRITES_TEXT: TEXT "WRITES ONLY:"
+  POS 12.5 7.625 1.5 1.
+  PBUS_WRITES.CHK: CHECKBOX "" ""
+
+  POS 1. 9. 11. 1.5
+  PBUS_PERPH_FILTER_TEXT: TEXT "PERPH FILTER:"
+  POS 12.5 9.15 1.5 1.
+  PBUS_PERPH_FILTER.CHK: CHECKBOX "" "GOSUB PerphFilterCheckToggle"
+  
+  POS 16. 9.15 3. 1.
+  TEXT "SID:"
+  POS 19.5 9.15 4. 1.
+  PBUS_SID_PD: PULLDOWN "0,1"
+  (
+  )
+  
+  POS 25. 9.15 3. 1.
+  TEXT "PID:"
+  POS 28.5 9.15 6. 1.
+  PBUS_PID_DATA: EDIT "0x14" ""
+
+  POS 1. 10.75 20. 1.
+  PBUS_POST_LOGS_TEXT: TEXT "ENABLE PBUS POST LOGS:"
+  POS 21.25 10.75 1.5 1.
+  PBUS_POST_LOGS.CHK: CHECKBOX "" ""
+  
+  POS 1. 12. 7. 1.
+  PBUS_STATUS_TXT: TEXT "STATUS:"
+  POS 8.5 12. 20. 1.
+  PBUS_STATUS_DATA: DYNTEXT ""
+  
+  POS 1. 13.5 12. 1.5
+  DEFBUTTON "ENABLE PBUS" 
+  (
+
+    AREA.CREATE PBUSLogger
+    AREA.VIEW PBUSLogger
+    AREA.SELECT PBUSLogger
+
+    &BusAccessMode=DIALOG.STRING(PBUS_ACCESSMODE)
+    GOSUB SetOwnerChannel DIALOG.STRING(PBUS_OWNER)
+
+    local &pbus_status &pbus_data &pbus_index
+
+    &pbus_status=0
+    &pbus_data=0
+    &pbus_index=0
+
+    &loggerfile=DIALOG.STRING(PBUS_LOGFILE)
+    GOSUB PbusStartDump
+
+    IF DIALOG.BOOLEAN(PBUS_POST_LOGS.CHK)
+    (
+      &PBUS_LOGGER_POST_ENABLE=0x1
+    )
+    ELSE
+    (
+      &PBUS_LOGGER_POST_ENABLE=0x0
+    )
+
+    GOSUB PbusValidateParam
+    ENTRY &pbus_index
+
+    GOSUB PbusLoggerConfig &pbus_index
+    ENTRY &pbus_status
+
+    IF (&pbus_status!=0x1)
+    (
+      PRINT "PBUS_LOGGER CONFIG FAILED!"
+      DIALOG.SET PBUS_STATUS_DATA "PBUS_LOGGER CONFIG FAILED!"
+    )
+    ELSE
+    (
+      GOSUB PbusLoggerEnable &pbus_index 0x1
+      ENTRY &pbus_status
+
+      IF (&pbus_status!=0x1)
+      (
+        PRINT "PBUS_LOGGER ENABLE FAILED!"
+        DIALOG.SET PBUS_STATUS_DATA "PBUS_LOGGER ENABLE FAILED!"
+      )
+      ELSE
+      (
+        PRINT "PBUS LOGGER ENABLED!"
+        DIALOG.SET PBUS_STATUS_DATA "SUCCESS!"
+      )
+    )
+    GOSUB PbusCloseDump
+  )
+  
+  POS 14. 13.5 12. 1.5
+  DEFBUTTON "GET LOGS" 
+  (
+    AREA.CREATE PBUSLogger
+    AREA.VIEW PBUSLogger
+    AREA.SELECT PBUSLogger
+
+    &BusAccessMode=DIALOG.STRING(PBUS_ACCESSMODE)
+    GOSUB SetOwnerChannel DIALOG.STRING(PBUS_OWNER)
+
+    local &pbus_status &pbus_data &pbus_index
+
+    &pbus_status=0
+    &pbus_data=0
+    &pbus_index=0
+
+    &loggerfile=DIALOG.STRING(PBUS_LOGFILE)
+    GOSUB PbusStartDump
+
+    IF DIALOG.BOOLEAN(PBUS_POST_LOGS.CHK)
+    (
+      &PBUS_LOGGER_POST_ENABLE=0x1
+    )
+    ELSE
+    (
+      &PBUS_LOGGER_POST_ENABLE=0x0
+    )
+
+    GOSUB PbusValidateParam
+    ENTRY &pbus_index
+
+    GOSUB PbusLoggerCollectData &pbus_index
+    ENTRY &pbus_status
+    IF (&pbus_status!=0x1)
+    (    
+      DIALOG.SET PBUS_STATUS_DATA "ERROR!"
+    )
+    ELSE
+    (
+      DIALOG.SET PBUS_STATUS_DATA "SUCCESS!"
+    )
+    GOSUB PbusCloseDump
+  )
+  
+  POS 27. 13.5 6. 1.5
+  DEFBUTTON "CLOSE" 
+  (
+    AREA.CLEAR PBUSLogger
+    JUMPTO winclose
+  )
+)
+DIALOG.SET PBUS_LOGFILE "&loggerfile"
+DIALOG.SET PBUS_TS.CHK
+DIALOG.SET PBUS_WRAP.CHK
+DIALOG.SET PBUS_POST_LOGS.CHK
+DIALOG.DISABLE PBUS_SID_PD
+DIALOG.DISABLE PBUS_PID_DATA
+STOP
+
+winclose:
+DIALOG.END
+ENDDO
+
+;=============================================================================
+;=============================================================================
+; SUBROUTINES
+;=============================================================================
+;=============================================================================
+
+;=============================================================================
+; SUB: PbusValidateParam
+;=============================================================================
+
+PbusValidateParam:
+  &pbus_pmic_index=0
+
+  IF DIALOG.STRING(PBUS_PMIC_INDEX_PD)=="PMIC B"
+  (
+    &pbus_pmic_index=1
+  )
+  ELSE IF DIALOG.STRING(PBUS_PMIC_INDEX_PD)=="PMIC C"
+  (
+    &pbus_pmic_index=2
+  )
+  ELSE IF DIALOG.STRING(PBUS_PMIC_INDEX_PD)=="PMIC D"
+  (
+    &pbus_pmic_index=3
+  )
+  ELSE IF DIALOG.STRING(PBUS_PMIC_INDEX_PD)=="PMIC E"
+  (
+    &pbus_pmic_index=4
+  )
+  ELSE IF DIALOG.STRING(PBUS_PMIC_INDEX_PD)=="PMIC F"
+  (
+    &pbus_pmic_index=5
+  )
+  ELSE IF DIALOG.STRING(PBUS_PMIC_INDEX_PD)=="PMIC G"
+  (
+    &pbus_pmic_index=6
+  )
+  ELSE
+  (
+    &pbus_pmic_index=0
+  )
+
+  PRINT " "
+  WRITE #3 " "
+  PRINT "*******"+DIALOG.STRING(PBUS_PMIC_INDEX_PD)+"*******"
+  WRITE #3 "*******"+DIALOG.STRING(PBUS_PMIC_INDEX_PD)+"*******"
+
+  RETURN &pbus_pmic_index
+
+;=============================================================================
+; SUB: PerphFilterCheckToggle
+;=============================================================================
+
+PerphFilterCheckToggle:
+
+  IF DIALOG.BOOLEAN(PBUS_PERPH_FILTER.CHK)
+  (
+    DIALOG.ENABLE PBUS_SID_PD
+    DIALOG.ENABLE PBUS_PID_DATA
+  )
+  ELSE
+  (
+    DIALOG.DISABLE PBUS_SID_PD
+    DIALOG.DISABLE PBUS_PID_DATA
+  )
+
+  RETURN
+
+
+;=============================================================================
+; SUB: PbusLoggerConfig
+;=============================================================================
+
+PbusLoggerConfig:
+  local &pbus_index
+  entry &pbus_index
+
+  local &pbus_status &pbus_data &pbus_sid &pbus_pid
+
+  &pbus_status=0
+  &pbus_data=0
+
+  GOSUB PMICWrite &PBUS_LOGGER_EN &pbus_index 0x0
+  ENTRY &pbus_status
+
+  IF (&pbus_status!=0x1)
+  (
+    PRINT "NO PBUS_LOGGER DETECTED!"
+    RETURN &pbus_status
+  )
+
+  GOSUB PMICRead &PBUS_PERPH_TYPE &pbus_index
+  ENTRY &pbus_status &pbus_data
+
+  IF ((&pbus_status!=0x1)||(&pbus_data!=0xB))
+  (
+    PRINT "NO PBUS_LOGGER DETECTED!"
+    RETURN &pbus_status
+  )
+  ELSE
+  (
+    GOSUB PMICRead &PBUS_PERPH_SUBTYPE &pbus_index
+    ENTRY &pbus_status &pbus_data
+
+    IF ((&pbus_status!=0x1)||(&pbus_data<0x3))
+    (
+      PRINT "NO PBUS_LOGGER DETECTED!"
+      RETURN &pbus_status
+    )
+  )
+
+  &PBUS_CTL_DATA=0
+
+  IF !DIALOG.BOOLEAN(PBUS_TS.CHK)
+  (
+    &PBUS_CTL_DATA=&PBUS_CTL_DATA|0x4
+  )
+
+  IF DIALOG.BOOLEAN(PBUS_WRITES.CHK)
+  (
+    &PBUS_CTL_DATA=&PBUS_CTL_DATA|0x2
+  )
+
+  IF DIALOG.BOOLEAN(PBUS_WRAP.CHK)
+  (
+    &PBUS_CTL_DATA=&PBUS_CTL_DATA|0x1
+  )
+
+  IF DIALOG.BOOLEAN(PBUS_PERPH_FILTER.CHK)
+  (
+    &pbus_pid=DIALOG.STRING(PBUS_PID_DATA)
+
+    IF "&pbus_pid"!=""
+    (
+      &pbus_sid=DIALOG.STRING(PBUS_SID_PD)
+      &PBUS_CTL_DATA=&PBUS_CTL_DATA|0x8
+
+      GOSUB PMICWrite &PBUS_LOGGER_SID &pbus_index &pbus_sid
+      ENTRY &pbus_status
+
+      IF (&pbus_status==0x1)
+      (
+        GOSUB PMICWrite &PBUS_LOGGER_PID &pbus_index &pbus_pid
+        ENTRY &pbus_status
+      )
+    )
+  )
+
+  RETURN &pbus_status
+
+;=============================================================================
+; SUB: PbusLoggerEnable
+;=============================================================================
+
+PbusLoggerEnable:
+  local &pbus_index &pbus_enable_flag
+  entry &pbus_index &pbus_enable_flag
+
+  local &pbus_status
+
+  &pbus_status=0
+
+  ; Disable PBUS logger
+  GOSUB PMICWrite &PBUS_LOGGER_EN &pbus_index 0x0
+  ENTRY &pbus_status
+
+  IF (&pbus_enable_flag==0x1)
+  (
+    GOSUB PMICWrite &PBUS_LOGGER_CTL &pbus_index &PBUS_CTL_DATA
+    ENTRY &pbus_status
+
+    IF (&pbus_status!=0x1)
+    (
+      RETURN &pbus_status
+    )
+
+    GOSUB PMICWrite &PBUS_MEM_INTF_ADDR &pbus_index 0x0
+    ENTRY &pbus_status
+
+    IF (&pbus_status!=0x1)
+    (
+      RETURN &pbus_status
+    )
+
+    ;Enable PBUS logger
+    GOSUB PMICWrite &PBUS_LOGGER_EN &pbus_index 0x80
+    ENTRY &pbus_status
+  )
+
+  RETURN &pbus_status
+
+;=============================================================================
+; SUB: PbusLoggerCollectData
+;=============================================================================
+
+PbusLoggerCollectData:
+  local &pbus_index
+  entry &pbus_index
+
+  local &logger_status &logger_data &logger_index &logger_max_index &logger_count
+  local &logger_data0 &logger_data1 &logger_data2 &logger_data3
+  local &logger_data4 &logger_data5 &logger_data6 &logger_data7
+  local &logger_full &logger_timestamp &logger_binary_ts &logger_str
+  local &logger_logs_present
+
+  &logger_status=0
+  &logger_data=0
+  &logger_ctl=0
+  &logger_count=0
+  &logger_index=0
+  &logger_max_index=0
+  &logger_data0=0
+  &logger_data1=0
+  &logger_data2=0
+  &logger_data3=0
+  &logger_data4=0
+  &logger_data5=0
+  &logger_data6=0
+  &logger_data7=0
+  &logger_str=""
+  &logger_full=0
+  &logger_timestamp=0x1
+  &logger_binary_ts=0
+  &logger_fifo_size=0
+  &logger_logs_present=0
+
+  ; dummy write
+  GOSUB PMICWrite &PBUS_MAGIC_ADDR &pbus_index &PBUS_MAGIC_DATA
+  ENTRY &logger_status
+
+  GOSUB PMICWrite &PBUS_LOGGER_EN &pbus_index 0x0
+  ENTRY &logger_status
+
+  IF (&logger_status!=0x1)
+  (
+    PRINT "NO PBUS_LOGGER DETECTED!"
+    WRITE #3 "NO PBUS_LOGGER DETECTED!"
+    RETURN &logger_status
+  )
+  ELSE
+  (
+    PRINT "PBUS LOGGER DISABLED!"
+    WRITE #3 "PBUS LOGGER DISABLED!"
+  )
+
+  GOSUB PMICRead &PBUS_PERPH_TYPE &pbus_index
+  ENTRY &logger_status &logger_data
+
+  IF ((&logger_status!=0x1)||(&logger_data!=0xB))
+  (
+    PRINT "NO PBUS_LOGGER DETECTED!"
+    WRITE #3 "NO PBUS_LOGGER DETECTED!"
+    RETURN &logger_status
+  )
+  ELSE
+  (
+    GOSUB PMICRead &PBUS_PERPH_SUBTYPE &pbus_index
+    ENTRY &logger_status &logger_data
+
+    IF ((&logger_status!=0x1)||(&logger_data<0x3))
+    (
+      PRINT "NO PBUS_LOGGER DETECTED!"
+      WRITE #3 "NO PBUS_LOGGER DETECTED!"
+      RETURN &logger_status
+    )
+  )
+
+  GOSUB PMICRead &PBUS_STATUS1 &pbus_index
+  ENTRY &logger_status &logger_data
+
+  IF ((&logger_data&0x40)==0x40)
+  (
+    &logger_full=0x1
+  )
+
+  GOSUB PMICRead &PBUS_FIFO_SIZE &pbus_index
+  ENTRY &logger_status &logger_data
+
+  IF (&logger_data==0x2)
+  (
+    &logger_fifo_size=256.
+  )
+  ELSE IF (&logger_data==0x1)
+  (
+    &logger_fifo_size=128.
+  )
+  ELSE
+  (
+    &logger_fifo_size=64.
+  )
+
+  GOSUB PMICRead &PBUS_LOGGER_CTL &pbus_index
+  ENTRY &logger_status &logger_ctl
+
+  IF ((&logger_ctl&0x4)==0x4)
+  (
+    &logger_timestamp=0x0
+  )
+
+  GOSUB PMICRead &PBUS_MEM_INTF_ADDR &pbus_index
+  ENTRY &logger_status &logger_count
+
+  IF (&logger_full==0x1)
+  (
+    &logger_index=&logger_count
+    &logger_max_index=&logger_fifo_size
+  )
+  ELSE
+  (
+    &logger_max_index=&logger_count
+    &logger_index=0
+
+    GOSUB PMICWrite &PBUS_MEM_INTF_ADDR &pbus_index &logger_index
+    ENTRY &logger_status
+  )
+
+  WHILE (&logger_index<&logger_max_index)
+  (
+    &logger_logs_present=1
+    GOSUB PMICWrite &PBUS_CAPTURE_INC &pbus_index 0x1
+    ENTRY &logger_status
+
+    GOSUB PMICRead &PBUS_MEM_INTF_DATA0 &pbus_index
+    ENTRY &logger_status &logger_data0
+    GOSUB PMICRead &PBUS_MEM_INTF_DATA1 &pbus_index
+    ENTRY &logger_status &logger_data1
+    GOSUB PMICRead &PBUS_MEM_INTF_DATA2 &pbus_index
+    ENTRY &logger_status &logger_data2
+    GOSUB PMICRead &PBUS_MEM_INTF_DATA3 &pbus_index
+    ENTRY &logger_status &logger_data3
+    GOSUB PMICRead &PBUS_MEM_INTF_DATA4 &pbus_index
+    ENTRY &logger_status &logger_data4
+    GOSUB PMICRead &PBUS_MEM_INTF_DATA5 &pbus_index
+    ENTRY &logger_status &logger_data5
+    GOSUB PMICRead &PBUS_MEM_INTF_DATA6 &pbus_index
+    ENTRY &logger_status &logger_data6
+    GOSUB PMICRead &PBUS_MEM_INTF_DATA7 &pbus_index
+    ENTRY &logger_status &logger_data7
+
+    &logger_str=""
+    GOSUB AnalyzePbusLoggerData &logger_data0 &logger_data1 &logger_data2 &logger_data3
+    ENTRY &logger_str
+
+    IF (&logger_timestamp==0x1)
+    (
+      if (&logger_str!="&PBUS_MAGIC_STR2")
+      (
+        &logger_binary_ts=0
+        GOSUB GetPbusLoggerTimestamp &logger_data4 &logger_data5 &logger_data6 &logger_data7
+        ENTRY &logger_binary_ts
+        PRINT "&logger_binary_ts: "+&logger_str
+        WRITE #3 "&logger_binary_ts: "+&logger_str
+      )
+    )
+    ELSE
+    (
+      PRINT &logger_str
+      WRITE #3 &logger_str
+      &logger_str=""
+      GOSUB AnalyzePbusLoggerData &logger_data4 &logger_data5 &logger_data6 &logger_data7
+      ENTRY &logger_str
+      if (&logger_str!="&PBUS_MAGIC_STR2")
+      (
+        PRINT &logger_str
+        WRITE #3 &logger_str
+      )
+    )
+
+    &logger_index=&logger_index+1.
+
+    IF ((&logger_index==&logger_fifo_size)&&(&logger_full==0x1))
+    (
+      &logger_index=0
+      &logger_max_index=&logger_count
+    )
+  )
+
+  IF ((&PBUS_LOGGER_POST_ENABLE==0x1)&&(&pbus_interactive==0x1))
+  (
+    GOSUB PMICWrite &PBUS_LOGGER_EN &pbus_index 0x80
+    ENTRY &logger_status
+    PRINT "PBUS LOGGER ENABLED!"
+    WRITE #3 "PBUS LOGGER ENABLED!"
+  )
+  ELSE
+  (
+    PRINT "PBUS LOGGER DISABLED!"
+    WRITE #3 "PBUS LOGGER DISABLED!"
+  )
+
+  IF (&logger_logs_present==0)
+  (
+    PRINT "NO NEW TRANSACTIONS TO LOG IN THE BUFFER!"
+    WRITE #3 "NO NEW TRANSACTIONS TO LOG IN THE BUFFER!"
+  )
+
+  RETURN &logger_status
+
+;=============================================================================
+; SUB: AnalyzePbusLoggerData
+;=============================================================================
+
+AnalyzePbusLoggerData:
+  local &analyze_data0 &analyze_data1 &analyze_data2 &analyze_data3
+  entry &analyze_data0 &analyze_data1 &analyze_data2 &analyze_data3
+
+  local &reg_addr &reg_data &reg_oper &reg_master
+  &reg_addr=0
+  &reg_data=0
+  &reg_oper=""
+  &reg_master=""
+  &analyze_str=""
+
+  &reg_data=((&analyze_data3>>2)&0x1F)
+  IF (&reg_data==0x2)
+  (
+    &reg_master="PBS"
+  )
+  ELSE
+  (
+    &reg_master="SPMI"
+  )
+
+  IF ((&analyze_data3&0x80)==0x80)
+  (
+    &reg_oper="Write"
+  )
+  ELSE
+  (
+    &reg_oper="Read"
+  )
+
+  &reg_addr=((&analyze_data3&0x3)<<16.)|(&analyze_data2<<8.)|(&analyze_data1)
+  &reg_data=&analyze_data0
+
+  &analyze_str="&reg_master"+" &reg_oper"+" Addr:&reg_addr"+" Data:&reg_data"
+
+  if ("&analyze_str"=="&PBUS_MAGIC_STR1")
+  (
+    &analyze_str="&PBUS_MAGIC_STR2"
+  )
+
+  RETURN "&analyze_str"
+
+;=============================================================================
+; SUB: GetPbusLoggerTimestamp
+;=============================================================================
+
+GetPbusLoggerTimestamp:
+  local &timestamp_data0 &timestamp_data1 &timestamp_data2 &timestamp_data3
+  entry &timestamp_data0 &timestamp_data1 &timestamp_data2 &timestamp_data3
+
+  local &index &ui_xor_bit_prev &ui_xor_bit_cur &binary_ts &ui_mask &gray_num
+
+  &ui_xor_bit_prev=0
+  &ui_xor_bit_cur=0
+  &binary_ts=0
+  &ui_mask=0x80000000
+  &gray_num=0
+  &index=0
+  &new_index=0
+
+  ;gray to binary timestamp conversion logic referred from PMIC VI documentation
+  &gray_num=((&timestamp_data3<<24)|(&timestamp_data2<<16)|(&timestamp_data1<<8)|&timestamp_data0)
+  ;return &gray_num
+  ;&gray_num=23214.
+  WHILE (&index<32.)
+  (
+    &ui_xor_bit_cur=((&gray_num)&(&ui_mask))
+    IF (&ui_xor_bit_cur!=0)
+    (
+      &new_index=&index
+      &index=32.
+    )
+    ELSE
+    (
+      &ui_mask=&ui_mask>>1
+      &index=&index+1
+    )
+  )
+  &binary_ts=&ui_xor_bit_cur
+
+  WHILE (&new_index<31.)
+  (
+    &ui_xor_bit_prev=&ui_xor_bit_cur
+    &ui_mask=&ui_mask>>1
+    &ui_xor_bit_cur=((&gray_num)&(&ui_mask))
+    IF (((&ui_xor_bit_prev==0)&&(&ui_xor_bit_cur!=0))||((&ui_xor_bit_prev!=0)&&(&ui_xor_bit_cur==0)))
+    (
+      &binary_ts=(&binary_ts|&ui_mask)
+      &ui_xor_bit_cur=1
+    )
+    ELSE
+    (
+      &ui_xor_bit_cur=0
+    )
+    &new_index=&new_index+1
+  )
+
+  RETURN &binary_ts
+
+;=============================================================================
+; SUB: SpmiCfgUpdateTarget
+;=============================================================================
+
+SpmiCfgUpdateTarget:
+
+  &PM_SPMI_CFG_TARGET=DIALOG.STRING(PBUS_SPMI_CFG_TARGET_PD)
+
+  RETURN
+
+;=============================================================================
+; SUB: PbusStartDump
+;=============================================================================
+
+PbusStartDump:
+  IF FILE.EXIST(&loggerfile)==TRUE()
+  (
+    OPEN #3 &loggerfile /Append
+  )
+  ELSE
+  (
+    OPEN #3 &loggerfile /Create
+  )
+
+  RETURN
+
+;=============================================================================
+; SUB: PbusCloseDump
+;=============================================================================
+
+PbusCloseDump:
+  
+  CLOSE #3
+  RETURN
+
+;=============================================================================
+; SUB: SetOwnerChannel
+;=============================================================================
+
+SetOwnerChannel:
+
+  ENTRY &OwnerName
+
+  IF &OwnerName=="APPS"
+  (
+    &SPMIOwnerChannel=0
+  )
+  ELSE IF &OwnerName=="TZ"
+  (
+    &SPMIOwnerChannel=1
+  )
+  ELSE IF &OwnerName=="MSS"
+  (
+    &SPMIOwnerChannel=2
+  )
+  ELSE IF &OwnerName=="DEFAULT"
+  (
+    &SPMIOwnerChannel=3
+  )
+  ELSE IF &OwnerName=="AOP"
+  (
+    &SPMIOwnerChannel=4
+  )
+  ELSE IF &OwnerName=="SSC"
+  (
+    &SPMIOwnerChannel=5
+  )
+
+  RETURN
+
+;=============================================================================
+; SUB: PMICToSPMI
+;=============================================================================
+
+PMICToSPMI:
+
+  ENTRY &addr &devid
+  LOCAL &spmi_sid &spmi_addr
+
+  &spmi_sid=(&devid*2)
+
+  &pmic_sid=&addr>>16.
+  IF &pmic_sid==1
+  (
+    &spmi_sid=&spmi_sid+1
+  )
+
+  &spmi_addr=&addr&0xFFFF
+
+  RETURN &spmi_sid &spmi_addr
+
+
+;=============================================================================
+; SUB: PMICRead
+;=============================================================================
+
+PMICRead:
+
+  ENTRY &addr &devid
+
+  local &spmi_target &spmi_status
+
+  &read_status=0
+  &read_data=0
+
+  GOSUB PMICToSPMI &addr &devid
+  ENTRY &spmi_sid &spmi_addr
+
+  do &PmicIoScript read &SPMIOwnerChannel &BusAccessMode &spmi_sid &spmi_addr
+  ENTRY &read_status &read_data
+
+  IF ((&read_status==0xFF)&&(&pbus_interactive==0x1))
+  (
+    &spmi_target="&PM_SPMI_CFG_TARGET"
+
+    IF ("&spmi_target"!="")
+    (
+      do &PmicIoScript config &spmi_target
+      entry &spmi_status
+      IF (&spmi_status==1)
+      (
+        do &PmicIoScript read &SPMIOwnerChannel &BusAccessMode &spmi_sid &spmi_addr
+        ENTRY &read_status &read_data
+      )
+    )
+    ELSE
+    (
+      print "Select TARGET to initialize spmi!"
+    )
+  )
+
+  RETURN &read_status &read_data
+
+
+;=============================================================================
+; SUB: PMICWrite
+;=============================================================================
+
+PMICWrite:
+
+  ENTRY &addr &devid &write_data
+
+  local &spmi_target &spmi_status
+
+  &write_status=0
+
+  GOSUB PMICToSPMI &addr &devid
+  ENTRY &spmi_sid &spmi_addr
+
+  do &PmicIoScript write &SPMIOwnerChannel &BusAccessMode &spmi_sid &spmi_addr &write_data
+  ENTRY &write_status
+
+  IF ((&write_status==0xFF)&&(&pbus_interactive==0x1))
+  (
+    &spmi_target="&PM_SPMI_CFG_TARGET"
+
+    IF ("&spmi_target"!="")
+    (
+      do &PmicIoScript config &spmi_target
+      entry &spmi_status
+      IF (&spmi_status==1)
+      (
+        do &PmicIoScript write &SPMIOwnerChannel &BusAccessMode &spmi_sid &spmi_addr &write_data
+        ENTRY &write_status
+      )
+    )
+    ELSE
+    (
+      print "Select TARGET to initialize spmi!"
+    )
+  )
+
+  RETURN &write_status
+
+

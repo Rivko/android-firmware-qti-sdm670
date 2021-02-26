@@ -1,0 +1,781 @@
+;Copyright (c) 2013  by Qualcomm Technologies, Inc.  All Rights Reserved
+
+Area.Create IO 80. 100.
+Area.Select IO
+Area IO
+
+var.new long[6] \hw_tcb
+var.new long[6] \hw_imasks
+var.new long[6] \hw_loaded
+global &nhw_threads
+global &isa_ver
+global &pe
+
+ON ERROR JUMPTO end_of_analy
+
+;print "writing to c:\temp\qurt_error.txt"
+;OPEN #1 "c:\temp\qurt_error.txt" /CREATE
+
+print
+print
+print "Checking QURT_error_info structure"
+;write #1 "Checking QURT_error_info structure"
+;write #1
+
+&last_expiry=0
+&status=v.value(QURT_error_info.status.status)
+
+&maxthreads=v.value(QURTK_MAX_HTHREADS)
+&idle_tcb=v.value(&QURTK_idle_context)
+&pe=address.offset(var.address(QURT_error_info.globregs.imask0))
+&i=0
+while (&i<&maxthreads)
+(
+ &t=data.long(D:data.long(QURTK_TSA+(&i*4)))
+ var.set \hw_tcb[&i]=&t
+ &t= data.long(D:&pe)
+ var.set \hw_imasks[&i]=&t
+ &pe=&pe+4
+ &i=&i+1
+)
+
+&fatal=v.value(QURT_error_info.status.fatal)
+&qurt_cause=v.value(QURT_error_info.status.cause)
+&hw_tnum=v.value(QURT_error_info.status.hw_tnum)
+
+&ver= v.value(QURT_error_info.globregs.rev)
+&isa_ver=&ver&0xFF
+&uarch_ver=(&ver&0xFF00)>>8
+
+&nhw_threads=v.value(QURTK_MAX_HTHREADS)
+print "max_HWT= &nhw_threads" 
+
+;print "Version: isa_ver=&isa_ver, uarch_ver=&uarch_ver, max_HWT=&nhw_threads"
+
+;User error description
+&max_cnt=v.value(QURT_error_info.users_errors.counter)
+if (&max_cnt>0x5)
+  &max_cnt=0x5
+&user_error=0
+&endloop=0
+&error_thread=0
+&user_hw_tnum=0
+&hwtid=0
+&error_code=0
+&pcycle=0
+&badva=0
+&counter=0
+&loadTcb=0
+if (&max_cnt!=0x0)
+(
+  print "Exception list" 
+  print "  TCB        HWTID  errorcode  pcycle" 
+)
+while (&counter<&max_cnt)
+(
+   &error_thread=v.value(QURT_error_info.users_errors.entry[&counter].error_tcb)
+
+   if (&error_thread!=0)
+   (
+      &hwtid=v.value(QURT_error_info.users_errors.entry[&counter].hw_thread)
+      &error_code=v.value(QURT_error_info.users_errors.entry[&counter].error_code)
+      &pcycle=v.value(QURT_error_info.users_errors.entry[&counter].pcycle)
+
+      print "&error_thread   &hwtid       &error_code    &pcycle"
+      ; Not load TCB
+      if (&loadTcb==1)
+      (
+	&user_hw_tnum=v.value(((QURTK_thread_context*)&error_thread)->error.hthread)
+	if (&fatal==0x0)&&(&user_hw_tnum<&nhw_threads)
+	(
+	 &user_error=1
+	 print "User SW thread crashed is --> " &error_thread
+	 &ip=v.value(((QURTK_thread_context*)&error_thread)->elr)
+         &elr=&ip
+	 &ssr=v.value(((QURTK_thread_context*)&error_thread)->ssr)
+	 &badva=v.value(((QURTK_thread_context*)&error_thread)->error.badva)
+	 &r29r28=v.value(((QURTK_thread_context*)&error_thread)->r2928)
+	 &r28=&r29r28&0xFFFFFFFF
+	 &sp=(&r29r28>>0x20)&0xFFFFFFFF
+	 GOSUB LoadTCBRegs &error_thread 
+	 r.set pc data.long(D:&elr)
+	 if (&isa_ver>=0x4)
+	    r.set sgp0 &error_thread
+	 else
+	    r.set sgp &error_thread
+
+	 print "User SW thread crashed TCB is --> " &error_thread
+	 print "ip - &ip, badva - &badva, ssr - &ssr, hw thread - &user_hw_tnum, sp - &sp"
+	)
+      )
+    )
+    &counter=&counter+1
+) 
+
+if &fatal==0x0
+(
+   enddo
+)
+
+GOSUB LoadGlobalRegs
+&i=0;
+v.while &i<&nhw_threads
+(
+  var.set \hw_loaded[&i]=0
+  &i=&i+1
+)
+
+
+; load QURT_error_info
+;Fatal error description
+if (&fatal==1)
+(
+   &loop_num=0
+   &error_thread=v.value(QURT_error_info.globregs.context)
+   if (&error_thread!=0)
+     &user_hw_tnum=v.value(((QURTK_thread_context*)&error_thread)->error.hthread)
+   while (&loop_num<&nhw_threads)
+   (
+      &sp=v.value(QURT_error_info.locregs[&loop_num].r29)
+      &ip=v.value(QURT_error_info.locregs[&loop_num].elr)
+      &ssr=v.value(QURT_error_info.locregs[&loop_num].ssr)
+      &badva=v.value(QURT_error_info.locregs[&loop_num].badva)
+      &diag=v.value(QURT_error_info.globregs.diag)
+      
+      ; Dump information if valid
+      if ((&sp!=0)||(&ip!=0)||(&ssr!=0))
+      (
+	 GOSUB LoadLocalRegs &loop_num
+	 var.set \hw_loaded[&loop_num]=1
+	 if ((&user_error!=1)&&(&hw_tnum==&loop_num))
+	 (
+	    if (&isa_ver>=0x4)
+	      GOSUB PrintErrorDescription_v4 &qurt_cause &ssr &badva &ip &diag
+	    else
+	      GOSUB PrintErrorDescription &qurt_cause &ssr &badva &ip &diag
+
+	    &user_error=2
+	 )
+      )
+      if (&error_thread!=0)&&(&user_hw_tnum==&loop_num)
+      (
+	 ; load exception TCB
+
+	 print " error TCB &error_thread "
+	 &load=0
+	 if (&load==1)
+	 (
+	   var.set \hw_loaded[&loop_num]=1
+	   &ip=v.value(((QURTK_thread_context*)&error_thread)->elr)
+	   &ssr=v.value(((QURTK_thread_context*)&error_thread)->ssr)
+	   &badva=v.value(((QURTK_thread_context*)&error_thread)->error.badva)
+	   &r29r28=v.value(((QURTK_thread_context*)&error_thread)->r2928)
+	   &r28=&r29r28&0xFFFFFFFF
+	   &sp=(&r29r28>>0x20)&0xFFFFFFFF
+	   GOSUB LoadTCBRegs &error_thread 
+	   print "User SW thread exception TCB is --> " &error_thread
+	   print "ip - &ip, badva - &badva, ssr - &ssr, hw thread - &user_hw_tnum, sp - &sp\n"
+	 )
+      )
+      else if (&status==2)
+      (
+	 var.set \hw_loaded[&loop_num]=1
+	 print "HW thread &loop_num is stuck accessing unclocked memory access"
+      )
+
+      &loop_num=&loop_num+1
+   )
+)
+
+&loadTcb=0
+if (&loadTcb==1)
+(
+  &loop_num=0
+  while (&loop_num<&nhw_threads)
+  (
+     if (v.value(\hw_loaded[&loop_num])==0)
+     (
+	&tcb=v.value(\hw_tcb[&loop_num]) 
+	if (&tcb!=&idle_tcb)
+	(
+	  GOSUB LoadTCBRegs &tcb 
+	)  
+	else
+	(
+	  thread &loop_num
+	  &elr_addr=v.value(&((QURTK_thread_context*)&idle_tcb)->ssrelr)
+	  r.set pc data.long(D:&elr_addr)
+	  if (&isa_ver>=0x4)
+	    r.set sgp0 &idle_tcb
+	  else
+	    r.set sgp &idle_tcb
+	)
+     )
+     &loop_num=&loop_num+1
+  )
+)
+;CLOSE #1
+
+thread &hw_tnum
+print "Done"
+enddo
+
+LoadTCBRegs:
+ENTRY &tcb
+
+local &thread
+local &filename
+
+Area.Create DSP
+Area.Select DSP
+Area.Clear  DSP
+Area DSP
+
+
+if "&tcb"==""
+(
+   print "pls. provide the TCB address, you can get it by double click <task name> in task list"
+   print "..."
+   enddo
+)
+
+&thread=v.value(((QURTK_thread_context*)&tcb)->hthread)
+
+if "&thread"=="0xFF"  ;not running task, get HW thread from SSR
+(
+  &thread=v.value(((QURTK_thread_context*)&tcb)->error.hthread)
+)
+
+&thread=string.mid("&thread", 2, 1)
+
+;set HW thread
+thread &thread
+
+;backup current registers in register window
+&filename="c:\temp\_Q6tmp_&thread.cmm"
+thread &thread
+store &filename hex register
+print "original registers for thread &thread are saved at &filename"
+
+;restore registers
+
+&value=v.value(((QURTK_thread_context*)&tcb)->ssrelr)
+&value_lo=&value&0xFFFFFFFF
+&value_hi=&value>>0x20
+r.s SSR &value_hi
+r.s ELR &value_lo
+r.s PC &value_lo
+
+&value=v.value(((QURTK_thread_context*)&tcb)->error.badva)
+r.s BADVA &value
+
+&value=v.value(((QURTK_thread_context*)&tcb)->r3130)
+&value_lo=&value&0xFFFFFFFF
+&value_hi=&value>>0x20
+r.s LR &value_hi
+r.s FP &value_lo
+
+&value=v.value(((QURTK_thread_context*)&tcb)->r2928)
+&value_lo=&value&0xFFFFFFFF
+&value_hi=&value>>0x20
+r.s R29 &value_hi
+r.s R28 &value_lo
+
+&value=v.value(((QURTK_thread_context*)&tcb)->ugpgp)
+&value_lo=&value&0xFFFFFFFF
+&value_hi=&value>>0x20
+r.s UGP &value_hi
+r.s GP &value_lo
+
+&value=v.value(((QURTK_thread_context*)&tcb)->r2322)
+&value_lo=&value&0xFFFFFFFF
+&value_hi=&value>>0x20
+r.s R23 &value_hi
+r.s R22 &value_lo
+
+&value=v.value(((QURTK_thread_context*)&tcb)->r2120)
+&value_lo=&value&0xFFFFFFFF
+&value_hi=&value>>0x20
+r.s r21 &value_hi
+r.s r20 &value_lo
+
+&value=v.value(((QURTK_thread_context*)&tcb)->r1918)
+&value_lo=&value&0xFFFFFFFF
+&value_hi=&value>>0x20
+r.s R19 &value_hi
+r.s R18 &value_lo
+
+&value=v.value(((QURTK_thread_context*)&tcb)->r1716)
+&value_lo=&value&0xFFFFFFFF
+&value_hi=&value>>0x20
+r.s R17 &value_hi
+r.s R16 &value_lo
+
+&value=v.value(((QURTK_thread_context*)&tcb)->r1514)
+&value_lo=&value&0xFFFFFFFF
+&value_hi=&value>>0x20
+r.s R15 &value_hi
+r.s R14 &value_lo
+
+&value=v.value(((QURTK_thread_context*)&tcb)->r1312)
+&value_lo=&value&0xFFFFFFFF
+&value_hi=&value>>0x20
+r.s R13 &value_hi
+r.s R12 &value_lo
+
+&value=v.value(((QURTK_thread_context*)&tcb)->r1110)
+&value_lo=&value&0xFFFFFFFF
+&value_hi=&value>>0x20
+r.s R11 &value_hi
+r.s R10 &value_lo
+
+&value=v.value(((QURTK_thread_context*)&tcb)->r0908)
+&value_lo=&value&0xFFFFFFFF
+&value_hi=&value>>0x20
+r.s R9 &value_hi
+r.s R8 &value_lo
+
+&value=v.value(((QURTK_thread_context*)&tcb)->r0706)
+&value_lo=&value&0xFFFFFFFF
+&value_hi=&value>>0x20
+r.s R7 &value_hi
+r.s R6 &value_lo
+
+&value=v.value(((QURTK_thread_context*)&tcb)->r0504)
+&value_lo=&value&0xFFFFFFFF
+&value_hi=&value>>0x20
+r.s R5 &value_hi
+r.s R4 &value_lo
+
+&value=v.value(((QURTK_thread_context*)&tcb)->r0302)
+&value_lo=&value&0xFFFFFFFF
+&value_hi=&value>>0x20
+r.s R3 &value_hi
+r.s R2 &value_lo
+
+&value=v.value(((QURTK_thread_context*)&tcb)->r0100)
+&value_lo=&value&0xFFFFFFFF
+&value_hi=&value>>0x20
+r.s R1 &value_hi
+r.s R0 &value_lo
+
+&value=v.value(((QURTK_thread_context*)&tcb)->lc0sa0)
+&value_lo=&value&0xFFFFFFFF
+&value_hi=&value>>0x20
+r.s LC0 &value_hi
+r.s SA0 &value_lo
+
+&value=v.value(((QURTK_thread_context*)&tcb)->lc1sa1)
+&value_lo=&value&0xFFFFFFFF
+&value_hi=&value>>0x20
+r.s LC1 &value_hi
+r.s SA1 &value_lo
+
+&value=v.value(((QURTK_thread_context*)&tcb)->m0m1)
+&value_lo=&value&0xFFFFFFFF
+&value_hi=&value>>0x20
+r.s M0 &value_hi
+r.s M1 &value_lo
+
+&value=v.value(((QURTK_thread_context*)&tcb)->sr_preds)
+r.s P &value
+
+&value=v.value(((QURTK_thread_context*)&tcb)->tid)
+r.s STID &value
+
+&value=v.value(((QURTK_thread_context*)&tcb)->r2726)
+&value_lo=&value&0xFFFFFFFF
+&value_hi=&value>>0x20
+r.s R27 &value_hi
+r.s R26 &value_lo
+
+&value=v.value(((QURTK_thread_context*)&tcb)->r2524)
+&value_lo=&value&0xFFFFFFFF
+&value_hi=&value>>0x20
+r.s R25 &value_hi
+r.s R24 &value_lo
+
+RETURN
+
+
+LoadLocalRegs:
+ENTRY &cpu_num
+   print "Loading CPU [&cpu_num] registers"
+   thread &cpu_num
+   r.s ssr v.value(QURT_error_info.locregs[&cpu_num].ssr)
+   r.s r0 v.value(QURT_error_info.locregs[&cpu_num].r0)
+   r.s r1 v.value(QURT_error_info.locregs[&cpu_num].r1)
+   r.s r2 v.value(QURT_error_info.locregs[&cpu_num].r2)
+   r.s r3 v.value(QURT_error_info.locregs[&cpu_num].r3)
+   r.s r4 v.value(QURT_error_info.locregs[&cpu_num].r4)
+   r.s r5 v.value(QURT_error_info.locregs[&cpu_num].r5)
+   r.s r6 v.value(QURT_error_info.locregs[&cpu_num].r6)
+   r.s r7 v.value(QURT_error_info.locregs[&cpu_num].r7)
+   r.s r8 v.value(QURT_error_info.locregs[&cpu_num].r8)
+   r.s r9 v.value(QURT_error_info.locregs[&cpu_num].r9)
+   r.s r10 v.value(QURT_error_info.locregs[&cpu_num].r10)
+   r.s r11 v.value(QURT_error_info.locregs[&cpu_num].r11)
+   r.s r12 v.value(QURT_error_info.locregs[&cpu_num].r12)
+   r.s r13 v.value(QURT_error_info.locregs[&cpu_num].r13)
+   r.s r14 v.value(QURT_error_info.locregs[&cpu_num].r14)
+   r.s r15 v.value(QURT_error_info.locregs[&cpu_num].r15)
+   r.s r16 v.value(QURT_error_info.locregs[&cpu_num].r16)
+   r.s r17 v.value(QURT_error_info.locregs[&cpu_num].r17)
+   r.s r18 v.value(QURT_error_info.locregs[&cpu_num].r18)
+   r.s r19 v.value(QURT_error_info.locregs[&cpu_num].r19)
+   r.s r20 v.value(QURT_error_info.locregs[&cpu_num].r20)
+   r.s r21 v.value(QURT_error_info.locregs[&cpu_num].r21)
+   r.s r22 v.value(QURT_error_info.locregs[&cpu_num].r22)
+   r.s r23 v.value(QURT_error_info.locregs[&cpu_num].r23)
+   r.s r24 v.value(QURT_error_info.locregs[&cpu_num].r24)
+   r.s r25 v.value(QURT_error_info.locregs[&cpu_num].r25)
+   r.s r26 v.value(QURT_error_info.locregs[&cpu_num].r26)
+   r.s r27 v.value(QURT_error_info.locregs[&cpu_num].r27)
+   r.s r28 v.value(QURT_error_info.locregs[&cpu_num].r28)
+   r.s r29 v.value(QURT_error_info.locregs[&cpu_num].r29)
+   r.s r30 v.value(QURT_error_info.locregs[&cpu_num].r30)
+   r.s r31 v.value(QURT_error_info.locregs[&cpu_num].r31)
+   r.s elr v.value(QURT_error_info.locregs[&cpu_num].elr)
+   r.s pc v.value(QURT_error_info.locregs[&cpu_num].elr)
+   r.s badva v.value(QURT_error_info.locregs[&cpu_num].badva)
+   r.s gp v.value(QURT_error_info.locregs[&cpu_num].gp)
+   r.s ugp v.value(QURT_error_info.locregs[&cpu_num].ugp)
+   r.s sa0 v.value(QURT_error_info.locregs[&cpu_num].sa0)
+   r.s lc0 v.value(QURT_error_info.locregs[&cpu_num].lc0)
+   r.s sa1 v.value(QURT_error_info.locregs[&cpu_num].sa1)
+   r.s lc1 v.value(QURT_error_info.locregs[&cpu_num].lc1)
+   r.s p v.value(QURT_error_info.locregs[&cpu_num].preds)
+   r.s m0 v.value(QURT_error_info.locregs[&cpu_num].m0)
+   r.s usr v.value(QURT_error_info.locregs[&cpu_num].usr)
+   r.s stid v.value(QURT_error_info.locregs[&cpu_num].tid)
+   ;Load IMASK from Global registers
+
+   r.s imask v.value(\hw_imasks[&cpu_num])
+   if (&isa_ver>=0x4)
+	r.s sgp0 v.value(\hw_tcb[&cpu_num])
+   else
+	r.s sgp v.value(\hw_tcb[&cpu_num])
+
+   ; Load FKEY/FLMT based on REV value
+   &rev_val=v.value(QURT_error_info.globregs.rev)
+   &rev_val=&rev_val&0xFF
+   if (&rev_val>0x60)
+   (
+     r.s fkey v.value(QURT_error_info.locregs[&cpu_num].framekey)
+     r.s flmt v.value(QURT_error_info.locregs[&cpu_num].framelimit)
+   )
+
+RETURN
+
+LoadGlobalRegs:
+   r.s syscfg v.value(QURT_error_info.globregs.syscfg)
+   r.s modectl v.value(QURT_error_info.globregs.modectl)
+   r.s pcyclelo v.value(QURT_error_info.globregs.pcyclelo)
+   r.s pcyclehi v.value(QURT_error_info.globregs.pcyclehi)
+   r.s evb v.value(QURT_error_info.globregs.evb)
+   r.s diag v.value(QURT_error_info.globregs.diag)
+   if (&isa_ver>=0x65)
+   (
+      r.s ipendad v.value(QURT_error_info.globregs.iad)
+      r.s ipendad v.value(QURT_error_info.globregs.ipend)
+;	  r.s schedcfg v.value(QURT_error_info.globregs.schedcfg)
+;      r.s bestwait v.value(QURT_error_info.globregs.bestwait)
+   )
+   else
+   (
+     r.s iel v.value(QURT_error_info.globregs.iel)
+     r.s iahl v.value(QURT_error_info.globregs.iahl)
+   )
+   r.s rev v.value(QURT_error_info.globregs.rev)
+RETURN
+
+PrintErrorDescription:
+ENTRY &loc_cause &loc_ssr &loc_badva &loc_elr &loc_diag
+  &precise_reason=&loc_ssr&0xFF
+  print "---------------------------"
+  if (&loc_cause==0x1) ; QURT_ERR_PRECISE
+  (
+     if (&precise_reason==0x1)
+	print "Precise BIU error (bus error, timeout, L2 parity error, etc.)"
+     else if (&precise_reason==0x3)
+	print "Double Excepiton (exception occurs while SSR[EX]=1)"
+     else if (&precise_reason==0x11)
+	print "Privilege violation: User mode execute to page with no execute permissions"
+     else if (&precise_reason==0x15)
+     (
+	print "Invalid Packet. This can happen from one of:"
+	print "   - Packet of more than one instruction in uncacheable memory."
+	print "   - Invalid opcode or reserved instruction"
+	print "   - Bad packet parse bits (packet too long, or using reserved pattern)"
+     )
+     else if (&precise_reason==0x1B)
+	print "Privilege violation: Executing a supervisor instruction in user mode"
+     else if (&precise_reason==0x1C)
+	print "Program Counter values that are not properly aligned"
+     else if (&precise_reason==0x20)
+	print "Load to misaligned address - &loc_badva"
+     else if (&precise_reason==0x21)
+	print "Store to misaligned address - &loc_badva"
+     else if (&precise_reason==0x22)
+	print "Privilege violation: User mode Read to page with no read permission, address - &loc_badva"
+     else if (&precise_reason==0x23)
+	print "Privilege violation: User mode Write to page with no write permission, address - &loc_badva"
+     else if (&precise_reason==0x28)
+     (
+	print "Bad cacheability type, one of:"
+	print "   - Packet with multiple memory operations, and one or more of them is to uncached memory."
+	print "   - DCZEROA to a page that is not write-back"
+	print "   - LL/SC to a write-through page"
+     )
+     else if (&precise_reason==0x29)
+     (
+	print "Packet with multiple writes to the same destination register. The following rules apply to this exception:"
+	print "Refer HEXAGON System Architecture"
+     )
+     else
+	print "Undefined Error by Hexagon processor"
+  )
+  else if &loc_cause==0x2 
+  (
+     &nmi_reason=(&loc_diag&0xF0)>>4
+     &nmi_hw_thread=&loc_diag&0xF
+     if (&nmi_reason==0x3)
+	print "NMI Exception occurred"
+     else if (&nmi_reason==0x2)
+	print "Imprecise Data abort on HW thread - &nmi_hw_thread"
+     else if (&nmi_reason==0x4)
+	print "Imprecise Multiple TLB match"
+     else
+	print "Unknown Imprecise Error by HEXAGON processor"
+  )
+  else if &loc_cause==0x3
+  (
+     print "TLB Miss R/W occurred"
+     print "address - &loc_badva, pc - &loc_elr"
+  )
+  else if &loc_cause==0x4
+     print "Reseved Vector handler called"
+  else if &loc_cause==0x5
+     print "SW Assert"
+  else if &loc_cause==0x6
+     print "Bad Trap"
+  else if &loc_cause==0x7
+     print "Trap1 called. Not supported"
+  else if &loc_cause==0x8
+     print "Exit from user"
+  else if &loc_cause==0x9
+     print "SW error, Scheduler Sanity error"
+  else if &loc_cause==0xA
+     print "TLB Miss X occurred"
+  else if &loc_cause==0xB
+     print "SW error, Stopped error"
+  else if &loc_cause==0xC
+     print "SW error, fatal exit error"
+  else
+     print "Undefined Error by QURT"
+  print "---------------------------"
+RETURN
+
+
+PrintPreciseError:
+  ENTRY &db_reason &rec_badva  &rec_diag &rec_count
+  if &rec_count<0x2
+  (
+       &rec_count=&rec_count+1
+       if (&db_reason==0x1)
+	  print "&db_reason: Precise BIU error (bus error, timeout, L2 parity error, etc.)"
+       else if (&db_reason==0x3)
+       (
+	  print "Double Excepiton (exception occurs while SSR[EX]=1)"
+	  print "Cause code &db_reason"
+	  &db_reason=&rec_diag&0xff
+	  GOSUB PrintPreciseError &db_reason &rec_badva &rec_diag &rec_count
+       )
+       else if (&db_reason==0x11)
+	  print "&db_reason: Privilege violation: User mode execute to page with no execute permissions"
+       else if (&db_reason==0x15)
+       (
+	  print "Invalid Packet. This can happen from one of:"
+	  print "   - Packet of more than one instruction in uncacheable memory."
+	  print "   - Invalid opcode or reserved instruction"
+	  print "   - Bad packet parse bits (packet too long, or using reserved pattern)"
+       )
+       else if (&db_reason==0x1A)
+	  print "Privilege violation: Executing a Guest mode instruction in user mode"
+       else if (&db_reason==0x1B)
+	  print "Privilege violation: Executing a supervisor instruction in user/Guest mode"
+       else if (&db_reason==0x1C)
+	  print "Program Counter values that are not properly aligned"
+       else if (&db_reason==0x1D)
+	 print "Packet with multiple writes to the same destination"
+       else if (&db_reason==0x20)
+	  print "Load to misaligned address - &rec_badva"
+       else if (&db_reason==0x21)
+	  print "Store to misaligned address - &rec_badva"
+       else if (&db_reason==0x22)
+	  print "Privilege violation: User/Guest mode Read to page with no read permission, address - &rec_badva"
+       else if (&db_reason==0x23)
+	  print "Privilege violation: User/Guest mode Write to page with no write permission, address - &rec_badva"
+       else if (&db_reason==0x24)
+	  print "Privilege violation: User mode Read to page with no read permission, address - &rec_badva"
+       else if (&db_reason==0x25)
+	  print "Privilege violation: User mode Write to page with no write permission, address - &rec_badva"
+       else if (&db_reason==0x70)
+	  print "TLB Miss RW occurred at address - &rec_badva"
+	else if (&db_reason==0x71)
+	  print "TLB Miss Write occurred at address - &rec_badva"
+	else if (&db_reason==0x60)
+	  print "TLB Miss X - Due to Missing Fetch address on &rec_badva"
+	else if (&db_reason==0x61)
+	  print "TLB Miss X - Due to Missing Fetch address on subsequent &rec_badva" 
+	else if (&db_reason==0x62)
+	  print "TLB Miss X - Due to ICINVA at address &rec_badva"
+	else if (&db_reason==0x80)
+	  print "Single-step debug exception"
+	else
+	   print "Unknown Error by HEXAGON processor &db_reason"
+     )
+RETURN
+
+
+PrintErrorDescription_v4:
+
+ENTRY &loc_cause &loc_ssr &loc_badva &loc_elr &loc_diag
+  &precise_reason=&loc_ssr&0xFF
+  print "---------------------------"
+  if (&loc_cause==0x1) ; QURT_ERR_PRECISE
+  (
+       if (&precise_reason==0x1)
+	print "Precise BIU error (bus error, timeout, L2 parity error, etc.)"
+       else if (&precise_reason==0x3)
+       (
+	  &count=0
+	print "Double Excepiton (exception occurs while SSR[EX]=1)"
+	  print "Cause code &precise_reason"
+	  &db_reason=&loc_diag&0xff
+	  GOSUB PrintPreciseError &db_reason &loc_badva  &loc_diag &count
+       )
+       else if (&precise_reason==0x11)
+	print "Privilege violation: User mode execute to page with no execute permissions"
+       else if (&precise_reason==0x12)
+	print "Privilege violation: User mode execute to a page with no user permissions (X=1, U=0)."
+       else if (&precise_reason==0x15)
+     (
+	print "Invalid Packet. This can happen from one of:"
+	print "   - Packet of more than one instruction in uncacheable memory."
+	print "   - Invalid opcode or reserved instruction"
+	print "   - Bad packet parse bits (packet too long, or using reserved pattern)"
+     )
+       else if (&precise_reason==0x16)
+	print "Illegal Execution of Coprocessor Instruction."
+       else if (&precise_reason==0x1A)
+	print "Privilege violation: Executing a Guest mode instruction in user mode"
+       else if (&precise_reason==0x1B)
+	print "Privilege violation: Executing a supervisor instruction in user/Guest mode"
+       else if (&precise_reason==0x1C)
+	print "Program Counter values that are not properly aligned"
+       else if (&precise_reason==0x1D)
+       print "Packet with multiple writes to the same destination"
+       else if (&precise_reason==0x1E)
+       print "Program counter values that are not properly aligned."
+       else if (&precise_reason==0x20)
+	print "Load to misaligned address - &loc_badva"
+       else if (&precise_reason==0x21)
+	print "Store to misaligned address - &loc_badva"
+       else if (&precise_reason==0x22)
+	print "Privilege violation: User/Guest mode Read to page with no read permission, address - &loc_badva"
+       else if (&precise_reason==0x23)
+	print "Privilege violation: User/Guest mode Write to page with no write permission, address - &loc_badva"
+       else if (&precise_reason==0x24)
+	print "Privilege violation: User mode Read to page with no read permission, address - &loc_badva"
+       else if (&precise_reason==0x25)
+	print "Privilege violation: User mode Write to page with no write permission, address - &loc_badva"
+       else if (&precise_reason==0x26)
+	print "Coprocessor VMEM address error."
+       else if (&precise_reason==0x27)
+	print "Stack overflow: An allocframe instruction was executed that exceeded the bounds determined by FRAMELIMIT."
+     else
+	print "Undefined Error by Hexagon processor"
+    
+  )
+  else if &loc_cause==0x2
+  (
+     &nmi_reason=(&loc_diag&0xF0)>>4
+     &nmi_hw_thread=&loc_diag&0xF
+     if (&nmi_reason==0x3)
+	print "NMI Exception occurred"
+     else if (&nmi_reason==0x2)
+	print "Imprecise Data abort on HW thread - &nmi_hw_thread"
+     else if (&nmi_reason==0x4)
+	print "Imprecise Multiple TLB match on HW thread - &nmi_hw_thread "
+      else if (&nmi_reason==0xf)
+	print "Livelock exception on HW thread - &nmi_hw_thread "
+     else
+	print "Unknown Imprecise Error by HEXAGON processor"
+  )
+  else if &loc_cause==0x3
+     (
+     &tlbrw_reason=&loc_ssr&0xFF
+     if (&tlbrw_reason==0x70)
+       print "TLB Miss Read occurred at address - &loc_badva, pc - &loc_elr"
+     else if (&tlbrw_reason==0x71)
+       print "TLB Miss Write occurred at address - &loc_badva, pc - &loc_elr"
+     else
+       print "Unknown TLB Miss-RW Error by HEXAGON processor badva &loc_badva, elr &loc_elr"
+  )
+  else if &loc_cause==0x4
+     print "Reseved Vector handler called"
+  else if &loc_cause==0x5
+     print "SW Assert"
+  else if &loc_cause==0x6
+     print "Bad Trap"
+  else if &loc_cause==0x7
+     (
+     &trap1_op=&loc_ssr&0xFF
+     print "Trap1 called - operand &trap1_op, next PC &loc_elr"
+  )
+  else if &loc_cause==0x8
+     print "Exit from user"
+  else if &loc_cause==0x9
+     print "SW error, Scheduler Sanity error"
+  else if &loc_cause==0xA
+  (
+     &tlbx_reason=&loc_ssr&0xff
+     if (&tlbx_reason==0x60)
+     (
+       print "TLB Miss X - Due to Missing Fetch address on &loc_elr Page"
+     )  
+     else if (&tlbx_reason==0x61)
+     (
+       print "TLB Miss X - Due to Missing Fetch address on subsequent &loc_elr Page badva &loc_badva"  
+     )  
+     else if (&tlbx_reason==0x62)
+     ( 
+       &fault_page=(&loc_badva>>12)&0xfffff
+       print "TLB Miss X - Due to ICINVA at address &loc_elr, faulting page &fault_page badva &loc_badva"
+     )
+     else
+     (
+	print "Unknown TLB Miss X  Error by HEXAGON processor badva &loc_badva"
+     )   
+  )
+  else if &loc_cause==0xB
+     print "SW error, Stopped error"
+  else if &loc_cause==0xC
+     print "SW error, fatal exit error"
+  else if &loc_cause==0xE
+  (
+     &fp_cause=&loc_ssr&0xff
+     print "Floating Point Error : cause &fp_cause"
+  )
+  else
+     print "Undefined Error by QURT"
+  print "---------------------------"
+RETURN
+
+enddo
+
+end_of_analy:
+do &CurrentDirectory\cmm_error.cmm "analy_qurt_error.cmm"
+enddo
+

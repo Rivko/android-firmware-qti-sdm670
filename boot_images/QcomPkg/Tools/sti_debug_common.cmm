@@ -1,0 +1,508 @@
+;****************************************************************************
+;**         sti_debug_common.cmm
+;**
+;** This script performs setup for debugging XBL STI SBL
+;**
+;** Copyright (c) 2013-2015 by Qualcomm Technologies, Inc.  All Rights Reserved.
+;**
+;****************************************************************************
+;**
+;**                        EDIT HISTORY FOR MODULE
+;**
+;**
+;** when         who     what, where, why
+;** --------   ---     ------------------------------------------------------
+;** 10/26/15     fz     initial version for STI debug 
+
+
+;****************************************************************************
+
+;This .cmm script acts as a main routine for setting up boot debug.
+
+;****************************************************************************
+;  CMM script variables
+;****************************************************************************
+
+local &ELFfilename     ; Return value of GetELFfile function
+local &platform        ; current device's platform: RUMI or Virtio or SURF
+local &sbl1dir         ; Location of SBL1 ELF file
+local &LoaderTestdir   ; Location of LoadeTest ELF file
+
+
+
+local &sbl1elf         ; SBL1 ELF file name
+local &LoaderTestelf   ; LoaderTestelf ELF file name
+
+local &BootBuildPath   ; location of non-HLOS build path
+local &BuildOutDir     ; location of Build objects
+local &logging_path    ; location to save the boot log
+local &script_path     ; location of this debug script
+local &build_id        ; Build Id of binaries/ elf's being used
+local &build_suffix    ; Build Suffix of the target
+local &mode_switch     ; Aarch32 -> Aarch64 mode switch
+local &option          ; Option provided by the user without wanting to go through the script interactively 
+local &boot_path
+
+local &YorN            ; Get answer from User
+local &remote          ; calling intercomm
+local &is_boot_test    ; option whether to dump log messages to jtag terminal.
+                       ; term view NOT shown while logging boot times. used only
+                       ; during boot_test.
+local &is_cmd_line  ; run script in command line mode, for automated tests.
+local &Choice  ; get user preferences.
+
+global &LoaderTest_entry_time
+
+;Main Control function of each section of code and other important stop points
+local &sbl1_main_ctl ; Main Control for SBL1
+local &LoaderTest_main_ctl ; Main Control for loaderTest
+;Time Variables
+local &time_pbl
+
+;do boot_debug_common.cmm Msm8996 Loader False &Option 
+;============================================================================
+; Get the arguments passed to boot debug script.
+;============================================================================
+ENTRY &build_id &build_suffix &mode_switch &option 
+;============================================================================
+; Set up some defaults for some variables
+;============================================================================
+;set Directories
+&sbl1dir="QcomPkg/XBLLoader/XBLLoader/DEBUG"
+&LoaderTestdir="QcomPkg/Msm8996Pkg/Library/LoaderTestLib/LoaderTestLib/DEBUG"
+
+
+;Important stop points
+&sbl1_main_ctl="sbl1_main_ctl"
+&LoaderTest_main_ctl="LoaderTestMain"
+&boot_debug_cookie_sbl1_ptr="boot_debug_cookie_ptr"
+;Default Value
+&platform="SURF"
+&YorN="N"
+&is_boot_test=0
+&is_cmd_line=0  ; 0: user interactive 1: commandline/auto mode
+
+&xbl_system_error="sbl1_cspx_serror" 
+
+
+;============================================================================
+; Set up the display window
+;============================================================================
+gosub CleanUpExit
+winclear
+area.RESET 
+gosub SetupMainWindow
+
+;============================================================================
+; Get location of the build/ms folder, we use it as the base
+;============================================================================
+  if "&option"!=""
+  (
+    &is_cmd_line=1
+  )
+
+  &script_path=os.pwd()    
+  ;Derive build path relative to script path
+  cd ../..
+  &BootBuildPath=os.pwd()
+
+  cd &script_path
+
+  ; Determine the object files path. Populate &BuildOutDir
+  gosub GetObjFilesPath
+  
+  ;Update absolute directory paths
+  &sbl1dir="&BuildOutDir"+"/"+"&sbl1dir"+"/"
+  &LoaderTestdir="&BuildOutDir"+"/"+"&LoaderTestdir"+"/"
+    
+  if &is_cmd_line==1
+  ( 
+    ; Update sbl names for command line usage
+    &sbl1elf="&sbl1dir"+"/XBLLoader.dll"
+  )
+
+  if &is_cmd_line==0  
+  (
+    print
+    print  
+    print "Please enter platform type: 1 for RUMI, 2 for LIQUID/FLUID/CDP/MTP :"
+    enter &Choice
+    if "&Choice"=="1"
+    (
+      &platform="RUMI"
+    )
+    print
+    print
+  )
+  
+  print
+  print
+  
+;============================================================================
+; Present user with main menu for debugging boot.  Manual selection is done.
+;============================================================================  
+
+
+MainMenu: 
+  print
+  print   
+  print "------------------------------------------------"
+  print "|                                              |"
+  print "|               XBL-Loader STI Debugger        |"
+  print "|                                              |"
+  print "|                                              |"
+  print "------------------------------------------------"
+  print
+  print
+  
+  if &is_cmd_line==0
+  (
+    print "  0: Exit"
+    print "  1: Debug XBL-Loader STI"
+    print 
+    print " Please make a choice: "
+  
+    enter &Choice
+  )
+  else
+  (
+    &Choice="&option"
+  )
+  
+  gosub CleanUpExit  
+
+  if "&Choice"=="0"  
+  (  
+    print "...exiting Boot Debugger"
+    goto EndOfScript
+  )
+ 
+  if "&Choice"=="1"
+  (
+    gosub LoaderTestStart
+  
+  )  
+  if &is_cmd_line==0
+  (
+    goto MainMenu
+  )
+  else
+  (
+    goto EndOfScript  
+  )
+
+  
+;=====================================================
+; These are the various sub-routines as used by the script above
+;=====================================================
+ 
+  
+;=====================================================
+;This Subroutine initializes intercom ports
+;===================================================== 
+IntercomInit:
+  if !intercom.ping(&APPS_CORE0_T32)
+  (
+    PRINT "APPS T32 Session: Inactive"
+    PRINT "Please start the T32 session on Apps Proc"
+    &APPS_CORE0_T32="FAIL"
+  )
+  return
+
+  
+;=====================================================
+; This Subroutine sets up apps for debug it will also 
+; init intercom if it hasn't been inited yet
+;=====================================================   
+AppsDebugInit:
+  
+  sys.d
+  
+  cd &script_path
+  WAIT 1s
+  sys.u
+  b
+  map.bo
+  b.reset
+  y.reset
+  symbol.reset
+  
+  cd &script_path
+  
+  gosub LoadSymbols SBL1 load yes
+  
+  return
+  
+
+;=====================================================
+;this Subroutine loads the required SBL1 symbols and testLoader symbols 
+;then executes till the beginning of testLoader
+;=====================================================
+LoaderTestStart:
+  gosub AppsDebugInit 
+  cd &script_path
+  gosub LoadSymbols LoaderTest load yes
+  
+ 
+  b.s &LoaderTest_main_ctl
+  &LoaderTest_entry_time=5.s
+  g
+  Wait !STATE.RUN() &LoaderTest_entry_time
+    
+  gosub SetUpSysPath yes
+  y.spath.srd += &BootBuildPath/QcomPkg/LoaderTest
+  y.spath.srd += &BootBuildPath/ArmPkg/Library/BaseMemoryLibStm
+  y.spath.srd += &BootBuildPath/ArmPkg/Library/BaseMemoryLibStm
+  y.spath.srd += &BootBuildPath/MdePkg/Library/BaseIoLibIntrinsic
+  y.spath.srd += &BootBuildPath/MdePkg/Library/BaseLib
+  y.spath.srd += &BootBuildPath/QcomPkg/Library/LoaderDalTFLib
+  y.spath.srd += &BootBuildPath/QcomPkg/Library/MuslLib/musl
+  y.spath.srd += &BootBuildPath/QcomPkg/Library/TimetickLibB
+  y.spath.srd += &BootBuildPath/QcomPkg/&build_id"+"Pkg/Library/LoaderTestLib/aptsharedfunc
+  y.spath.srd += &BootBuildPath/QcomPkg/&build_id"+"Pkg/Library/LoaderTestLib/apttest
+  y.spath.srd += &BootBuildPath/QcomPkg/&build_id"+"Pkg/Library/LoaderAptLib
+  y.spath.srd += &BootBuildPath/QcomPkg/&build_id"+"Pkg/Library/LoaderAptLib
+  gosub SetupDebugWindows yes
+  print "Stopped at start of LoaderTest"
+  print 
+return
+
+  
+;****************************************************************************
+; Load or remove the boot loader symbols
+;****************************************************************************
+LoadSymbols:
+  local &cwd
+  local &boot_directory
+  ENTRY &bltype &loadordelete &remote
+
+  if ("&loadordelete"=="load")
+  (
+    if "&bltype"=="SBL1"
+    (
+      &cwd=os.pwd()
+      if os.dir("&sbl1dir")
+      (
+        ChDir "&sbl1dir"
+      )
+    
+      if "&sbl1elf"==""
+      (
+        gosub GetELFfile XBLLOADER dll
+      )
+      else
+      (
+        &ELFfilename="&sbl1elf"
+      )
+    )
+ 	if "&bltype"=="LoaderTest"
+    (
+      &cwd=os.pwd()
+      if os.dir("&LoaderTestdir")
+      (
+        ChDir "&LoaderTestdir"
+      )
+    
+      if "&LoaderTestelf"==""
+      (
+        gosub GetELFfile LOADERTEST dll
+      )
+      else
+      (
+        &ELFfilename="&LoaderTestelf"
+      )
+    )
+    print "Elf File: &ELFfilename"
+    print
+    if ("&bltype"=="SBL1")||("&bltype"=="XBLRAMDUMP")
+    (
+      ; explicitly need to update sourcepath
+      data.load.elf &ELFfilename /nocode /noclear /strippart "QcomPkg" /sourcepath "&BootBuildPath/QcomPkg/"
+    )
+    else
+    (
+      data.load.elf &ELFfilename /nocode /noclear
+    )
+  )
+  else
+  (
+    symbol.delete
+  )
+return ; LoadSymbols
+
+;****************************************************************************
+; Select an ELF file from the dialog window
+;****************************************************************************
+GetELFfile:
+  ENTRY &imagetype &file_suffix
+  print "Select &imagetype image file in browser"
+  local &filename
+  dialog.file *."&file_suffix"
+  entry &filename
+  if "&filename"==""
+  (
+    print "Failed to select file. Exiting..."
+    return
+  )
+  &ELFfilename="&filename"
+  print "Elf File: &ELFfilename"
+return ; GetELFfile
+
+
+;***************************************************************************
+; Setup access to boot source directories
+;***************************************************************************
+SetUpSysPath:
+  y.spath --
+  print "Adding paths...."
+  y.spath.srd "&BootBuildPath/QcomPkg/"+"&build_id"+"Pkg/Library/XBLLoaderLib"
+  y.spath.srd "&BootBuildPath/QcomPkg/"+"&build_id"+"Pkg/Library/XBLRamDumpLib"
+  y.spath.srd "&BootBuildPath/QcomPkg/XBLLoader"
+  y.spath.srd "&BootBuildPath/QcomPkg/XBLRamDump"
+  y.spath.srd "&BootBuildPath/QcomPkg/"+"&build_id"+"Pkg/Library/DDRTargetLib"
+  y.spath.srd "&BuildOutDir/"+"QcomPkg/"+"&build_id"+"Pkg/Library/XBLLoaderLib" 
+  y.spath.srd "&BuildOutDir/"+"QcomPkg/"+"&build_id"+"Pkg/Library/XBLRamDumpLib"   
+  
+return ; SetUpSysPath
+
+
+;****************************************************************************
+; Setup and display the windows to debug the processor
+;****************************************************************************
+SetupDebugWindows:
+  
+  TOOLBAR ON
+  STATUSBAR ON
+
+  WINPOS 0.0 0.0 68% 65% 12. 1. W000
+  DATA.list
+ 
+  WINPOS 68% 0. 32% 50% 0. 0. W002
+  register /spotlight
+ 
+  setup.var %open.on %hex %symbol
+
+  WINPOS  68% 50% 32% 48% 0. 0. W003
+  Var.Frame
+  
+  return ; SetupDebugWindows
+
+;****************************************************************************
+; Setup main window
+;****************************************************************************
+SetupMainWindow:
+  WINPOS 0% 50% 68% 50% 0. 0. W001
+  Area.create MAIN
+  Area.view MAIN
+  Area.select MAIN
+  return ;SetupMainWindow
+  
+;=====================================================
+; Function to clean up just before exit
+;=====================================================
+CleanUpExit:
+  ;--------------------------------------------------------
+  ; ok we're finished completely, clean up for exit
+  ;--------------------------------------------------------
+  b.delete /all
+  gosub LoadSymbols "" delete
+  sys.d
+  return ; CleanupExit
+
+;==============================================================================
+;
+;  Determine the debug objects/elf path from where we need to load symbols from.
+;  First match will be taken which folder is present.
+;
+;==============================================================================
+GetObjFilesPath:
+  local &Build_Id_Specific
+
+  &Build_Id_Specific="&build_id"
+
+  if "&build_suffix"!="None"
+  (
+   &Build_Id_Specific="&build_id"+"_"+"&build_suffix"
+  )
+
+  ; Add the folders list in the order of preference
+  &BuildOutDir="&BootBuildPath/Build/"+"&Build_Id_Specific"+"/DEBUG_RVCT6/AARCH64"
+  if (os.dir("&BuildOutDir"))
+  (
+    return
+  )
+
+  &BuildOutDir="&BootBuildPath/Build/"+"&Build_Id_Specific"+"/DEBUG_RVCT6LINUX/AARCH64"
+  if (os.dir("&BuildOutDir"))
+  (
+    return
+  )
+
+  &BuildOutDir="&BootBuildPath/Build/"+"&Build_Id_Specific"+"/DEBUG_LINAROGCCWIN/AARCH64"
+  if (os.dir("&BuildOutDir"))
+  (
+    return
+  )
+
+  &BuildOutDir="&BootBuildPath/Build/"+"&Build_Id_Specific"+"/DEBUG_LINAROGCCLINUX/AARCH64"
+  if (os.dir("&BuildOutDir"))
+  (
+    return
+  )
+
+  &BuildOutDir="&BootBuildPath/Build/"+"&Build_Id_Specific"+"/DEBUG_LLVMLINUX/AARCH64"
+  if (os.dir("&BuildOutDir"))
+  (
+    return
+  )
+
+  &BuildOutDir="&BootBuildPath/Build/"+"&Build_Id_Specific"+"/DEBUG_LLVMWIN/AARCH64"
+  if (os.dir("&BuildOutDir"))
+  (
+    return
+  )
+
+
+  &BuildOutDir="&BootBuildPath/Build/"+"&Build_Id_Specific"+"/DEBUG_LINAROGCCCYGWIN/AARCH64"
+  if (os.dir("&BuildOutDir"))
+  (
+    return
+  )
+
+  &BuildOutDir="&BootBuildPath/Build/"+"&Build_Id_Specific"+"/DEBUG_GCC47/AARCH64"
+  if (os.dir("&BuildOutDir"))
+  (
+    return
+  )
+
+  &BuildOutDir="&BootBuildPath/Build/"+"&Build_Id_Specific"+"/DEBUG_RVCT501/ARM"
+  if (os.dir("&BuildOutDir"))
+  (
+    return
+  )
+
+  &BuildOutDir="&BootBuildPath/Build/"+"&Build_Id_Specific"+"/RELEASE_RVCT501/ARM"
+  if (os.dir("&BuildOutDir"))
+  (
+    return
+  )
+
+  &BuildOutDir="&BootBuildPath/Build/"+"&Build_Id_Specific"+"/DEBUG_RVCT501LINUX/ARM"
+  if (os.dir("&BuildOutDir"))
+  (
+    return
+  )
+  
+  &BuildOutDir="&BootBuildPath/Build/"+"&Build_Id_Specific"+"/RELEASE_RVCT501LINUX/ARM"
+  if (os.dir("&BuildOutDir"))
+  (
+    return
+  )
+
+  print %String %ERROR "Unable to find valid build folder !"
+  END  
+  
+  
+  
+EndOfScript:
+  enddo

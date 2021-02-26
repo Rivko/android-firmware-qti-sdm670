@@ -1,0 +1,113 @@
+#===============================================================================
+#
+# Profiling system
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+#   Copyright (c) 2017 Qualcomm Technologies, Inc. (QTI).
+#   All Rights Reserved.
+#   Qualcomm Confidential and Proprietary.
+#   Export of this technology or software is regulated by the U.S. Government.
+#   Diversion contrary to U.S. law prohibited.
+#-------------------------------------------------------------------------------
+#  $Header: //components/rel/core.qdsp6/2.1/power/pdc/profile/build/profile.scons#2 $
+#  $DateTime: 2017/09/13 08:52:52 $
+#===============================================================================
+import os
+import stat
+import fnmatch
+import itertools
+import subprocess
+from os.path import join, basename, exists
+
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Target Build Options
+#-------------------------------------------------------------------------------
+#Turn off optimizations for easier debug
+#env.Append(CCFLAGS = ' -O0')
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+COMMON_SRCPATH = os.path.join('..', 'src')
+env.VariantDir('${BUILDPATH}', COMMON_SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+    'DAL',
+    'HAL',
+    'DEBUGTOOLS',
+    'POWER',
+    'POWER_PDC',
+    'SERVICES',
+    'SYSTEMDRIVERS',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Source directory roots
+#-------------------------------------------------------------------------------
+PROFILE_COMMON_SRC_DIR = [
+  'os',
+]
+
+PROFILE_TARGET_SRC_DIR = [
+  'config'
+]
+
+#-------------------------------------------------------------------------------
+# Global source settings
+#-------------------------------------------------------------------------------
+MAIN_IMG_TAG = ['CORE_MODEM', 'CORE_QDSP6_SW']
+
+source_patterns = ['*.c']
+sources = []
+
+#-------------------------------------------------------------------------------
+# PROFILE source files
+#-------------------------------------------------------------------------------
+# Add common root files
+for src_path_root in PROFILE_COMMON_SRC_DIR:
+  for root, dirnames, filenames in os.walk(os.path.join(COMMON_SRCPATH, src_path_root)):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in source_patterns])
+    files = [os.path.join(root, filename) for filename in matches ]
+    files = [matched_path.replace(COMMON_SRCPATH, '${BUILDPATH}',1) for matched_path in files]
+    sources.extend(files)
+    
+# Add target specific config files
+# Directory layout will always be '/chip/target' from each base directory
+# For example '/baseDir/845/mss'
+for src_path_root in PROFILE_TARGET_SRC_DIR:
+  for root, dirnames, filenames in os.walk(os.path.join(COMMON_SRCPATH, src_path_root, env['PDC_MSM'], env['POWER_SUBSYSTEM'].lower())):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in source_patterns])
+    files = [os.path.join(root, filename) for filename in matches ]
+    files = [matched_path.replace(COMMON_SRCPATH, '${BUILDPATH}',1) for matched_path in files]
+    sources.extend(files)
+    
+#-------------------------------------------------------------------------------
+# Create libraries
+#-------------------------------------------------------------------------------
+pdc_profile_lib = env.AddLibrary(MAIN_IMG_TAG,
+                                 os.path.join('${BUILDPATH}', 'pdcProfile'),
+                                 sources)
+
+#-------------------------------------------------------------------------------
+# Add init function to RCINIT
+#-------------------------------------------------------------------------------
+RCINIT_PROPS = {
+  'sequence_group'             : 'RCINIT_GROUP_0',
+  'init_name'                  : 'PDCProfile',
+  'init_function'              : 'pdcProfile_initialize',
+  'dependencies'               : ['PDCHWIO', 'PDCLog'],
+}
+
+if 'USES_RCINIT' in env:
+  env.AddRCInitFunc(MAIN_IMG_TAG, RCINIT_PROPS)

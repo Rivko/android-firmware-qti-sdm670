@@ -1,0 +1,728 @@
+//============================================================================
+//  Name:                                                                     
+//    std_pmic_sdm845.cmm 
+//
+//  Description:                                                              
+//    PMIC settings for different metascripts
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who              what, where, why
+// --------   ---              ---------------------------------------------------------
+// 09/02/2017  MARTHAM          Use spmicfg script from core folder.
+// 09/02/2017  MARTHAM          Updated for sdm670
+// 04/13/2016 JBILLING         Prioritize using pmic script from tools\tools directory
+// 10/22/2015 JBILLING         SPMI script imported locally
+// 09/14/2015 JBILLING         Changes made for automation
+// 08/11/2015 JBILLING         Updated message passing for automation
+// 03/12/2015 JBILLING         Made script a wrapper for PMIC and SPMI scripts located in RPM/XBL build
+// 05/09/2014 JBILLING         Integrated to 8994 scripts
+// --/--/---- DYE              Created
+
+
+
+LOCAL &ArgumentLine
+LOCAL &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+LOCAL &TargetProcessor
+
+//###################Arguments passed #####################
+ENTRY %LINE &ArgumentLine
+ENTRY &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+
+
+
+//#####################Select Subroutine###################
+// Any subroutine specific options
+AREA.SELECT
+// Input Argument 0 is the name of the utility
+LOCAL &SUBROUTINE
+&SUBROUTINE="&UTILITY"
+IF !(("&SUBROUTINE"=="PMIC_WDOG"))
+(
+    GOSUB MAIN &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+)
+ELSE
+(
+    GOSUB &SUBROUTINE &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+)
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+
+    //Remove error handler if it was set
+    ON ERROR
+    
+    GOSUB EXIT &rvalue
+   
+   
+   
+MAIN:
+        LOCAL &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+        ENTRY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+
+        //Remove this hack when proper variable put into PMICReset.cmm
+        LOCAL &status &rvalue
+        &status=0
+        //Now configure PMIC for sys.up
+        LOCAL &SPMICfgScript &PMICResetScript &PMICPSHoldScript
+        
+        
+        //IF OS.DIR("&BOOT_BUILDROOT/boot_images")
+        //(
+        //    &SPMICfgScript="&BOOT_BUILDROOT\boot_images\QcomPkg\Tools\cmm\spmi\spmiCoreCfg.cmm"
+        //)
+        //ELSE
+        //(
+        //    &SPMICfgScript="&BOOT_BUILDROOT\QcomPkg\Tools\cmm\spmi\spmiCoreCfg.cmm"
+        //)
+        //Workaround for if spmi scripts are stripped out of boot
+        //IF !FILE.EXIST(&SPMICfgScript)
+        //(
+            &SPMICfgScript="&METASCRIPTSDIR\common\&CHIPSET\spmi\spmiCoreCfg.cmm"
+        //)
+        
+        LOCAL &PMICResetScript1 &PMICResetScript2
+        &PMICResetScript1="&METASCRIPTSDIR\..\tools\systemdrivers\pmic\hoya\PMICReset.cmm"
+        &PMICResetScript2="&AOP_BUILDROOT\aop_proc\core\systemdrivers\pmic\scripts\PMICReset.cmm"
+        IF FILE.EXIST(&PMICResetScript1)
+        (
+            &PMICResetScript="&PMICResetScript1"
+        )
+        ELSE IF FILE.EXIST(&PMICResetScript2)
+        (
+            &PMICResetScript="&PMICResetScript2"
+        )
+        ELSE
+        (
+            //last option - added locally
+            &PMICResetScript="&METASCRIPTSDIR\common\&CHIPSET\PMICReset.cmm"
+        )
+
+        &PMICPSHoldScript="&METASCRIPTSDIR\common\&CHIPSET\PMICPSHold.cmm"
+
+        IF (!FILE.EXIST(&SPMICfgScript)||(!FILE.EXIST(&PMICResetScript))||(!FILE.EXIST(&PMICPSHoldScript)))
+        (
+                WINPOS 10% 45% 150. 6.
+                AREA.RESET
+                AREA
+                PRINT %ERROR " Warning! spmiCoreCfg.cmm or PMICReset scripts not found."
+                PRINT %ERROR " spmiCoreCfg.cmm: &SPMICfgScript"
+                PRINT %ERROR " PMICReset.cmm:   &PMICResetScript"
+                PRINT %ERROR " Reset may not occur properly with some PMIC configurations,"
+                PRINT %ERROR " particularly if USB is attached during reset"
+                PRINT %ERROR " "
+                
+                &PMICResetScript="PMICReset.cmm"
+                &SPMICfgScript="NULL"
+        )
+        ELSE
+        (
+                //Turn on necessary SPMI clocks
+                //Enable GCC_SPMI_CNOC_AHB_CBCR by vote from TZ
+                //do std_utils HWIO_OUTF  GCC_APCS_TZ_CLOCK_BRANCH_ENA_VOTE SPMI_CNOC_AHB_CLK_ENA 0X1 EAZNC
+                //And other clocks
+                //do std_utils ENABLE_CBCR_AND_SPIN GCC_SPMI_AHB_CBCR ANC fatalexit
+                //do std_utils ENABLE_CBCR_AND_SPIN GCC_SPMI_SER_CBCR ANC fatalexit
+                
+                //Initialize SPMI
+                do std_utils EXECUTESCRIPT EXIT &SPMICfgScript 670 true
+                ENTRY %LINE &rvalue
+                //FIXME SPMICfgScript needs to have error handling
+                &rvalue="SUCCESS"
+                IF "&rvalue"!="SUCCESS"
+                (
+                    GOSUB EXIT &rvalue    
+                )
+                WAIT.200ms
+                
+                ON ERROR GOTO SKIP_PMICRESETSCRIPT
+                
+                do std_utils EXECUTESCRIPT EXIT &PMICResetScript &OPTION 
+                
+                //FIXME PMICResetScript needs to have error handling
+                &rvalue="SUCCESS"
+                IF "&rvalue"!="SUCCESS"
+                (
+                    GOSUB EXIT &rvalue    
+                )
+                WAIT.200ms
+ON ERROR DEFAULT
+        )
+
+        
+
+
+
+    RETURN SUCCESS
+SKIP_PMICRESETSCRIPT:
+    ON ERROR DEFAULT
+    PRINT "Warning! Bus error ocurred during PMIC reset. System may not boot up properly. Attempting to continue. Power cycle may be required"
+    
+    //FIXME - want some sort of error handling. return success for now.
+    ENDDO SUCCESS
+    //RETURN WARNING
+/////////////////////////////////////////
+//      Main PMIC Wdog function
+//
+//      Enables Pmic Watchdog
+//
+////////////////////////////////////////
+PMIC_WDOG:
+LOCAL &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+ENTRY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+
+LOCAL &spmi_status &devid &addr &wdog_data
+
+
+&spmi_status=0
+
+&devid=0
+&addr=0x857
+&wdog_data=0
+
+IF ("&OPTION"=="enable")
+(
+  PRINT "Enabling PMIC Watchdog"
+  &wdog_data=0x80
+)
+ELSE IF ("&OPTION"=="disable")
+(
+  PRINT "Disabling PMIC Watchdog"
+  &wdog_data=0x0
+)
+
+GOSUB PMIC_ACCESS write &devid &addr &wdog_data
+    ENTRY &spmi_status &data
+
+ENDDO &spmi_status
+
+
+
+/////////////////////////////////////////
+
+PMIC_ACCESS:
+LOCAL &cmd &id &address &data 
+ENTRY &cmd &id &address &data 
+
+;============================================================================
+; HWIO Macros
+;============================================================================
+&HWIO_TCSR_SOC_HW_VERSION=0xfd4a8000
+&HWIO_TLMM_HW_REVISION_NUMBER=0xfd512028
+
+&PMIC_ARB_CHNLn_CMD=0xFC4CF800
+&PMIC_ARB_CHNLn_STATUS=0xFC4CF808
+&PMIC_ARB_CHNLn_WDATA0=0xFC4CF810
+&PMIC_ARB_CHNLn_RDATA0=0xFC4CF818
+
+&SPMI_SER_CFG_RCGR=0xFC400FC4
+&SPMI_SER_CMD_RCGR=0xFC400FD0
+
+
+&BusAccessMode="EZAXI"
+&rev1=data.long(&BusAccessMode:&HWIO_TCSR_SOC_HW_VERSION)
+&rev2=data.long(&BusAccessMode:&HWIO_TLMM_HW_REVISION_NUMBER)
+IF ((&rev1==0)&&(&rev2==0))
+(
+  &BusAccessMode="EZ"
+)
+&rev1=data.long(&BusAccessMode:&HWIO_TCSR_SOC_HW_VERSION)
+&rev2=data.long(&BusAccessMode:&HWIO_TLMM_HW_REVISION_NUMBER)
+IF ((&rev1==0)&&(&rev2==0))
+(
+  &BusAccessMode="A"
+)
+
+;-----------------------------------------------------------------------------
+; SPMI variables
+;-----------------------------------------------------------------------------
+
+
+&CHNLn_OFFSET=0x80
+
+&SPMIOwnerChannel=4  ; AOP Channel by default
+
+
+&data=0
+&status=""
+
+&break=0
+IF (("&BusAccessMode"=="A")&&(SYSTEM.MODE()>0x5)&&(STATE.RUN()))
+(
+  &break=1
+  b
+)
+
+IF "&cmd"=="read"
+(
+  GOSUB PMICRead &address &id
+  ENTRY &status &data
+)
+ELSE IF "&cmd"=="write"
+(
+  GOSUB PMICWrite &address &id &data
+  ENTRY &status
+)
+IF "&cmd"=="spmiread"
+(
+  GOSUB SPMIRead &address &id
+  ENTRY &status &data
+)
+ELSE IF "&cmd"=="spmiwrite"
+(
+  GOSUB SPMIWrite &address &id &data
+  ENTRY &status 
+)
+
+IF &break==1
+  g
+
+ENDDO &status &data
+
+;=============================================================================
+; SUB: SPMIRead
+;=============================================================================
+
+SPMIRead:
+
+  ENTRY &RegisterAddress &SlaveId
+
+  &cmd=(0x1<<0x1B)|(&SlaveId<<0x14)|(&RegisterAddress<<0x4)
+
+  DATA.SET &BusAccessMode:&PMIC_ARB_CHNLn_CMD+&CHNLn_OFFSET*4 %LONG &cmd
+
+  &status=0
+  &timeout=1000.
+  WHILE (&status==0)
+  (
+    WAIT 1.ms
+    &status=DATA.LONG(&BusAccessMode:&PMIC_ARB_CHNLn_STATUS+&CHNLn_OFFSET*4)
+    
+    &timeout=&timeout-1.
+    IF (&timeout==0)
+    (
+      &status=3
+      DIALOG.OK "PMIC Read Timeout"
+    )
+  )
+
+  &data=DATA.LONG(&BusAccessMode:&PMIC_ARB_CHNLn_RDATA0+&CHNLn_OFFSET*4)
+
+  RETURN &status &data
+
+
+;=============================================================================
+; SUB: SPMIWrite
+;=============================================================================
+
+SPMIWrite:
+
+  ENTRY &RegisterAddress &SlaveId &Data
+
+  DATA.SET &BusAccessMode:&PMIC_ARB_CHNLn_WDATA0+&CHNLn_OFFSET*4 %LONG (&Data&0xFF)
+
+  &cmd=(0x0<<0x1B)|(&SlaveId<<0x14)|(&RegisterAddress<<0x4)
+
+  DATA.SET &BusAccessMode:&PMIC_ARB_CHNLn_CMD+&CHNLn_OFFSET*4 %LONG &cmd
+
+  &status=0
+  &timeout=1000.
+  WHILE (&status==0)
+  (
+    WAIT 1.ms
+    &status=DATA.LONG(&BusAccessMode:&PMIC_ARB_CHNLn_STATUS+&CHNLn_OFFSET*4)
+    
+    &timeout=&timeout-1.
+    IF (&timeout==0)
+    (
+      &status=3
+      DIALOG.OK "PMIC Write Timeout"
+    )
+  )
+
+  RETURN &status
+
+
+;=============================================================================
+; SUB: PMICToSPMI
+;=============================================================================
+
+PMICToSPMI:
+
+  ENTRY &addr &devid
+  LOCAL &spmi_sid &spmi_addr
+
+  IF &devid==1
+  (
+    &spmi_sid=4
+  )
+  ELSE
+  (
+    &spmi_sid=0
+  )
+
+  &pmic_sid=&addr>>16.
+  IF &pmic_sid==1
+  (
+    &spmi_sid=&spmi_sid+1
+  )
+
+  &spmi_addr=&addr&0xFFFF
+
+  RETURN &spmi_sid &spmi_addr
+
+
+;=============================================================================
+; SUB: PMICRead
+;=============================================================================
+
+PMICRead:
+
+  ENTRY &addr &devid
+
+  GOSUB PMICToSPMI &addr &devid
+  ENTRY &spmi_sid &spmi_addr
+
+  GOSUB SPMIRead &spmi_addr &spmi_sid
+  ENTRY &status &data
+
+  RETURN &status &data
+
+
+;=============================================================================
+; SUB: PMICWrite
+;=============================================================================
+
+PMICWrite:
+
+  ENTRY &addr &devid &data
+
+  GOSUB PMICToSPMI &addr &devid
+  ENTRY &spmi_sid &spmi_addr
+
+  GOSUB SPMIWrite &spmi_addr &spmi_sid &data
+  ENTRY &status
+
+  RETURN &status
+
+
+  
+/////////////////////////////////
+//    Function: HARDRESET
+//  Sets PMIC and SPMI to do a hard reset on the system
+//
+///////////////////////////////////
+HARDRESET:
+LOCAL &status
+
+    IF (STATE.RUN()==TRUE())
+    (
+        DO std_utils BREAKPROC
+    )
+
+    //0x7 causes power cycle from PMIC
+    GOSUB SET_PMIC_HARD_RESET Write 0x4 0x0 0x85A 0x7
+    ENTRY &status
+
+    //write to SPMI to reset processor
+    D.S a:0xFC4AB000 %LE %Long 0x0
+        
+    WAIT.300ms
+    IF (SYSTEM.MODE()==0xB)
+    (
+        PRINT %ERROR "Error! Could not reset device. Check that PSHold is not being held high externally (e.g. dipswitch settings)"
+        do std_fatalexit SYSTEM "std_pmic_&CHIPSET Error! Could not reset device. Check that PSHold is not being held high externally (e.g. dipswitch settings)"
+    )
+    ELSE
+    (
+        PRINT "PMIC Hard Reset successful"
+    )
+    //wait.400ms
+    //sys.m.a
+    
+
+ENDDO &status
+
+SET_PMIC_HARD_RESET:
+
+    ENTRY &Operation &OwnerChannel &SlaveId &RegisterAddress &DataByte
+    LOCAL &CHNLn_CMD_ADDR_BASE  &CHNLn_STATUS_ADDR_BASE &CHNLn_WDATA0_ADDR_BASE &CHNLn_WDATA1_ADDR_BASE &CHNLn_RDATA0_ADDR_BASE &CHNLn_RDATA1_ADDR_BASE &CHNLn_OFFSET 
+    LOCAL &NUM_MAX_OWNER_CHANNEL &NUM_MAX_SLAVE_ID &NUM_MAX_REGISTER_ADDRESS &param_check_status &read_status &write_status &NumBytes &ReadValue &main_status
+    LOCAL  &oper_id
+    LOCAL &DATA
+
+    &CHNLn_CMD_ADDR_BASE=0xFC4CF800
+    &CHNLn_STATUS_ADDR_BASE=0xFC4CF808
+    &CHNLn_WDATA0_ADDR_BASE=0xFC4CF810
+    &CHNLn_WDATA1_ADDR_BASE=0xFC4CF814
+    &CHNLn_RDATA0_ADDR_BASE=0xFC4CF818
+    &CHNLn_RDATA1_ADDR_BASE=0xFC4CF81C
+    &CHNLn_OFFSET=0x80
+    &NUM_MAX_OWNER_CHANNEL=0x6
+    &NUM_MAX_SLAVE_ID=16
+    &NUM_MAX_REGISTER_ADDRESS=0x10000
+    &NumBytes=1
+
+    &oper_id=0
+    &main_status="true"
+
+
+    if ("&Operation"=="Read")||("&Operation"=="READ")||("&Operation"=="read") 
+    (
+          &oper_id=1
+          GOSUB READ &OwnerChannel &SlaveId &RegisterAddress
+          ENTRY &DATA
+          goto MAIN_RETURN
+    )
+    else if ("&Operation"=="Write")||("&Operation"=="WRITE")||("&Operation"=="write")
+    (
+          &oper_id=2
+          GOSUB WRITE &OwnerChannel &SlaveId &RegisterAddress &DataByte
+          goto MAIN_RETURN
+    )
+    if (&oper_id==0)
+    (
+          print "Error: SPMI opearation invalid1!"
+          &main_status="false"
+          goto MAIN_RETURN
+    )
+
+MAIN_RETURN:
+if ("&main_status"=="false")
+(
+   GOSUB USAGE
+   RETURN "SPMIDEAD"
+)
+ELSE
+(
+    RETURN &DATA
+)
+
+;-----------------------------------------------
+; Functions 
+;-----------------------------------------------
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;USAGE - This is internal function   ;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+USAGE:
+print "Usage:"
+Print "For Read:  do spmi_bus.cmm Read OwnerChannel[0-5] SlaveId[0-0xF] RegisterAddress[0-0xFFFF]"
+Print "For Write: do spmi_bus.cmm Write OwnerChannel[0-5] SlaveId[0-0xF] RegisterAddress[0-0xFFFF] DataByte[0-0xFF]"
+Print "OwnerChannel - 0 Krait, 1 Krait_TZ, 2 MSS, 3 LPASS, 4 AOP, 5 WConnect"
+
+RETURN
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;PARAMETER_CHECK - This is internal function ;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+PARAMETER_CHECK: 
+ENTRY &Operation &OwnerChannel &SlaveId &RegisterAddress
+&param_check_status="true"
+if "&Operation"=="" 
+(
+      print "Error: SPMI opearation not specified!"
+      &param_check_status="false"
+      goto PARAMETER_CHECK_RETURN
+)
+if "&Operation"!="Read"&&"&Operation"!="READ"&&"&Operation"!="read"&&"&Operation"=="Write"&&"&Operation"=="WRITE"&&"&Operation"=="write" 
+(
+      print "Error: SPMI opearation invalid!"
+      &param_check_status="false"
+      goto PARAMETER_CHECK_RETURN
+)
+if ("&OwnerChannel"=="")
+(
+      print "Error: SPMI OwnerChannel not specified!"
+      &param_check_status="false"
+      goto PARAMETER_CHECK_RETURN
+)
+if (&OwnerChannel>=&NUM_MAX_OWNER_CHANNEL)||(&OwnerChannel<0)
+(
+      print "Error: SPMI OwnerChannel invalid!"
+      &param_check_status="false"
+      goto PARAMETER_CHECK_RETURN
+)
+if ("&SlaveId"=="")
+(
+      print "Error: SPMI Slave Id not specified!"
+      &param_check_status="false"
+      goto PARAMETER_CHECK_RETURN
+)
+if (&SlaveId>=&NUM_MAX_SLAVE_ID)||(&SlaveId<0)
+(
+      print "Error: SPMI Slave Id invalid!"
+      &param_check_status="false"
+      goto PARAMETER_CHECK_RETURN
+)
+if ("&RegisterAddress"=="") 
+(
+      print "Error: SPMI Register address not specified!"
+      &param_check_status="false"
+      goto PARAMETER_CHECK_RETURN
+)
+if (&RegisterAddress>=&NUM_MAX_REGISTER_ADDRESS)||(&RegisterAddress<0)
+(
+      print "Error: SPMI Register address invalid!"
+      &param_check_status="false"
+      goto PARAMETER_CHECK_RETURN
+)
+
+PARAMETER_CHECK_RETURN:
+RETURN
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;READ                            ;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+READ:
+   ENTRY &OwnerChannel &SlaveId &RegisterAddress
+   LOCAL &utemp &status
+   LOCAL &read
+   &read="READ"
+
+   &read_status="true"
+
+   GOSUB PARAMETER_CHECK &read &OwnerChannel &SlaveId &RegisterAddress
+   if ("&param_check_status"=="false")
+   (
+      &read_status="false"
+      goto READ_RETURN
+   )
+; Perform Read now
+   
+   &utemp=(0x1<<0x1B)|(&SlaveId<<0x14)|(&RegisterAddress<<0x4)|(&NumBytes-1)
+   print "Command = &utemp"
+   data.set az:&CHNLn_CMD_ADDR_BASE+&CHNLn_OFFSET*&OwnerChannel %LONG &utemp
+
+   &status=0
+   while (&status==0) ;wait for status register to change to non zero value
+   (
+      wait 1.ms
+      &status=data.long(az:&CHNLn_STATUS_ADDR_BASE+&CHNLn_OFFSET*&OwnerChannel)
+   )
+   if (&status==1)
+   (
+      &ReadValue=data.long(az:&CHNLn_RDATA0_ADDR_BASE+&CHNLn_OFFSET*&OwnerChannel)
+      print "Success: Read value: &ReadValue"
+   )
+   else
+   (
+      print "Failure: Read failed"
+      &read_status="false"
+      goto READ_RETURN
+   )
+
+READ_RETURN:
+if ("&read_status"=="false")
+(
+   GOSUB USAGE
+)
+ELSE
+(
+    RETURN &ReadValue
+)
+
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;WRITE                           ;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+WRITE:
+   ENTRY &OwnerChannel &SlaveId &RegisterAddress &WriteByte
+   LOCAL &utemp &status
+
+   &write_status="true"
+
+   GOSUB PARAMETER_CHECK "Write" &OwnerChannel &SlaveId &RegisterAddress
+
+   if ("&param_check_status"=="false")
+   (
+      &write_status="false"
+      goto WRITE_RETURN
+   )
+
+   if ("&WriteByte"=="")
+   (
+      print "Error: SPMI DataByte not specified!"
+      &write_status="false"
+      goto WRITE_RETURN
+   )
+
+   if (&WriteByte>=0x100)||(&WriteByte<0)
+   (
+      print "Error: SPMI DataByte Invalid!"
+      &write_status="false"
+      goto WRITE_RETURN
+   )
+
+; Perform Write now
+   
+   data.set  az:0xFC4CF810+&CHNLn_OFFSET*&OwnerChannel %LONG (&WriteByte&0xFF)
+   &utemp=(0x0<<0x1B)|(&SlaveId<<0x14)|(&RegisterAddress<<0x4)|(&NumBytes-1)
+   print "Command = &utemp"
+   data.set  az:&CHNLn_CMD_ADDR_BASE+&CHNLn_OFFSET*&OwnerChannel %LONG &utemp
+
+   &status=0
+   while (&status==0) ;wait for status register to change to non zero value
+   (
+      wait 1.ms
+      &status=data.long(az:&CHNLn_STATUS_ADDR_BASE+&CHNLn_OFFSET*&OwnerChannel)
+   )
+   if (&status==1)
+   (
+      print "Success: Write Successful"
+   )
+   else
+   (
+      print "Failure: Write failed"
+      &write_status="false"
+      goto WRITE_RETURN
+   )
+
+WRITE_RETURN:
+if ("&write_status"=="false")
+(
+   GOSUB USAGE
+)
+RETURN
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+EXIT:
+    LOCAL &result
+    ENTRY %LINE &result
+    ENDDO &result
+    
+
+//Should never get here. 
+FATALEXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    IF STRING.SCAN("&FAILUREKEYWORD","FAILUREKEYWORD",0)==-1
+    (
+        GOSUB EXIT &FAILUREKEYWORD - &rvalue
+    )
+    ELSE
+    (
+        GOSUB EXIT &rvalue
+    )

@@ -1,0 +1,117 @@
+TOOLBAR ON
+STATUSBAR ON
+
+sys.cpu HexagonV4C
+sys.mcdconfig arch=v4 port=5000
+sys.mode attach
+
+; http://qwiki.qualcomm.com/qdsp/Q6_T32_Issues
+system.OPTION TCMBASE 0x28c00000
+system.option.dcfreeze off
+System.option.icflush off
+
+Symbol.SOURCEPATH.reset
+symbol.SOURCEPATH.setdir
+
+
+
+MAP.RESET
+Symbol.AsmFrame on
+Symbol.CutLine 3
+Symbol.case off
+
+&Qube_va=0xC0000000
+&Qube_pa=0x46F00000
+;system.option.icflush ON 
+MAP.RESET
+mmu.off
+mmu.delete
+
+sYmbol.SourcePath.reset
+
+
+d.load ..\..\obj\qdsp6v4_ReleaseG\bootimg.pbn
+b.s main /onchip
+
+&edk_dir="..\..\qurt\osam\bin\t32\v4"
+TASK.CONFIG &edk_dir\Blast_model.t32
+MENU.ReProgram &edk_dir\qurt_model.men
+
+; Enable RTOS debug messages
+ext.debug 1
+
+
+system.option PC &Qube_pa; 
+mmu.map.scan
+mmu.create (&Qube_va)--(&Qube_va+0xffffff) (&Qube_pa)--(&Qube_pa+0xffffff)
+step
+
+go
+wait !run()
+wait 1s
+mmu.on
+
+wait 1s
+&rt_pt=d.l(BLASTK_pagetables)
+print &rt_pt
+
+mmu.reset
+mmu.format Blast &rt_pt (&Qube_va)--(&Qube_va+0xffffff) &Qube_pa
+print &Qube_pa
+print &Qube_va
+mmu.autoscan on
+Mmu.tablewalk on
+mmu.tlb.scan
+
+y.spath.srd + .
+
+; Tun suggests:
+b.s BLASTK_handle_error
+b.s BLASTK_tlb_crash
+b.s BLASTK_error
+
+b.s BLASTK_user_exit
+b.s BLASTK_abort
+b.s abort
+b.s diag_err_fatal
+b.s exit
+b.s qurt_exit
+b.s qurt_fatal_exit
+
+d.list
+register
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

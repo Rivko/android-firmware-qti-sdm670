@@ -1,0 +1,224 @@
+#===============================================================================
+#
+# CLOCK DRIVER SHARED LIBRARY
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2011-2014 Qualcomm Technologies Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.mpss/5.0/systemdrivers/clock/build/clock.scons#5 $
+#  $DateTime: 2016/09/29 13:57:39 $
+#  $Author: pwbldsvc $
+#  $Change: 11467993 $
+#
+#===============================================================================
+
+import os
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Add API folders
+#-------------------------------------------------------------------------------
+
+CLOCK_BUILD_ROOT = os.getcwd();
+
+env.PublishPrivateApi('SYSTEMDRIVERS_CLOCK', [
+   CLOCK_BUILD_ROOT + "/../src",
+   "${BUILD_ROOT}/core/systemdrivers/clock/hal/inc",
+   "${BUILD_ROOT}/core/systemdrivers/clock/hal/src",
+   "${BUILD_ROOT}/core/systemdrivers/clock/hal/hw/v1",
+   "${BUILD_ROOT}/core/systemdrivers/clock/config/${CHIPSET}",
+   "${BUILD_ROOT}/core/systemdrivers/clock/image/",
+])
+
+#-------------------------------------------------------------------------------
+# Define paths
+#-------------------------------------------------------------------------------
+
+SRCPATH = "../"
+SRCPATHSCRIPTS = env['BUILD_ROOT'] + '/core/systemdrivers/clock/scripts/'
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Convert warnings to errors - do not remove this flag!
+#-------------------------------------------------------------------------------
+
+env.Append(CFLAGS = "-Werror ")
+env.Append(CFLAGS = "-Wall ")
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+CBSP_API = [
+   'DAL',
+   'HAL',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'POWER',
+   'KERNEL',
+   'DEBUGTRACE',
+   'DEBUGTOOLS'
+]
+ 	 
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Define sources
+#-------------------------------------------------------------------------------
+
+CLOCK_SOURCES = [
+   '${BUILDPATH}/src/ClockDriver.c',
+   '${BUILDPATH}/src/ClockLegacy.c',   
+   '${BUILDPATH}/src/ClockSources.c',
+   '${BUILDPATH}/src/ClockVoltage.c',
+   '${BUILDPATH}/src/ClockFwk.c'
+]
+
+CLOCK_BIST_SOURCES = [
+   '${BUILDPATH}/src/ClockBIST.c'
+]
+
+#-------------------------------------------------------------------------------
+# Add libraries to image
+#-------------------------------------------------------------------------------
+
+env.AddLibrary(
+   ['CORE_Q6_ROOT'],
+   '${BUILDPATH}/Clock',
+   CLOCK_SOURCES)
+
+env.AddLibrary(
+   ['CORE_Q6_ROOT'],
+   '${BUILDPATH}/ClockBIST',
+   CLOCK_BIST_SOURCES)
+
+#-------------------------------------------------------------------------------
+# Pack out files
+#-------------------------------------------------------------------------------
+
+# Remove documentation source files
+DOCSRC_FILES = env.FindFiles(
+  ['*'],
+  '${BUILD_ROOT}/core/api/systemdrivers/docsrc/clock/')
+env.CleanPack(['CORE_Q6_ROOT'], DOCSRC_FILES)
+
+# Remove target hal hw files
+ALL_HW_FILES = env.FindFiles(
+  ['*'],
+  '../hal/hw/')
+SHARED_HW_FILES = env.FindFiles(
+  ['*'],
+  '../hal/hw/v1/')
+MY_HW_FILES = env.FindFiles(
+  ['*'],
+  '../hal/hw/${CHIPSET}')
+PACK_HW_FILES = list(set(ALL_HW_FILES) - set(SHARED_HW_FILES) - set(MY_HW_FILES))
+env.CleanPack(['CORE_Q6_ROOT'], PACK_HW_FILES)
+
+# Remove target image files
+# Leave all files directly under image directory (i.e. not in image sub-directory) out of the pack set
+ALL_IMAGE_FILES = env.FindFiles(
+  ['*'],
+  '../image/*/')
+MY_IMAGE_FILES = env.FindFiles(
+  ['*'],
+  '../image/${IMAGE}/hw/${CHIPSET}')
+MY_IMAGE_CLKGEN_FILE = env.FindFiles(
+  ['clockdrivergen_cfg.py'],
+  '../image/${IMAGE}/hw/${CHIPSET}/build')
+STUB_IMAGE_FILES = env.FindFiles(
+  ['*'],
+  '../image/${IMAGE}/hw/stub')
+PACK_IMAGE_FILES = list(set(ALL_IMAGE_FILES) - set(MY_IMAGE_FILES) - set(STUB_IMAGE_FILES) | set(MY_IMAGE_CLKGEN_FILE))
+env.CleanPack(['CORE_Q6_ROOT'], PACK_IMAGE_FILES)
+
+# Remove target script files
+# Leave all files directly under scripts directory (i.e. not in image sub-directory) out of the pack set
+ALL_SCRIPTS_FILES = env.FindFiles(
+  ['*'],
+  '../scripts/*/')
+MY_SCRIPTS_FILES = env.FindFiles(
+  ['*'],
+  '../scripts/${CHIPSET}')
+PACK_SCRIPTS_FILES = list(set(ALL_SCRIPTS_FILES) - set(MY_SCRIPTS_FILES))
+env.CleanPack(['CORE_Q6_ROOT'], PACK_SCRIPTS_FILES)
+
+#-------------------------------------------------------------------------------
+# Register initialization function and dependencies.
+#-------------------------------------------------------------------------------
+
+if 'USES_RCINIT' in env:
+  RCINIT_IMG = ['CORE_Q6_ROOT']
+
+  env.AddRCInitFunc(RCINIT_IMG, {
+    'sequence_group' : 'RCINIT_GROUP_0',
+    'init_name'      : 'clk_regime',
+    'init_function'  : 'clk_regime_init',
+    'dependencies'   : ['busywait', 'dalsys', 'npa', 'qmp_msg_client'],
+  })
+
+  # Must be in separate init function with dependency on VCS, since BIST
+  # will set voltages which exceed default boot levels.
+  env.AddRCInitFunc(RCINIT_IMG, {
+    'sequence_group' : 'RCINIT_GROUP_0',
+    'init_name'      : 'clk_regime_bist',
+    'init_function'  : 'clk_regime_bist',
+    'dependencies'   : ['clk_regime', 'vcs'],
+  })
+  
+#-------------------------------------------------------------------------------
+# Invoke chipset build file
+#-------------------------------------------------------------------------------
+
+env.LoadSoftwareUnits()
+
+#-------------------------------------------------------------------------------
+# Invoke document generation SConscript
+#-------------------------------------------------------------------------------
+
+if os.path.exists(env['BUILD_ROOT'] + '/core/api/systemdrivers/docsrc/clock/SConscript') :
+  env.SConscript(
+    '${BUILD_ROOT}/core/api/systemdrivers/docsrc/clock/SConscript',
+    exports='env')
+
+#-------------------------------------------------------------------------------
+# SWEvent processing
+#-------------------------------------------------------------------------------
+
+if 'USES_QDSS_SWE' in env:
+  env.Append(CPPDEFINES = ["CLOCK_TRACER_SWEVT"])
+  QDSS_IMG = ['QDSS_EN_IMG']
+  events = [
+    ['CLOCK_EVENT_INIT',          'Clock Initialize'],
+    ['CLOCK_EVENT_CLOCK_STATUS',  'Clock Name: %plugin[1]<clock>.  Requested state = %d (enable/disable), actual state (reference count) = %d'],
+    ['CLOCK_EVENT_CLOCK_FREQ',    'Clock Name: %plugin[1]<clock>.  Frequency = %d (KHz)'],
+    ['CLOCK_EVENT_SOURCE_STATUS', 'Clock Source %d.  Status = %d (on/off)'],
+    ['CLOCK_EVENT_SOURCE_FREQ',   'Source ID: %d.  Frequency = %d (KHz)'],
+    ['CLOCK_EVENT_XO',            'XO lpr = %d (enable/disable)'],
+  ]
+  env.AddSWEInfo(QDSS_IMG, events)
+
+if 'QDSS_TRACER_SWE' in env:
+  env.SWEBuilder(['${BUILD_ROOT}/core/systemdrivers/clock/build/${BUILDPATH}/src/ClockSWEventId.h'], None)
+  env.Append(CPPPATH = ['${BUILD_ROOT}/core/systemdrivers/clock/build/${BUILDPATH}/src'])
+
+#-------------------------------------------------------------------------------
+# Add CMM scripts to T32 menu
+#-------------------------------------------------------------------------------
+
+CMM_ARGUMENT = env['CHIPSET']
+
+try:
+  env.AddCMMScripts ('QDSP6', [SRCPATHSCRIPTS], { 'Clock.cmm' : ['Clocks', CMM_ARGUMENT] }, 'SystemDrivers')
+except:
+  pass
+  

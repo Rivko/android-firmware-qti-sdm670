@@ -1,0 +1,4495 @@
+;=============================================================================
+;
+; ClockDriver.cmm 
+;
+; Script to parse out information from the Clock Driver.
+;
+; ============================================================================
+;
+; Copyright (c) 2015 Qualcomm Technologies Incorporated.  All Rights Reserved.  
+; QUALCOMM Proprietary and Confidential. 
+;
+; ============================================================================
+; $Header: //components/rel/boot.xf/2.1/QcomPkg/SDM670Pkg/Tools/clock/ClockDriver.cmm#1 $
+; $DateTime: 2017/09/18 09:26:13 $
+; $Author: pwbldsvc $
+; ============================================================================
+
+; Grab the entire launch command line.
+entry %LINE &launch_cmd_line
+
+local &ARGS
+&ARGS=os.ppd()
+gosub __acquire_args_cmm &ARGS
+entry &ARGS
+
+local &AID
+local &param
+local &cd_mode
+local &success
+local &clockdriver_main_area
+local &launch_cmd_line
+local &invoked_by_script
+local &clk_err
+local &opts
+
+local &output_log_name
+local &logging_output
+&logging_output=0
+
+local &sys_m_a_failed
+&sys_m_a_failed=0.
+
+local &gcc_access_mode
+&gcc_access_mode="ezaxi"
+
+local &DRV_CTXT
+
+local &E_VREG_LVL
+&E_VREG_LVL="eVRegLevel"
+
+local &E_SRC_VREG_LVL
+&E_SRC_VREG_LVL="eVRegLevel"
+
+local &E_SRC_FREQ_HZ
+&E_SRC_FREQ_HZ="pBSPConfig->nFreqHz"
+
+; Clear any leftover history window.
+WINCLEAR clockdriver_hist_window
+
+; Initialize the default filters (setting all to bypass).
+var.newlocal char[6.][128.] \default_filters
+gosub reset_default_filters
+
+; Detect 'cd' mode.
+&cd_mode=string.scan("&launch_cmd_line", "__cd__", 0)
+if (&cd_mode!=-1)
+(
+  &cd_mode=1
+  &launch_cmd_line=string.replace("&launch_cmd_line", "__cd__", "", 0)
+)
+else
+(
+  &cd_mode=0
+)
+
+; Check if the script was invoked by another script ('super_script_area' mode).
+&clockdriver_main_area=string.ScanAndExtract("&launch_cmd_line", "super_script_area=", "CLK_DRIVER")
+
+; Create new areas.
+&param="1 CLKDRV_HIST , ,"
+if ("&clockdriver_main_area"=="CLK_DRIVER")
+(
+  local &area_exists
+  &area_exists=1
+
+  &invoked_by_script=0
+
+  if (&cd_mode!=0)
+  (
+    gosub does_area_exist CLK_DRIVER
+    entry &area_exists
+  )
+
+  if ((&cd_mode==0)||(&area_exists==0))
+  (
+    &param="2 &clockdriver_main_area 180. 1000. CLKDRV_HIST , ,"
+  )
+)
+else
+(
+  &invoked_by_script=1
+
+  ; cut the 'super_script_area' argument out of the launch command line.
+  &launch_cmd_line=string.replace("&launch_cmd_line", "super_script_area=&clockdriver_main_area", "", 0)
+)
+
+gosub area_create_list &param
+entry &success
+if (&success==0)
+(
+  area.select
+  print %ERROR "ERROR: Failed to create areas for ClockDriver.cmm."
+  enddo
+)
+
+; Create a new window if needed.
+if (WIN.EXIST("clockdriver_main_window")==FALSE())
+(
+  local &x_start
+  local &y_start
+  local &x_len
+  local &y_len
+
+  ; Check if there are previously saved window settings.
+  gosub find_saved_window_settings clockdriver_main_window
+  entry &x_start &y_start &x_len &y_len
+
+  if (&x_start!=-1)
+  (
+    ; Use the previous window settings.
+    winpos &x_start &y_start &x_len &y_len 0. 0. clockdriver_main_window
+  )
+  else
+  (
+    gosub Default_WINPOS_Main
+  )
+)
+
+area.view &clockdriver_main_area
+area.select &clockdriver_main_area
+
+; Get the VREG level bounds.
+local &off_vreg_level
+local &num_vreg_levels
+local &vreg_lvl_type
+local &vreg_num_levels_var_name
+&vreg_lvl_type="ClockVRegLevelType"
+&vreg_lvl_prefix="CLOCK_VREG_LEVEL_"
+&vreg_num_levels_var_name="CLOCK_VREG_NUM_LEVELS"
+
+ON ERROR gosub
+(
+  ON ERROR gosub
+  (
+    print %ERROR "Neither 'ClockVRegLevelType' nor 'VCSCornerType' is a loaded type."
+    enddo
+  )
+
+  &vreg_lvl_type="VCSCornerType"
+  &vreg_lvl_prefix="VCS_CORNER_"
+  &vreg_num_levels_var_name="VCS_CORNER_NUM_OF_CORNERS"
+  return
+)
+var.newlocal &vreg_lvl_type \min_vreg_level
+
+if ("&vreg_lvl_type"=="ClockVRegLevelType")
+(
+  goto post_new_min_vreg_level_retry
+)
+
+var.newlocal &vreg_lvl_type \min_vreg_level
+
+post_new_min_vreg_level_retry:
+
+var.newlocal &vreg_lvl_type \vreg_level
+
+var.assign \min_vreg_level = &(vreg_lvl_prefix)OFF
+&off_vreg_level=var.value(\min_vreg_level)
+
+var.assign \vreg_level = &vreg_num_levels_var_name
+&num_vreg_levels=var.value(\vreg_level)
+
+; Install top level error handler
+ON ERROR gosub
+(
+  print %ERROR "ERROR: Caught an error in 'ClockDriver.cmm'."
+  return
+)
+
+; Initialize the argument bufferer with the launch command line.
+do &ARGS create_client clk_drv &clockdriver_main_area &launch_cmd_line
+entry &AID
+if ("&AID"=="ARGS_ERR")
+(
+  do &ARGS get_error
+  entry &clk_err
+
+  print %ERROR "ERROR: Failed to create an ARGS client:"
+  print %ERROR "       '&clk_err'."
+  enddo
+)
+
+; Set bufferer options.
+&opts="print_errors=1 nonempty_cmds=1 nonempty_vals=1"
+&opts="&opts help_cmd=? help_sub=Display_Help hist_cmd=hist hist_sub=Display_Hist"
+do &ARGS set_opts &AID &opts
+entry &clk_err
+if ("&clk_err"=="ARGS_ERR")
+(
+  do &ARGS get_error
+  entry &clk_err
+
+  print %ERROR "ERROR: Failed to set ARGS options:"
+  print %ERROR "       '&clk_err'."
+
+  enddo
+)
+
+print " "
+print " "
+print "[-------------------- CLOCK DRIVER TOOL --------------------]"
+print " "
+
+;-----------------------------------------------------------------------------
+; Main Loop
+;-----------------------------------------------------------------------------
+
+local &cmd
+local &valid_help
+local &short_cmd
+local &symbol_format
+local &decimal_format
+
+Main_Loop:
+(
+  &clk_err=""
+
+  ; If the history window is open, go ahead and update it.
+  if (WIN.EXIST("clockdriver_hist_window")==TRUE())
+  (
+    gosub Display_Hist SKIP_VIEW
+  )
+
+  ;
+  ; Get the next command argument.
+  ;
+  print " "
+  do &ARGS get_arg &AID Enter command ('?' for help) >
+  entry &cmd
+  if ("&cmd"=="x")
+  (
+    gosub Exit_ClockDriver
+  )
+  print " "
+
+  gosub save_window_settings clockdriver_hist_window
+  gosub save_window_settings clockdriver_main_window
+
+  ; Sanity check for improper '?' help usage (simplifies the Display_Help() logic).
+  gosub display_help_verify_cmd_line
+  entry &valid_help
+  if ("&valid_help"=="ERROR")
+  (
+    do &ARGS reset_cmd_line &AID
+    goto Main_Loop
+  )
+
+  ; Configure "setup.var" settings for var.string().
+  &DRV_CTXT="DrvCtxt"
+  gosub configure_clock_driver_setup_var_formats DrvCtxt
+  entry &symbol_format &decimal_format
+
+  ; Check that the debugger is attached and clock driver symbols are loaded.
+  if ("&symbol_format"=="MISSING")
+  (
+    &DRV_CTXT="Clock_DriverCtxt.DrvCtxt"
+    gosub configure_clock_driver_setup_var_formats Clock_DriverCtxt
+    entry &symbol_format &decimal_format
+
+    if ("&symbol_format"=="MISSING")
+    (
+      print %ERROR "ERROR: Could not find clock driver symbol 'DrvCtxt' or 'Clock_DriverCtxt.DrvCtxt'."
+      do &ARGS reset_cmd_line &AID
+      goto Main_Loop
+    )
+  )
+
+  ; Require that the device is halted.
+  if (state.run()==TRUE())
+  (
+    print %ERROR "ERROR: The device is currently running. Enter 'stop' or F8 to halt the device."
+    goto Main_Loop
+  )
+
+  ;
+  ; Switch on the shortened command.
+  ;
+  gosub shorten_main_cmd &cmd
+  entry &short_cmd
+  if (&short_cmd==0.)         ; 0 => 'filter'
+  (
+    gosub ModifyDefaultFilters
+  )
+  else if (&short_cmd==1.)    ; 1 => 'clocks'
+  (
+    &param="ClockInfoMapFilterToIdx DisplayClockInfo ClockInfoGetDefaultFilter"
+    gosub PrepClockFiltersAndDisplayInfo &param
+  )
+  else if (&short_cmd==2.)    ; 2 => 'domains'
+  (
+    &param="DomainInfoMapFilterToIdx DisplayDomainInfo DomainInfoGetDefaultFilter"
+    gosub PrepClockFiltersAndDisplayInfo &param
+  )
+  else if (&short_cmd==3.)    ; 3 => 'sources'
+  (
+    &param="SourceInfoMapFilterToIdx DisplaySourceInfo SourceInfoGetDefaultFilter"
+    gosub PrepClockFiltersAndDisplayInfo &param
+  )
+  else if (&short_cmd==4.)    ; 4 => 'power'
+  (
+    gosub DisplayPowerInfo
+  )
+  else if (&short_cmd==5.)    ; 5 => 'clkrail'
+  (
+    gosub ListClocksByRailwayVotes
+  )
+  else if (&short_cmd==6.)    ; 6 => 'clktab'
+  (
+    gosub DisplayClockTable
+  )
+  else if (&short_cmd==7.)    ; 7 => 'domaintab'
+  (
+    gosub DisplayDomainTable
+  )
+  else if (&short_cmd==8.)    ; 8 => 'srctab'
+  (
+    gosub DisplaySourceTable
+  )
+  else if (&short_cmd==9.)    ; 9 => 'pwrtab'
+  (
+    gosub DisplayPowerDomainTable
+  )
+  else if (&short_cmd==100.)  ; 100 => 'wr'
+  (
+    gosub Reset_Window
+  )
+  else if (&short_cmd==101.)  ; 101 => 'log'
+  (
+    gosub Clock_Driver_Log
+  )
+
+  ; Restore "setup.var" settings
+  gosub restore_clock_driver_setup_var_formats &symbol_format &decimal_format
+
+  goto Main_Loop
+)
+
+;
+; Sets the default main window position/size for window generation.
+;
+Default_WINPOS_Main:
+(
+  winpos 0. 0. 150. 95% 0. 0. clockdriver_main_window
+  return
+)
+
+;
+; Sets the default history window position/size for window generation.
+;
+Default_WINPOS_Hist:
+(
+  winpos 155. 0% 50. 50% 0. 0. clockdriver_hist_window
+  return
+)
+
+;
+; Resets the window size/position.
+;
+Reset_Window:
+(
+  winclear clockdriver_main_window
+  winclear clockdriver_hist_window
+
+  gosub delete_saved_window_settings clockdriver_main_window
+  gosub delete_saved_window_settings clockdriver_hist_window
+
+  gosub Default_WINPOS_Main
+  area.view &clockdriver_main_area
+
+  return
+)
+
+;
+; Opens/closes an output log.
+;
+Clock_Driver_Log:
+(
+  local &arg
+
+  ; Check if the log is already open.
+  if (&logging_output==0)
+  (
+    do &ARGS set_opts &AID nonempty_cmds=0
+    do &ARGS get_arg &AID Enter file name [c:\temp\clockdriver.log] >
+    entry &arg
+    do &ARGS set_opts &AID nonempty_cmds=1
+    print " "
+
+    if ("&arg"=="")
+    (
+      &arg="c:\temp\clockdriver.log"
+    )
+
+    if ("&arg"=="close")
+    (
+      print %ERROR "No open output log to close."
+    )
+    else
+    (
+      &clk_err=""
+      ON ERROR gosub
+      (
+        print %ERROR "ERROR: Failed to open output log '&arg'."
+        &clk_err="Clock_Driver_Log"
+        return
+      )
+
+      print "Started logging output to '&arg'."
+      area.open &clockdriver_main_area &arg
+      &output_log_name="&arg"
+
+      if ("&clk_err"!="Clock_Driver_Log")
+      (
+        &logging_output=1
+      )
+    )
+  )
+  else
+  (
+    do &ARGS get_arg &AID Stop logging output and close '&output_log_name'? [close|n] >
+    entry &arg
+    print " "
+
+    if ("&arg"=="close")
+    (
+      area.close &clockdriver_main_area
+      print "Stopped logging output to '&output_log_name'."
+      &logging_output=0
+    )
+    else
+    (
+      print "Did not close the open output log '&output_log_name'."
+    )
+  )
+
+  return
+)
+
+;
+; Display ClockDriver.cmm help message summary.
+;
+Display_Help_Summary:
+(
+  print "[--- ClockDriver.cmm Help Summary ---]:"
+  print " "
+  print "  Displays information from the global clock driver context structure."
+  print " "
+  print "*** Commands ***"
+  print " "
+  print "  0, filter        : Add (persistent) default filters."
+  print " "
+  print "  1, clocks        : Show info for filtered clocks."
+  print "  2, domains       : Show info for filtered clock domains."
+  print "  3, sources       : Show info for filtered clock sources."
+  print " "
+  print "  4, power         : Show info for power domains."
+  print "  5, clkrail       : List enabled clocks by their railway level vote."
+  print " "
+  print "  6, clktab        : Open the clock list in a seperate table."
+  print "  7, domaintab     : Open the clock domain list in a seperate table."
+  print "  8, srctab        : Open the source list in a seperate table."
+  print "  9, pwrtab        : Open the power domain list in a seperate table."
+  print " "
+  print "  log <name|close> : Being/end logging output to a file (closes upon 'x' exit)."
+  print "  ? [cmd]          : Print this help message or additional command help."
+  print "  x                : Exit."
+  print "  wr               : Reset the script window."
+  print " "
+  print "    Enter '? <cmd>' for additional help for a command."
+  print " "
+  print " "
+
+  return
+)
+
+;
+; Display ClockDriver.cmm help message for a given command.
+;
+Display_Help:
+(
+  local &cmd
+  local &short_cmd
+  local &cmd_count
+  local &num_unread
+  local &valid_help
+
+  print " "
+  print " "
+
+  ; If the history window is open, go ahead and update it.
+  if (WIN.EXIST("clockdriver_hist_window")==TRUE())
+  (
+    gosub Display_Hist SKIP_VIEW
+  )
+
+  ; Sanity check for improper '?' help usage.
+  gosub display_help_verify_cmd_line
+  entry &valid_help
+  if ("&valid_help"=="ERROR")
+  (
+    do &ARGS reset_cmd_line &AID
+    return
+  )
+
+  ;
+  ; Process commands until the argument buffer is emptied.
+  ;
+  &cmd_count=0
+  while TRUE()
+  (
+    ; Return if all buffered arguments have been processed.
+    do &ARGS get_num_unread &AID
+    entry &num_unread
+    if (&num_unread==0)
+    (
+      if (&cmd_count==0)
+      (
+        ; Display help summary if no command is given.
+        gosub Display_Help_Summary
+      )
+
+      return
+    )
+
+    ; Otherwise get the next command.
+    do &ARGS get_arg &AID
+    entry &cmd
+    if ("&cmd"=="x")
+    (
+      ; Display help summary if the only other args are exit command (supports 'cd.cmm').
+      if (&cmd_count==0)
+      (
+        gosub Display_Help_Summary
+      )
+
+      ; Put the quit command back for proper processing after of the help sub returns.
+      do &ARGS reset_cmd_line &AID x
+      return
+    )
+    gosub shorten_main_cmd &cmd LONG
+    entry &short_cmd &cmd
+    if (&short_cmd==-1)
+    (
+      return
+    )
+
+    &cmd_count=&cmd_count+1
+
+    ; Print the command help header.
+    print "[--- ClockDriver.cmm Help for '" format.decimal(0, &short_cmd) ", &cmd' ---]:"
+    print " "
+
+    ; Switch on the specified command.
+    if (&short_cmd==0.)
+    (
+      print "  Adds clock filters which are applied by default to the 'clocks', 'domains',"
+      print "  and 'sources' operations."
+      print " "
+      print "Usage:  0|filter"
+      print "        [[e|enable=]filter]"
+      print "        [[c|clk=]filer]"
+      print "        [[d|domain=]filter]"
+      print "        [[s|source=]filter]"
+      print "        [[v|voltage=]filter]"
+      print "        [[f|flag=]filter]"
+      print " "
+      print "Examples:  filter reset"
+      print " "
+      print "           filter on *bimc* , , >=nom"
+      print "           filter enable=on clk=*bimc* voltage=>=nom"
+      print " "
+      print "           0 e=on c=*bimc* v=>=nom"
+      print "           0 on *bimc* v=>=nom"
+      print " "
+      print "Notes:"
+      print " "
+      print "  Enter 'filter reset' to remove all persistent filter defaults."
+      print "  Enter 'filter' (w/ no parameters) to display the default filters."
+      print " "
+      print "  All filters are case-insensitive and can be bypassed with ','."
+      print "  Unnamed filters are assigned in the usage order defined above."
+      print "  Only the first filter-name letter is relevant (e.g. 'enable'=='e')."
+      print " "
+      print "Filter options:"
+      print " "
+      print "  The clock, domain, and source filters may include head/tail '*' wildcards."
+      print "  The voltage filter may include the following comparator prefixes:"
+      print "      {'<', '>', '<=', '>=', '!'}."
+      print " "
+      print "  'enable'   = {'on', 'off', ','}."
+      print "  'voltage'  = {'no_req', 'ret', 'low_min', 'low_minus', 'low', 'low_p', 'nom', 'nom_p',"
+      print "                'high_m', 'high', 'turbo', 'high_ncpr'}  (see 'ClockVRegLevelType'/'VCSCornerType')."
+      print "  'flags'    = {'i|insuppressible', 's|suppressible'}."
+    )
+    else if (&short_cmd==1.)
+    (
+      print "  Displays info for the clocks listed in the driver context structure."
+      print " "
+      print "Usage:  1|clocks"
+      print "        [[e|enable=]filter]"
+      print "        [[c|clk=]filer]"
+      print "        [[d|domain=]filter]"
+      print "        [[s|source=]filter]"
+      print "        [[v|voltage=]filter]"
+      print "        [[f|flag=]filter]"
+      print " "
+      print "Examples:  clocks on *bimc* , , >=nom"
+      print "           clocks enable=on clk=*bimc* voltage=>=nom"
+      print " "
+      print "           1 e=on c=*bimc* v=>=nom"
+      print "           1 on *bimc* v=>=nom"
+      print " "
+      print "Notes:"
+      print " "
+      print "  All filters are case-insensitive and can be bypassed with ','."
+      print "  Unnamed filters are assigned in the usage order defined above."
+      print "  Only the first filter-name letter is relevant (e.g. 'enable'=='e')."
+      print " "
+      print "Filter options:"
+      print " "
+      print "  The clock, domain, and source filters may include head/tail '*' wildcards."
+      print "  The voltage filter may include the following comparator prefixes:"
+      print "      {'<', '>', '<=', '>=', '!'}."
+      print " "
+      print "  'enable'   = {'on', 'off', ','}."
+      print "  'voltage'  = {'no_req', 'ret', 'low_min', 'low_minus', 'low', 'low_p', 'nom', 'nom_p',"
+      print "                'high_m', 'high', 'turbo', 'high_ncpr'}  (see 'ClockVRegLevelType'/'VCSCornerType')."
+      print "  'flags'    = {'i|insuppressible', 's|suppressible'}."
+    )
+    else if (&short_cmd==2.)
+    (
+      print "  Displays info for the clock domains listed in the driver context structure."
+      print " "
+      print "Usage:  2|domains"
+      print "        [[e|enable=]filter]"
+      print "        [[d|domain=]filter]"
+      print "        [[s|source=]filter]"
+      print "        [[v|voltage=]filter]"
+      print "        [[f|flag=]filter]"
+      print " "
+      print "Examples:  domains on *conf* , , >=nom"
+      print "           domains enable=on domain=*conf* voltage=>=nom"
+      print " "
+      print "           2 e=on d=*conf* v=>=nom"
+      print "           2 on *conf* v=>=nom"
+      print " "
+      print "Notes:"
+      print " "
+      print "  All filters are case-insensitive and can be bypassed with ','."
+      print "  Unnamed filters are assigned in the usage order defined above."
+      print "  Only the first filter-name letter is relevant (e.g. 'enable'=='e')."
+      print " "
+      print "Filter options:"
+      print " "
+      print "  The domain and source filters may include head/tail '*' wildcards."
+      print "  The voltage filter may include the following comparator prefixes:"
+      print "      {'<', '>', '<=', '>=', '!'}."
+      print " "
+      print "  'enable'   = {'on', 'off', ','}."
+      print "  'voltage'  = {'no_req', 'ret', 'low_min', 'low_minus', 'low', 'low_p', 'nom', 'nom_p',"
+      print "                'high_m', 'high', 'turbo', 'high_ncpr'}  (see 'ClockVRegLevelType'/'VCSCornerType')."
+      print "  'flags'    = {'i|insuppressible', 's|suppressible'}."
+    )
+    else if (&short_cmd==3.)
+    (
+      print "  Displays info for the clock sources listed in the driver context structure."
+      print " "
+      print "Usage:  3|sources"
+      print "        [[e|enable=]filter]"
+      print "        [[s|source=]filter]"
+      print "        [[v|voltage=]filter]"
+      print "        [[f|flag=]filter]"
+      print " "
+      print "Examples:  sources on gpll* , >=nom"
+      print "           sources enable=on src=gpll* voltage=>=nom"
+      print " "
+      print "           3 e=on s=gpll* v=>=nom"
+      print "           3 on gpll* v=>=nom"
+      print " "
+      print "Notes:"
+      print " "
+      print "  All filters are case-insensitive and can be bypassed with ','."
+      print "  Unnamed filters are assigned in the usage order defined above."
+      print "  Only the first filter-name letter is relevant (e.g. 'enable'=='e')."
+      print " "
+      print "Filter options:"
+      print " "
+      print "  The source filter may include head/tail '*' wildcards."
+      print "  The voltage filter may include the following comparator prefixes:"
+      print "      {'<', '>', '<=', '>=', '!'}."
+      print " "
+      print "  'enable'   = {'on', 'off', ','}."
+      print "  'voltage'  = {'no_req', 'ret', 'low_min', 'low_minus', 'low', 'low_p', 'nom', 'nom_p',"
+      print "                'high_m', 'high', 'turbo', 'high_ncpr'}  (see 'ClockVRegLevelType'/'VCSCornerType')."
+    )
+    else if (&short_cmd==4.)
+    (
+      print "  Displays info for each power domain listed in the driver context structure."
+    )
+    else if (&short_cmd==5.)
+    (
+      print "  Lists enabled clocks by their active railway voltage request."
+    )
+    else if (&short_cmd==6.)
+    (
+      print "  Opens the clock list in a seperate table (see T32 'var.table')."
+    )
+    else if (&short_cmd==7.)
+    (
+      print "  Opens the clock domain list in a seperate table (see T32 'var.table')."
+    )
+    else if (&short_cmd==8.)
+    (
+      print "  Opens the clock source list in a seperate table (see T32 'var.table')."
+    )
+    else if (&short_cmd==9.)
+    (
+      print "  Opens the power domain list in a seperate table (see T32 'var.table')."
+    )
+    else if (&short_cmd==100.)
+    (
+      print "  Resets the script's window position and size to default values."
+    )
+    else if (&short_cmd==101.)
+    (
+      print "  Starts or stops logging output to a file."
+      print "  The output log automatically closes upon 'x' exit."
+    )
+
+    print " "
+    print " "
+  ) ; while TRUE()
+)
+
+;
+; Exit ClockDriver.cmm script.
+;
+Exit_ClockDriver:
+(
+  local &arg
+
+  gosub save_window_settings clockdriver_hist_window
+  gosub save_window_settings clockdriver_main_window
+
+  WINCLEAR clockdriver_hist_window
+  if (&cd_mode==0.)
+  (
+    WINCLEAR clockdriver_main_window
+  )
+
+  if (&logging_output!=0)
+  (
+    area.close &clockdriver_main_area
+  )
+
+  area.select   ; select default area
+  print "Exited 'ClockDriver.cmm'."
+
+  enddo
+)
+
+;
+; Diplay history.
+;
+Display_Hist:
+(
+  local &skip_view
+  entry &skip_view
+
+  ; Display the help area if required.
+  if ("&skip_view"=="")
+  (
+    if (WIN.EXIST("clockdriver_hist_window")==FALSE())
+    (
+      local &x_start
+      local &y_start
+      local &x_len
+      local &y_len
+
+      ; Check if there are previously saved window settings.
+      gosub find_saved_window_settings clockdriver_hist_window
+      entry &x_start &y_start &x_len &y_len
+
+      if (&x_start!=-1)
+      (
+        ; Use the previous window settings.
+        winpos &x_start &y_start &x_len &y_len 0. 0. clockdriver_hist_window
+      )
+      else
+      (
+        gosub Default_WINPOS_Hist
+      )
+    )
+
+    area.view CLKDRV_HIST
+    wintop clockdriver_hist_window
+  )
+
+  area.clear CLKDRV_HIST
+  area.select CLKDRV_HIST
+
+  ; Print the history entries.
+  print " "
+  print "[--- ClockDriver.cmm history: ---]"
+  print " "
+  do &ARGS print_hist &AID
+
+  ; Switch back to the main demo window.
+  area.select &clockdriver_main_area
+
+  return
+)
+
+;=============================================================================
+;
+; Generic utility sub-routines:
+;
+;   string      __acquire_args_cmm ( string expected_args_dir )
+;
+;   int         __cmp_file_ts ( string path_a, string path_b )
+;
+;   int         __get_file_date_int ( string path, [flag ERR_FATAL] )
+;
+;   (int, int)  __str_get_next_dec_int ( int idx, string str_in)
+;
+;   bool    does_area_exist ( string area )
+;
+;   bool    try_area_create ( string area, [int cols, int rows] )
+;
+;   bool    area_create_list (
+;             int num, [string area, int cols, int rows], ... )
+;
+;   string  detect_setup_var_format_config ( string format, string test_obj )
+;
+;   string  get_substr (
+;             string src_str, string end_str, int read_idx, [flag get_idx] )
+;
+;   string  get_substr_ws ( string src_str, int read_idx, [flag get_idx] )
+;
+;   void    print_string ( string str, int min_width, string opts)
+;
+;   string  get_target_string (
+;             int addr, int word_size, int buf_size, [flag replace_double_quotes] )
+;
+;   boolean match_str_wild_head_tail (
+;             string src_str, string search_str, booelean ignore_case )
+;
+;   int     get_accented_equal_sign_idx ( line line )
+;
+;   string  get_div_decimal_fixed_point_str (
+;             int decimal, int dec_shift, int precision, int min_str_len )
+;
+;   int[4]  extract_stored_win_dim ( string file_name, string window_name )
+;
+;   bool    save_window_settings ( string window_name, [flag print_error] )
+;
+;   int[4]  find_saved_window_settings ( string window_name )
+;
+;   bool    delete_saved_window_settings (
+;             string window_name, [flag print_error] )
+;
+;=============================================================================
+
+;
+; string __acquire_args_cmm ( string expected_args_dir )
+;
+; Returns a path to an 'args.cmm' script.
+;
+; Aborts the scripts upon any failure.
+;
+__acquire_args_cmm:
+(
+  local &args_path
+  local &server_args_path
+  local &expected_args_dir
+
+  entry &expected_args_dir
+
+  ON ERROR gosub
+  (
+    area.select
+    area.view
+    print " "
+    print %ERROR "Caught error in '__acquire_args_cmm'. Failed to fulfill 'args.cmm' dependency."
+    enddo
+  )
+
+  &args_path="&expected_args_dir\args.cmm"
+
+  ; Check if the expected 'args.cmm' file exists.
+  if (os.file(&args_path)==FALSE())
+  (
+    ; The expected 'args.cmm' is missing. Attempt to copy it from the server.
+    &server_args_path="\\ben\corebsp_labdata_0001\sysdrv\args\args.cmm"
+
+    &args_path=os.ptd()
+    &args_path="&args_path\__temp_args.cmm"
+
+    ; Check if a local temp server copy already exists.
+    if (os.file(&args_path)==FALSE())
+    (
+      ; The local temp copy does not exist--attempt to create it.
+      if (os.file(&server_args_path)==FALSE())
+      (
+        area.select
+        area.view
+        print " "
+        print %ERROR "ERROR: '&expected_args_dir\args.cmm', '&args_path\__temp_args.cmm' and"
+        print %ERROR "       '&server_args_path' do not exist. Missing required 'args.cmm' file."
+        enddo
+      )
+      if (os.file.access("&server_args_path", "R")==FALSE())
+      (
+        area.select
+        area.view
+        print " "
+        print %ERROR "ERROR: '&expected_args_dir\args.cmm' and '&args_path\__temp_args.cmm' do not exist and"
+        print %ERROR "       '&server_args_path' is not readable. Missing required 'args.cmm' file."
+        enddo
+      )
+
+      copy &server_args_path &args_path
+      if (os.file(&args_path)==FALSE())
+      (
+        ; Just try to use the server version if for some reason the copy to the
+        ; T32 temp directory failed.
+        &args_path="&server_args_path"
+      )
+    )
+    else
+    (
+      ; The local temp 'args.cmm' exists. Check if it matches the server version.
+      ; If the server version isn't found, the temp copy is used.
+      if ((os.file(&server_args_path)==TRUE())&&(os.file.access("&server_args_path", "R")==TRUE()))
+      (
+        local &args_cmp_ret
+
+        gosub __cmp_file_ts &server_args_path &args_path
+        entry &args_cmp_ret
+
+        if (&args_cmp_ret>0.)
+        (
+          ; The server copy is newer than the local temp copy--attempt to refresh.
+          del &args_path
+          copy &server_args_path &args_path
+
+          if (os.file(&args_path)==FALSE())
+          (
+            ; Just try to use the server version if for some reason the copy to the
+            ; T32 temp directory failed.
+            &args_path="&server_args_path"
+          )
+        )
+      )
+    )
+  )
+
+  return &args_path
+)
+
+;
+; int __cmp_file_ts ( string path_a, string path_b )
+;
+; Returns positive number if the first file is newer than the second file,
+; else returns zero if the two files have identical timestamps, else returns
+; a negative number. Assumes that both files exist.
+;
+; Aborts the scripts upon any failure.
+;
+__cmp_file_ts:
+(
+  local &path_a
+  local &path_b
+
+  entry &path_a &path_b
+
+  gosub __get_file_date_int &path_a ERR_FATAL
+  entry &path_a
+
+  gosub __get_file_date_int &path_b ERR_FATAL
+  entry &path_b
+
+  &path_a=(&path_a-&path_b)
+  return &path_a
+)
+
+;
+; int __get_file_date_int ( string path, [flag ERR_FATAL] )
+;
+; Returns an integer representation of the given file's timestamp data string
+; (see 'os.file.date()').
+;
+; Upon failure, if the 'ERR_FATAL' flag is given an error message is printed
+; and the script is aborted, else -1 is returned.
+;
+; NOTES:  This subroutine is greatly complicated by the fact that (at the time
+;         of its authoring) Lauterbach does not provide a way to obtain a
+;         1971-based file time-stamp integer, instead only providing methods
+;         get various file date strings of various formats which are not even
+;         consistant with the given Lauterbach documentation!
+;
+__get_file_date_int:
+(
+  local &year
+  local &month
+  local &day
+  local &date_int
+  local &date_str
+  local &hour_min_sec_am_pm_str
+  local &get_file_date_int_err
+
+  local &path
+  local &err_fatal
+
+  entry &path &err_fatal
+
+  &get_file_date_int_err=""
+  ON ERROR gosub
+  (
+    if ("&err_fatal"=="")
+    (
+      &get_file_date_int_err="!"
+      return
+    )
+    else
+    (
+      ; Abort if fatal error flag was given.
+      area.select
+      area.view
+      print " "
+      print %ERROR "Caught fatal error in __get_file_date_int(), file = '&path'."
+      enddo
+    )
+  )
+
+  ;
+  ; Don't use raw 'os.file.date()' as it's format doesn't match Lauterbach's
+  ; documentation which indicates that it might be regionalized. Instead use a
+  ; combination of the two date string formats, in order to get the AM/PM
+  ; included in the time string, but with a more reliable "year/month/day"
+  ; format for the date string.
+  ;
+  &hour_min_sec_am_pm_str=os.file.date(&path)
+  gosub __str_get_next_dec_int 0. "&hour_min_sec_am_pm_str"
+  entry &year &date_idx
+  gosub __str_get_next_dec_int &date_idx "&hour_min_sec_am_pm_str"
+  entry &year &date_idx
+  gosub __str_get_next_dec_int &date_idx "&hour_min_sec_am_pm_str"
+  entry &year &date_idx
+  &hour_min_sec_am_pm_str=string.cut("&hour_min_sec_am_pm_str", &date_idx)
+  &hour_min_sec_am_pm_str=string.trim("&hour_min_sec_am_pm_str")
+
+  &date_str=os.file.date2(&path)
+  &date_str="&date_str &hour_min_sec_am_pm_str"
+  &date_str=string.trim("&date_str")
+
+  if ("&get_file_date_int_err"=="")
+  (
+    ; Determine the 1971 year second-offset (assumes each month is <= 31 days).
+    gosub __str_get_next_dec_int 0. "&date_str"
+    entry &year &date_idx
+    &date_int=((&year-1971.)*32140800.)
+
+    if ("&get_file_date_int_err"=="")
+    (
+      ; Read the month (assumes each month is <= 31 days).
+      gosub __str_get_next_dec_int &date_idx "&date_str"
+      entry &month &date_idx
+      &date_int=(&date_int+(&month*2678400.))
+
+      if ("&get_file_date_int_err"=="")
+      (
+        ; Read the day.
+        gosub __str_get_next_dec_int &date_idx "&date_str"
+        entry &day &date_idx
+        &date_int=(&date_int+(&day*86400.))
+
+        if ("&get_file_date_int_err"=="")
+        (
+          ; Read the hour/minute/second/AM-PM.
+          local &hour
+          local &min
+          local &sec
+          local &am_pm_str
+          gosub __str_get_next_dec_int &date_idx "&date_str"
+          entry &hour &date_idx
+
+          if ("&get_file_date_int_err"=="")
+          (
+            gosub __str_get_next_dec_int &date_idx "&date_str"
+            entry &min &date_idx
+
+            if ("&get_file_date_int_err"=="")
+            (
+              gosub __str_get_next_dec_int &date_idx "&date_str"
+              entry &sec &date_idx
+
+              if ("&get_file_date_int_err"=="")
+              (
+                &am_pm_str=string.cut("&date_str", &date_idx)
+                &am_pm_str=string.trim("&am_pm_str")
+                &am_pm_str=string.lower("&am_pm_str")
+                if ("&am_pm_str"=="pm")
+                (
+                  &hour=(&hour+12.)
+                )
+
+                ; Calculate the final date integer and return it.
+                &date_int=(&date_int+(&hour*3600.)+(&min*60.)+&sec)
+                if ("&get_file_date_int_err"=="")
+                (
+                  return &date_int
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  )
+
+  ; Otherwise return an error code.
+  return -1.
+)
+
+;
+; (int, int) __str_get_next_dec_int ( int idx, string str_in )
+;
+; Returns the next integer value extracted from the given string and start
+; index along with the next string read index. The integer value is derived
+; from the string's first digit sequence which is treated as a decimal
+; formatted number. Returns an empty string if no such digit section is found.
+;
+; NOTES: The 'str_in' input should be wrapped in double quotes.
+;
+__str_get_next_dec_int:
+(
+  local &int_val
+  local &int_start_idx
+  local &char
+  local &len
+
+  local &idx
+  local &str_in
+
+  entry &idx &str_in
+
+  &int_start_idx=""
+  &char=1.
+  while (&char>0.)
+  (
+    &char=string.char(&str_in, &idx)
+
+    if ("&int_start_idx"=="")
+    (
+      if ((&char>='0')&&(&char<='9'))
+      (
+        &int_start_idx=&idx
+      )
+    )
+    else
+    (
+      if ((&char<'0')||(&char>'9'))
+      (
+        &len=(&idx-&int_start_idx)
+        &int_val=string.mid(&str_in, &int_start_idx, &len)
+        &int_val="&(int_val)."
+        &idx=(&idx+1.)
+
+        return &int_val &idx
+      )
+    )
+
+    &idx=&idx+1.
+  )
+
+  return ""
+)
+
+;
+; bool does_area_exist ( string area )
+;
+; Returns non-zero if the given area currently exists.
+;
+; SIDE EFFECTS:  Selects the tested area if it exists, or the default area.
+;
+does_area_exist:
+(
+  local &area_name
+  entry &area_name
+
+  ON ERROR gosub
+  (
+    ; Clear the error message.
+    area.select
+    print " "
+
+    &clk_err="does_area_exist"
+    return
+  )
+
+  &clk_err=""
+  area.select &area_name
+
+  if ("&clk_err"=="")
+  (
+    return 1
+  )
+  else
+  (
+    return 0
+  )
+)
+
+;
+; bool try_area_create ( string area, [int cols, int rows] )
+;
+; Attempts to create an area (see 'area.create'). Returns non-zero if the 
+; area is successfully created. If the 'area.create' operation fails, the
+; caller may run 'area.reset' then re-try creating the area. The 'rows' and
+; 'cols' arguments can be bypassed by omitting both.
+;
+; T32 has a maximum number of concurrent areas (only 10 at the time of
+; writing this sub). Unfortunately these areas can only be deleted in bulk
+; with the highly destructive 'area.reset' (although some T32 documentation
+; incorrectly states that 'area.close <area_name>' destroys the area, it
+; doesn't--it only closes the area's output logging).
+;
+; Furthermore, areas aren't destroyed automatically upon script exit, so
+; if a user were to run multiple scripts with multiple areas they could
+; quickly exhaust the 10-area limit and then find that subsequent script
+; launches always fail, potentially with confusing error messages. This
+; utility sub is intended to mitigate this risk without having to immidiately
+; resort to running a global 'area.reset' during script initialization.
+;
+try_area_create:
+(
+  local &area_name
+  local &cols
+  local &rows
+
+  entry &area_name &cols &rows
+
+  ON ERROR gosub
+  (
+    &clk_err="try_area_create"
+    return
+  )
+
+  &clk_err=""
+  area.create &area_name &cols &rows
+
+  if ("&clk_err"=="try_area_create")
+  (
+    return 0
+  )
+  else
+  (
+    return 1
+  )
+)
+
+;
+; bool area_create_list ( int num, [string area, int cols, int rows], ... )
+;
+; Attempts to create a list of areas. Will run the global 'area.reset' command
+; upon the first failure, and return 0 upon the second failure. Otherwise
+; returns non-zero upon success.
+;
+area_create_list:
+(
+  local &success
+  local &already_failed
+  local &area_name
+  local &cols
+  local &rows
+  local &area_idx
+  local &num
+  local &input_line
+  local &line_idx
+  local &area_list_line_idx
+
+  entry %LINE &input_line
+
+  ; Get the number of areas to create.
+  gosub get_substr_ws "&input_line" 0. GET_IDX
+  entry &num &area_list_line_idx
+  if ("&num"=="")
+  (
+    print %ERROR "ERROR: area_create_list() detected invalid input: '&input_line'."
+    return 0
+  )
+
+  &already_failed=0
+
+area_create_list_process_areas:
+
+  ; Create each area.
+  &area_idx=0
+  &line_idx=&area_list_line_idx
+  while (&area_idx<&num)
+  (
+    ; Read in the area information.
+    gosub get_substr_ws "&input_line" &line_idx GET_IDX
+    entry &area_name &line_idx
+    if ("&area_name"=="")
+    (
+      goto area_create_list_too_few_args
+    )
+    gosub get_substr_ws "&input_line" &line_idx GET_IDX
+    entry &cols &line_idx
+    if ("&cols"=="")
+    (
+      goto area_create_list_too_few_args
+    )
+    gosub get_substr_ws "&input_line" &line_idx GET_IDX
+    entry &rows &line_idx
+    if ("&rows"=="")
+    (
+      goto area_create_list_too_few_args
+    )
+
+    ; Check if the row/col argument was bypassed.
+    if (("&cols"==",")||("&rows"==","))
+    (
+      ; Apply a sanity check for row/col bypass.
+      if (("&cols"!=",")||("&rows"!=","))
+      (
+        print %ERROR "ERROR: area_create_list() detected invalid row/col settings for '&area_name'."
+        print %ERROR "       Row/col must both be an integer or both be ',' (got row='&row', col='&col'). "
+        return 0
+      )
+
+      &cols=""
+      &rows=""
+    )
+
+    ; Attempt to create the area.
+    gosub try_area_create &area_name &cols &rows
+    entry &success
+
+    if (&success==0)
+    (
+      ; Already failed => infinite impending failures.
+      if (&already_failed!=0)
+      (
+        print %ERROR %Decimal "ERROR: area_create_list() failed to create &num areas."
+        return 0
+      )
+
+      ; Delete all areas and try creating the area list once more.
+      &already_failed=1
+      area.reset
+      goto area_create_list_process_areas
+    )
+
+    &area_idx=&area_idx+1
+  )
+
+  return 1
+
+area_create_list_too_few_args:
+
+  print %ERROR "ERROR: area_create_list() detected too few arguments (num_areas='&num')."
+  return 0
+)
+
+;
+; string detect_setup_var_format_config ( string format, string test_obj )
+;
+; Attempts to detect if the given "setup.var" format is enabled. Note that
+; T32 prints the decimal format by default if no other radix format is enabled,
+; so '%DECIMAL' detection isn't gauranteed to be accurate. Requires that the
+; system is attached for debugging.
+;
+; Usage:  {%DECIMAL} -or- {%SYMBOL, &target_symbol_name_ref}.
+;
+; Returns:  "on"      => Format is enabled.
+;           "off"     => Format is disabled.
+;           "MISSING" => Symbols aren't loaded (%SYMBOL only).
+;
+; PRACTICE does not provide this functionality. It also does not provide
+; save/restore functionality for "setup.var", which is unfortunate since
+; those settings affect var.string() and var.print() outputs.
+;
+detect_setup_var_format_config:
+(
+  local &format
+  local &test_obj
+  local &var_str
+
+  entry &format &test_obj
+
+  ; Switch on the format type.
+  if ("&format"=="%DECIMAL")
+  (
+    ; Create local test integer for decimal format detection.
+    var.newlocal int \local_test_int
+    var.assign \local_test_int = 0x10
+
+    ;
+    ; Get the first two characters from the T32 standard var print output
+    ; (decimal format is always the first integer format printed if decimal
+    ; format is enabled or no other radix format is enabled).
+    ;
+    &var_str=var.string(\local_test_int)
+    &var_str=string.trim("&var_str")
+    &var_str=string.mid("&var_str", 0, 2)
+
+    if ("&var_str"=="16")
+    (
+      ;
+      ; Note that the decimal format might not actually be enabled (T32 will
+      ; print the decimal format if no other radix replacement is enabled).
+      ;
+      return on
+    )
+    else
+    (
+      return off
+    )
+  )
+  else if ("&format"=="%SYMBOL")
+  (
+    local &idx
+
+    ; First check if test symbol is loaded.
+    if (y.exist(&test_obj)==FALSE())
+    (
+      ; Test symbol wasn't found.
+      return MISSING
+    )
+
+    ; Get the T32 standard var print output.
+    &var_str=var.string("&test_obj")
+    &var_str=string.trim("&var_str")
+
+    gosub get_accented_equal_sign_idx &var_str
+    entry &idx
+
+    ; If no accented equal sign was found then symbol format is defintely off.
+    if (&idx==-1)
+    (
+      return off
+    )
+
+    ;
+    ; Check if first post-accented-equal-sign token is the symbol name (symbol
+    ; name is always returned first after the address for this case, if symbol
+    ; format is enabled).
+    ;
+    &var_str=string.cut("&var_str", &idx+2) ; Cut off the "0x[address] = " prefix.
+    &test_obj=string.cut("&test_obj", 1)      ; Cut off the "&" prefix from input arg.
+
+    &len=string.length("&test_obj")
+    &var_str=string.mid("&var_str", 0, &len) ; Cut off any trailing var info.
+
+    if ("&var_str"=="&test_obj")
+    (
+      return on
+    )
+    else
+    (
+      return off
+    )
+  )
+
+  ; Invalid input.
+  print %ERROR "ERROR: detect_setup_var_format_config() invalid input: {format='&format', test_obj='&test_obj'}."
+  print %ERROR "       Expected format of '%SYMBOL' or '%DECIMAL'."
+  return
+)
+
+;
+; string get_substr ( string src_str, string end_str, int read_idx, [flag get_idx] )
+;
+; Returns a sub-string from a source string, starting from a read index and
+; ending before a terminator string. If 'get_idx' is provided, the index of the
+; subsequent sub-string is also returned (-1 if the sub-string is not found).
+;
+; Example: <gosub get_substr "abcdef" "ef" 1> returns "bcd" (sans quotes).
+;
+get_substr:
+(
+  local &end_idx
+  local &src_str
+  local &end_str
+  local &read_idx
+  local &sub_str
+  local &get_idx
+
+  entry &src_str &end_str &read_idx &get_idx
+
+  &end_idx=string.scan(&src_str, &end_str, &read_idx)
+  if (&end_idx==-1)
+  (
+    &sub_str=string.cut(&src_str, &read_idx)
+  )
+  else
+  (
+    &sub_str=string.mid(&src_str, &read_idx, &end_idx-&read_idx)
+  )
+
+  if ("&get_idx"=="")
+  (
+    return &sub_str
+  )
+  else
+  (
+    return &sub_str &end_idx
+  )
+)
+
+;
+; string get_substr_ws ( string src_str, int read_idx, [flag get_idx] )
+;
+; Returns a sub-string from a source string, starting from a read index and
+; ending before a ' ' whitespace terminator. If 'get_idx' flag is provided
+; and the substring is found, the index of the start of the subsequent
+; substring is also returned (-1 if there is no subsequent sub-string).
+;
+; Example: <gosub get_substr_ws "a  bc  de" 1> returns "bc" (sans quotes).
+;
+get_substr_ws:
+(
+  local &src_str
+  local &src_len
+  local &read_idx
+  local &sub_str
+  local &start_idx
+  local &get_idx
+
+  entry &src_str &read_idx &get_idx
+
+  if (&read_idx<0)
+  (
+    ; Negative read index--return empty string (and no index).
+    return
+  )
+
+  &src_len=string.length(&src_str)
+  &search_mode="!="
+
+  ; Find the start of non-whitespace segment.
+  while (&read_idx<&src_len)
+  (
+    if (string.char(&src_str, &read_idx)!=' ')
+    (
+      &start_idx=&read_idx
+      goto get_substr_ws_find_end_idx
+    )
+
+    &read_idx=&read_idx+1
+  )
+
+  ; No non-whitespace found--return empty string (and no index).
+  return
+
+get_substr_ws_find_end_idx:
+
+  ; Find the end of non-whitespace segment.
+  &read_idx=&read_idx+1
+  while (&read_idx<&src_len)
+  (
+    if (string.char(&src_str, &read_idx)==' ')
+    (
+      ; Cut out leading and trailing whitespace
+      &sub_str=string.mid(&src_str, &start_idx, &read_idx-&start_idx)
+
+      goto get_substr_ws_return_substr
+    )
+
+    &read_idx=&read_idx+1
+  )
+
+  ; No trailing white-space found--cut out any leading whitespace.
+  &sub_str=string.cut(&src_str, &start_idx)
+  &read_idx=-1
+
+get_substr_ws_return_substr:
+
+  if ("&get_idx"=="")
+  (
+    return &sub_str
+  )
+  else
+  (
+    return &sub_str &read_idx
+  )
+)
+
+;
+; void print_string ( string str, int min_width, string opts)
+;
+; Prints a left-aligned string with a minimum length, padded with spaces.
+;
+print_string:
+(
+  local &str
+  local &min_width
+  local &opts
+  local &line_len
+
+  entry &str &min_width &opts
+
+  &line_len=string.length(&str)
+  if (&line_len<&min_width)
+  (
+    &line_len=&min_width
+  )
+
+  print &opts format.string(&str, &line_len, ' ')
+  return
+)
+
+;
+; boolean match_str_wild_head_tail ( string src_str, string search_str, booelean ignore_case )
+;
+; Returns non-zero iff the search string is found in the source string.
+; Supports '*' wildcards at the search string head/tail.
+;
+match_str_wild_head_tail:
+(
+  local &match
+  local &wild_head
+  local &wild_tail
+
+  local &src_str
+  local &search_str
+
+  entry &src_str &search_str &ignore_case
+
+  &wild_head=0
+  &wild_tail=0
+  &src_str_length=STRING.LENGTH("&src_str")
+  &search_str_len=STRING.LENGTH("&search_str")
+
+  ; Ignore case differences if requested
+  if ("&ignore_case"!="")
+  (
+    &src_str=string.lower("&src_str")
+    &search_str=string.lower("&search_str")
+  )
+
+  ; Check for head/tail wildcards.
+  if (STRING.SCAN("&search_str", "*", 0)==0)
+  (
+    &wild_head=1
+  )
+  if (STRING.SCAN("&search_str", "*", 1)==(STRING.LENGTH("&search_str")-1))
+  (
+    &wild_tail=1
+  )
+
+  ; Attempt to match the search string within the source string.
+  if ((&wild_head==1)&&(&wild_tail==1))
+  (
+    if (STRING.SCAN("&src_str", STRING.MID("&search_str", 1, &search_str_len-2), 0)!=-1)
+    ( 
+      return 1
+    )
+  )
+  else if (&wild_head==1)
+  (
+    if (STRING.MID("&src_str", &src_str_length-&search_str_len+1, &search_str_len-1)==STRING.CUT("&search_str", 1))
+    ( 
+      return 1
+    )
+  )
+  else if (&wild_tail==1)
+  (
+    if (STRING.MID("&src_str", 0, &search_str_len-1)==STRING.CUT("&search_str", -1))
+    ( 
+      return 1
+    )
+  )
+  else if ("&src_str"=="&search_str")
+  (
+    return 1
+  )
+
+  ; Failed to find the search string in the source string.
+  return 0
+)
+
+;
+; int get_accented_equal_sign_idx ( line line )
+;
+; Returns the index of an accented equal sign in a string or -1 if not found.
+;
+; Reads entire line (do not include double quote wrapper in the input).
+; Aborts the script by default if the accented equal sign is not found.
+;
+get_accented_equal_sign_idx:
+(
+  local &idx
+  local &len
+  local &line
+  local &accented_equal_sign
+
+  entry %LINE &line
+
+  ; T32's accented equal sign that's generated by var.print() and var.string()
+  &accented_equal_sign=0x1B
+
+  &idx=0.
+  &len=String.length("&line")
+  while (&idx<&len)
+  (
+    if (string.char("&line", &idx)==&accented_equal_sign)
+    (
+      return &idx
+    )
+
+    &idx=&idx+1.
+  )
+
+  return -1.
+)
+
+;
+; string get_div_decimal_fixed_point_str (
+;           int decimal, int dec_shift, int precision, int min_str_len )
+;
+; Takes an integer input, shifts it to the right by a number of decimal digits,
+; and returns a right-aligned string with a fixed number of post-decimal-point
+; digits. Intended as a way to upgrade an SI prefix while maintaining some
+; fractional precision (e.g. convert KHz to MHz with fixed precision).
+;
+; Return value includes double quotes to prevent PRACTICE from trimming leading
+; whitespace.
+;
+get_div_decimal_fixed_point_str:
+(
+  local &decimal      ; The integer value to operate on.
+  local &dec_shift    ; The amount of decimal digit right-shift.
+  local &precision    ; The number of digits after the decimal point.
+  local &min_str_len  ; The minimum returned string length.
+
+  local &dec_div
+  local &dec_mod
+  local &dec_precision_div
+  local &count
+  local &dec_str
+  local &dec_frac
+  local &str_len
+
+  entry &decimal &dec_shift &precision &min_str_len
+
+  ; Get the decimal shift divider.
+  &count=0.
+  &dec_div=1.
+  while (&count<&dec_shift)
+  (
+    &dec_div=(&dec_div*10.)
+    &count=&count+1
+  )
+
+  ; Generate the initial shifted decimal string.
+  &dec_str=format.decimal(1, &decimal/&dec_div)
+
+  if (&precision>0)
+  (
+    ; Get the decimal precision modulus.
+    &count=0.
+    &dec_mod=1.
+    while (&count<&precision)
+    (
+      &dec_mod=(&dec_mod*10.)
+      &count=&count+1
+    )
+    &dec_precision_div=(&dec_div/&dec_mod)
+
+    ; Get the fractional decimal part.
+    &dec_frac=((&decimal/&dec_precision_div)%&dec_mod)
+    &dec_frac=format.decimal(1, &dec_frac)
+
+    ; Enforce minimum precision.
+    &str_len=string.length("&dec_frac")
+    while (&str_len<&precision)
+    (
+      &dec_frac="&(dec_frac)0"
+      &str_len=&str_len+1
+    )
+
+    ; Join the decimal integer and fractional parts.
+    &dec_str="&dec_str.&dec_frac"
+  )
+
+  ; Pad the left side (right-hand alignment => decimal-point alignment).
+  &count=0.
+  &str_len=string.length("&dec_str")
+  while (&count<(&min_str_len-&str_len))
+  (
+    &dec_str=" &dec_str"
+    &count=&count+1
+  )
+
+  ; Return value includes double quotes to avoid trimming leading whitespace...
+  return "&dec_str"
+)
+
+;
+; int[2] extract_stored_win_dim ( string file_name,  string window_name )
+;
+; Returns the settings for the given window extracted from a previously
+; stored file. Returns -1 if the window settings aren't found.
+;
+; Returns: {x_start, y_start, x_length, y_length}
+;          (all values are in row or column units).
+;
+extract_stored_win_dim:
+(
+  local &window_name
+  local &file_name
+  local &x_start
+  local &y_start
+  local &x_len
+  local &y_len
+  local &line_in
+  local &idx
+
+  entry &file_name &window_name
+
+  &x_start=-1
+  &y_start=-1
+  &y_len=-1
+  &x_start=-1
+
+  ; Open the input file.
+  (
+    &clk_err=""
+    ON ERROR gosub
+    (
+      print %ERROR "ERROR: extract_stored_win_dim() failed to open '&file_name'."
+      &clk_err="extract_stored_win_dim"
+      return
+    )
+    OPEN #1 &file_name /Read
+  )
+
+  if ("&clk_err"=="extract_stored_win_dim")
+  (
+    goto extract_stored_win_dim_error
+  )
+
+  ; Scan the input file for "winpos ... window_name".
+  WHILE TRUE()
+  (
+    READ #1 %line &line_in
+    if (EOF()==TRUE())
+    (
+      goto extract_stored_win_dim_error
+    )
+    &line_in=string.lower("&line_in")
+
+    ; Search for 'winpos' line header and cut it out if found.
+    &idx=string.scan("&line_in", "winpos", 0)
+    if (&idx!=-1)
+    (
+      &line_in=string.cut("&line_in", &idx+6.)
+
+      ; Search for the specified window name.
+      if (string.scan("&line_in", "&window_name", 0)!=-1)
+      (
+        ; Extract the specified window's settings.
+        gosub get_substr_ws "&line_in" 0. GET_IDX
+        entry &x_start &idx
+        if ("&x_start"=="")
+        (
+          goto extract_stored_win_dim_error
+        )
+        gosub get_substr_ws "&line_in" &idx GET_IDX
+        entry &y_start &idx
+        if ("&y_start"=="")
+        (
+          goto extract_stored_win_dim_error
+        )
+        gosub get_substr_ws "&line_in" &idx GET_IDX
+        entry &x_len &idx
+        if ("&x_len"=="")
+        (
+          goto extract_stored_win_dim_error
+        )
+        gosub get_substr_ws "&line_in" &idx GET_IDX
+        entry &y_len &idx
+        if ("&y_len"=="")
+        (
+          goto extract_stored_win_dim_error
+        )
+
+        CLOSE #1
+        return &x_start &y_start &x_len &y_len
+      )
+    )
+  )
+
+extract_stored_win_dim_error:
+
+  CLOSE #1
+  return -1 -1 -1 -1
+)
+
+;
+; bool save_window_settings ( string window_name, [flag print_error] )
+;
+; Saves a script's window configuration (position + size).
+; See restore_window_settings() for the restore operation.
+; Returns non-zero if the store operation succeeded.
+;
+; This is provided as a method to allow scripts to save/restore their window
+; settings accross multiple script sessions. T32's "store <file> win" tool
+; is insufficient to do this since it will only save/restore *all* T32 windows,
+; not targeted windows.
+;
+save_window_settings:
+(
+  local &file
+  local &window_name
+  local &script_name
+  local &extn_less_dim_fname
+  local &print_error
+
+  &clk_err=""
+  ON ERROR gosub
+  (
+    &clk_err="save_window_settings"
+    return
+  )
+
+  entry &window_name &print_error
+
+  ; Store the full window configuration in a file under the temporary directory.
+  &script_name=os.ppf()
+  &script_name=os.file.name("&script_name")
+  &extn_less_dim_fname="__&(script_name)_&(window_name)_dim"
+  &extn_less_dim_fname=string.replace("&extn_less_dim_fname", ".", "_", 0.)
+
+  &file=os.ptd()
+  &file="&(file)\&(extn_less_dim_fname).cmm"
+  store &file win
+
+  if ("&clk_err"=="save_window_settings")
+  (
+    if ("&print_error"!="")
+    (
+      print %ERROR "ERROR: save_window_settings() failed to store settings for '&window_name'."
+    )
+    return 0
+  )
+  else
+  (
+    return 1
+  )
+)
+
+;
+; int[4] find_saved_window_settings ( string window_name )
+;
+; Returns the settings for the given window extracted from a previously
+; save. Returns -1 if the window settings aren't found.
+;
+; Returns: {x_start, y_start, x_length, y_length}
+;          (all values are in row or column units).
+;
+; This is provided as a method to allow scripts to save/restore their window
+; settings accross multiple script sessions. T32's "store <file> win" tool
+; is insufficient to do this since it will only save/restore *all* T32 windows,
+; not targeted windows.
+;
+find_saved_window_settings:
+(
+  local &x_start
+  local &y_start
+  local &x_len
+  local &y_len
+  local &window_name
+  local &file
+  local &script_name
+  local &extn_less_dim_fname
+  local &first
+
+  entry &window_name
+
+  ; Check if the window's saved settings file exists.
+  &script_name=os.ppf()
+  &script_name=os.file.name("&script_name")
+  &extn_less_dim_fname="__&(script_name)_&(window_name)_dim"
+  &extn_less_dim_fname=string.replace("&extn_less_dim_fname", ".", "_", 0.)
+
+  &first=0.
+  (
+    ON ERROR gosub
+    (
+      var.newglobal char \&extn_less_dim_fname
+      &first=1.
+      return
+    )
+
+    var.assign \&extn_less_dim_fname = 0
+  )
+
+  &file=os.ptd()
+  &file="&(file)\&(extn_less_dim_fname).cmm"
+
+  if (&first!=0.)
+  (
+    ;
+    ; Don't attempt to restore on the first time--instead delete the save.
+    ; This prevents issues where a new T32 session is opened in a smaller
+    ; window but the launched script maintains its old oversize dimensions.
+    ;
+    (
+      ON ERROR continue
+      del &file
+    )
+    return -1 -1 -1 -1
+  )
+
+  if (os.file.access("&file", "R")==FALSE())
+  (
+    return -1 -1 -1 -1
+  )
+
+  ; Search for previously saved settings for this window.
+  gosub extract_stored_win_dim &file &window_name
+  entry &x_start &y_start &x_len &y_len
+
+  return &x_start &y_start &x_len &y_len
+)
+
+;
+; bool delete_saved_window_settings ( string window_name, [flag print_error] )
+;
+; Deletes a window settings file.
+;
+delete_saved_window_settings:
+(
+  local &success
+  local &file
+  local &script_name
+  local &extn_less_dim_fname
+  local &window_name
+  local &print_error
+
+  entry &window_name &print_error
+
+  ; Check if the window's saved settings file exists.
+  &script_name=os.ppf()
+  &script_name=os.file.name("&script_name")
+  &extn_less_dim_fname="__&(script_name)_&(window_name)_dim"
+  &extn_less_dim_fname=string.replace("&extn_less_dim_fname", ".", "_", 0.)
+
+  &file=os.ptd()
+  &file="&(file)\&(extn_less_dim_fname).cmm"
+  if (os.file.access("&file", "W")==TRUE())
+  (
+    ; Delete the file.
+    del &file
+    &success=1
+  )
+  else
+  (
+    if ("&print_error"!="")
+    (
+      print %ERROR "ERROR: delete_saved_window_settings() failed to delete window settings for '&window_name'."
+    )
+    &success=0
+  )
+
+  return &success
+)
+
+;=============================================================================
+;
+; ClockDriver.cmm utility sub-routines:
+;
+;=============================================================================
+
+;
+; Converts main commands into their shortened integer form.
+; Exit/help/history commands are handled within the argument bufferer.
+;
+shorten_main_cmd:
+(
+  local &short_cmd
+  local &long_cmd
+  local &cmd_in
+  entry &cmd_in &get_long_cmd
+
+  if (("&cmd_in"=="filter")||("&cmd_in"=="0"))
+  (
+    &short_cmd=0.
+    &long_cmd="filter"
+  )
+  else if (("&cmd_in"=="clocks")||("&cmd_in"=="1"))
+  (
+    &short_cmd=1.
+    &long_cmd="clocks"
+  )
+  else if (("&cmd_in"=="domains")||("&cmd_in"=="2"))
+  (
+    &short_cmd=2.
+    &long_cmd="domains"
+  )
+  else if (("&cmd_in"=="sources")||("&cmd_in"=="3"))
+  (
+    &short_cmd=3.
+    &long_cmd="sources"
+  )
+  else if (("&cmd_in"=="power")||("&cmd_in"=="4"))
+  (
+    &short_cmd=4.
+    &long_cmd="power"
+  )
+  else if (("&cmd_in"=="clkrail")||("&cmd_in"=="5"))
+  (
+    &short_cmd=5.
+    &long_cmd="clkrail"
+  )
+  else if (("&cmd_in"=="clktab")||("&cmd_in"=="6"))
+  (
+    &short_cmd=6.
+    &long_cmd="clktab"
+  )
+  else if (("&cmd_in"=="domaintab")||("&cmd_in"=="7"))
+  (
+    &short_cmd=7.
+    &long_cmd="domaintab"
+  )
+  else if (("&cmd_in"=="srctab")||("&cmd_in"=="8"))
+  (
+    &short_cmd=8.
+    &long_cmd="srctab"
+  )
+  else if (("&cmd_in"=="pwrtab")||("&cmd_in"=="9"))
+  (
+    &short_cmd=9.
+    &long_cmd="pwrtab"
+  )
+  else if (("&cmd_in"=="wr")||("&cmd_in"=="100"))
+  (
+    &short_cmd=100.
+    &long_cmd="wr"
+  )
+  else if (("&cmd_in"=="log")||("&cmd_in"=="101"))
+  (
+    &short_cmd=101.
+    &long_cmd="log"
+  )
+  else
+  (
+    print %ERROR "ERROR: Unrecognized command '&cmd_in'. Enter '?' for help message."
+    &short_cmd=-1.
+    &long_cmd="INV_CMD"
+  )
+
+  if ("&get_long_cmd"!="")
+  (
+    return &short_cmd &long_cmd
+  )
+  else
+  (
+    return &short_cmd
+  )
+)
+
+;
+; Check for improper '?' help usage (simplifies Display_Help() logic).
+; Returns "ERROR" if invalid '?' usage is detected in the current command line.
+;
+display_help_verify_cmd_line:
+(
+  local &cmd_line
+
+  do &ARGS get_cmd_line &AID UNREAD
+  entry %LINE &cmd_line
+  if (string.scan("&cmd_line", "?", 0)!=-1)
+  (
+    print %ERROR "ERROR: '?' must be the first argument."
+    return ERROR
+  )
+
+  return
+)
+
+;
+; Configures "setup.var" formats for var.string() operations.
+;
+configure_clock_driver_setup_var_formats:
+(
+  local &symbol_format_state
+  local &decimal_format_state
+  local &test_sym
+
+  entry &test_sym
+
+  ; Attempt to auto-attach the debugger.
+  if (&sys_m_a_failed==0.)
+  (
+    ON ERROR gosub
+    (
+      &sys_m_a_failed=1.
+
+      area.select
+      print " "
+      area.select &clockdriver_main_area
+
+      return
+    )
+
+    sys.m.a
+  )
+
+  ; Detect current symbol and decimal format configuration.
+  gosub detect_setup_var_format_config %SYMBOL &test_sym
+  entry &symbol_format_state
+
+  ; Enabled symbol and decimal formats.
+  if ("&symbol_format_state"!="MISSING")
+  (
+    gosub detect_setup_var_format_config %DECIMAL
+    entry &decimal_format_state
+
+    setup.var %SYMBOL %DECIMAL
+  )
+
+  ; Return the original format configuration.
+  return &symbol_format_state &decimal_format_state
+)
+
+;
+; Restores "setup.var" decimal and symbol operations.
+;
+restore_clock_driver_setup_var_formats:
+(
+  local &symbol_format_state
+  local &decimal_format_state
+
+  entry &symbol_format_state &decimal_format_state
+
+  ; Restore symbol and decimal formats to original configuration.
+  setup.var %SYMBOL.&symbol_format_state %DECIMAL.&decimal_format_state
+
+  return
+)
+
+;
+; Returns non-zero iff the reference count passes the filter.
+;
+apply_ref_count_filter:
+(
+  local &ref_count_filter
+  local &ref_count
+  entry &ref_count_filter &ref_count
+
+  ; Handle "all" state filter.
+  if (&ref_count_filter==2)
+  (
+    return 1
+  )
+
+  ; Handle "on" and "off" filters.
+  if ((&ref_count!=0)^^(&ref_count_filter!=0))
+  (
+    return 1
+  )
+  else
+  (
+    return 0
+  )
+)
+
+;
+; Expands the state filter string and also returns a reference count filter.
+;
+expand_state_filter:
+(
+  local &state_filter
+  local &ref_count_filter
+
+  entry &state_filter
+  &state_filter=string.lower("&state_filter")
+
+  if ("&state_filter"==",")
+  (
+    &state_filter="All"
+    &ref_count_filter=2
+  )
+  else if ("&state_filter"=="off")
+  (
+    &state_filter="Disabled"
+    &ref_count_filter=1
+  )
+  else if ("&state_filter"=="on")
+  (
+    ; Apply "on" state filter by default.
+    &state_filter="Enabled"
+    &ref_count_filter=0
+  )
+  else
+  (
+    print %ERROR "ERROR: Invalid state filter '&state_filter'. Should be {on, off}."
+
+    return <ERROR> ,
+  )
+
+  return &state_filter &ref_count_filter
+)
+
+;
+; Map shortened vreg string to 'ClockVRegLevelType'/'VCSCornerType' suffix.
+;
+expand_volt_filter:
+(
+  local &volt_filter_label
+  local &volt_enum_filter
+  local &volt_filter_in
+  local &first_char
+  local &second_char
+  local &vreg_sufix
+
+  entry &volt_filter_in
+
+  ;
+  ; Process optional comparator prefix.
+  ;
+  &first_char=string.char("&volt_filter_in", 0)
+  &second_char=string.char("&volt_filter_in", 1)
+  if (&first_char=='=')
+  (
+    ; Print warning in case where '==' prefix is used (instead of no prefix).
+    goto expand_volt_filter_error
+  )
+  else if (&first_char=='!')
+  (
+    if (&second_char=='=')
+    (
+      ; Print warning in case where '!=' prefix is used (instead of '!' prefix).
+      goto expand_volt_filter_error
+    )
+
+    &volt_filter_label="!"
+    &volt_enum_filter="=="
+    &volt_filter_in=string.cut("&volt_filter_in", 1)
+  )
+  else if (&first_char=='>')
+  (
+    if (&second_char=='=')
+    (
+      &volt_filter_label=">="
+      &volt_enum_filter="<"
+      &volt_filter_in=string.cut("&volt_filter_in", 2)
+    )
+    else
+    (
+      &volt_filter_label=">"
+      &volt_enum_filter="<="
+      &volt_filter_in=string.cut("&volt_filter_in", 1)
+    )
+  )
+  else if (&first_char=='<')
+  (
+    if (&second_char=='=')
+    (
+      &volt_filter_label="<="
+      &volt_enum_filter=">"
+      &volt_filter_in=string.cut("&volt_filter_in", 2)
+    )
+    else
+    (
+      &volt_filter_label="<"
+      &volt_enum_filter=">="
+      &volt_filter_in=string.cut("&volt_filter_in", 1)
+    )
+  )
+  else
+  (
+    ; No comparator prefix => default '==' filter.
+    &volt_filter_label=""
+    &volt_enum_filter="!="
+  )
+
+  ;
+  ; Map shortened vreg string to 'ClockVRegLevelType'/'VCSCornerType' suffix.
+  ;
+  &volt_filter_in=string.lower("&volt_filter_in")
+  if ("&volt_filter_in"=="no_req")
+  (
+    &vreg_sufix="OFF"
+  )
+  else if ("&volt_filter_in"=="ret")
+  (
+    &vreg_sufix="RETENTION"
+  )
+  else if ("&volt_filter_in"=="low_min")
+  (
+    &vreg_sufix="LOW_MIN"
+  )
+  else if ("&volt_filter_in"=="low_minus")
+  (
+    &vreg_sufix="LOW_MINUS"
+  )
+  else if ("&volt_filter_in"=="low")
+  (
+    &vreg_sufix="LOW"
+  )
+  else if ("&volt_filter_in"=="low_p")
+  (
+    &vreg_sufix="LOW_PLUS"
+  )
+  else if ("&volt_filter_in"=="nom")
+  (
+    &vreg_sufix="NOMINAL"
+  )
+  else if ("&volt_filter_in"=="nom_p")
+  (
+    &vreg_sufix="NOMINAL_PLUS"
+  )
+  else if ("&volt_filter_in"=="high_m")
+  (
+    &vreg_sufix="HIGH_MINUS"
+  )
+  else if ("&volt_filter_in"=="high")
+  (
+    &vreg_sufix="HIGH"
+  )
+  else if ("&volt_filter_in"=="turbo")
+  (
+    &vreg_sufix="TURBO"
+  )
+  else if ("&volt_filter_in"=="high_ncpr")
+  (
+    &vreg_sufix="HIGH_NO_CPR"
+  )
+  else
+  (
+    ; Invalid voltage filter detected.
+    print %ERROR "ERROR: Invalid voltage-regulator filter '&volt_filter_in'."
+    print %ERROR "       Should be {no_req, ret, low_min, low_minus, low, low_p, nom, nom_p, high_m, high, turbo, high_ncpr}."
+
+    return <ERROR> ,
+  )
+
+  ;
+  ; Attempt to get the vreg level from the enum name. This method is used to
+  ; provide a minor sanity check for Clock Driver VREG enum name alignment.
+  ;
+  (
+    ON ERROR gosub
+    (
+      print %ERROR "ERROR: Could not detect 'ClockVRegLevelType'/'VCSCornerType' level in expand_volt_filter()."
+      &clk_err="expand_volt_filter"
+      return
+    )
+
+    local &vreg_enum_symbol
+    local &vreg_int
+
+    &vreg_enum_symbol="&(vreg_lvl_prefix)&(vreg_sufix)"
+    var.assign \vreg_lvl = &vreg_enum_symbol
+    &vreg_int=var.value(\vreg_lvl)
+
+    &volt_enum_filter="&(volt_enum_filter)&(vreg_int)"
+
+    if ("&clk_err"=="expand_volt_filter")
+    (
+      return <ERROR> ,
+    )
+  )
+
+  ;
+  ; Return the filter label and actual filter object.
+  ;
+  if ("&vreg_sufix"=="OFF")
+  (
+    &vreg_sufix="NO_REQUEST"  ; avoid confusion
+  )
+  &volt_filter_label="&(volt_filter_label)&vreg_sufix"
+  return &volt_filter_label &volt_enum_filter
+
+expand_volt_filter_error:
+
+  ;
+  ; Print error message for invalid voltage filter.
+  ;
+  print %ERROR "ERROR: Invalid comparator prefix in VREG filter '&volt_filter_in'."
+  print %ERROR "       Comparator prefix should be '<', '>', '<=', '>=', or'!'"
+  print %ERROR "       (else '==' comparison is performed by default)."
+
+  return <ERROR> ,
+)
+
+;
+; Expands shortened "suppressible" clock filter string.
+;
+expand_supp_filter:
+(
+  local &first_char
+  local &supp_filter
+
+  entry &supp_filter
+  &supp_filter=string.lower("&supp_filter")
+
+  &first_char=string.char("&supp_filter", 0)
+  if (&first_char=='s')
+  (
+    return Suppressible 1
+  )
+  else if (&first_char=='i')
+  (
+    return Insuppressible 0
+  )
+  else
+  (
+    print %ERROR "ERROR: Invalid 'domain-suppressible' filter '&supp_filter'. Should be {s, i}."
+
+    return <ERROR> ,
+  )
+)
+
+;
+; Returns clock string name from the target (max length 127).
+;
+get_clock_str:
+(
+  local &clk_name_ptr
+  local &clk_str
+  local &name_addr
+
+  entry &clk_name_ptr
+
+  &name_addr=var.value(&clk_name_ptr)
+  &clk_str=data.string(D:&name_addr)
+
+  return &clk_str
+)
+
+;
+; Returns the clock domain 'HAL_clk_ClockDomainDescType' symbol name.
+;
+get_domain_str:
+(
+  local &domain_ptr
+  local &idx
+  local &domain_str
+
+  entry &domain_ptr
+
+  &domain_str=var.string((HAL_clk_ClockDomainDescType*)(&domain_ptr)->HALHandle)
+  &domain_str=string.trim("&domain_str")
+
+  gosub get_accented_equal_sign_idx &domain_str
+  entry &idx
+  if (&idx<0.)
+  (
+    return "<ERROR> (&domain_str)"
+  )
+
+  &domain_str=string.cut("&domain_str", &idx+2) ; Cut the "0x[address] = " prefix.
+
+  ; Isolate the symbol name.
+  gosub get_substr_ws "&domain_str" 0
+  entry &domain_str
+
+  return &domain_str
+)
+
+;
+; Returns the 'HAL_CLK_SOURCE_' clock source name.
+;
+get_source_str:
+(
+  local &idx
+  local &src_str
+  local &src_ptr
+  entry &src_ptr
+
+  &src_str=var.string((&src_ptr)->eSource)
+  &src_str=string.trim("&src_str")
+
+  gosub get_accented_equal_sign_idx &src_str
+  entry &idx
+  if (&idx<0.)
+  (
+    return "<ERROR> (&src_str)"
+  )
+
+  &src_str=string.mid("&src_str", 0, &idx-1)
+  &src_str=string.ScanAndExtract("&src_str", "HAL_CLK_SOURCE_", "<ERROR>")
+  return &src_str
+)
+
+;
+; Returns the clock frequency (in MHz) with two decimal digits of precision in
+; a right-hand aligned string.
+;
+; Return value includes double quotes to prevent PRACTICE from trimming leading
+; whitespace.
+;
+get_freq_mhz_str:
+(
+  local &freq_mhz_str
+  local &freq_hz
+
+  entry &freq_hz
+
+  gosub get_div_decimal_fixed_point_str &freq_hz 6 2 7
+  entry &freq_mhz_str
+
+  return &freq_mhz_str
+)
+
+;
+; Returns the voltage level string.
+; The vreg prefix is removed and a '@' prefix is added.
+;
+get_vreg_str:
+(
+  local &idx
+  local &vreg_str
+  local &vreg_enum_int
+  local &vreg
+  local &vreg_prefix
+  local &is_src
+  local &p_val
+
+  entry &vreg_prefix &is_src
+
+  if ("&is_src"=="")
+  (
+    &vreg="&(vreg_prefix)&(E_VREG_LVL)"
+  )
+  else
+  (
+    &vreg="&(vreg_prefix)&(E_SRC_VREG_LVL)"
+  )
+
+  (
+    ON ERROR gosub
+    (
+      ON ERROR continue
+
+      if ("&is_src"=="")
+      (
+        &E_VREG_LVL="VRegRequest.eVRegLevel"
+        &vreg="&(vreg_prefix)&(E_VREG_LVL)"
+      )
+      else
+      (
+        &E_SRC_VREG_LVL="pActiveFreqConfig->eVRegLevel"
+        &vreg="&(vreg_prefix)&(E_SRC_VREG_LVL)"
+
+        &p_val=var.value(&(vreg_prefix)pActiveFreqConfig)
+        if (&p_val==0.)
+        (
+          &vreg_str="-NULL-"
+          return
+        )
+      )
+
+      &vreg_str=var.string(&vreg)
+      return
+    )
+
+    if (("&is_src"!="")&&("&E_SRC_VREG_LVL"=="pActiveFreqConfig->eVRegLevel"))
+    (
+      &p_val=var.value(&(vreg_prefix)pActiveFreqConfig)
+      if (&p_val!=0.)
+      (
+        &vreg_str=var.string(&vreg)
+      )
+      else
+      (
+        &vreg_str="-NULL-"
+      )
+    )
+    else
+    (
+      &vreg_str=var.string(&vreg)
+    )
+  )
+
+  if ("&vreg_str"=="-NULL-")
+  (
+    return &vreg_str -1.
+  )
+
+  &vreg_str=string.trim("&vreg_str")
+
+  gosub get_accented_equal_sign_idx &vreg_str
+  entry &idx
+  if (&idx<0.)
+  (
+    return <ERROR> -1.
+  )
+
+  &vreg_enum_int=string.cut("&vreg_str", &idx+2)
+
+  ; Isolate the enum integer.
+  gosub get_substr_ws "&vreg_enum_int" 0
+  entry &vreg_enum_int
+
+  &vreg_str=string.mid("&vreg_str", 0, &idx-1)
+  &vreg_str=string.ScanAndExtract("&vreg_str", "&vreg_lvl_prefix", "<ERROR>")
+  if ("&vreg_str"=="OFF")
+  (
+    &vreg_str="NO_REQUEST"
+  )
+  &vreg_str="@&vreg_str"
+
+  return &vreg_str &(vreg_enum_int).
+)
+
+;
+; Returns the voltage level string.
+;
+get_raw_vreg_str:
+(
+  local &idx
+  local &vreg_str
+  local &vreg
+  entry &vreg &err
+
+  if ("&err"!="")
+  (
+    ON ERROR gosub
+    (
+      &clk_err="get_raw_vreg_str"
+      area.select
+      print " "
+      area.select &clockdriver_main_area
+      return
+    )
+
+    &clk_err=""
+    &vreg_str=var.string(&vreg)
+
+    if ("&clk_err"=="get_raw_vreg_str")
+    (
+      return VREG_SYMBOL_NOT_FOUND
+    )
+  )
+  else
+  (
+    &vreg_str=var.string(&vreg)
+  )
+
+  &vreg_str=string.trim("&vreg_str")
+
+  gosub get_accented_equal_sign_idx &vreg_str
+  entry &idx
+  if (&idx<0.)
+  (
+    return "<ERROR> (&vreg_str)"
+  )
+
+  &vreg_str=string.mid("&vreg_str", 0, &idx-1)
+
+  return &vreg_str
+)
+
+;
+; Map 'clocks' filters to their argument index.
+;
+ClockInfoMapFilterToIdx:
+(
+  local &first_key_char
+  entry &first_key_char
+
+  if (&first_key_char=='e')       ; "enabled" = {on, off}.
+  (
+    return 0
+  )
+  else if (&first_key_char=='c')  ; "clk" = {clock-name}.
+  (
+    return 1
+  )
+  else if (&first_key_char=='d')  ; "domain" = {domain-name}.
+  (
+    return 2
+  )
+  else if (&first_key_char=='s')  ; "src" = {source-name}.
+  (
+    return 3
+  )
+  else if (&first_key_char=='v')  ; "vreg" = {[comparator-prefix]vreg-name}.
+  (
+    return 4
+  )
+  else if (&first_key_char=='f')  ; "flag" = {i, s}.
+  (
+    return 5
+  )
+  else if (&first_key_char=='?')  ; Query number of filters.
+  (
+    return 6
+  )
+  else
+  (
+    return -1
+  )
+)
+
+;
+; Map 'domains' filters to their argument index.
+;
+DomainInfoMapFilterToIdx:
+(
+  local &first_key_char
+  entry &first_key_char
+
+  if (&first_key_char=='e')       ; "enabled" = {on, off}.
+  (
+    return 0
+  )
+  else if (&first_key_char=='d')  ; "domain" = {domain-name}.
+  (
+    return 1
+  )
+  else if (&first_key_char=='s')  ; "src" = {source-name}.
+  (
+    return 2
+  )
+  else if (&first_key_char=='v')  ; "vreg" = {[comparator-prefix]vreg-name}.
+  (
+    return 3
+  )
+  else if (&first_key_char=='f')  ; "flag" = {i, s}.
+  (
+    return 4
+  )
+  else if (&first_key_char=='?')  ; Query number of filters.
+  (
+    return 5
+  )
+  else
+  (
+    return -1
+  )
+)
+
+;
+; Map 'sources' filters to their argument index.
+;
+SourceInfoMapFilterToIdx:
+(
+  local &first_key_char
+  entry &first_key_char
+
+  if (&first_key_char=='e')       ; "enabled" = {on, off}.
+  (
+    return 0
+  )
+  else if (&first_key_char=='s')  ; "src" = {source-name}.
+  (
+    return 1
+  )
+  else if (&first_key_char=='v')  ; "vreg" = {[comparator-prefix]vreg-name}.
+  (
+    return 2
+  )
+  else if (&first_key_char=='?')  ; Query number of filters.
+  (
+    return 3
+  )
+  else
+  (
+    return -1
+  )
+)
+
+;
+; Returns the default filters for 'clocks' operation.
+;
+ClockInfoGetDefaultFilter:
+(
+  local &filter
+  local &idx
+  entry &idx
+
+  &filter=var.string(\default_filters[&idx])
+  return &filter
+)
+
+;
+; Returns the default filters for 'domains' operation.
+;
+DomainInfoGetDefaultFilter:
+(
+  local &filter
+  local &idx
+  entry &idx
+
+  if (&idx>0)
+  (
+    &idx=&idx+1
+  )
+
+  &filter=var.string(\default_filters[&idx])
+  return &filter
+)
+
+;
+; Returns the default filters for 'sources' operation.
+;
+SourceInfoGetDefaultFilter:
+(
+  local &filter
+  local &idx
+  entry &idx
+
+  if (&idx>0)
+  (
+    &idx=&idx+2
+  )
+
+  &filter=var.string(\default_filters[&idx])
+  return &filter
+)
+
+;
+; Resets the default filters to bypass mode.
+;
+reset_default_filters:
+(
+  local &idx
+
+  &idx=0
+  while (&idx<6.)
+  (
+    var.assign \default_filters[&idx][0..1] = ","
+    &idx=&idx+1
+  )
+
+  return
+)
+
+;-----------------------------------------------------------------------------
+;
+; Subroutine:   void PrepClockFiltersAndDisplayInfo(string map_sub,
+;                                                   string display_sub
+;                                                   string def_filt_sub)
+;
+;   Prepares any optional filters and prints info for specified clocks.
+;
+;   Filters:
+;
+;   1)   state_filter:  {on, off}.
+;   2)  *clock_filter:  {clock-name}.
+;   3)  *domain_filter: {domain-name}.
+;   4)  *src_filter:    {source-name}.
+;   5) **volt_filter:   {no_req, ret, low_min, low_minus, low, low_p, nom, nom_p,
+;                           high_m, high, turbo, high_ncpr}.
+;   6)   supp_filter:   {s, i}.
+;
+;   *  => Filter allows head/tail wildcard ('*').
+;   ** => Filter allows {'<', '>', '<=', '>=', '!'} prefix.
+;   (All filters are case-insensitive.)
+;
+;-----------------------------------------------------------------------------
+PrepClockFiltersAndDisplayInfo:
+(
+  local &no_key_cmd_idx
+  local &num_unread
+  local &filter_arg
+  local &filter_list
+  local &key
+  local &val
+  local &idx
+  local &max_num_filters
+  local &first_key_char
+  local &exit_requested
+
+  local &map_sub
+  local &display_sub
+  local &def_filt_sub
+  entry &map_sub &display_sub &def_filt_sub
+
+  ; Get the max number of filters.
+  gosub &map_sub '?'
+  entry &max_num_filters
+
+  var.newlocal char[&max_num_filters][128.] \filters
+
+  &idx=0
+  while (&idx<&max_num_filters)
+  (
+    var.assign \filters[&idx][0..1] = ","
+    &idx=&idx+1
+  )
+
+  &exit_requested=0
+
+  ;
+  ; Prepare any optional filters and display clock information.
+  ;
+  &no_key_cmd_idx=0
+  while TRUE()
+  (
+    ; Check if there are any unprocessed filters remaining.
+    do &ARGS get_num_unread &AID
+    entry &num_unread
+    if (&num_unread==0)
+    (
+      &filter_list=""
+      &idx=0
+      while (&idx<&max_num_filters)
+      (
+        &filter_arg=var.string(\filters[&idx])
+
+        if (("&def_filt_sub"!="")&&("&filter_arg"==","))
+        (
+          gosub &def_filt_sub &idx
+          entry &filter_arg
+        )
+
+        &filter_list="&filter_list &filter_arg"
+        &idx=&idx+1
+      )
+
+      ; Display the requested information.
+      gosub &display_sub &filter_list
+      goto DisplayClockInfoPrep_return
+    )
+
+    ; Otherwise get next filter.
+    do &ARGS get_kwarg &AID
+    entry &key &val
+    &val=string.mid("&val", 0, 126.)
+
+DisplayClockInfoPrep_process_filter:
+
+    if ("&key"=="NO_KEY")
+    (
+      ; Detect quit requests.
+      if ("&val"=="x")
+      (
+        local &cmd_line
+        &exit_requested=1
+
+        ; Clear out any remaining args.
+        do &ARGS reset_cmd_line &AID
+      )
+      else
+      (
+        if (&no_key_cmd_idx>=&max_num_filters)
+        (
+          print %ERROR "ERROR: Too many arguments for clock info command. Enter '?' for help."
+          do &ARGS reset_cmd_line &AID
+          goto DisplayClockInfoPrep_return
+        )
+
+        var.assign \filters[&no_key_cmd_idx][0..127.] = "&val"
+        &no_key_cmd_idx=&no_key_cmd_idx+1
+      )
+    )
+    else
+    (
+      &first_key_char=string.char("&key", 0)
+
+      ;
+      ; Handle keyless VREG filters with prefix comparators '[<>!]='.
+      ; This hack prevents keyless VREG filters from being handled improperly
+      ; as a KV-arg (since they contain '=' in the middle of the arg).
+      ;
+      if (&first_key_char=='<')
+      (
+        &key="NO_KEY"
+        &val="<=&val"
+        goto DisplayClockInfoPrep_process_filter
+      )
+      else if (&first_key_char=='>')
+      (
+        &key="NO_KEY"
+        &val=">=&val"
+        goto DisplayClockInfoPrep_process_filter
+      )
+      else if (&first_key_char=='!')
+      (
+        &key="NO_KEY"
+        &val="!=&val"
+        goto DisplayClockInfoPrep_process_filter
+      )
+      else if (&first_key_char=='v')
+      (
+        ; Check for improper 'v' filter usage.
+        local &second_key_char
+        &second_key_char=string.char("&key", 1)
+
+        if ((&second_key_char=='<')||(&second_key_char=='>')||(&second_key_char=='!'))
+        (
+          print %ERROR "ERROR: Detected invalid voltage regulator filter usage."
+          print %ERROR "       Should be used like 'v=>=nom' rather than 'v>=nom'."
+          goto DisplayClockInfoPrep_return
+        )
+      )
+
+      ;
+      ; Map filter first letter to argument index.
+      ;
+      gosub &map_sub &first_key_char
+      entry &idx
+      if (&idx==-1)
+      (
+        print %ERROR "ERROR: Unrecognized filter key '&key'. Enter '?' for help."
+        goto DisplayClockInfoPrep_return
+      )
+      var.assign \filters[&idx][0..127.] = "&val"
+    )
+  ) ; while TRUE()
+
+DisplayClockInfoPrep_return:
+
+  if (&exit_requested!=0)
+  (
+    gosub Exit_ClockDriver
+  )
+
+  return
+)
+
+;-----------------------------------------------------------------------------
+;
+; Subroutine:   void DisplayInfoSetDefaultFilters(string  state_filter,
+;                                                 string  clock_filter,
+;                                                 string  domain_filter,
+;                                                 string  src_filter,
+;                                                 string  volt_filter,
+;                                                 string  supp_filter)
+;
+;   Prints info for specified clocks. Use ',' to bypass a filter.
+;
+;   Filters:
+;
+;   1)   state_filter:  {on, off}.
+;   2)  *clock_filter:  {clock-name}.
+;   3)  *domain_filter: {domain-name}.
+;   4)  *src_filter:    {source-name}.
+;   5) **volt_filter:   {no_req, ret, low_min, low_minus, low, low_p, nom, nom_p,
+;                           high_m, high, turbo, high_ncpr}.
+;   6)   supp_filter:   {s, i}.
+;
+;   *  => Filter allows head/tail wildcard ('*').
+;   ** => Filter allows {'<', '>', '<=', '>=', '!'} prefix.
+;   (All filters are case-insensitive.)
+;
+;-----------------------------------------------------------------------------
+ModifyDefaultFilters:
+(
+  local &idx
+  local &cmd_line
+  local &num_unread
+  local &filter
+  local &found_filter
+
+  if (&cd_mode!=0)
+  (
+    print %ERROR "ERROR: 'ClockDriver.cmm' default filters don't persist across script sessions."
+    print %ERROR "       The '0, filter' command cannot be used by the 'cd.cmm' wrapper script."
+    return
+  )
+
+  do &ARGS get_num_unread &AID
+  entry &num_unread
+
+  if (&num_unread!=0)
+  (
+    ;
+    ; Reset the default filters if the 'reset' argument is present ("reset" is
+    ; disallowed as a filter; in fact the same goes for the "x" exit command...)
+    ;
+    do &ARGS get_cmd_line &AID UNREAD
+    entry %LINE &cmd_line
+
+    &cmd_line=string.lower("&cmd_line")
+    &idx=string.scan("&cmd_line", "reset", 0)
+    if (&idx!=-1)
+    (
+      do &ARGS reset_cmd_line &AID
+      gosub reset_default_filters
+    )
+    else
+    (
+      gosub PrepClockFiltersAndDisplayInfo ClockInfoMapFilterToIdx DisplayInfoSetDefaultFilters
+    )
+  )
+
+  ;
+  ; Print the default filters.
+  ;
+  &found_filter=0
+  print " "
+  print "Default filters:"
+  print " "
+
+  &filter=var.string(\default_filters[0.])
+  if ("&filter"!=",")
+  (
+    print "  'enabled'  : &filter"
+    &found_filter=1
+  )
+  &filter=var.string(\default_filters[1.])
+  if ("&filter"!=",")
+  (
+    print "  'clk'      : &filter"
+    &found_filter=1
+  )
+  &filter=var.string(\default_filters[2.])
+  if ("&filter"!=",")
+  (
+    print "  'domain'   : &filter"
+    &found_filter=1
+  )
+  &filter=var.string(\default_filters[3.])
+  if ("&filter"!=",")
+  (
+    print "  'src'      : &filter"
+    &found_filter=1
+  )
+  &filter=var.string(\default_filters[4.])
+  if ("&filter"!=",")
+  (
+    print "  'vreg'     : &filter"
+    &found_filter=1
+  )
+  &filter=var.string(\default_filters[5.])
+  if ("&filter"!=",")
+  (
+    print "  'flag'     : &filter"
+    &found_filter=1
+  )
+
+  if (&found_filter==0)
+  (
+    print "  No active default filters."
+  )
+
+  print " "
+  return
+)
+
+;-----------------------------------------------------------------------------
+;
+; Subroutine:   void DisplayInfoSetDefaultFilters(string  state_filter,
+;                                                 string  clock_filter,
+;                                                 string  domain_filter,
+;                                                 string  src_filter,
+;                                                 string  volt_filter,
+;                                                 string  supp_filter)
+;
+;   Sets the (persistent) default filters).
+;
+;   Use ',' to bypass modifying a default filter ("filter reset" command is
+;   used to remove all default filters).
+;
+;   Filters:
+;
+;   1)   state_filter:  {on, off}.
+;   2)  *clock_filter:  {clock-name}.
+;   3)  *domain_filter: {domain-name}.
+;   4)  *src_filter:    {source-name}.
+;   5) **volt_filter:   {no_req, ret, low_min, low_minus, low, low_p, nom, nom_p,
+;                           high_m, high, turbo, high_ncpr}.
+;   6)   supp_filter:   {s, i}.
+;
+;   *  => Filter allows head/tail wildcard ('*').
+;   ** => Filter allows {'<', '>', '<=', '>=', '!'} prefix.
+;   (All filters are case-insensitive.)
+;
+;-----------------------------------------------------------------------------
+DisplayInfoSetDefaultFilters:
+(
+  local &state_filter
+  local &clock_filter
+  local &domain_filter
+  local &src_filter
+  local &volt_filter
+  local &supp_filter
+  entry &state_filter &clock_filter &domain_filter &src_filter &volt_filter &supp_filter
+
+  ;
+  ; Convert to lower case to emphasize filter case insensitivity when default
+  ; filters are displayed.
+  ;
+  &state_filter=string.lower("&state_filter")
+  &clock_filter=string.lower("&clock_filter")
+  &domain_filter=string.lower("&domain_filter")
+  &src_filter=string.lower("&src_filter")
+  &volt_filter=string.lower("&volt_filter")
+  &supp_filter=string.lower("&supp_filter")
+
+  if ("&state_filter"!=",")
+  (
+    var.assign \default_filters[0.][0..127.] = "&state_filter"
+  )
+  if ("&clock_filter"!=",")
+  (
+    var.assign \default_filters[1.][0..127.] = "&clock_filter"
+  )
+  if ("&domain_filter"!=",")
+  (
+    var.assign \default_filters[2.][0..127.] = "&domain_filter"
+  )
+  if ("&src_filter"!=",")
+  (
+    var.assign \default_filters[3.][0..127.] = "&src_filter"
+  )
+  if ("&volt_filter"!=",")
+  (
+    var.assign \default_filters[4.][0..127.] = "&volt_filter"
+  )
+  if ("&supp_filter"!=",")
+  (
+    var.assign \default_filters[5.][0..127.] = "&supp_filter"
+  )
+
+  return
+)
+
+;-----------------------------------------------------------------------------
+;
+; Subroutine:   void DisplayClockInfo(string  state_filter,
+;                                     string  clock_filter,
+;                                     string  domain_filter,
+;                                     string  src_filter,
+;                                     string  volt_filter,
+;                                     string  supp_filter)
+;
+;   Prints info for specified clocks. Use ',' to bypass a filter.
+;
+;   Filters:
+;
+;   1)   state_filter:  {on, off}.
+;   2)  *clock_filter:  {clock-name}.
+;   3)  *domain_filter: {domain-name}.
+;   4)  *src_filter:    {source-name}.
+;   5) **volt_filter:   {no_req, ret, low_min, low_minus, low, low_p, nom, nom_p,
+;                           high_m, high, turbo, high_ncpr}.
+;   6)   supp_filter:   {s, i}.
+;
+;   *  => Filter allows head/tail wildcard ('*').
+;   ** => Filter allows {'<', '>', '<=', '>=', '!'} prefix.
+;   (All filters are case-insensitive.)
+;
+;-----------------------------------------------------------------------------
+DisplayClockInfo:
+(
+  local &idx
+  local &num_clks
+  local &clk
+  local &ref_count
+  local &domain
+  local &flags
+  local &src
+  local &freq_hz
+  local &freq_str
+  local &volt_str
+  local &volt_enum_int
+  local &suppressible
+  local &ref_count_filter
+  local &passed_filter
+
+  local &state_filter
+  local &clock_filter
+  local &domain_filter
+  local &src_filter
+  local &volt_filter
+  local &supp_filter
+  entry &state_filter &clock_filter &domain_filter &src_filter &volt_filter &supp_filter
+
+  ;
+  ; Process filters and print header.
+  ;
+  gosub expand_state_filter &state_filter
+  entry &state_filter &ref_count_filter
+  if ("&state_filter"=="<ERROR>")
+  (
+    return
+  )
+
+  print " "
+  print "[---- &state_filter "
+
+  if (("&domain_filter"!=",")||("&src_filter"!=","))
+  (
+    print %CONT "{"
+  )
+  if ("&clock_filter"!=",")
+  (
+    print %CONT "'&clock_filter'"
+  )
+  if ("&domain_filter"!=",")
+  (
+    if ("&clock_filter"==",")
+    (
+      print %CONT "'*'<-'&domain_filter'"
+    )
+    else
+    (
+      print %CONT "<-'&domain_filter'"
+    )
+  )
+  if ("&src_filter"!=",")
+  (
+    if ("&domain_filter"==",")
+    (
+      if ("&clock_filter"==",")
+      (
+        print %CONT "'*'<-"
+      )
+      print %CONT "'*'<-'&src_filter'"
+    )
+    else
+    (
+      print %CONT "<-'&src_filter'"
+    )
+  )
+  if (("&domain_filter"!=",")||("&src_filter"!=","))
+  (
+    print %CONT "}"
+  )
+  if (("&clock_filter"!=",")||("&domain_filter"!=",")||("&src_filter"!=","))
+  (
+    print %CONT " "
+  )
+
+  if ("&volt_filter"!=",")
+  (
+    local &volt_filter_label
+    gosub expand_volt_filter &volt_filter
+    entry &volt_filter_label &volt_filter
+    if ("&volt_filter_label"=="<ERROR>")
+    (
+      return
+    )
+
+    print %CONT "@&volt_filter_label "
+  )
+  if ("&supp_filter"!=",")
+  (
+    local &supp_filter_label
+    gosub expand_supp_filter &supp_filter
+    entry &supp_filter_label &supp_filter
+    if ("&supp_filter_label"=="<ERROR>")
+    (
+      return
+    )
+
+    print %CONT "&supp_filter_label "
+  )
+  print %CONT "Clocks ----]"
+
+  print " "
+  print "[index]   "
+  print %CONT format.string("Clock-Name", 34., ' ')
+  print %CONT format.string("<- Domain-Name", 42., ' ')
+  print %CONT "<- Src-Name : Ref-Count"
+  print %CONT " {  Frequency   @VREG-Level, Insuppressible }"
+  print " "
+  repeat 94 print %CONT "-"
+
+  ;
+  ; Walk through the clock list.
+  ;
+  &idx=0
+  &num_clks=var.value(&(DRV_CTXT).nNumClocks)
+  while (&idx<&num_clks)
+  (
+    ; Apply the state filter, based on the clock's reference count.
+    ; This filter is applied first since it's relatively fast.
+    &ref_count=var.value(&(DRV_CTXT).aClocks[&idx].nReferenceCount)
+    gosub apply_ref_count_filter &ref_count_filter &ref_count
+    entry &passed_filter
+    if (&passed_filter==0)
+    (
+      goto DisplayClockInfo_loop_inc_idx
+    )
+
+    ; Get the clock name.
+    gosub get_clock_str &(DRV_CTXT).aClocks[&idx].szName
+    entry &clk
+
+    ; Apply the clock name filter.
+    if ("&clock_filter"!=",")
+    (
+      gosub match_str_wild_head_tail &clk &clock_filter 1
+      entry &passed_filter
+      if (&passed_filter==0)
+      (
+        goto DisplayClockInfo_loop_inc_idx
+      )
+    )
+
+    ; Get the domain name ('NULL' if the clock doesn't have a domain).
+    &domain=var.value(&(DRV_CTXT).aClocks[&idx].pDomain)
+    if (&domain!=0)
+    (
+      gosub get_domain_str &(DRV_CTXT).aClocks[&idx].pDomain
+      entry &domain
+    )
+    else
+    (
+      &domain="NULL"
+    )
+
+    ; Apply the domain name filter.
+    if ("&domain_filter"!=",")
+    (
+      gosub match_str_wild_head_tail &domain &domain_filter 1
+      entry &passed_filter
+      if (&passed_filter==0)
+      (
+        goto DisplayClockInfo_loop_inc_idx
+      )
+    )
+
+    ; Get additional clock domain info.
+    if ("&domain"!="NULL")
+    (
+      ; Get the source name ('NULL' if the clock doesn't have a domain or source).
+      &src=var.value(&(DRV_CTXT).aClocks[&idx].pDomain->pSource)
+      if (&src!=0)
+      (
+        gosub get_source_str &(DRV_CTXT).aClocks[&idx].pDomain->pSource
+        entry &src
+      )
+      else
+      (
+        &src="NULL"
+      )
+
+      ; Apply the source name filter.
+      if ("&src_filter"!=",")
+      (
+        gosub match_str_wild_head_tail &src &src_filter 1
+        entry &passed_filter
+        if (&passed_filter==0)
+        (
+          goto DisplayClockInfo_loop_inc_idx
+        )
+      )
+
+      ; Get the domain's voltage regulator request state.
+      gosub get_vreg_str &(DRV_CTXT).aClocks[&idx].pDomain->
+      entry &volt_str &volt_enum_int
+
+      ; Apply the voltage regulator filter.
+      if ("&volt_filter"!=",")
+      (
+        if (&volt_enum_int&volt_filter) ; A comparator is within '&volt_filter'
+        (
+          goto DisplayClockInfo_loop_inc_idx
+        )
+      )
+
+      ; Check if the clock domain is marked 'DOMAIN_SUPPRESSIBLE' (indicates
+      ; that the clock domain shall not prevent XO shutdown from occurring).
+      &flags=var.value(&(DRV_CTXT).aClocks[&idx].pDomain->nFlags)
+      if ((&flags&(0x200))==0)
+      (
+        &suppressible=0
+      )
+      else
+      (
+        &suppressible=1
+      )
+
+      ; Apply the "suppressible" clock domain filter.
+      if ("&supp_filter"!=",")
+      (
+        if (&suppressible!=&supp_filter)
+        (
+          goto DisplayClockInfo_loop_inc_idx
+        )
+      )
+
+      ; Get the clock frequency from its active BSP config.
+      local &active_mux_cfg
+      &active_mux_cfg=var.value(&(DRV_CTXT).aClocks[&idx].pDomain->pActiveMuxConfig)
+      if (&active_mux_cfg==0)
+      (
+        &freq_hz=-1
+      )
+      else
+      (
+        &freq_hz=var.value(&(DRV_CTXT).aClocks[&idx].pDomain->pActiveMuxConfig->nFreqHz)
+        gosub get_freq_mhz_str &freq_hz
+        entry &freq_str
+      )
+    )
+    else
+    (
+      ; Clock does not have a domain.
+      &src="NULL"
+      &freq_hz=-1
+      &volt_str=""
+    )
+
+    ; Print the clock info.
+    print "[" format.decimal(3., &idx) "]  "
+    gosub print_string "&clk" 36. %CONT
+    gosub print_string " <- &domain" 46. %CONT
+    gosub print_string " <- &src" 15. %CONT
+    &ref_count=format.decimal(1, &ref_count)
+    gosub print_string ": &ref_count" 6. %CONT
+
+    if ("&domain"!="NULL")
+    (
+      local &supp_str
+
+      print %CONT "{ "
+      if (&freq_hz==-1)
+      (
+        print %CONT " -NULL-"
+      )
+      else
+      (
+        print %CONT &freq_str
+      )
+      gosub print_string " MHz  &volt_str," 18. %CONT
+
+      if (&suppressible==0)
+      (
+        &supp_str=" Insuppressible"
+      )
+      else
+      (
+        &supp_str=""
+      )
+      gosub print_string "&supp_str" 15. %CONT
+      print %CONT " }"
+    )
+
+DisplayClockInfo_loop_inc_idx:
+    &idx=&idx+1
+  )
+
+  print " "
+  return
+)
+
+;-----------------------------------------------------------------------------
+;
+; Subroutine:   void DisplayDomainInfo(string  state_filter,
+;                                      string  domain_filter,
+;                                      string  src_filter,
+;                                      string  volt_filter,
+;                                      string  supp_filter)
+;
+;   Prints info for specified domains. Use ',' to bypass a filter.
+;
+;   Filters:
+;
+;   1)   state_filter:  {on, off}.
+;   2)  *domain_filter: {domain-name}.
+;   3)  *src_filter:    {source-name}.
+;   4) **volt_filter:   {no_req, ret, low_min, low_minus, low, low_p, nom, nom_p,
+;                           high_m, high, turbo, high_ncpr}.
+;   5)   supp_filter:   {s, i}.
+;
+;   *  => Filter allows head/tail wildcard ('*').
+;   ** => Filter allows {'<', '>', '<=', '>=', '!'} prefix.
+;   (All filters are case-insensitive.)
+;
+;-----------------------------------------------------------------------------
+DisplayDomainInfo:
+(
+  local &idx
+  local &ref_count
+  local &num_domains
+  local &domain
+  local &flags
+  local &src
+  local &freq_hz
+  local &freq_str
+  local &volt_str
+  local &volt_enum_int
+  local &suppressible
+  local &ref_count_filter
+  local &passed_filter
+  local &supp_str
+
+  local &state_filter
+  local &domain_filter
+  local &src_filter
+  local &volt_filter
+  local &supp_filter
+  entry &state_filter &domain_filter &src_filter &volt_filter &supp_filter
+
+  ;
+  ; Process filters and print header.
+  ;
+  gosub expand_state_filter &state_filter
+  entry &state_filter &ref_count_filter
+  if ("&state_filter"=="<ERROR>")
+  (
+    return
+  )
+
+  print " "
+  print "[---- &state_filter "
+
+  if (("&domain_filter"!=",")||("&src_filter"!=","))
+  (
+    print %CONT "{"
+  )
+  if ("&domain_filter"!=",")
+  (
+    print %CONT "'&domain_filter'"
+  )
+  if ("&src_filter"!=",")
+  (
+    if ("&domain_filter"==",")
+    (
+      print %CONT "'*'<-'&src_filter'"
+    )
+    else
+    (
+      print %CONT "<-'&src_filter'"
+    )
+  )
+  if ("&src_filter"!=",")
+  (
+    print %CONT "}"
+  )
+  if (("&domain_filter"!=",")||("&src_filter"!=","))
+  (
+    print %CONT " "
+  )
+
+  if ("&volt_filter"!=",")
+  (
+    local &volt_filter_label
+    gosub expand_volt_filter &volt_filter
+    entry &volt_filter_label &volt_filter
+    if ("&volt_filter_label"=="<ERROR>")
+    (
+      return
+    )
+
+    print %CONT "@&volt_filter_label "
+  )
+  if ("&supp_filter"!=",")
+  (
+    local &supp_filter_label
+    gosub expand_supp_filter &supp_filter
+    entry &supp_filter_label &supp_filter
+    if ("&supp_filter_label"=="<ERROR>")
+    (
+      return
+    )
+
+    print %CONT "&supp_filter_label "
+  )
+  print %CONT "Domains ----]"
+
+  print " "
+  print "[index]   "
+  print %CONT format.string("Domain-Name", 40., ' ')
+  print %CONT "<- Src-Name : Ref-Count"
+  print %CONT " {  Frequency   @VREG-Level, Insuppressible }"
+  print " "
+  repeat 76 print %CONT "-"
+
+  ;
+  ; Walk through the domain list.
+  ;
+  &idx=0
+  &num_domains=var.value(&(DRV_CTXT).nNumClockDomains)
+  while (&idx<&num_domains)
+  (
+    ; Apply the state filter, based on the domains's reference count.
+    ; This filter is applied first since it's relatively fast.
+    &ref_count=var.value(&(DRV_CTXT).aClockDomains[&idx].nReferenceCount)
+    gosub apply_ref_count_filter &ref_count_filter &ref_count
+    entry &passed_filter
+    if (&passed_filter==0)
+    (
+      goto DisplayDomainInfo_loop_inc_idx
+    )
+
+    ; Get the domain name.
+    gosub get_domain_str &&(DRV_CTXT).aClockDomains[&idx]
+    entry &domain
+
+    ; Apply the domain name filter.
+    if ("&domain_filter"!=",")
+    (
+      gosub match_str_wild_head_tail &domain &domain_filter 1
+      entry &passed_filter
+      if (&passed_filter==0)
+      (
+        goto DisplayDomainInfo_loop_inc_idx
+      )
+    )
+
+    ; Get the source name ('NULL' if the clock doesn't have a source).
+    &src=var.value(&(DRV_CTXT).aClockDomains[&idx].pSource)
+    if (&src!=0)
+    (
+      gosub get_source_str &(DRV_CTXT).aClockDomains[&idx].pSource
+      entry &src
+    )
+    else
+    (
+      &src="NULL"
+    )
+
+    ; Apply the source name filter.
+    if ("&src_filter"!=",")
+    (
+      gosub match_str_wild_head_tail &src &src_filter 1
+      entry &passed_filter
+      if (&passed_filter==0)
+      (
+        goto DisplayDomainInfo_loop_inc_idx
+      )
+    )
+
+    ; Get the domain's voltage regulator request state.
+    gosub get_vreg_str &(DRV_CTXT).aClockDomains[&idx].
+    entry &volt_str &volt_enum_int
+
+    ; Apply the voltage regulator filter.
+    if ("&volt_filter"!=",")
+    (
+      if (&volt_enum_int&volt_filter) ; A comparator is within '&volt_filter'
+      (
+        goto DisplayDomainInfo_loop_inc_idx
+      )
+    )
+
+    ; Check if the clock domain is marked 'DOMAIN_SUPPRESSIBLE' (indicates
+    ; that the clock domain shall not prevent XO shutdown from occurring).
+    &flags=var.value(&(DRV_CTXT).aClockDomains[&idx].nFlags)
+    if ((&flags&(0x200))==0)
+    (
+      &suppressible=0
+    )
+    else
+    (
+      &suppressible=1
+    )
+
+    ; Apply the "suppressible" clock domain filter.
+    if ("&supp_filter"!=",")
+    (
+      if (&suppressible!=&supp_filter)
+      (
+        goto DisplayDomainInfo_loop_inc_idx
+      )
+    )
+
+    ; Get the domain frequency from its active BSP config.
+    local &active_mux_cfg
+    &active_mux_cfg=var.value(&(DRV_CTXT).aClockDomains[&idx].pActiveMuxConfig)
+    if (&active_mux_cfg==0)
+    (
+      &freq_hz=-1
+    )
+    else
+    (
+      &freq_hz=var.value(&(DRV_CTXT).aClockDomains[&idx].pActiveMuxConfig->nFreqHz)
+      gosub get_freq_mhz_str &freq_hz
+      entry &freq_str
+    )
+
+    ; Print the domain info.
+    print "[" format.decimal(3., &idx) "]  "
+    gosub print_string "&domain" 46. %CONT
+    gosub print_string " <- &src" 15. %CONT
+    &ref_count=format.decimal(1, &ref_count)
+    gosub print_string ": &ref_count" 6. %CONT
+
+    print %CONT "{ "
+    if (&freq_hz==-1)
+    (
+      print %CONT " -NULL-"
+    )
+    else
+    (
+      print %CONT &freq_str
+    )
+    gosub print_string " MHz  &volt_str," 18. %CONT
+
+    if (&suppressible==0)
+    (
+      &supp_str=" Insuppressible"
+    )
+    else
+    (
+      &supp_str=""
+    )
+    gosub print_string "&supp_str" 15. %CONT
+    print %CONT " }"
+
+DisplayDomainInfo_loop_inc_idx:
+    &idx=&idx+1
+  )
+
+  print " "
+  return
+)
+
+;-----------------------------------------------------------------------------
+;
+; Subroutine:   void DisplaySourceInfo(string  state_filter,
+;                                      string  src_filter,
+;                                      string  volt_filter)
+;
+;   Prints info for specified sources. Use ',' to bypass a filter.
+;
+;   Filters:
+;
+;   1)   state_filter:  {on, off}.
+;   2)  *src_filter:    {source-name}.
+;   3) **volt_filter:   {no_req, ret, low_min, low_minus, low, low_p, nom, nom_p,
+;                           high_m, high, turbo, high_ncpr}.
+;
+;   *  => Filter allows head/tail wildcard ('*').
+;   ** => Filter allows {'<', '>', '<=', '>=', '!'} prefix.
+;   (All filters are case-insensitive.)
+;
+;-----------------------------------------------------------------------------
+DisplaySourceInfo:
+(
+  local &idx
+  local &ref_count
+  local &flags
+  local &num_sources
+  local &src
+  local &second_src
+  local &freq_hz
+  local &freq_str
+  local &volt_str
+  local &volt_enum_int
+  local &ref_count_filter
+  local &passed_filter
+  local &p_val
+
+  local &state_filter
+  local &src_filter
+  local &volt_filter
+  entry &state_filter &src_filter &volt_filter
+
+  ;
+  ; Process filters and print header.
+  ;
+  gosub expand_state_filter &state_filter
+  entry &state_filter &ref_count_filter
+  if ("&state_filter"=="<ERROR>")
+  (
+    return
+  )
+
+  print " "
+  print "[---- &state_filter "
+
+  if ("&src_filter"!=",")
+  (
+    print %CONT "'&src_filter' "
+  )
+  if ("&volt_filter"!=",")
+  (
+    local &volt_filter_label
+    gosub expand_volt_filter &volt_filter
+    entry &volt_filter_label &volt_filter
+    if ("&volt_filter_label"=="<ERROR>")
+    (
+      return
+    )
+
+    print %CONT "@&volt_filter_label "
+  )
+  print %CONT "Sources ----]"
+
+  print " "
+  print "[index]  "
+  print %CONT format.string("Src-Name", 18., ' ')
+  print %CONT format.string("<- 2nd-Src", 14., ' ')
+  print %CONT ": Ref-Count"
+  print %CONT " {  Frequency   @SRC-VREG-Level }"
+  print " "
+  repeat 60 print %CONT "-"
+
+  ;
+  ; Walk through the source list.
+  ;
+  &idx=0
+  &num_sources=var.value(&(DRV_CTXT).nNumSources)
+  while (&idx<&num_sources)
+  (
+    ; Apply the state filter, based on the sources's reference count.
+    ; This filter is applied first since it's relatively fast.
+    &ref_count=var.value(&(DRV_CTXT).aSources[&idx].nReferenceCount)
+    gosub apply_ref_count_filter &ref_count_filter &ref_count
+    entry &passed_filter
+    if (&passed_filter==0)
+    (
+      goto DisplaySourceInfo_loop_inc_idx
+    )
+
+    ; Get the source name.
+    gosub get_source_str &(DRV_CTXT).aSources[&idx].pBSPConfig
+    entry &src
+
+    ; Apply the source name filter.
+    if ("&src_filter"!=",")
+    (
+      gosub match_str_wild_head_tail &src &src_filter 1
+      entry &passed_filter
+      if (&passed_filter==0)
+      (
+        goto DisplaySourceInfo_loop_inc_idx
+      )
+    )
+
+    ; Get the source's source name.
+    &second_src=var.value(&(DRV_CTXT).aSources[&idx].pSource)
+    if (&second_src==0)
+    (
+      &second_src="NULL"
+    )
+    else
+    (
+      gosub get_source_str &(DRV_CTXT).aSources[&idx].pSource->pBSPConfig
+      entry &second_src
+    )
+
+    ; Get the source's voltage regulator request state.
+    gosub get_vreg_str &(DRV_CTXT).aSources[&idx]. SRC
+    entry &volt_str &volt_enum_int
+
+    ; Apply the voltage regulator filter.
+    if ("&volt_filter"!=",")
+    (
+      if (&volt_enum_int&volt_filter) ; A comparator is within '&volt_filter'
+      (
+        goto DisplaySourceInfo_loop_inc_idx
+      )
+    )
+
+    ; Get the source frequency.
+    (
+      ON ERROR gosub
+      (
+        ON ERROR continue
+
+        &E_SRC_FREQ_HZ="pActiveFreqConfig->nFreqHz"
+        &p_val=var.value(&(DRV_CTXT).aSources[&(idx)].pActiveFreqConfig)
+        if (&p_val!=0.)
+        (
+          &freq_hz=var.value(&(DRV_CTXT).aSources[&(idx)].&(E_SRC_FREQ_HZ))
+        )
+        else
+        (
+          &freq_hz=-1.
+        )
+        return
+      )
+
+      if ("&E_SRC_FREQ_HZ"=="pActiveFreqConfig->nFreqHz")
+      (
+        &p_val=var.value(&(DRV_CTXT).aSources[&(idx)].pActiveFreqConfig)
+        if (&p_val!=0.)
+        (
+          &freq_hz=var.value(&(DRV_CTXT).aSources[&(idx)].&(E_SRC_FREQ_HZ))
+        )
+        else
+        (
+          &freq_hz=-1.
+        )
+      )
+      else
+      (
+        &freq_hz=var.value(&(DRV_CTXT).aSources[&(idx)].&(E_SRC_FREQ_HZ))
+      )
+    )
+
+    if (&freq_hz!=-1.)
+    (
+      gosub get_freq_mhz_str &freq_hz
+      entry &freq_str
+    )
+
+    ; Print the source info.
+    print "[" format.decimal(3., &idx) "]    "
+    gosub print_string "&src" 18. %CONT
+    gosub print_string "<- &second_src" 20. %CONT
+    &ref_count=format.decimal(1, &ref_count)
+    gosub print_string ": &ref_count" 6. %CONT
+
+    print %CONT "{ "
+    if (&freq_hz==-1.)
+    (
+      print %CONT "-NULL- "
+    )
+    else
+    (
+      print %CONT &freq_str
+    )
+    gosub print_string " MHz  &volt_str" 21. %CONT
+    print %CONT " }"
+
+DisplaySourceInfo_loop_inc_idx:
+    &idx=&idx+1
+  )
+
+  print " "
+  return
+)
+
+;-----------------------------------------------------------------------------
+;
+; Subroutine:   void DisplayPowerInfo(void)
+;
+;   Prints information for all power domains (no filters).
+;
+;-----------------------------------------------------------------------------
+DisplayPowerInfo:
+(
+  local &idx
+  local &num_power_domains
+
+  local &power_domain_name
+  local &b_enabled
+  local &ref_count
+  local &pwr_on
+  local &gdscr_addr
+  local &gdscr_val
+  local &vote
+  local &cx_vote
+  local &gfx_vote
+
+  print " "
+  print "[---- Clock Driver Power Domain Info ----] "
+  print " "
+
+  ; Print header.
+  print "[index]  "
+  print %CONT format.string("Power-Domain", 18., ' ')
+  print %CONT "{'bEnabled', Ref-Count, 'PWR_ON'} : "
+  print %CONT "[GDSCR-Addr] => GDSCR-Value"
+  print " "
+  repeat 60 print %CONT "-"
+
+  ; Walk through the list of power domains.
+  &idx=0
+  &num_power_domains=var.value(&(DRV_CTXT).nNumPowerDomains)
+  while (&idx<&num_power_domains)
+  (
+    ; Get the power domain name.
+    gosub get_clock_str &(DRV_CTXT).aPowerDomains[&idx].szName
+    entry &power_domain_name
+
+    ; Get the power domain 'bEnabled' state.
+    &b_enabled=var.value(&(DRV_CTXT).aPowerDomains[&idx].bEnabled)
+    if (&b_enabled==0)
+    (
+      &b_enabled="FALSE"
+    )
+    else
+    (
+      &b_enabled="TRUE"
+    )
+
+    ; Get the power domain reference count.
+    &ref_count=var.value(&(DRV_CTXT).aPowerDomains[&idx].nReferenceCount)
+
+    ; Get the power domain GDSCR info.
+    &gdscr_addr="((HAL_clk_PowerDomainDescType*)&(DRV_CTXT).aPowerDomains[&idx].HALHandle)->nGDSCRAddr"
+    &gdscr_addr=var.value(&gdscr_addr)
+
+    (
+      ON ERROR gosub
+      (
+        &clk_err="DisplayPowerInfo_GDSCR"
+        return
+      )
+
+      &clk_err=""
+      &gdscr_val=data.long(&gcc_access_mode:&gdscr_addr)
+    )
+
+    if ("&clk_err"=="DisplayPowerInfo_GDSCR")
+    (
+      &gdscr_val="READ-ERROR"
+      &pwr_on="???"
+    )
+    else
+    (
+      if ((&gdscr_val&(0x80000000))==0)
+      (
+        &pwr_on="OFF"
+      )
+      else
+      (
+        &pwr_on="ON"
+      )
+    )
+
+    ; Print the power domain information.
+    print "[" format.decimal(3., &idx) "]  "
+    gosub print_string "&power_domain_name" 24. %CONT
+    print %CONT format.string("{ &b_enabled, ", 14., ' ')
+
+    &ref_count=format.decimal(1, &ref_count)
+    gosub print_string "&ref_count, " 8. %CONT
+
+    print %CONT format.string("&pwr_on", 6., ' ')
+    gosub print_string "} : [&gdscr_addr]" 17. %CONT
+    print %CONT "=> &gdscr_val"
+
+    &idx=&idx+1
+  )
+  print " "
+
+  ; Attempt to print current clock driver railway votes to CX/GFX.
+  gosub get_raw_vreg_str &(DRV_CTXT).VRegConfig.eRailVoteLevel ERR
+  entry &vote
+  if ("&vote"=="VREG_SYMBOL_NOT_FOUND")
+  (
+    gosub get_raw_vreg_str &(DRV_CTXT).VRegConfig.eMinLevel ERR
+    entry &vote
+  )
+  if ("&vote"=="VREG_SYMBOL_NOT_FOUND")
+  (
+    gosub get_raw_vreg_str &(DRV_CTXT).CX_VRegConfig.eRailVoteLevel ERR
+    entry &cx_vote
+    if ("&cx_vote"=="VREG_SYMBOL_NOT_FOUND")
+    (
+      gosub get_raw_vreg_str &(DRV_CTXT).CX_VRegConfig.eMinLevel ERR
+      entry &cx_vote
+    )
+
+    gosub get_raw_vreg_str &(DRV_CTXT).GFX_VRegConfig.eRailVoteLevel ERR
+    entry &gfx_vote
+    if ("&gfx_vote"=="VREG_SYMBOL_NOT_FOUND")
+    (
+      gosub get_raw_vreg_str &(DRV_CTXT).GFX_VRegConfig.eMinLevel ERR
+      entry &gfx_vote
+    )
+  )
+  else
+  (
+    &cx_vote="VREG_SYMBOL_NOT_FOUND"
+    &gfx_vote="VREG_SYMBOL_NOT_FOUND"
+  )
+
+  if (("&vote"!="VREG_SYMBOL_NOT_FOUND")||("&cx_vote"!="VREG_SYMBOL_NOT_FOUND")||("&gfx_vote"!="VREG_SYMBOL_NOT_FOUND"))
+  (
+    print " "
+    print "[---- Clock Driver Railway Vote(s) ----] "
+    print " "
+
+    if ("&vote"!="VREG_SYMBOL_NOT_FOUND")
+    (
+      print "   &vote"
+    )
+    else
+    (
+      if ("&cx_vote"!="VREG_SYMBOL_NOT_FOUND")
+      (
+        print " CX:  &cx_vote"
+      )
+      if ("&gfx_vote"!="VREG_SYMBOL_NOT_FOUND")
+      (
+        print " GFX: &gfx_vote"
+      )
+    )
+    print " "
+  )
+
+  return
+)
+
+;-----------------------------------------------------------------------------
+;
+; Subroutine:   void ListClocksByRailwayVotes(void)
+;
+;   Lists clock names by their railway votes. Only lists clocks which are on
+;   and have an active railway request.
+;
+;-----------------------------------------------------------------------------
+ListClocksByRailwayVotes:
+(
+  local &found
+  local &minor_idx
+  local &idx
+  local &num_clks
+  local &ref_count
+  local &domain
+  local &vreg
+  local &clk_name
+  local &vreg_raw_str
+
+  print " "
+  print "[--- Enabled Clocks with Railway Votes ---]"
+  print " "
+  print " "
+
+  ; Get the number of clocks.
+  &num_clks=var.value(&(DRV_CTXT).nNumClocks)
+
+  ;
+  ; Create an internal buffer to mark which clocks have voted for what.
+  ;
+  ; Without using an internal buffer to record clock railway votes, the clock
+  ; list must be walked once per VREG level, which is a noticably slow operation.
+  ; This internal buffer adds complexity but speeds up the sequence by ~10x.
+  ;
+  var.newlocal char[&num_vreg_levels][&num_clks] \buf
+  &idx=(&off_vreg_level+1)
+  while (&idx<&num_vreg_levels)
+  (
+    &minor_idx=0
+    while (&minor_idx<&num_clks)
+    (
+      var.assign \buf[&idx][&minor_idx] = 0
+      &minor_idx=&minor_idx+1
+    )
+
+    &idx=&idx+1
+  )
+
+  ; Walk through each clock in the '&(DRV_CTXT)' list and record the railway votes.
+  &idx=0
+  while (&idx<&num_clks)
+  (
+    &ref_count=var.value(&(DRV_CTXT).aClocks[&idx].nReferenceCount)
+
+    ; Filter out disabled clocks.
+    if (&ref_count>0)
+    (
+      &domain=var.value(&(DRV_CTXT).aClocks[&idx].pDomain)
+
+      ; Clocks must have a domain in order to place railway requests.
+      if (&domain!=0)
+      (
+        (
+          ON ERROR gosub
+          (
+            ON ERROR continue
+            &E_VREG_LVL="VRegRequest.eVRegLevel"
+
+            &vreg=var.value(&(DRV_CTXT).aClocks[&idx].pDomain->&E_VREG_LVL)
+            return
+          )
+
+          &vreg=var.value(&(DRV_CTXT).aClocks[&idx].pDomain->&E_VREG_LVL)
+        )
+
+        var.assign \buf[&vreg][&idx] = 1
+      )
+    )
+
+    &idx=&idx+1
+  )
+
+  ; Print clock names by VREG level, in decreasing order.
+  &vreg=(&num_vreg_levels-1)
+  while (&vreg>&off_vreg_level)
+  (
+    &found=0
+    &idx=0
+    while (&idx<&num_clks)
+    (
+      ; Check if the clock's VREG request matches the current level.
+      var.if (\buf[&vreg][&idx]!=0)
+      (
+        ; Print the VREG level header.
+        if (&found==0)
+        (
+          &found=1
+          var.assign \vreg_level = &vreg
+          gosub get_raw_vreg_str \vreg_level
+          entry &vreg_raw_str
+          print "  &vreg_raw_str:"
+          print " "
+        )
+
+        ; Print the clock name and index.
+        gosub get_clock_str &(DRV_CTXT).aClocks[&idx].szName
+        entry &clk_name
+        print "      [" format.decimal(3., &idx) "]  "
+        print %CONT "&clk_name"
+      )
+
+      &idx=&idx+1
+    )
+
+    if (&found!=0)
+    (
+      print " "
+    )
+
+    &vreg=&vreg-1 ; TODO fix this.
+  )
+
+  return
+)
+
+;-----------------------------------------------------------------------------
+;
+; Subroutine:   void DisplayClockTable(void)
+;
+;   Opens a 'var.table' window for the clock driver clocks.
+;
+;-----------------------------------------------------------------------------
+DisplayClockTable:
+(
+  local &last_clk_idx
+
+  &last_clk_idx=(var.value(&(DRV_CTXT).nNumClocks)-1)
+
+  var.table %string %symbol &(DRV_CTXT).aClocks[0..&last_clk_idx] 0x10
+
+  return
+)
+
+;-----------------------------------------------------------------------------
+;
+; Subroutine:   void DisplayDomainTable(void)
+;
+;   Opens a 'var.table' window for the clock driver domains.
+;
+;-----------------------------------------------------------------------------
+DisplayDomainTable:
+(
+  local &last_domain_idx
+
+  &last_domain_idx=(var.value(&(DRV_CTXT).nNumClockDomains)-1)
+
+  var.table %symbol &(DRV_CTXT).aClockDomains[0..&last_domain_idx]
+
+  return
+)
+
+;-----------------------------------------------------------------------------
+;
+; Subroutine:   void DisplaySourceTable(void)
+;
+;   Opens a 'var.table' window for the clock driver sources.
+;
+;-----------------------------------------------------------------------------
+DisplaySourceTable:
+(
+  local &last_src_idx
+
+  &last_src_idx=(var.value(&(DRV_CTXT).nNumSources)-1)
+
+  var.table %symbol &(DRV_CTXT).aSources[0..&last_src_idx]
+
+  return
+)
+
+;-----------------------------------------------------------------------------
+;
+; Subroutine:   void DisplayPowerDomainTable(void)
+;
+;   Opens a 'var.table' window for the clock driver power domains.
+;
+;-----------------------------------------------------------------------------
+DisplayPowerDomainTable:
+(
+  local &last_pwr_idx
+
+  &last_pwr_idx=(var.value(&(DRV_CTXT).nNumPowerDomains)-1)
+
+  var.table %string %symbol &(DRV_CTXT).aPowerDomains[0..&last_pwr_idx]
+
+  return
+)
+

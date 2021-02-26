@@ -1,0 +1,375 @@
+//============================================================================
+//  Name:                                                                     
+//    std_loadsim_rpm.cmm 
+//
+//  Description:                                                              
+//    Script to load AOP logs
+//                                                                            
+// Copyright (c) 2012 - 2017 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//  Description:
+//  T32 simulator loader specific to aop dumps. This file has some sdm845 specific areas.
+// 
+//  Dependencies:
+//  Depends on cmm script framework (various dependent files) to work, and assumes that a 
+//  sanitized argument line has been passed in from std_loadsim.cmm script
+//  
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who             what, where, why
+// --------   ---             ---------------------------------------------------------
+// 07/05/2017 JBILLING      Updates for sdm845
+// 05/11/2015 JBILLING      Updates for command line functionality
+// 03/25/2015 JBILLING      Updated loadsyms command line
+// 11/07/2014 JBILLING      Overhaul with new error messages
+// 07/03/2014 AJCheriyan    Bug fixes
+// 09/06/2012 AJCheriyan    Added USB RAM dump support
+// 07/10/2012 AJCheriyan    Created for B-family 
+//
+
+
+
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////// std_loadsim_rpm //////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+//###################Arguments passed #####################
+LOCAL &ArgumentLine
+ENTRY %LINE &ArgumentLine
+LOCAL &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+ENTRY &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+
+
+//#####################Select Subroutine###################
+// Name of the utility we are calling
+LOCAL &SUBROUTINE
+// Any subroutine specific options
+// Default exists for each subroutine
+
+
+// Input Argument 0 is the name of the utility
+&SUBROUTINE="&UTILITY"
+IF !(("&SUBROUTINE"=="VERIFYBUILD")||("&SUBROUTINE"=="HELP")||("&SUBROUTINE"=="help"))
+(
+    &SUBROUTINE="MAIN"   
+)
+
+    // This should be created by some top level script. The setupenv for each proc would
+    // set this up
+    AREA.SELECT
+    // Call the required utility
+    GOSUB &SUBROUTINE &ArgumentLine
+    ENTRY &PASS &RVAL0 &RVAL1 &RVAL2
+
+    ENDDO &PASS &RVAL0 &RVAL1 &RVAL2
+
+
+
+////////////////////////////////////////
+//
+//            MAIN
+//            Main std_loadsim_rpm logic
+//            Expected input: None. Relies on global variables
+//
+/////////////////////////////////////////
+
+MAIN:
+    LOCAL &image &imagebuildroot &logpath &logtype &targetprocessor &processor_root_name &loadsimscript &symbolloadscript &multi_elf_option &alternateelf &extraoptions 
+    ENTRY &image &imagebuildroot &logpath &logtype &targetprocessor &processor_root_name &loadsimscript &symbolloadscript &multi_elf_option &alternateelf &extraoptions 
+
+
+    // Load the memory map to initialize variables
+    do std_memorymap 
+
+    // Setup the environment
+    do std_setupenv
+
+    // First, all the sanity checks
+    GOSUB CHECKBINARIES
+    
+    // Binaries look good. Else, we wouldn't be here    
+    GOSUB SETUPSIM
+    
+    // Load the binaries
+    GOSUB LOADBIN
+
+    // Load the symbols
+    do std_loadsyms_rpm &imagebuildroot locally NULL NULL &alternateelf &extraoptions
+
+    // Load the "state" at the time of the crash
+    GOSUB RESTORESTATE
+
+    // Off you go..
+    GOTO EXIT
+
+////////////////////////////////////////
+//
+//          VERIFYBUILD
+//          Public function
+//          Verify that needed files are present
+//          Expected input: Build Location
+//
+/////////////////////////////////////////
+VERIFYBUILD:
+    LOCAL &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10
+    ENTRY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10
+    LOCAL &result &LOCAL_BUILDROOT
+    
+    &result="SUCCESS"
+    &LOCAL_BUILDROOT="&IARG0"
+    PRINT "Checking that needed files exist"
+    
+    AREA.RESET
+    AREA.CREATE std_loadsim_build_verify 125. 6.
+    AREA.SELECT std_loadsim_build_verify
+    WINPOS 0. 0. 80. 6.
+    AREA.VIEW std_loadsim_build_verify
+    
+    LOCAL &scriptpath
+    IF OS.DIR("&LOCAL_BUILDROOT/&processor_root_name/core/products/scripts/&AOP_BUILDID")&&("&AOP_BUILDID"!="")
+    (
+        &scriptpath="&LOCAL_BUILDROOT/&processor_root_name/core/products/scripts/&AOP_BUILDID"
+    )
+    ELSE
+    (
+        do std_utils GET_SCRIPT_PATH EXIT &LOCAL_BUILDROOT/&processor_root_name/core/products/scripts std_extensions.cmm
+        ENTRY &scriptpath
+    )
+
+    IF (!OS.DIR("&scriptpath"))||("&scriptpath"=="")
+    (
+        PRINT %ERROR "Warning! Could not find context menu scripts for this image! (std_extensions, std_toolsconfig etc.)"
+    )
+    
+    IF FILE.EXIST("&scriptpath/std_extensions.cmm")
+    (
+        PRINT "Found std_extensions.cmm"
+    )
+    ELSE
+    (
+        PRINT %ERROR "Missing core/products/std_extensions.cmm. Context loading will fail"
+        &result="FAILURE_VERIFYBUILD_RPM"
+    )
+    
+    IF FILE.EXIST("&scriptpath/std_toolsconfig.cmm")
+    (
+        PRINT "Found std_toolsconfig.cmm"
+    )
+    ELSE
+    (
+        PRINT %ERROR "Missing core/products/std_toolsconfig.cmm. Context loading will fail"
+        &result="FAILURE_VERIFYBUILD_AOP"
+    )
+    
+    IF FILE.EXIST("&scriptpath/std_scripts.men")
+    (
+        PRINT "Found std_scripts.men"
+    )
+    ELSE
+    (
+        PRINT %ERROR "Missing core/products/std_scripts.men. Context loading will fail"
+        &result="FAILURE_VERIFYBUILD_AOP"
+    )
+    
+
+    IF ("&result"=="SUCCESS")
+    (
+        PRINT "Verification success: Found needed context files"
+        PRINT " "
+    )
+    
+
+    RETURN &result
+////////////////////////////////////////
+//
+//          SETUPSIM
+//          Private function
+//          Set the simulator for the processor we want
+//          Expected input: None
+//
+/////////////////////////////////////////
+SETUPSIM:
+    SYS.CPU CORTEXM3
+    SYS.UP
+    
+
+    RETURN
+
+    
+////////////////////////////////////////
+//
+//          CHECKBINARIES
+//          Private function
+//          Checks if the binaries for the system are present in the location
+//          Loglocation should not be empty and assumes memory map is loaded
+//          Expected input: None. Uses global variables
+//          &logtype=<AUTODETECT,JTAG,USB> 
+//
+/////////////////////////////////////////
+CHECKBINARIES:
+LOCAL &file1 &file2 &file3 &logclass
+
+
+    // This is the best place to determine the type of the log too
+    IF ("&logtype"=="AUTODETECT")
+    (
+    
+        &logclass="&logtype"
+        
+        
+        IF ("&logclass"!="USB")
+        (
+            // Check for both USB binaries.    
+            do std_utils FILEXIST EXIT &logpath &CODERAM_USB_log
+                ENTRY &file1
+      
+            do std_utils FILEXIST EXIT &logpath &DATARAM_USB_log
+                ENTRY &file2
+
+            do std_utils FILEXIST EXIT &logpath &MSGRAM_USB_log
+                ENTRY &file3
+
+            IF (("&file1"=="TRUE")&&("&file2"=="TRUE"))
+            (
+                 &logclass="USB"
+            )
+        )
+
+        ELSE IF ("&logclass"!="JTAG")
+        (
+            // Check for both JTAG binaries.    
+            do std_utils FILEXIST EXIT &logpath &CODERAM_log
+                ENTRY &file1
+          
+            do std_utils FILEXIST EXIT &logpath &DATARAM_log
+                ENTRY &file2
+
+            do std_utils FILEXIST EXIT &logpath &MSGRAM_log
+                ENTRY &file3
+
+            IF (("&file1"=="TRUE")&&("&file2"=="TRUE"))
+            (
+                 &logclass="JTAG"
+            )
+        )
+
+
+
+        // If we even after that, we are stuck with "AUTODETECT" we have a problem
+        IF ("&logclass"=="AUTODETECT")
+        (
+            PRINT %ERROR "Neither USB nor JTAG logs present in folder: &logpath"
+            GOTO FATALEXIT
+        )
+        ELSE
+        (
+            // Safe to change the logtype
+            &logtype="&logclass"
+            PRINT "Detected &logtype logs in folder: &logpath"
+        )
+    )
+            
+    IF ("&logtype"=="JTAG")
+    (
+        
+        // Check for both JTAG binaries.    
+        do std_utils FILEXIST EXIT &logpath &CODERAM_log
+        ENTRY &file1
+      
+        do std_utils FILEXIST EXIT &logpath &DATARAM_log
+        ENTRY &file2
+
+        do std_utils FILEXIST EXIT &logpath &MSGRAM_log
+        ENTRY &file3
+       
+        IF (("&file1"=="FALSE")||("&file2"=="FALSE"))
+        (
+             PRINT %ERROR "JTAG logs not present in folder: &logpath"
+             GOTO FATALEXIT
+        )
+    )
+
+    IF ("&logtype"=="USB")
+    (
+        
+    
+        do std_utils FILEXIST EXIT &logpath &CODERAM_USB_log
+        ENTRY &file1
+      
+        do std_utils FILEXIST EXIT &logpath &DATARAM_USB_log
+        ENTRY &file2
+
+        do std_utils FILEXIST EXIT &logpath &MSGRAM_USB_log
+        ENTRY &file3
+      
+        IF (("&file1"=="FALSE")||("&file2"=="FALSE"))
+        (
+             PRINT %ERROR "USB logs not present in folder: &logpath"
+             GOTO FATALEXIT
+        )
+    )
+        
+        
+    
+
+    RETURN
+
+////////////////////////////////////////
+//
+//          LOADBIN
+//          Private function
+//          Loads the saved binaries
+//          Expected input: None. Uses global variables
+//          &logtype=<JTAG,USB> 
+//
+/////////////////////////////////////////
+
+LOADBIN:
+    
+    IF ("&logtype"=="JTAG")
+    (
+        do std_utils LOADBIN &logpath &CODERAM_log &CODERAM_AOP_start
+        do std_utils LOADBIN &logpath &DATARAM_log &DATARAM_AOP_start
+    )
+    
+    IF ("&logtype"=="USB")
+    (
+        do std_utils LOADBIN &logpath &CODERAM_USB_log &CODERAM_AOP_start
+        do std_utils LOADBIN &logpath &DATARAM_USB_log &DATARAM_AOP_start
+        do std_utils LOADBIN &logpath &MSGRAM_USB_log  &MSGRAM_start
+    )
+    
+    RETURN
+    
+////////////////////////////////////////
+//
+//          RESTORESTATE
+//          Private function
+//          To load the error information from the saved logs
+//          Expected input: None. Uses global variables
+//          &logtype=<JTAG,USB> 
+//          Expects various files to be present
+//
+/////////////////////////////////////////
+RESTORESTATE:
+    // Restore the registers from file if JTAG logs
+    IF ("&logtype"=="JTAG")
+    (
+        do std_utils EXECUTESCRIPT FATALEXIT &logpath/&AOP_regs
+    )
+
+    RETURN
+
+FATALEXIT:
+    END
+
+EXIT:
+    ENDDO
+
+    

@@ -1,0 +1,62 @@
+#===============================================================================
+#
+# GENERAL DESCRIPTION
+#    Build script for HAL QDSS-REPLICATOR Library.
+#
+# Copyright (c) 2012 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#------------------------------------------------------------------------------- 
+#
+#  $Header: //components/rel/core.qdsp6/2.1.c4/debugtrace/lpa_replicator/hal/build/lpa_replicatorhal.scons#1 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 09/07/17   rs      Warlock specific changes
+#===============================================================================
+
+Import('env')
+import qdss
+
+# Replicator in ADSP is only for warlock as per its design.
+if env['MSM_ID'] not in ['670']:
+  Return()
+
+# No replicator in CDSP
+if 'USES_CDSP_IMG' in env:
+  Return()
+  
+# Configuring replicator for core PD only in ADSP
+if 'USES_SENSOR_IMG' in env or 'USES_AUDIO_IMG' in env or 'USES_CDSP_IMG' in env:
+  print("WARN: Enable ENABLE_LPA_REPLICATOR_QDSS only for root PD")
+else:
+  env.Append(CPPDEFINES=['ENABLE_LPA_REPLICATOR_QDSS'])
+ 
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "../src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+env.RequirePublicApi(['DEBUGTRACE','HAL','DAL','SERVICES','SYSTEMDRIVERS', 'POWER', 'KERNEL'])
+
+env.RequireProtectedApi('DEBUGTRACE')
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+LPA_REPLICATOR_HAL_SRC = [
+   '${BUILDPATH}/halqdss_lpa_replicator.c',
+]
+
+env.AddLibrary(qdss.BuildTags(['adsp']),
+   '${BUILDPATH}/lpa_replicator_hal',LPA_REPLICATOR_HAL_SRC)
+
+
+

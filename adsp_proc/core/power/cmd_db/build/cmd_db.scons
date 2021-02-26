@@ -1,0 +1,99 @@
+#===============================================================================
+#
+# Command DB build script
+#
+# GENERAL DESCRIPTION
+#    Builds the CMDDB libraries for all target.
+#
+#    Copyright (c) 2016-2017 Qualcomm Technologies, Inc. (QTI).
+#    All Rights Reserved.
+#    Qualcomm Confidential and Proprietary.
+#    Export of this technology or software is regulated by the U.S. Government.
+#    Diversion contrary to U.S. law prohibited.
+#-------------------------------------------------------------------------------
+#  $Header: //components/rel/core.qdsp6/2.1/power/cmd_db/build/cmd_db.scons#1 $
+#  $DateTime: 2017/07/21 22:10:47 $
+#===============================================================================
+import os
+import fnmatch
+import itertools
+
+Import('env')
+env = env.Clone()
+
+SRCPATH = ".."
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+# FEATURE CONFIG:
+env.Append(CFLAGS='-Wno-missing-braces')
+#env.Append(CPPDEFINES=['RPMH_OFFTARGET_TEST'])
+#env.Append(CPPDEFINES=['OFFTARGET_MSM_ID'])
+
+CBSP_API = [
+  'DAL',
+  'DEBUGTOOLS',
+  'POWER',
+  'SERVICES',
+  'SYSTEMDRIVERS',
+   # needs to be last also contains wrong comdef.h
+  'KERNEL',
+]
+
+#-------------------------------------------------------------------------------
+# Target Checks
+#-------------------------------------------------------------------------------
+# Set target based dir path
+CMDDB_TARGET = env['MSM_ID']
+CMDDB_DIR_ROOT = os.path.join(env['BUILD_ROOT'], 'core/power/cmd_db/target')
+
+# Check if HWIO target directory exists, if not use default target
+if not os.path.exists(os.path.join(CMDDB_DIR_ROOT, CMDDB_TARGET)):
+  env.PrintWarning('Command DB HWIO target ' + CMDDB_TARGET + ' not found, using default')
+  CMDDB_TARGET = env['PWR_TARGET_DFLT']
+
+if env.has_key('ADSP_PROC') or env.has_key('SLPI_PROC') or env.has_key('CDSP_PROC'):
+    env['CMD_DB_IMAGE_OS'] = 'dal'
+elif env.has_key('AOP_IMAGE'):
+    env['CMD_DB_IMAGE_OS'] = 'rex'
+else:
+    env['CMD_DB_IMAGE_OS'] = 'stubs'
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+env.RequireProtectedApi(CBSP_API)
+
+env.PublishPrivateApi('CMD_DB', [
+   '${BUILD_ROOT}/core/power/cmd_db/common',
+   '${BUILD_ROOT}/core/power/cmd_db/target/'+CMDDB_TARGET,
+])
+
+COMMONPATH = os.path.join('..', 'common')
+TARGETPATH = os.path.join('..', 'target', CMDDB_TARGET)
+
+source_patterns = ['*.c', '*.cpp']
+sources = []
+
+#common sources
+for root, dirnames, filenames in os.walk(COMMONPATH):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in source_patterns])
+    matches = ['${BUILDPATH}' + os.path.join(root, filename)[2:] for filename in matches]
+    sources.extend(matches)
+
+#target sources
+for root, dirnames, filenames in os.walk(TARGETPATH):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in source_patterns])
+    matches = ['${BUILDPATH}' + os.path.join(root, filename)[2:] for filename in matches]
+    sources.extend(matches)
+
+RCINIT_IMG = ['CORE_ADSP_ROOT', 'CORE_SLPI_ROOT', 'CORE_CDSP_ROOT', 'CORE_QDSP6_SW', 'CBSP_QDSP6_SW_IMAGE']
+env.AddLibrary(RCINIT_IMG,'${BUILDPATH}/cmd_db.lib', sources)
+
+RCINIT_IMG = ['CORE_MODEM', 'CORE_QDSP6_SW']
+env.AddRCInitFunc(
+     RCINIT_IMG,
+     {
+         'sequence_group'             : 'RCINIT_GROUP_0',
+         'init_name'                  : 'cmd_db',
+         'init_function'              : 'cmd_db_init',
+    }
+)

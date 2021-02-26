@@ -1,0 +1,9 @@
+find . -name "*.py" -exec dos2unix -fv {} \;
+find . -name "*.sh" -exec dos2unix -fv {} \;
+find . -name "*.scons" -exec dos2unix -fv {} \;
+find . -name "scons" -exec dos2unix -fv {} \;
+find . -name "SConstruct" -exec dos2unix -fv {} \;
+find . -name "SConscript" -exec dos2unix -fv {} \;
+find . -name "*.template" -exec dos2unix -fv {} \;
+find . -name "*.dblite" -exec dos2unix -fv {} \;
+find . -name "*.txt" -exec dos2unix -fv {} \;

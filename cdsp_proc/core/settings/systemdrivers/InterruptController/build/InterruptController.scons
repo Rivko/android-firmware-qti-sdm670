@@ -1,0 +1,78 @@
+#===============================================================================
+#
+# Settings Registrations
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2017 by QUALCOMM Technologies Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1.c4/settings/systemdrivers/InterruptController/build/InterruptController.scons#1 $
+#  $DateTime: 2018/07/30 01:21:36 $
+#  $Author: pwbldsvc $
+#  $Change: 16759227 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+import os
+Import('env')
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "../config"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+# The LLVM compiler added in several dozen -Wunused-function warnings with entries
+# in device configuration.  We will suppress these warnings for the devcfg_img
+# SCons image only.
+env.Append(CFLAGS = ' -Wno-unused-function')
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'SYSTEMDRIVERS',
+   'KERNEL'
+]
+
+#-------------------------------------------------------------------------------
+# Publish Private APIs
+#-------------------------------------------------------------------------------
+env.PublishPrivateApi('INTERRUPTCONTROLLER_DEVCFG', [
+   "../interface",
+])
+ 
+env.RequirePublicApi(CBSP_API)
+
+if 'USES_DEVCFG' in env:
+  image_path = os.path.join(os.getcwd(),'..','config',env['IMAGE'],env['CHIPSET'])
+  file_list = []
+  devcfg_key = ''
+
+  if os.path.exists(image_path):
+    file_list.append('../config/${IMAGE}/${CHIPSET}/InterruptController.xml')
+    file_list.append('${BUILDPATH}/${IMAGE}/${CHIPSET}/InterruptConfigData.c')
+    devcfg_key = '{}_xml'.format(env['MSM_ID'])
+  else:
+    file_list.append('../config/InterruptControllerStub.xml')
+    file_list.append('${BUILDPATH}/InterruptConfigDataStub.c')
+    devcfg_key = 'soc_xml'
+
+  DEVCFG_IMG = ['DAL_DEVCFG_IMG','DEVCFG_CORE_QDSP6_AUDIO_SW','DEVCFG_CORE_QDSP6_SENSOR_SW']
+  env.AddDevCfgInfo(DEVCFG_IMG, 
+  {
+     devcfg_key : file_list
+  })
+

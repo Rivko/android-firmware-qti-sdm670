@@ -1,0 +1,499 @@
+; ============================================================================
+;
+;  PMICPeek.cmm
+;
+;  Script to peek/poke PMIC register values.
+;
+;  Execution:
+;    PMICPeek.cmm [ address ] [ deviceid ] [ data ]
+;
+;  example for peek pmica: do PMICPeek.cmm 0x104 0
+;  example for poke pmicb: do PMICPeek.cmm 0x11445 1 0x80
+;
+;  The deviceid is 0 for the first PMIC and 1 for the second. If address
+;  and deviceid are provided the script will peek the given
+;  address and print the result.  If "data" is also provided the data
+;  will be poked to the given address.
+;
+;  ====================================================================
+;
+;  Copyright (c) 2012-2016 QUALCOMM Technologies Incorporated.  All Rights Reserved.
+;  QUALCOMM Proprietary and Confidential.
+;
+;  ====================================================================
+;
+;  $Header: //components/rel/core.glue/1.2/tools/tools/systemdrivers/pmic/hoya/PMICPeek.cmm#2 $
+;  $DateTime: 2017/05/05 14:32:45 $
+;  $Author: pwbldsvc $
+;
+; ============================================================================
+;
+
+ENTRY &addr &devid &data
+
+;-----------------------------------------------------------------------------
+; Default bus access mode and owner
+;-----------------------------------------------------------------------------
+
+local &SPMIOwnerChannel
+&SPMIOwnerChannel=3  ; LPASS Channel by default
+
+local &BusAccessMode
+&BusAccessMode="EZAXI"
+
+local &CurrentDir
+&CurrentDir=OS.PWD()
+
+local &PmicIoScript
+&PmicIoScript="&CurrentDir"+"\pmic_io.cmm"
+
+LOCAL &wdog_data
+&wdog_data=0x0
+
+;-----------------------------------------------------------------------------
+; SLAVE ID DETECTION
+;-----------------------------------------------------------------------------
+
+LOCAL &PM_REVID_PERIPH_TYPE_QC_PMIC
+&PM_REVID_PERIPH_TYPE_QC_PMIC=0x51
+
+LOCAL &PM_MAX_NUM_PMICS &PM_MAX_NUM_SLAVE_IDS
+&PM_MAX_NUM_SLAVE_IDS=14.
+&PM_MAX_NUM_PMICS=7.
+
+VAR.NEW int[&PM_MAX_NUM_PMICS] \PmicSlaveIdArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_MAX_NUM_PMICS
+	VAR.SET \PmicSlaveIdArr[\i++]=0
+
+LOCAL &PM_SLAVE_ID_DETECT_FLAG
+&PM_SLAVE_ID_DETECT_FLAG=0
+
+AREA.SELECT A000
+AREA.CLEAR A000
+
+;-----------------------------------------------------------------------------
+; Check for non-interactive mode.
+;-----------------------------------------------------------------------------
+
+IF ("&addr"!="")
+(
+  AREA.CREATE PMICPeek
+  AREA.VIEW PMICPeek
+  AREA.SELECT PMICPeek
+
+  IF "&devid"==""
+  (
+    &devid=0
+  )
+
+  IF "&data"==""
+  (
+    GOSUB PMICRead &addr &devid
+    ENTRY &status &data
+
+    IF (&status==1)
+    (
+      PRINT "Address=0x" &addr " Value=0x" &data
+    )
+    ELSE
+    (
+      PRINT "SPMI error: Address=0x" &addr " Value=0x" &data " Status=0x" &status
+    )
+    ENDDO &status &data
+  )
+  ELSE
+  (
+    GOSUB PMICWrite &addr &devid &data
+    ENTRY &status
+
+    IF (&status==1)
+    (
+      PRINT "Write successful: Address=0x" &addr " Value=0x" &data
+    )
+    ELSE
+    (
+      PRINT "Write failed: Address=0x" &addr " Value=0x" &data " Status=0x" &status
+    )
+    ENDDO &status
+  )
+
+  ENDDO
+)
+
+;-----------------------------------------------------------------------------
+; Create the dialog
+;-----------------------------------------------------------------------------
+
+DIALOG
+(
+  HEADER "PMIC Register Peek/Poke Tool"
+   
+  POS 0. 0. 25. 9.5
+  BOX "Configuration"
+  
+  POS 1. 1.5 10. 1.
+  TEXT "Address:"
+  POS 12. 1.5 12. 1.
+  ADDR: EDIT "" ""
+  
+  POS 1. 3. 10. 1.
+  TEXT10: TEXT "PMIC:"
+  POS 12. 3. 12. 1.
+  DEVID: PULLDOWN "PMIC A,PMIC B,PMIC C,PMIC D,PMIC E,PMIC F,PMIC G"
+  (
+  )
+
+  POS 1. 4.5 10. 1.
+  TEXT20: TEXT "Data:"
+  POS 12. 4.5 12. 1.
+  DATA: EDIT "" ""
+
+  POS 1. 6. 10. 1.
+  TEXT20: TEXT "Owner:"
+  POS 12. 6. 12. 1.
+  OWNER: PULLDOWN "DEFAULT,AOP"
+  (
+  )
+
+  POS 1. 7.5 10. 1.
+  TEXT20: TEXT "Access Mode:"
+  POS 12. 7.5 12. 1.
+  ACCESSMODE: PULLDOWN "EZAXI,A"
+  (
+  )
+
+  POS 1. 11.5 20. 1.
+  WDOGCTL: CHECKBOX "Disable PMIC Watchdog"
+  (
+
+    &BusAccessMode=DIALOG.STRING(ACCESSMODE)
+    GOSUB SetOwnerChannel DIALOG.STRING(OWNER)
+    &devid=0
+    &addr=0x857
+    IF DIALOG.BOOLEAN(WDOGCTL)
+    (
+      &wdog_data=0x0
+      PRINT "PMIC WDOG Disabled"
+    )
+    ELSE
+    (
+      &wdog_data=0x80
+      PRINT "PMIC WDOG Enabled"
+     )
+
+    IF ("&addr"!="")&&("&wdog_data"!="")
+    (
+      GOSUB PMICWrite &addr &devid &wdog_data
+      ENTRY &status
+      IF (&status==0)
+      (
+        DIALOG.SET DATA "SPMI Error!"
+      )
+    )
+  )
+
+  ; Instructions Box
+  POS 26. 0. 35. 9.5
+  BOX "Instructions"
+  POS 27. 1. 30. 1.
+  TEXT "1. Fill in the address to peek/poke. For the"
+  POS 27. 2. 30. 1.
+  TEXT "   secondary slave id address use 0x1xxxx."
+  POS 27. 3. 30. 1.
+  TEXT "2. Set the PMIC device and optionally the"
+  POS 27. 4. 30. 1.
+  TEXT "   owner channel and access mode (Click"
+  POS 27. 5. 30. 1.
+  TEXT "   on *Help* button below for more info)"
+  POS 27. 6. 30. 1.
+  TEXT "3. Click 'Peek' to read from PMIC, or fill"
+  POS 27. 7. 30. 1.
+  TEXT "   in Data and click 'Poke' to write to PMIC"
+  
+  POS 5. 9.5 10. 1.5
+  DEFBUTTON "Peek" 
+  (
+
+    &BusAccessMode=DIALOG.STRING(ACCESSMODE)
+    GOSUB SetOwnerChannel DIALOG.STRING(OWNER)
+
+    IF DIALOG.STRING(DEVID)=="PMIC B"
+    (
+      &devid=1
+    )
+    ELSE IF DIALOG.STRING(DEVID)=="PMIC C"
+    (
+      &devid=2
+    )
+    ELSE IF DIALOG.STRING(DEVID)=="PMIC D"
+    (
+      &devid=3
+    )
+    ELSE IF DIALOG.STRING(DEVID)=="PMIC E"
+    (
+      &devid=4
+    )
+    ELSE IF DIALOG.STRING(DEVID)=="PMIC F"
+    (
+      &devid=5
+    )
+    ELSE IF DIALOG.STRING(DEVID)=="PMIC G"
+    (
+      &devid=6
+    )
+    ELSE
+    (
+      &devid=0
+    )
+
+    &addr=DIALOG.STRING(ADDR)
+    IF "&addr"!=""
+    (
+      GOSUB PMICRead &addr &devid
+      ENTRY &status &data
+      IF (&status==1)
+      (
+        DIALOG.SET DATA "&data"
+      )
+      ELSE
+      (
+        DIALOG.SET DATA "SPMI Error!"
+      )
+    )
+  )
+  POS 17.5 9.5 10. 1.5
+  DEFBUTTON "Poke" 
+  (
+
+    &BusAccessMode=DIALOG.STRING(ACCESSMODE)
+    GOSUB SetOwnerChannel DIALOG.STRING(OWNER)
+
+    IF DIALOG.STRING(DEVID)=="PMIC B"
+    (
+      &devid=1
+    )
+    ELSE IF DIALOG.STRING(DEVID)=="PMIC C"
+    (
+      &devid=2
+    )
+    ELSE IF DIALOG.STRING(DEVID)=="PMIC D"
+    (
+      &devid=3
+    )
+    ELSE IF DIALOG.STRING(DEVID)=="PMIC E"
+    (
+      &devid=4
+    )
+    ELSE IF DIALOG.STRING(DEVID)=="PMIC F"
+    (
+      &devid=5
+    )
+    ELSE IF DIALOG.STRING(DEVID)=="PMIC G"
+    (
+      &devid=6
+    )
+    ELSE
+    (
+      &devid=0
+    )
+    &addr=DIALOG.STRING(ADDR)
+    &data=DIALOG.STRING(DATA)
+    IF ("&addr"!="")&&("&data"!="")
+    (
+      GOSUB PMICWrite &addr &devid &data
+      ENTRY &status
+      IF (&status==0)
+      (
+        DIALOG.SET DATA "SPMI Error!"
+      )
+    )
+  )
+
+  POS 30. 9.5 10. 1.5
+  DEFBUTTON "Help" 
+  (
+    WINPOS 0% 50% 68% 55% 0. 0. W001
+    AREA.CREATE PMICHelp
+    AREA.VIEW PMICHelp
+    AREA.SELECT PMICHelp
+    AREA.CLEAR PMICHelp
+    PRINT "ACCESS MODE:EZAXI,OWNER:DEFAULT -> ON ANY T32 WINDOW (FOR RELIABLE STATUS DATA WITHOUT BREAKING THE T32)"
+    PRINT ""
+    PRINT "ACCESS MODE:A, OWNER:AOP -> ON AOP T32 WINDOW (IN SLEEP IF CX COLLAPSED OR RETENTION WITH BREAKING THE T32)"
+    PRINT "----------------------------------------------------------------------------------------------------------------------------"
+  )
+
+  POS 42.5 9.5 10. 1.5
+  BUTTON "Close" "JUMPTO winclose"
+  CLOSE "JUMPTO winclose"
+)
+STOP
+
+winclose:
+DIALOG.END
+ENDDO
+
+
+;=============================================================================
+;=============================================================================
+; SUBROUTINES
+;=============================================================================
+;=============================================================================
+
+;=============================================================================
+; SUB: PmicSlaveIdDetection
+;=============================================================================
+
+PmicSlaveIdDetection:
+
+  &verPeriphBaseAddr=0x100
+  &verPeriphTypeAddr=&verPeriphBaseAddr+0x04
+  &verPeriphTypeData=0
+  &verPeriphTypeStatus=0
+  &verSlaveId=0
+  &verDeviceIndex=0
+
+  WHILE (&verSlaveId<=&PM_MAX_NUM_SLAVE_IDS)
+  (
+    IF (&verDeviceIndex<&PM_MAX_NUM_PMICS)
+    (
+      do &PmicIoScript read &SPMIOwnerChannel &BusAccessMode &verSlaveId &verPeriphTypeAddr
+      ENTRY &verPeriphTypeStatus &verPeriphTypeData
+
+      IF ((&verPeriphTypeStatus!=0)&&(&verPeriphTypeData!=0)&&(&verPeriphTypeData==&PM_REVID_PERIPH_TYPE_QC_PMIC))
+      (
+        VAR.SET \PmicSlaveIdArr[&verDeviceIndex]=&verSlaveId
+      )
+    )
+
+    &verDeviceIndex=&verDeviceIndex+1
+    &verSlaveId=&verSlaveId+2
+  )
+
+  &PM_SLAVE_ID_DETECT_FLAG=1
+
+  RETURN
+
+;=============================================================================
+; SUB: SetOwnerChannel
+;=============================================================================
+
+SetOwnerChannel:
+
+  ENTRY &OwnerName
+
+  IF &OwnerName=="APPS"
+  (
+    &SPMIOwnerChannel=0
+  )
+  ELSE IF &OwnerName=="TZ"
+  (
+    &SPMIOwnerChannel=1
+  )
+  ELSE IF &OwnerName=="MPSS"
+  (
+    &SPMIOwnerChannel=2
+  )
+  ELSE IF &OwnerName=="DEFAULT"
+  (
+    &SPMIOwnerChannel=3
+  )
+  ELSE IF &OwnerName=="AOP"
+  (
+    &SPMIOwnerChannel=4
+  )
+  ELSE IF &OwnerName=="SSC"
+  (
+    &SPMIOwnerChannel=5
+  )
+
+  RETURN
+
+;=============================================================================
+; SUB: PMICToSPMI
+;=============================================================================
+
+PMICToSPMI:
+
+  ENTRY &addr &devid
+  LOCAL &spmi_sid &spmi_addr
+
+  IF (!STATE.RUN()&&(SYSTEM.MODE()<=0x5))
+  (
+    sys.m.a
+  )
+
+  IF (&devid==0)
+  (
+    &spmi_sid=0
+  )
+  ELSE
+  (
+    IF (&PM_SLAVE_ID_DETECT_FLAG==0)
+    (
+      GOSUB PmicSlaveIdDetection
+    )
+
+    IF (VAR.VALUE(\PmicSlaveIdArr[&devid])!=0)
+    (
+      &spmi_sid=VAR.VALUE(\PmicSlaveIdArr[&devid])
+    )
+    ELSE
+    (
+      &spmi_sid=12. ;invalid slave id for now
+    )
+  )
+
+  &pmic_sid=&addr>>16.
+  IF &pmic_sid==1
+  (
+    &spmi_sid=&spmi_sid+1
+  )
+
+  &spmi_addr=&addr&0xFFFF
+
+  RETURN &spmi_sid &spmi_addr
+
+
+;=============================================================================
+; SUB: PMICRead
+;=============================================================================
+
+PMICRead:
+
+  ENTRY &addr &devid
+
+  &read_status=0
+  &read_data=0
+
+  GOSUB PMICToSPMI &addr &devid
+  ENTRY &spmi_sid &spmi_addr
+
+  do &PmicIoScript read &SPMIOwnerChannel &BusAccessMode &spmi_sid &spmi_addr
+  ENTRY &read_status &read_data
+
+  RETURN &read_status &read_data
+
+
+;=============================================================================
+; SUB: PMICWrite
+;=============================================================================
+
+PMICWrite:
+
+  ENTRY &addr &devid &peek_data
+
+  &write_status=0
+
+  GOSUB PMICToSPMI &addr &devid
+  ENTRY &spmi_sid &spmi_addr
+
+  do &PmicIoScript write &SPMIOwnerChannel &BusAccessMode &spmi_sid &spmi_addr &peek_data
+  ENTRY &write_status
+
+  RETURN &write_status
+
+

@@ -1,0 +1,207 @@
+;****************************************************************************
+;**         boot_log.cmm
+;**
+;**         This script performs boot logging for Bear family
+;**
+;** Copyright  2014,2015,2017 by Qualcomm Technologies, Incorporated.  All Rights Reserved.
+;**
+;****************************************************************************
+;**
+;**                        EDIT HISTORY FOR MODULE
+;**
+;**
+;** when       who     what, where, why
+;** --------   ---     ------------------------------------------------------
+;** 08/14/17   yps     Fixed boot log dump issue
+;** 04/18/17   kpa     Update array size
+;** 02/18/15   kpa     Updated for HoneyBadger family
+;** 03/31/14   ck      Updated for Bear family
+;** 10/25/13   jz      Ported fix to get log buffer start address and size from Apps proc
+;** 09/24/13   jz      Updated to dump the log from Apps proc and use actual boot log address/size
+;** 08/07/13   jz      ported from target's boot_debug to make it shared
+
+ENTRY &logging_path
+
+global &sbl1_log_file_name
+global &sbl1_delta_file_name
+global &timestamp_file_name
+local  &msg_time
+local  &print_delimiter &scan_delimiter
+global &sbl1_buf_start &sbl1_buf_size 
+
+var.new int [50] \time_array
+var.new char [50][100] \function_name_array
+
+&print_delimiter="	"
+&scan_delimiter="-"
+
+&sbl1_log_file_name="bootlog_sbl1.txt"
+&sbl1_delta_file_name="bootlog_sbl1_delta.txt"
+&timestamp_file_name="bootlog_timestamp.txt"
+
+;Get address of where boot log is stored in DDR and the buffer size
+&sbl1_buf_start=v.value("boot_log_data.log_buffer_start")
+&sbl1_buf_size=v.value("boot_log_data.log_buffer_size")
+
+&sbl1_start_msg="SBL1, Start"
+&sbl1_end_msg="SBL1, End"
+
+&dir=os.pwd()
+
+cd &logging_path
+
+gosub log_sbl &sbl1_log_file_name &sbl1_delta_file_name &sbl1_buf_start &sbl1_buf_size
+
+gosub log_timestamp
+
+cd &dir
+
+enddo
+
+
+log_sbl:
+
+  ENTRY &log_file_name &delta_file_name &buf_start &buf_size
+  local &function_name &other_time &time_sum &log_count &log_line &message_time
+  local &index1 &index2 &index3
+  &log_count=0
+  &time_sum=0
+  
+  ;save the entire log buffer
+  d.save.binary &log_file_name &buf_start++(&buf_size-1)
+
+  open #1 &log_file_name /read
+  open #2 &delta_file_name /create 
+  open #2 &delta_file_name /write
+
+  read #1 %line &log_line
+
+  while !EOF()
+  (
+    ;if the log starts with 'D' then it's logging delta time
+    if string.char("&log_line",0)==0x44
+    ( 
+      ;find the first and second '-'
+      &index1=string.scan("&log_line","&scan_delimiter",0)
+      &index2=string.scan("&log_line","&scan_delimiter",&index1+1)
+    
+      ;timestamp is in between the first and second '-'
+      &message_time=string.mid("&log_line",&index1+1,&index2-&index1-2)
+    
+      ;remove all the spaces in the front of timestamp
+      &index3=0
+      while (string.char("&message_time",&index3)==0x20)
+      (
+        &index3=&index3+1
+      )
+      &message_time=string.cut("&message_time",&index3)
+    
+      ;function name is after the second '-'
+      &function_name=string.cut("&log_line",&index2+2)
+    
+      ;store timestamp and function name in array
+      v.set \time_array[&log_count]=&message_time
+      v.set \function_name_array[&log_count]="&function_name"
+      &log_count=&log_count+1
+    )
+    read #1 %line &log_line
+  )
+
+  ;calculate the sum of all timestamp except the last one
+  ;we know the last timestamp is the total time of sbl
+  &index3=0
+  while (&index3<&log_count-1)
+  (
+    &time_sum=&time_sum+v.value(\time_array[&index3])
+    &index3=&index3+1
+  )
+  
+  ;calculate the time of all other functions
+  &other_time=v.fvalue(\time_array[&log_count-1])
+  &other_time=&other_time-&time_sum
+
+  ;write function name and time to file
+  &index3=0
+  while (&index3<&log_count-1)
+  (
+    &function_name=v.string(\function_name_array[&index3])
+    &message_time=v.fvalue(\time_array[&index3])
+    write #2 "&function_name" "&print_delimiter" "&message_time" 
+    &index3=&index3+1
+  )
+  write #2 "others" "&print_delimiter" "&other_time" 
+  
+  close #1
+  close #2
+  
+  return 
+
+  
+log_timestamp:
+
+  local &time1 &time2 
+
+  open #2 &timestamp_file_name /create
+  
+  ;write #2 "enter SBL1" "&print_delimiter" "&time_pbl"
+ 
+  gosub get_message_time &sbl1_log_file_name "&sbl1_start_msg"
+  if ("&msg_time"=="")
+  (
+    print " Error!! :  '&sbl1_start_msg' not found. Potential buffer overflow "
+    goto end_of_log_timestamp
+  )
+  &time1=&msg_time.
+  write #2 "enter SBL1" "&print_delimiter" "&time1" 
+
+  &msg_time=""
+  gosub get_message_time &sbl1_log_file_name "&sbl1_end_msg"
+  if ("&msg_time"=="")
+  (
+    print " Error!! : '&sbl1_end_msg' not found. End of boot potentially not reached."
+    goto end_of_log_timestamp
+  )  
+  &time2=&msg_time.
+  write #2 "enter QSEE" "&print_delimiter" "&time2"
+  
+  close #2
+  
+end_of_log_timestamp:
+  return
+  
+  
+get_message_time:
+
+  ENTRY &log_file_name &message
+  local &index1 &index2 &index3
+  
+  open #1 &log_file_name /read
+  read #1 %line &log_line
+  
+  while !EOF()
+  (    
+    &index1=string.scan("&log_line",&message,0)
+    if &index1!=-1
+    (
+      ;find the first and second '-'
+      &index1=string.scan("&log_line","&scan_delimiter",0)
+      &index2=string.scan("&log_line","&scan_delimiter",&index1+1)
+    
+      ;timestamp is in between the first and second '-'
+      &msg_time=string.mid("&log_line",&index1+1,&index2-&index1-2)
+    
+      ;remove all the spaces in the front of timestamp
+      &index3=0
+      while (string.char("&msg_time",&index3)==0x20)
+      (
+        &index3=&index3+1
+      )
+      &msg_time=string.cut("&msg_time",&index3)
+    )
+    read #1 %line &log_line
+  )
+  
+  close #1
+  
+  return
+

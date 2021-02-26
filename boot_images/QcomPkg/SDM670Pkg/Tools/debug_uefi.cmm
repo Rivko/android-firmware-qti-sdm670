@@ -1,0 +1,153 @@
+;============================================================================
+;  Name:
+;    debug_uefi.cmm
+;
+;  Description:
+;     Debug UEFI Environment
+;
+; Copyright (c) 2013-2017 Qualcomm Technologies Incorporated.
+; All Rights Reserved.
+; Qualcomm Technologies Confidential and Proprietary
+;
+;----------------------------------------------------------------------------
+;============================================================================
+;
+;                        EDIT HISTORY FOR MODULE
+
+;
+;when         who     what, where, why
+;----------   ---     ----------------------------------------------------------
+;2017-09-12   vk      Remove PATH
+;2016-11-21   bh      Add INTDIS to stop trapping in timer handler during debug
+;2016-11-17   bh      Handle standalone as arg, and set FBC as default target
+;2016-11-10   bh      Add FBC flag
+;2016-07-21   bh      Support SDM845
+;2013-03-09   vk      Initial Version
+;============================================================================;
+
+;============================================================================
+;  CMM script variables
+;============================================================================
+local &TargetPkg
+local &UefiRamEntryAddr
+local &RamFvAddr
+local &Target
+global &Variant
+global &RelFolder
+global &UefiBase
+
+;============================================================================
+
+
+;---------------------------------------------------
+; Setup area and log
+;---------------------------------------------------
+winclear
+area.clear
+area.reset
+area.create UEFI_Logs 1000. 8192.
+area.select UEFI_Logs
+area.view UEFI_Logs
+
+;---------------------------------------------------
+; Entry point
+;---------------------------------------------------
+ENTRY &OptArgs &Modules &PreSil
+
+  &Target="670"
+  &TargetPkg="SDM&Target"+"Pkg"
+  &RelFolder="DEBUG"
+
+  &Modules=convert.toupper("&Modules")
+  &OptArgs=convert.toupper("&OptArgs")
+  &PreSil=convert.toupper("&PreSil")
+  if ((string.scan("&OptArgs", "REL",0)!=-1))
+  (
+    &RelFolder="RELEASE"
+  )
+
+  y.reset
+
+  sys.m.a
+  if run()
+  (
+    break
+    wait !run()
+  )
+
+  sys.option.imaskhll on
+  sys.option.imaskasm on
+  sys.option.enreset on
+
+
+  ; Setup present and other directories
+  &CwDir=os.ppd()
+  &CommonTools="&CwDir/../../Tools"
+
+
+  gosub VariantCheck
+  entry &VariantRequested
+
+  do &CommonTools/cmm/variant_setup.cmm &Target &VariantRequested
+  print "Setting Variant to &Variant"
+
+  GoSub SetArguments &Variant
+  &UefiBase=&UefiRamEntryAddr
+
+  if (("&Modules"=="SA")||("&OptArgs"=="SA")||("&PreSil"=="SA"))
+  (
+    print "Running standalone UEFI"
+    do &CwDir/pre_sil.cmm
+  )
+   
+  gosub TargetSetup
+
+  ;Load T32 UEFI awareness
+  do &CommonTools/cmm/t32_uefi_menu.cmm &CwDir
+
+  b.d
+
+  do &CommonTools/dxe_dbg.cmm &Target &TargetPkg &UefiRamEntryAddr &RamFvAddr &UefiDebugCookieAddr &OptArgs &Modules
+  cd &CwDir
+enddo
+
+;---------------------------------------------------
+;SetArguments
+;---------------------------------------------------
+SetArguments:
+  Entry &Varaint
+  &UefiRamEntryAddr=0x9FC00000
+  &RamFvAddr=0x9F800000
+
+  return
+
+TargetSetup:
+  sys.d
+  sys.u
+
+  do &CwDir/cookies_set.cmm
+
+  b.set &UefiRamEntryAddr /o /disablehit 
+
+  go
+  wait !run()
+
+  return
+
+VariantCheck:
+  local &VarPos
+  local &VariantLength
+
+  &VariantLength=0x2
+
+  &VarPos=string.scan("&OptArgs", "VAR_", 0)
+  if (&VarPos==-1)
+    return
+
+  &VarExtract=string.ScanAndExtract("&OptArgs", "VAR_", "")
+  &VarExtract=string.split("&VarExtract", ",", 0)
+
+  &VarExtract=string.mid("&OptArgs", &VarPos+0x4, &VariantLength)
+
+  return &VarExtract
+

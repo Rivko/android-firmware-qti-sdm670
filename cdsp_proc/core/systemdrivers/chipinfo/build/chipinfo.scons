@@ -1,0 +1,106 @@
+#===============================================================================
+#
+# CHIP INFO LIBRARY
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2011-2016 Qualcomm Technologies Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1.c4/systemdrivers/chipinfo/build/chipinfo.scons#1 $
+#  $DateTime: 2018/07/30 01:21:36 $
+#  $Author: pwbldsvc $
+#  $Change: 16759227 $
+#
+#===============================================================================
+
+import os
+Import('env')
+env = env.Clone()
+
+#-----------------------------------------------------------------------------
+# Define paths
+#-----------------------------------------------------------------------------
+
+SRCPATH = "${BUILD_ROOT}/core/systemdrivers/chipinfo/src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+CHIPINFO_BUILD_ROOT = os.getcwd()
+
+env.PublishPrivateApi('SYSTEMDRIVERS_CHIPINFO', [
+   CHIPINFO_BUILD_ROOT + "/../src",
+   "${BUILD_ROOT}/core/systemdrivers/chipinfo/config/${CHIPSET}",
+])
+
+#-------------------------------------------------------------------------------
+# Convert warnings to errors - do not remove this flag!
+#-------------------------------------------------------------------------------
+
+env.Append(CFLAGS = "-Werror ")
+env.Append(CFLAGS = "-Wall ")
+
+#-------------------------------------------------------------------------------
+# External depends outside CoreBSP
+#-------------------------------------------------------------------------------
+
+env.RequireExternalApi([
+   'CS'        # AEEStd.h
+])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+CBSP_API = [
+   'HAL',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'DAL',
+   'MPROC',
+
+   # Must be last due to comdef.h issues
+   'KERNEL'
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Define sources
+#-------------------------------------------------------------------------------
+
+CHIPINFO_SOURCES = [
+   '${BUILDPATH}/ChipInfo.c',
+   '${BUILDPATH}/ChipInfoCore.c',
+   '${BUILDPATH}/DalChipInfoFwk.c',
+   '${BUILDPATH}/ChipInfoImage.c',
+]
+
+#-------------------------------------------------------------------------------
+# Add libraries to image
+#-------------------------------------------------------------------------------
+
+env.AddLibrary(
+   ['QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE'],
+   '${BUILDPATH}/DalChipInfo',
+   CHIPINFO_SOURCES )
+
+#-------------------------------------------------------------------------------
+# Register initialization function and dependencies with rcinit
+#-------------------------------------------------------------------------------
+if 'USES_RCINIT' in env:
+  RCINIT_IMG = ['CORE_SLPI_ROOT','CORE_CDSP_ROOT','CORE_ADSP_ROOT']
+
+  env.AddRCInitFunc(RCINIT_IMG, {
+    'sequence_group' : 'RCINIT_GROUP_0',
+    'init_name'      : 'chipinfo',
+    'init_function'  : 'ChipInfo_Init',
+    'dependencies'   : ['dalsys', 'smem'],
+  })
+
+

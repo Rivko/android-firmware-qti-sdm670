@@ -1,0 +1,230 @@
+#===============================================================================
+#
+# Basic skeleton image scrip
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009-2012 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/dspbuild.adsp/5.0.c3/bsp/custom_shared_libs/build/custom_shared_libs.scons#1 $
+#  $DateTime: 2018/08/07 05:36:15 $
+#  $Change: 16823152 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+
+Import('env')
+import os, sys
+#------------------------------------------------------------------------------
+# Init image vars 
+#------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
+# Init aliases array.
+# first alias (0th elemten in array) is always unique name, there should 
+# never be two images with the same unique name
+aliases = ['custom_shared_libs', 'sdm845_ADSP', 'sdm845_CDSP', 'sdm670_ADSP', 'sdm670_CDSP']
+
+bld_tags = ['HAP_AVS_ADSP']
+   
+build_tools = ['buildspec_builder.py',
+         '${BUILD_ROOT}/core/bsp/build/scripts/mbn_builder.py',
+         '${BUILD_ROOT}/core/bsp/build/scripts/tms_builder_servreg.py',
+         '${BUILD_ROOT}/core/bsp/build/scripts/cmm_builder.py',
+         '${BUILD_ROOT}/core/bsp/build/scripts/swe_builder.py',
+         '${BUILD_ROOT}/core/bsp/build/scripts/sleep_lpr_builder.py',  
+         '${BUILD_ROOT}/avs/build/avs_post_builder.py',
+         '${BUILD_ROOT}/avs/build/avs_library_builder.py']
+         
+#------------------------------------------------------------------------------
+# Init environment variables
+env.InitImageVars(
+   alias_list=aliases,  	# aliases list
+   proc='qdsp6',        	# proc (depending on tool chain arm, hexago, etc)
+   config='adsp',
+   plat='qurt',           	# platform (l4, blast, foo, bar, etc)
+   build_tags = bld_tags,
+   tools = build_tools
+)
+
+#------------------------------------------------------------------------------
+# Check if we need to load this script or just bail-out
+#------------------------------------------------------------------------------
+
+if not env.CheckAlias() or not os.environ.get('OEM_ROOT'):
+   Return()
+
+#---------------------------------------------------------------------------
+# Load in CBSP uses and path variables
+#---------------------------------------------------------------------------
+env.LoadToolScript('build_utils', toolpath = ['${BUILD_ROOT}/build/scripts'])
+env.InitTargetVariation()
+env.InitBuildConfig()
+
+
+if ('USES_FEATURE_DYNAMIC_LOADING_GLOBAL' in env) :
+   env.Replace(USES_FEATURE_DYNAMIC_LOADING = 'yes')
+   env.LoadToolScript('sharedlib_symbols', toolpath = ['${BUILD_ROOT}/core/bsp/build/scripts'])
+   env.LoadToolScript('dlinker_symbols', toolpath = ['${BUILD_ROOT}/core/bsp/build/scripts'])
+else:
+   #Fail the build if 'USES_FEATURE_DYNAMIC_LOADING_GLOBAL' is not defined in the environment
+   print "To compile for the shared libraries, USES_FEATURE_DYNAMIC_LOADING_GLOBAL must be defined in the environment" 
+   sys.exit(-1)
+
+if 'BUILD_BAREBONE' in env:
+   env.PrintInfo("BUILD_BAREBONE in avs_libs.scons env, bypass AVS compilation")
+   Return()
+   
+#This flag will be set if shared libraries generation is needed.
+#Use this flag for shared libraries specific customization   
+env.Replace(USES_AVS_SHARED_LIBS = 'yes')
+#Pass this by default as these addlibrary and addavslibrary needs to be compiled with "fpic"
+env.Append(CFLAGS='-fPIC')
+env.Append(CPPFLAGS='-fPIC')
+env.Append(CFLAGS = '-DAVS_BUILD_SOS') 
+
+env.AddUsesFlags('USES_SERVICE_REGISTRY_PLAYBOOK')
+env.Replace(AVS_ROOT = '${BUILD_ROOT}/avs/main')
+
+if 'USES_MULTI_PD' in env:
+   env.AddUsesFlags('USES_MPD')
+   env.AddUsesFlags('USES_QURTOS_IMG') #this is the flag to be used for mpd builds to compile for guest os
+   env.Append(CPPDEFINES=["MULTI_PD_BUILD"])
+else:
+   env.PrintInfo("This adsp avs libs are being built for Single PD version")
+
+#if ARGUMENTS.get("$SIM") == "1" or ARGUMENTS.get("$SIM") == "TRUE":
+if ARGUMENTS.get('SIM') == "1" or ARGUMENTS.get('SIM') == "TRUE":
+   env.PrintInfo("SIM is in the argument, build SIM AVS")
+   env.AddUsesFlags(['USES_STACK_PROTECTION_ENABLED','USES_AVS_TEST'])
+else:
+   env.AddUsesFlags(['USES_STACK_PROTECTION_ENABLED','USES_ADSPPM_INTEGRATION_ENABLED'])
+
+#---------------------------------------------------------------------------
+# Load in the tools-set init scripts
+#---------------------------------------------------------------------------
+
+#Add ADSP Image specific linker inputs here
+env.LoadToolScript('hexagon_adsp', toolpath = ['${BUILD_ROOT}/build'])
+env.Tool('sharedlib_builder', toolpath = ['${BUILD_ROOT}/build'])
+if 'USES_MALLOC_WRAPPER_ENABLED' in env:
+    env.Append(CFLAGS='-DMALLOC_WRAPPER ')
+
+if 'USES_ADSPPM_INTEGRATION_ENABLED' in env:
+    env.Append(CFLAGS='-DADSPPM_INTEGRATION=1')
+else:
+    env.Append(CFLAGS='-DADSPPM_INTEGRATION=0')      
+
+
+#Append sim flag if building for sim 
+if 'USES_AVS_TEST' in env:
+    env.Append(CFLAGS='-DSIM')
+	
+	
+#---------------------------------------------------------------------------
+# Libs/Objs
+#---------------------------------------------------------------------------
+image_libs = []
+image_objs = []
+image_static_objs=[]
+image_units = []
+
+#---------------------------------------------------------------------------
+# Libraries Section
+#---------------------------------------------------------------------------
+# load au_name libs/objs build rules.
+env.PrintInfo("Loading HAP AU to build custom shared libs")
+au_name_items = env.LoadAreaSoftwareUnits('hap')
+# image_libs.extend(au_name_items['LIBS'])
+image_objs.extend(au_name_items['SHARED_LIBS'])
+# image_static_objs.extend(au_name_items['OBJS'])
+
+SERVREG_PLAYLISTS = [ ] # NONE USED
+
+# FOR SCONS TOOL EMITTERS TO PLACE OUTPUT PROPERLY
+if not os.path.exists(env.RealPath('${SHORT_BUILDPATH}')):
+   if Execute(Mkdir(env.RealPath('${SHORT_BUILDPATH}'))):
+      raise
+#Generate Hash xml for the libraries to be added by AddDevcfgInfo during static image creation
+hash_out = env.HashXmlBuilder("${BUILD_MS_ROOT}/${TARGET_NAME}_HASH.xml", image_objs)
+# Generate strict XML variant for Strict XML feature
+strict_env = env.Clone()
+strict_env.AddUsesFlags('USES_DEVCFG_STRICT_XML')
+hash_out_strict = strict_env.HashXmlBuilder("${BUILD_MS_ROOT}/${TARGET_NAME}_HASH_strict_xml.xml", image_units)
+
+# ONLY WHEN DNT_BUILDER_SREG SCONS TOOL LOADED
+if 'USES_SERVICE_REGISTRY' in env and 'USES_SERVICE_REGISTRY_PLAYBOOK' in env:
+
+   # NEVER POLLUTE ENV CONSTRUCTION ENVIRONMENT WHICH GETS INHERITED
+   playbook_servreg_env = env.Clone()
+
+   # PLAYLIST OUTPUT THIS LIBRARY
+   servreg_out_pl = playbook_servreg_env.RealPath('${SHORT_BUILDPATH}/servreg_playlist.pl')
+   playbook_servreg_env.AddServRegPlaylist(bld_tags, servreg_out_pl)
+   playbook_servreg_env.Depends(bld_tags, servreg_out_pl)
+   image_units.append(servreg_out_pl)
+
+#--- SERVICE REGISTRY Playbook Extension, Library Specific Details ------------END
+
+
+#Cleaning of the copied files are cleaned using this way
+#Need to remove this once we move to env.installas option
+
+image_units = [image_objs, image_libs,image_static_objs]
+#------------------------------------------------------------------------------
+# Putting the image toghther
+#------------------------------------------------------------------------------
+
+if 'IMAGE_BUILD_LOCAL_FILES' in env:
+   #-------------------------------------------------------------------------
+   # Local Files
+   #-------------------------------------------------------------------------
+   
+   # this is where local files are created, for example link scripts (lcs)
+   # for qdsp6 like images, or scatter load files (scl) for amr like images.
+   local_items= []
+   
+
+
+   image_units += local_items
+      
+if 'IMAGE_BUILD_LINK' in env:
+   if len(image_objs)> 0 :
+       image_elf = env.ListFileBuilder("${SHORT_BUILDPATH}/${TARGET_NAME}.txt", image_units, 
+           add_header=False, relative_path="${BUILD_ROOT}/build/ms", posix=True)
+       #The below line to to install library to build/dynamic_modules(Optional)
+       install_file = env.InstallMySharedLib("${SHORT_BUILDPATH}/${TARGET_NAME}.txt")
+           
+   else:
+       image_elf=[]
+       install_file=[]
+if 'IMAGE_BUILD_POST_LINK' in env:
+   #-------------------------------------------------------------------------
+   # Post process image
+   #-------------------------------------------------------------------------
+   
+   # this is where any aditional rules after linking are done.
+
+   #======================================================================
+   # Define targets needed 
+   #
+   image_units += [
+      image_elf,
+      install_file,
+   ]
+
+#=========================================================================
+# Finish up...
+image_units += [hash_out, hash_out_strict]
+env.BindAliasesToTargets(image_units)

@@ -1,0 +1,89 @@
+#===========================================================================
+# Power Utils builds script
+#
+# Copyright (c) 2016 by Qualcomm Technologies, Incorporated
+# All Rights Reserved
+# Qualcomm Proprietary/GTDR
+#===========================================================================
+
+Import('env')
+
+env = env.Clone()
+
+if env['MSM_ID'] in ['640']:
+   env['MSM_ID'] = '670'
+SRCPATH = '../src'
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+env.Append(CFLAGS = '${ARMCC_STDC99_CMD}')
+
+# APIs
+CBSP_API = [
+    'DAL',
+    'POWER',
+    'SERVICES',
+    'DEBUGTRACE',
+    'SYSTEMDRIVERS',
+    'KERNEL',
+    'MPROC',
+]
+
+if env['MSM_ID'] == '24':
+   env.Append(CPPDEFINES = 'SDX24_STUBS')
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+env.RequireProtectedApi(CBSP_API)
+
+#SDM640_CHANGES
+if env['MSM_ID'] in ['640']:
+    env.PublishPrivateApi('PWR_UTILS', [ 
+        '${BUILD_ROOT}/core/power/utils/inc',
+        '${BUILD_ROOT}/core/power/utils/inc/670',
+    ])
+else:
+     env.PublishPrivateApi('PWR_UTILS', [ 
+    '${BUILD_ROOT}/core/power/utils/inc',
+        '${BUILD_ROOT}/core/power/utils/inc/${MSM_ID}',   
+	])	
+# Sources
+#SDM640_CHANGES
+if env['MSM_ID'] in ['640']:
+    PWR_UTILS_SOURCES = [
+        '${BUILDPATH}/pwr_utils_lvl.c',
+        '${BUILDPATH}/debug.c',
+        '${BUILDPATH}/msg_ram_layout.c',
+        '${BUILDPATH}/670/msg_ram_sections.c',
+        '${BUILDPATH}/json_parser.c',
+        '${BUILDPATH}/aop_services.c',
+        '${BUILDPATH}/670/target_aop_services.c',
+        '${BUILDPATH}/670/target_aop_qdss.c',
+        '${BUILDPATH}/drv_lookup.c',
+        '${BUILDPATH}/670/rpmh_arc_mol.c',
+    ]
+else:
+    PWR_UTILS_SOURCES = [
+    '${BUILDPATH}/pwr_utils_lvl.c',
+    '${BUILDPATH}/debug.c',
+    '${BUILDPATH}/msg_ram_layout.c',
+    '${BUILDPATH}/${MSM_ID}/msg_ram_sections.c',
+    '${BUILDPATH}/json_parser.c',
+    '${BUILDPATH}/aop_services.c',
+    '${BUILDPATH}/${MSM_ID}/target_aop_services.c',
+    '${BUILDPATH}/${MSM_ID}/target_aop_qdss.c',
+    '${BUILDPATH}/drv_lookup.c',
+    '${BUILDPATH}/${MSM_ID}/rpmh_arc_mol.c',
+]
+
+# Add sources to compile
+env.AddLibrary(['CORE_AOP'], '${BUILDPATH}/pwr_utils', PWR_UTILS_SOURCES)
+
+#-------------------------------------------------------------------------------
+# QDSS SW Events
+#-------------------------------------------------------------------------------
+if 'USES_QDSS_SWE' in env:
+    QDSS_IMG = ['QDSS_EN_IMG']
+    events = [
+             ['RAMDUMP_FATAL_ERROR=383', 'fatal_error... DDR_On:%d ...init RAM DUMP'],
+             ]
+    env.AddSWEInfo(QDSS_IMG, events)

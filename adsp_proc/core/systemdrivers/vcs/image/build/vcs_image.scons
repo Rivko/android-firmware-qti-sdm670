@@ -1,0 +1,95 @@
+#===============================================================================
+#
+# VCS DRIVER HW (CHIPSET) LIBRARY
+#
+# Processor: MPSS
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright 2012-2014 QUALCOMM Technologies Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1/systemdrivers/vcs/image/build/vcs_image.scons#3 $
+#  $DateTime: 2017/11/02 02:02:39 $
+#  $Author: pwbldsvc $
+#  $Change: 14754789 $
+#
+#===============================================================================
+
+import os
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Add API folders
+#-------------------------------------------------------------------------------
+
+VCS_BUILD_ROOT = os.getcwd();
+
+#-------------------------------------------------------------------------------
+# Define paths
+#-------------------------------------------------------------------------------
+
+SRCPATH = "../"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Define any features or compiler flags
+#-------------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+CBSP_API = [
+   'DAL',
+   'HAL',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'POWER',
+   'KERNEL',
+   'DEBUGTRACE'
+]
+ 	 
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Define sources
+#-------------------------------------------------------------------------------
+
+VCS_IMAGE_SOURCES = [
+   '${BUILDPATH}/VCSImage.c',
+]
+
+#-------------------------------------------------------------------------------
+# Add libraries to image
+#-------------------------------------------------------------------------------
+
+env.AddLibrary(
+   ['CORE_SLPI_ROOT','CORE_CDSP_ROOT','CORE_ADSP_ROOT'],
+   '${BUILDPATH}/VCSImage',
+   VCS_IMAGE_SOURCES)
+
+#-------------------------------------------------------------------------------
+# Invoke image-specific build file
+#-------------------------------------------------------------------------------
+
+build_scons_path = "../{IMAGE}/hw/{{CHIPSET}}/build".format(IMAGE=env['IMAGE'])
+test_scons_file = os.getcwd() + "/" + build_scons_path.format(CHIPSET=env['CHIPSET']) + "/vcs_chipset.scons"
+
+# Stub image if no chipset-specific scons file defined yet.
+if os.path.exists(test_scons_file):
+  build_scons_path = build_scons_path.format(CHIPSET=env['CHIPSET'])
+else:
+  if env['IMAGE'].lower()=='cdsp' and env['CHIPSET'].lower()=='sdm670':
+    build_scons_path = build_scons_path.format(CHIPSET='sdm845')
+  else:
+    build_scons_path = build_scons_path.format(CHIPSET="stub")
+
+env.LoadSoftwareUnits(level=1, dir_patterns=[build_scons_path])

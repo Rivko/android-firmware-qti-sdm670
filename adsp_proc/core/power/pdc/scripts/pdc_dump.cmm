@@ -1,0 +1,1039 @@
+;******************************************************************************
+; pdc_dump.cmm
+;
+; Script to dump various configuration and state information of PDC block
+;
+; Copyright 2017 Qualcomm Technologies Incorporated
+;******************************************************************************
+
+; variable command line args
+entry %line &args
+
+GLOBAL &ops         ; output stream - stdout or a file
+GLOBAL &op_area     ; output area name
+GLOBAL &pdc_base
+GLOBAL &g_indent_level
+GLOBAL &temp_indent_str
+
+&op_file=string.scanandextract("&args", "op=", "stdout")    ;case sensitive
+&op_area=string.scanandextract("&args", "op_area=", "PDC")
+&pdc_ss=string.scanandextract(string.lwr("&args"), "ss=", "")
+&pdc_areas=string.scanandextract(string.lwr("&args"), "areas=", "")
+
+; Calling entry point
+gosub pdc_dump_entry
+enddo 0
+
+;------------------------------------------------------------------------------
+; pdc_dump_entry
+;
+; Main entry point for pdc dump - dispatches various subroutines.
+;------------------------------------------------------------------------------
+pdc_dump_entry:
+    ; For testing - move it to def_reg_syms function
+    &g_indent_level=0
+
+    LOCAL &indent0 &indent1
+    gosub get_indent_str &g_indent_level
+    &indent0="&temp_indent_str"
+    gosub get_indent_str &g_indent_level+1
+    &indent1="&temp_indent_str"
+
+    ; declare pdc regs and symbols
+    gosub pdc_def_reg_syms
+
+    ; Processing command line arguments - dependent on PDC regs/syms from above
+    gosub process_cl_args
+
+
+    ; Processing various PDC areas
+    &loop=1
+    &start_pos=0
+    while (&loop==1)
+    (
+        gosub string_next_token "&pdc_areas" "," &start_pos
+        entry &token_len &an_area
+        if (&token_len==-1)
+        (
+            &loop=0
+        )
+        else
+        (
+            if "&(an_area)"=="cfg"
+            (
+                gosub pdc_op_cfg
+            )
+            else if "&(an_area)"=="seq"
+            (
+                gosub pdc_op_seq
+            )
+            else if "&(an_area)"=="tcs"
+            (
+                gosub pdc_op_tcs
+            )
+            else if "&(an_area)"=="irq"
+            (
+                gosub pdc_op_irq_sw
+                entry &irq_op_err
+                if (&irq_op_err!=0)
+                (
+                    &ops "&(indent0)IRQs (SW)"
+                    &ops "&(indent1)Error : &(irq_op_err)"
+                    gosub pdc_op_irq_hw
+                )
+            )
+            else
+            (
+                &ops "&(indent0)&(an_area) : Unknown"
+           )
+        )
+        &start_pos=&start_pos+&token_len+1
+    )
+
+cleanup:
+    gosub close_file &op_file
+
+    return
+
+
+;------------------------------------------------------------------------------
+; pdc_op_cfg
+;
+; @brief This function dumps various PDC instance configuration parameters.
+;------------------------------------------------------------------------------
+pdc_op_cfg:
+    entry &no_print &indent_level
+
+    LOCAL &indent0 &indent1 &indent2
+    LOCAL &version &res_params &seq_params &irq_params
+
+
+    &version=data.long(ezaxi:v.value(PDC_VERSION))
+    &major=v.value(PDC_VERSION_MAJOR(&version))
+    &minor=v.value(PDC_VERSION_MINOR(&version))
+
+    ; may need to wrap around version check if register def changes
+
+    &res_params=data.long(ezaxi:v.value(PDC_PARAM_RESOURCE))
+    &num_drvs=v.value(PDC_PARAM_RESOURCE_NUM_DRV(&res_params))
+    &cmds_per_tcs=v.value(PDC_PARAM_RESOURCE_NUM_TCS_CMDs(&res_params))
+    &num_tcs=v.value(PDC_PARAM_RESOURCE_NUM_TCS(&res_params))
+    &num_pf=v.value(PDC_PARAM_RESOURCE_NUM_PU(&res_params))
+    &num_ts=v.value(PDC_PARAM_RESOURCE_NUM_TS(&res_params))
+
+    &seq_params=data.long(ezaxi:v.value(PDC_PARAM_SEQ_CFG))
+    &seq_waits=v.value(PDC_PARAM_SEQ_CFG_NUM_WAIT(&seq_params))
+    &seq_pwr_ctrls=v.value(PDC_PARAM_SEQ_CFG_NUM_PWR_CTRL(&seq_params))
+    &seq_aop_irq=v.value(PDC_PARAM_SEQ_CFG_NUM_AOP_IRQ(&seq_params))
+    &seq_cmd_words=v.value(PDC_PARAM_SEQ_CFG_NUM_SEQ_CMD(&seq_params))
+
+    &irq_params=data.long(ezaxi:v.value(PDC_PARAM_IRQ_CFG))
+    &irq_nums=v.value(PDC_PARAM_IRQ_CFG_NUM_IRQ(&irq_params))
+    &gpio_nums=v.value(PDC_PARAM_IRQ_CFG_NUM_GPIO(&irq_params))
+    &gp_sel_nums=v.value(PDC_PARAM_IRQ_CFG_NUM_GP_SEL(&irq_params))
+
+    ; Setting globals to be used by other functions
+    &pdc_tcs_count=&num_tcs
+    &pdc_cmds_per_tcs=&cmds_per_tcs
+    &pdc_irq_count=&irq_nums
+    &pdc_gp_sel_count=&gp_sel_nums
+
+    ; Actual output - short circuit and return if no_print arg is provided
+    if ("&no_print"!="")
+    (
+        return
+    )
+
+    if "&indent_level"==""
+    (
+        &indent_level=&g_indent_level
+    )
+    gosub get_indent_str &indent_level
+    &indent0="&temp_indent_str"
+    gosub get_indent_str &indent_level+1
+    &indent1="&temp_indent_str"
+    gosub get_indent_str &indent_level+2
+    &indent2="&temp_indent_str"
+
+    &ops "&(indent0)Params"
+
+    &ops "&(indent1)Version"
+    &ops "&(indent2)Major : " &major
+    &ops "&(indent2)Minor : " &minor
+    
+    &ops "&(indent1)Resources"
+    &ops "&(indent2)DRVs : " &num_drvs
+    &ops "&(indent2)TCSs : " &num_tcs
+    &ops "&(indent2)cmds/tcs : " &cmds_per_tcs
+    &ops "&(indent2)ProfUnits : " &num_pf
+    &ops "&(indent2)TimeStamps : " &num_ts
+
+    &ops "&(indent1)Sequencer"
+    &ops "&(indent2)CMDs : " FORMAT.DECIMAL(0, &seq_cmd_words*4)
+    &ops "&(indent2)XPwrCtrls : " &seq_pwr_ctrls
+    &ops "&(indent2)XWaitInputs : " &seq_waits
+    &ops "&(indent2)AOP IRQs : " &seq_aop_irq
+
+    &ops "&(indent1)IRQ/GPIOs"
+    &ops "&(indent2)IRQs : " FORMAT.DECIMAL(0, &irq_nums)
+    &ops "&(indent2)GPIOs : " FORMAT.DECIMAL(0, &gpio_nums)
+    &ops "&(indent2)GP SELs : " FORMAT.DECIMAL(0, &gp_sel_nums)
+
+    return
+
+
+;------------------------------------------------------------------------------
+; pdc_op_tcs
+;
+; @brief This function dumps info on all TCSs
+;------------------------------------------------------------------------------
+pdc_op_tcs:
+    entry &indent_level
+
+    LOCAL &indent0 &indent1 &indent2 &indent3
+    LOCAL &res_params
+
+    if "&indent_level"==""
+    (
+        &indent_level=&g_indent_level
+    )
+    gosub get_indent_str &indent_level
+    &indent0="&temp_indent_str"
+    gosub get_indent_str &indent_level+1
+    &indent1="&temp_indent_str"
+    gosub get_indent_str &indent_level+2
+    &indent2="&temp_indent_str"
+    gosub get_indent_str &indent_level+3
+    &indent3="&temp_indent_str"    
+
+    &res_params=data.long(ezaxi:v.value(PDC_PARAM_RESOURCE))
+    &cmds_per_tcs=v.value(PDC_PARAM_RESOURCE_NUM_TCS_CMDs(&res_params))
+    &num_tcs=v.value(PDC_PARAM_RESOURCE_NUM_TCS(&res_params))
+
+    &ops "&(indent0)TCSs"
+    
+    &tcsi=0    
+    while (&tcsi<&cmds_per_tcs)
+    (
+        &amc_mode=data.long(PDC_TCS_CONTROL+(&tcsi)*200.)
+        &amc_mode=v.value(PDC_TCSt_CONTROL_AMC_MODE(&amc_mode))
+
+        &tcs_en=data.long(PDC_TCS_CMD_EN_BANK+(&tcsi)*200.)
+        &comp_mask=data.long(PDC_TCS_CMD_WAIT_FOR_COMP+(&tcsi)*200.)
+
+        &tcs_idle=data.long(PDC_TCS_STATUS+(&tcsi)*200.)
+        &tcs_idle=v.value(PDC_TCSt_STATUS_IDLE(&tcs_idle))
+
+        &ops "&(indent1)TCS" FORMAT.DECIMAL(0, &tcsi)
+        &ops "&(indent2)AMC Mode : " &amc_mode
+        &ops "&(indent2)En Mask : &(tcs_en)"
+        &ops "&(indent2)Wait Mask : " &comp_mask
+        &ops "&(indent2)Idle : " &tcs_idle
+        
+        &cmdi=0
+        while (&cmdi<&num_tcs)
+        (
+            ; command config
+            &reg_val=data.long(PDC_TCS_CMD_MSGID+(&tcsi)*200.+(&cmdi)*16.)    ; resp reqd
+            &cmd_rr=v.value(PDC_TCSt_CMDn_MSGID_RR(&reg_val))
+            
+            &reg_val=data.long(PDC_TCS_CMD_ADDR+(&tcsi)*200.+(&cmdi)*16.)
+            &slave_id=v.value(PDC_TCSt_CMDn_ADDR_SLV_ID(&reg_val))
+            &offset=v.value(PDC_TCSt_CMDn_ADDR_OFFSET(&reg_val))
+            
+            &cmd_data=data.long(PDC_TCS_CMD_DATA+(&tcsi)*200.+(&cmdi)*16.)
+            
+            ; command status
+            &reg_val=data.long(PDC_TCS_CMD_STATUS+(&tcsi)*200.+(&cmdi)*8.)
+            &cmd_triggered=v.value(PDC_TCSt_CMDn_STATUS_TRIGGERED(&reg_val))
+            &cmd_issued=v.value(PDC_TCSt_CMDn_STATUS_ISSUED(&reg_val))
+            &cmd_ackd=v.value(PDC_TCSt_CMDn_STATUS_ACKD(&reg_val))
+            
+            &ops "&(indent2)CMD" FORMAT.DECIMAL(0, &cmdi)
+            &ops "&(indent3)slave: " &(slave_id) ", addr: &(offset), data: &(cmd_data)"
+            &ops "&(indent3)resp req: " &(cmd_rr) ", triggerd: " &(cmd_triggered)\
+                 ", issued: " &(cmd_issued) ", ackd: " &(cmd_ackd)
+                 
+            &cmdi=&cmdi+1
+        )
+        &tcsi=&tcsi+1
+    )
+
+    return
+
+
+;------------------------------------------------------------------------------
+; pdc_op_seq
+;
+; @brief This function dumps information regarding PDC sequencer area
+;------------------------------------------------------------------------------
+pdc_op_seq:
+    entry &indent_level
+
+    LOCAL &indent0 &indent1 &indent2 &indent3
+
+    if "&indent_level"==""
+    (
+        &indent_level=&g_indent_level
+    )
+    gosub get_indent_str &indent_level
+    &indent0="&temp_indent_str"
+    gosub get_indent_str &indent_level+1
+    &indent1="&temp_indent_str"
+    gosub get_indent_str &indent_level+2
+    &indent2="&temp_indent_str"
+    gosub get_indent_str &indent_level+3
+    &indent3="&temp_indent_str"    
+    
+    &seq_busy=data.long(PDC_SEQ_BUSY)
+    &seq_pc=data.long(PDC_SEQ_PC)
+    &seq_mode=data.long(PDC_SEQ_MODE_STATUS)
+    &start_adr=data.long(PDC_SEQ_START_ADDR)
+    &timer_lo=data.long(PDC_SEQ_TIMER_MATCH_LO)
+    &timer_hi=data.long(PDC_SEQ_TIMER_MATCH_HI)
+    &timer_value=(&timer_hi<<32.)|(&timer_lo)
+    &pwr_ctrl_mask=data.long(PDC_SEQ_PWR_CTRL_OVERRIDE_MASK)
+    &pwr_ctrl_val=data.long(PDC_SEQ_PWR_CTRL_OVERRIDE_VAL)
+    &wait_mask=data.long(PDC_SEQ_WAIT_OVERRIDE_MASK)
+    &wait_val=data.long(PDC_SEQ_WAIT_OVERRIDE_VAL)
+    &branch_mask=data.long(PDC_SEQ_BRANCH_OVERRIDE_MASK)
+    &branch_val=data.long(PDC_SEQ_BRANCH_OVERRIDE_VAL)
+    
+    &instr_addr=&seq_pc
+    if &seq_busy!=0
+    (
+        &instr_addr=&seq_pc-&pdc_cmd_size
+    )
+    &seq_instr=data.long(PDC_SEQ_MEM+(&instr_addr/4)*4)
+    &seq_instr=(&seq_instr>>(8.*(&instr_addr%&pdc_cmds_per_reg)))&(1<<(&pdc_cmd_size*8)-1)
+
+    gosub reg_array_val_str PDC_SEQ_BRb_ADDR 4 4 ", "
+    entry &branches
+    gosub reg_array_val_str PDC_SEQ_CFG_DELAY 4 16. ", "
+    entry &delays
+
+    &ops "&(indent0)Sequencer"
+    &ops "&(indent1)Start : &(start_adr)"
+    &ops "&(indent1)Busy : " &(seq_busy)
+    &ops "&(indent1)PC : &(seq_pc)"
+    &ops "&(indent1)Instr : &(seq_instr)"
+    &ops "&(indent1)Timer : &(timer_value)"
+    &ops "&(indent1)Pwr Override : (&(pwr_ctrl_mask), &(pwr_ctrl_val))"
+    &ops "&(indent1)Wait Override : (&(wait_mask), &(wait_val))"
+    &ops "&(indent1)Br Override : (&(branch_mask), &(branch_val))"
+    &ops "&(indent1)Branches : (" &(branches) ")"
+    &ops "&(indent1)Delays : (" &(delays) ")"
+    
+    return
+
+
+;------------------------------------------------------------------------------
+; pdc_op_irq_sw
+;
+; @brief This rount prints PDC IRQ configuration while considering SW 
+;        structures (i.e. subsystem interrupt number, input gpio, etc)
+;
+; @dependency
+; Requires loading of an image symbol and as such pretty much ties running
+; on a specific DRV instead of any T32 window. 
+;
+; @see pdc_op_irq_hw
+;
+; @return 0 if it finds symbols and can dumps relevant info, else non-zero.
+;         This can be further used to dump raw registers.
+;------------------------------------------------------------------------------
+pdc_op_irq_sw:
+    entry &indent_level
+
+    ; Symbol checking
+    if (!symbol.exist(g_pdcInterruptMapping))||(!symbol.exist(g_pdcGpioMapping))
+    (
+        return 0x1
+    )
+    if (!symbol.exist(g_pdc_seq_instances))||(!symbol.exist(g_pdc_seq_instance_count))
+    (
+        return 0x1
+    )
+
+    &i=0
+    &pdc_index=0xFFFFFFF
+    while (&i<v.value(g_pdc_seq_instance_count))
+    (
+        ; ensuring that we are operating on correct PDC in case
+        ;   - a different subsystem was specified in command line
+        ;   - multiple PDCs are handled by a given image
+        ; ideally symbols should be from pdc_interrupt driver but it does keep names
+        if ("&pdc_ss"==Data.String(D:v.value(g_pdc_seq_instances[&i].name)))
+        (
+            &pdc_index=&i
+            &i=v.value(g_pdc_seq_instance_count)   ; crude way of breaking loop
+        )
+        &i=&i+1
+    )
+    if (&pdc_index>0)  
+    ( 
+        ; ideally == g_pdc_seq_instance_count but IRQ driver 
+        ; supports only one instance
+        return 0x2
+    )
+
+    LOCAL &indent0 &indent1 &indent2 &indent3
+    LOCAL &ss_irq &cfg &owner &enable &status &gpio_num &marker
+
+    if "&indent_level"==""
+    (
+        &indent_level=&g_indent_level
+    )
+    gosub get_indent_str &indent_level
+    &indent0="&temp_indent_str"
+    gosub get_indent_str &indent_level+1
+    &indent1="&temp_indent_str"
+
+    &i=0
+    &total_irqs=&pdc_irq_count+&pdc_gp_sel_count
+
+    &ops "&(indent0)IRQs (SW)"
+    &ops "&(indent1)Num  : (ss_irq, gpio, en, status, cfg, owner)"
+
+    while (&i<&total_irqs)
+    (
+        &gpio_num=-1
+        &ss_irq=-1
+        if (&i<&pdc_irq_count)                  ; pdc interrupts
+        (
+            &marker=""
+            if (&i<v.value(g_pdcInterruptTableSize))
+            (
+                &ss_irq=v.value(g_pdcInterruptMapping[&i].subsystem_interrupt)
+                &cfg=v.value(g_pdcInterruptMapping[&i].trig_config.trig_type)
+                &owner=v.value(g_pdcInterruptMapping[&i].trig_config.drv_num)
+
+                gosub pdc_irq_info &i
+                entry &enable &status &null0 &null1  ; null vals as SW overrides
+            )
+            else
+            (
+                gosub pdc_irq_info &i
+                entry &enable &status &cfg &owner
+            )
+        )
+        else                                    ; pdc muxes/gpio
+        (
+            &marker="*"
+            &gp_idx=&i-&pdc_irq_count
+            if (&gp_idx<v.value(g_pdcGPIOMappingSize))
+            (
+                &ss_irq=v.value(g_pdcGpioMapping[&gp_idx].subsystem_interrupt)
+                &cfg=v.value(g_pdcGpioMapping[&gp_idx].trig_config.trig_type)
+                &owner=v.value(g_pdcGpioMapping[&gp_idx].trig_config.drv_num)
+                if (v.value(g_pdcGpioMapping[&gp_idx].gpio_tbl_ptr)!=0x0)
+                (
+                    &gpio_num=v.value(g_pdcGpioMapping[&gp_idx].gpio_tbl_ptr->gpio_num)
+                )
+
+                gosub pdc_irq_info &i
+                entry &enable &status &null0 &null1  ; null vals as SW overrides
+            )
+            else
+            (
+                gosub pdc_irq_info &i           ; pdc has irqs followed by gpios
+                entry &enable &status &cfg &owner
+            )
+        )
+
+        ; formatting and actual output
+        &irq_num=FORMAT.DECIMAL(0, &i)
+        if &ss_irq!=-1
+        (
+            &ss_irq=FORMAT.DECIMAL(0, &ss_irq)
+        )
+        else
+        (
+            &ss_irq="-"
+        )
+        if &gpio_num!=-1
+        (
+            &gpio_num=FORMAT.DECIMAL(0, &gpio_num)
+        )
+        else
+        (
+            &gpio_num="-"
+        )
+        &ops "&(indent1)" FORMAT.STRING("&irq_num", -3, ' ') \
+             FORMAT.STRING("&marker", -1, ' ') " : (&ss_irq, &gpio_num, "\
+             &(enable) ", " &(status) ", " v.str(\irq_cfg_map[&cfg]) ", " \
+             &(owner) ")"
+
+        &i=&i+1
+    )
+
+    return 0
+
+
+;------------------------------------------------------------------------------
+; pdc_op_irq_hw
+;
+; @brief This routine prints the PDC IRQ configuration based on HW registers.
+;        It does not correlate any information from SW.
+;
+; @see pdc_op_irq_sw
+;
+;------------------------------------------------------------------------------
+pdc_op_irq_hw:
+    entry &indent_level
+
+    LOCAL &indent0 &indent1 &indent2 &indent3
+
+    if "&indent_level"==""
+    (
+        &indent_level=&g_indent_level
+    )
+    gosub get_indent_str &indent_level
+    &indent0="&temp_indent_str"
+    gosub get_indent_str &indent_level+1
+    &indent1="&temp_indent_str"
+
+    &i=0
+    &total_irqs=&pdc_irq_count+&pdc_gp_sel_count
+    &marker=""
+
+    &ops "&(indent0)IRQs (HW)"
+    &ops "&(indent1)Num  : (en, status, cfg, owner)"
+    while (&i<&total_irqs)
+    (
+        if &i>=&pdc_irq_count
+        (
+            &marker="*"         ; indicates gpio select
+        )
+
+        gosub pdc_irq_info &i
+        entry &enable &status &cfg &owner
+
+        &irq_num=FORMAT.DECIMAL(0, &i)
+        &ops "&(indent1)" FORMAT.STRING("&irq_num", -3., ' ') \
+             FORMAT.STRING("&(marker)", -1, ' ') " : ("\
+             &enable ", " &(status) ", " v.str(\irq_cfg_map[&cfg]) ", "\
+             &(owner) ")"
+
+        &i=&i+1
+    )
+
+    return    
+
+
+;------------------------------------------------------------------------------
+; pdc_irq_info
+;
+; @brief Returns the information regarding the input interrupt number
+;
+; @param irq_num: PDC irq index we are querying information about.
+;
+; @return For a valid interrupt irq_num
+;         enable - 1 if irq_num is enabled else 0
+;         status - 1 if irq_num has occured/pending else 0
+;         cfg - configuration of irq_num at PDC (rising/falling/high/low/dual)
+;         owner - irq owner for multi drv pdc instance (apss/mpss)
+;         (NOTE: be care returning more than 4 values - T32 behaves unreliably.
+;          If needed, use global variables)
+;------------------------------------------------------------------------------
+pdc_irq_info:
+    entry &irq_num
+
+    ; validate irq_num - a number and between 0 and num_irq+num_gp_sel
+    if (&irq_num>=&pdc_irq_count+&pdc_gp_sel_count)
+    (
+        return
+    )
+
+    LOCAL &en_reg &status &cfg &owner &enable &status
+
+    &irq_reg=v.value(PDC_IRQ_BMSK_INDEX(&irq_num))
+    &irq_pos=v.value(PDC_IRQ_BMSK_POS(&irq_num))
+
+    &en_reg=data.long(PDC_IRQ_ENABLE_BANKb+(&irq_reg)*(&default_offset))
+    &status_reg=data.long(PDC_IRQ_STATUS_BANKb+(&irq_reg)*(&default_offset))
+    &cfg=data.long(PDC_IRQi_CFG_DRV+&irq_num*&default_offset)
+    &owner=data.long(PDC_IRQi_OWNER+&irq_num*&default_offset)
+
+    &enable=(&en_reg>>&irq_pos)&1
+    &status=(&status_reg>>&irq_pos)&1
+    
+    return &enable &status &cfg &owner
+
+
+;------------------------------------------------------------------------------
+; pdc_def_reg_syms:
+;
+; @brief This functions declares the register symbols  that are mapped to
+; varios addresses in PDC block and some global variables. This function 
+; must be called before start accessing PDC registers.
+;
+; TODO: Move these macros in target specific file
+;------------------------------------------------------------------------------
+pdc_def_reg_syms:
+
+    GLOBAL &pdc_tcs_count &pdc_cmds_per_tcs
+    GLOBAL &pdc_irq_count &pdc_gp_sel_count
+    GLOBAL &pdc_cmd_size &pdc_cmds_per_reg
+    GLOBAL &pdc_area_count &default_offset
+    
+    &pdc_cmd_size=1.
+    &pdc_cmds_per_reg=4/&pdc_cmd_size
+    &default_offset=4.
+
+    ; Array containing PDC HW area
+    &pdc_area_count=4
+    V.NEWGLOBAL char[&pdc_area_count][8] \pdc_hw_areas
+    v.a \pdc_hw_areas[0]="seq"
+    v.a \pdc_hw_areas[1]="tcs"
+    v.a \pdc_hw_areas[2]="irq"
+    v.a \pdc_hw_areas[3]="cfg"
+
+    ; Table for IRQ configuration
+    V.NEWGLOBAL char[8][8] \irq_cfg_map
+    v.a \irq_cfg_map[0]="low"
+    v.a \irq_cfg_map[1]="rising"
+    v.a \irq_cfg_map[2]="falling"
+    v.a \irq_cfg_map[3]="dual"
+    v.a \irq_cfg_map[4]="high"
+    v.a \irq_cfg_map[5]="falling"
+    v.a \irq_cfg_map[6]="rise"
+    v.a \irq_cfg_map[0]="dual"
+
+    ; pdc addresses
+    GLOBAL &pdc_instance_count
+    &pdc_instance_count=10.
+
+    ; These address must match the order of pdc_name below it
+    V.NEWGLOBAL int[&pdc_instance_count] \pdc_base_addrs
+    v.a \pdc_base_addrs[0]=0xB200000
+    v.a \pdc_base_addrs[1]=0xB230000
+    v.a \pdc_base_addrs[2]=0xB240000
+    v.a \pdc_base_addrs[3]=0xB250000
+    v.a \pdc_base_addrs[4]=0xB260000
+    v.a \pdc_base_addrs[5]=0xB270000
+    v.a \pdc_base_addrs[6]=0xB280000
+    v.a \pdc_base_addrs[7]=0xB290000
+    v.a \pdc_base_addrs[8]=0xB2C0000
+    v.a \pdc_base_addrs[9]=0xB2A0000
+
+    ; These names are picked up from SWI for a given chipset
+    V.NEWGLOBAL char[&pdc_instance_count][16] \pdc_names
+    v.a \pdc_names[0]="apps"
+    v.a \pdc_names[1]="sp"
+    v.a \pdc_names[2]="audio"
+    v.a \pdc_names[3]="sensors"
+    v.a \pdc_names[4]="aop"
+    v.a \pdc_names[5]="debug"
+    v.a \pdc_names[6]="gpu"
+    v.a \pdc_names[7]="display"
+    v.a \pdc_names[8]="compute"
+    v.a \pdc_names[9]="modem"
+
+    ; check if input subsystem is valid and we can get the base. if not,
+    ; bail out from here
+    gosub pdc_get_base_addr &pdc_ss
+    entry &pdc_base
+
+    if (&pdc_base==0)
+    (
+        area.view
+        print "Invalid input PDC : (&(pdc_ss))" 
+        enddo 0
+    )
+    
+    ; Config labels and macros
+    y.create.macro PDC_VERSION (&pdc_base+0x1000)
+    y.create.macro PDC_VERSION_MAJOR(val) (((val)>>16.)&0xFF)
+    y.create.macro PDC_VERSION_MINOR(val) (((val)>>8.)&0xFF)
+
+    y.create.macro PDC_PARAM_RESOURCE (&pdc_base+0x1004)
+    y.create.macro PDC_PARAM_RESOURCE_NUM_DRV(val) ((val)&0xF)
+    y.create.macro PDC_PARAM_RESOURCE_NUM_TCS_CMDs(val) (((val)>>5.)&0x7)
+    y.create.macro PDC_PARAM_RESOURCE_NUM_TCS(val) (((val)>>8.)&0xF)
+    y.create.macro PDC_PARAM_RESOURCE_NUM_PU(val) (((val)>>12.)&0xF)
+    y.create.macro PDC_PARAM_RESOURCE_NUM_TS(val) (((val)>>16.)&0xFF)
+
+    y.create.macro PDC_PARAM_SEQ_CFG (&pdc_base+0x1008)
+    y.create.macro PDC_PARAM_SEQ_CFG_NUM_WAIT(val) ((val)&0xF)
+    y.create.macro PDC_PARAM_SEQ_CFG_NUM_PWR_CTRL(val) (((val)>>4)&0xF)
+    y.create.macro PDC_PARAM_SEQ_CFG_NUM_AOP_IRQ(val) (((val)>>8.)&0xF)
+    y.create.macro PDC_PARAM_SEQ_CFG_NUM_SEQ_CMD(val) (((val)>>16.)&0xFF)
+
+    y.create.macro PDC_PARAM_IRQ_CFG (&pdc_base+0x100C)
+    y.create.macro PDC_PARAM_IRQ_CFG_NUM_IRQ(val) ((val)&0xFF)
+    y.create.macro PDC_PARAM_IRQ_CFG_NUM_GPIO(val) (((val)>>8.)&0xFF)
+    y.create.macro PDC_PARAM_IRQ_CFG_NUM_GP_SEL(val) (((val)>>16.)&0xFF)
+
+    ; TCS labels and macros
+    y.create.label PDC_TCS_CONTROL (ezaxi:&pdc_base+0x5500)
+    y.create.macro PDC_TCSt_CONTROL_OFFSET(t) ((t)*200.)
+    y.create.macro PDC_TCSt_CONTROL_AMC_MODE(val) (((val)>>16.)&0x1)
+
+    y.create.label PDC_TCS_CMD_EN_BANK (ezaxi:&pdc_base+0x5504)
+    y.create.macro PDC_TCSt_CMD_EN_BANK_OFFSET(t) ((t)*200.)
+
+    y.create.label PDC_TCS_CMD_WAIT_FOR_COMP (ezaxi:&pdc_base+0x5508)
+    y.create.macro PDC_TCSt_CMD_WAIT_FOR_COMP_OFFSET(t) ((t)*200.)
+
+    y.create.label PDC_TCS_CMD_MSGID (ezaxi:&pdc_base+0x550C)
+    y.create.macro PDC_TCSt_CMD_MSGID_OFFSET(t) ((t)*200).
+    y.create.macro PDC_TCS_CMDn_MSGID_OFFSET(n) ((n)*16.)
+    y.create.macro PDC_TCSt_CMDn_MSGID_RR(val) (((val)>>8.)&0x1)
+    y.create.macro PDC_TCSt_CMDN_MSGID_WRITE(val) (((val)>16.)&0x1)
+
+    y.create.label PDC_TCS_CMD_ADDR (ezaxi:&pdc_base+0x5510)
+    y.create.macro PDC_TCSt_CMDn_ADDR_OFFSET(val) ((val)&0xFFFF)
+    y.create.macro PDC_TCSt_CMDn_ADDR_SLV_ID(val) (((val)>>16.)&0x7)
+    
+    y.create.label PDC_TCS_CMD_DATA (ezaxi:&pdc_base+0x5514)
+
+    y.create.label PDC_TCS_STATUS (ezaxi:&pdc_base+0x1300)
+    y.create.macro PDC_TCSt_STATUS_OFFSET(t) ((t)*200.)
+    y.create.macro PDC_TCSt_STATUS_IDLE(val) ((val)&0x1)
+
+    y.create.label PDC_TCS_CMD_STATUS (ezaxi:&pdc_base+0x1304)
+    y.create.macro PDC_TCSt_CMD_STATUS_OFFSET(t) ((t)*200.)
+    y.create.macro PDC_TCS_CMDn_STATUS_OFFSET(n) ((n)*8.)
+    y.create.macro PDC_TCSt_CMDn_STATUS_TRIGGERED(val) ((val)&0x1)
+    y.create.macro PDC_TCSt_CMDn_STATUS_ISSUED(val) (((val)>>8.)&0x1)
+    y.create.macro PDC_TCSt_CMDn_STATUS_ACKD(val) (((val)>>16.)&0x1)
+
+    ; Sequencer output
+    y.create.label PDC_SEQ_BUSY (ezaxi:&pdc_base+0x1020)
+    y.create.label PDC_SEQ_PC (ezaxi:&pdc_base+0x1024)
+    y.create.label PDC_SEQ_MEM (ezaxi:&pdc_base+0x200000)
+    y.create.label PDC_SEQ_MODE_STATUS (ezaxi:&pdc_base+0x1030)
+    y.create.label PDC_SEQ_TIMER_MATCH_LO (ezaxi:&pdc_base+0x4510)
+    y.create.label PDC_SEQ_TIMER_MATCH_HI (ezaxi:&pdc_base+0x4514)
+    y.create.label PDC_SEQ_START_ADDR (ezaxi:&pdc_base+0x4520)
+    y.create.label PDC_SEQ_PWR_CTRL_OVERRIDE_MASK (ezaxi:&pdc_base+0x4530)
+    y.create.label PDC_SEQ_PWR_CTRL_OVERRIDE_VAL (ezaxi:&pdc_base+0x4534)
+    y.create.label PDC_SEQ_WAIT_OVERRIDE_MASK (ezaxi:&pdc_base+0x4540)
+    y.create.label PDC_SEQ_WAIT_OVERRIDE_VAL (ezaxi:&pdc_base+0x4544)
+    y.create.label PDC_SEQ_BRANCH_OVERRIDE_MASK (ezaxi:&pdc_base+0x4550)
+    y.create.label PDC_SEQ_BRANCH_OVERRIDE_VAL (ezaxi:&pdc_base+0x4554)
+    y.create.label PDC_SEQ_BRb_ADDR (ezaxi:&pdc_base+0x4590)
+    y.create.label PDC_SEQ_CFG_DELAY (ezaxi:&pdc_base+0x45A0)
+
+    ; PDC interrupt outputs
+    y.create.label PDC_IRQ_ENABLE_BANKb (ezaxi:&pdc_base+0x10)
+    y.create.label PDC_IRQi_CFG_DRV (ezaxi:&pdc_base+0x110)
+    y.create.label PDC_IRQ_STATUS_BANKb (ezaxi:&pdc_base+0x900)
+    y.create.label PDC_IRQi_OWNER (ezaxi:&pdc_base+0x4600)
+    y.create.macro PDC_IRQ_BMSK_INDEX(val) ((val)/32.)
+    y.create.macro PDC_IRQ_BMSK_POS(val) ((val)%32.)
+
+    y.create.done
+
+
+    if "&pdc_areas"==""
+    (
+        &iter=0
+        while (&iter<&pdc_area_count)
+        (
+            &pdc_areas="&(pdc_areas)"+v.str(\pdc_hw_areas[&iter])+","
+            &iter=&iter+1
+        )
+    )
+
+    ; setting up global variables from PDC instance
+    gosub pdc_op_cfg 1            ; 0 as we don't want to print anything
+
+    return
+
+
+;------------------------------------------------------------------------------
+; pdc_get_base_addr
+;
+; @brief This function returns the base address for an input pdc instance/owner.
+;
+; @param ip_pdc_name: Name of the pdc instance e.g. "apps", "modem", etc. These
+;                     names are taken from SWI for a given chipset.
+;
+; @return PDC base address if input is valid else 0
+;------------------------------------------------------------------------------
+pdc_get_base_addr:
+    entry &ip_pdc_name
+
+    LOCAL &addr
+
+    &i=0
+    while (&i<&pdc_instance_count)
+    (
+        if "&ip_pdc_name"==v.str(\pdc_names[&i])
+        (
+           &addr=v.value(\pdc_base_addrs[&i])
+           return &addr
+        )
+        &i=&i+1
+    )
+
+    return 0
+
+;------------------------------------------------------------------------------
+; process_cl_args
+;
+; This function processes command line and sets up the variables for dump
+;------------------------------------------------------------------------------
+process_cl_args:
+    if "&op_file"=="stdout"
+    (
+        gosub op_area_exists &op_area
+        entry &area_exists
+
+        if &area_exists==0
+        (
+            &pdc_area_cols=100.
+            &pdc_area_rows=2048.
+
+            ; PDC output area does not exists - try creating it
+            gosub op_area_create &op_area &pdc_area_cols &pdc_area_rows
+            entry &area_err
+
+            if &area_err!=0
+            (
+                area.select         ;Generic output area
+                print "PDC SCRIPT ERR: Failed to create output area. " \
+                      "Close one or more areas."
+                enddo 1
+            )
+        )
+
+        area.select &op_area
+        area.clear &op_area
+        area.view &op_area
+
+        &ops="print"            ; output stream to write
+    )
+    else
+    (
+        if os.dir("&op_file")
+        (
+            ; output file is a directory - create a file with default name
+            &last_char=string.char("&op_file", string.len("&op_file")-1)
+            if ("&last_char"!="\")||("&last_char"!="/")
+            (
+                if os.version(0)==0x0X
+                (
+                    &op_file="&(op_file)\"      ; Windows OS
+                )
+                else
+                (
+                    &op_file="&(op_file)/"      ; *nix OS
+                )
+            )
+            &op_file="&(op_file)pdc_dump.txt"
+        )
+
+        open #1 "&op_file" /create
+        &ops="write #1"
+    )
+
+    return
+
+
+;-------------------------------------------------------------------------------
+; close_file
+;
+; Function to close/release file handle 
+;-------------------------------------------------------------------------------
+close_file:
+    entry &opf
+    
+    if "&opf"!="stdout"
+    (
+        close #1        ; ID must match with file opening ID
+    )
+    else
+    (
+        area.select     ; Generic output area
+    )
+    return
+
+
+;-------------------------------------------------------------------------------
+; string_next_token
+;
+; @brief Return the token within an input string delimated by a given delimiter.
+;
+; @param ip_str: String to get token from
+; @param delim: Delimiter to use for tokenizing
+; @param start_pos: Index (0 based) in the ip string from which start 
+;                   extracting token
+;
+; @return
+;   token_len: Length of extracted token - >=0 if found else -1
+;   token: Actual extracted token, valid only when token_len >= 0
+;-------------------------------------------------------------------------------
+string_next_token:
+    entry &ip_str &delim &start_pos
+    LOCAL &token &index &token_len
+
+    &index=STRING.SCAN(&ip_str, &delim, &start_pos)
+    IF &index!=-1
+    (
+        &token_len=&index-&start_pos
+    )
+    ELSE
+    (
+        &token_len=STRING.LEN(&ip_str)
+        IF &token_len<=&start_pos
+        (
+            ; we reached to end of string
+            &token_len=-1
+        )
+        ELSE
+        (
+            &token_len=&token_len-&start_pos
+        )
+    )
+    IF &token_len!=-1
+    (
+        ; Valid token is available
+        &token=STRING.MID(&ip_str,&start_pos, &token_len)
+    )
+
+    return &token_len &token
+
+
+;-------------------------------------------------------------------------------
+; reg_array_val_str
+;
+; @brief This function reads a register array and returns string containing 
+;        values, separated by input delimiter
+;
+; @param reg_base: Register array base address
+; @param reg_offset: Offset between consecutive register array elements
+; @param reg_count: Number of register to read
+; @param delim: Delimiter to use in value string.
+;
+; @return String containing values of register array separated by delimiter
+;-------------------------------------------------------------------------------
+reg_array_val_str:
+    entry &reg_base &reg_offset &reg_count &delim
+
+    &i=0
+    &vals=""
+    while (&i<&reg_count)
+    (
+        &reg_val=data.long(&reg_base+&i*&reg_offset)
+        if &i>0
+        (
+            &vals="&(vals)"+&delim+"&(reg_val)"
+        )
+        else
+        (
+            &vals="&(reg_val)"
+        )
+        &i=&i+1
+    )
+
+    return "&vals"
+
+
+;-------------------------------------------------------------------------------
+; get_indent_str
+;
+; Returns the indentation string corresponding to input indentation level
+;-------------------------------------------------------------------------------
+get_indent_str:
+    entry &ip_indent_level
+
+    LOCAL &level &indent_str
+
+    &indent_str=""
+    &indent="    "
+    &level=0
+
+    WHILE (&level<&ip_indent_level)
+    (
+        ; Dumb thing does not allow appending tab/space, not at least directly
+        &indent_str="&(indent_str)&(indent)"
+        &level=&level+1
+    )
+
+    &temp_indent_str="&indent_str"
+    return
+
+
+;---------------------------------------------------------------------------
+; Functions below are related to output window management - keep all such
+; related functions together. 
+;
+; @TODO: 
+; These functions are similar to what we have in ARC script.
+; See if they can be refactor in to a common script which both ARC and PDC
+; dump scripts can call. Allows separation of Output from main logic.
+;---------------------------------------------------------------------------
+;---------------------------------------------------------------------------
+; op_area_exists 
+;
+; @brief Checks if the area by the given name exists
+;
+; @param area_name: Name of the area we are looking for
+;
+; @return TRUE/non-zero if area by input name exists else FALSE/0
+;---------------------------------------------------------------------------
+op_area_exists:
+    entry &area_name
+    local &exists
+
+    &exists=1
+
+    ON ERROR gosub
+    (
+        &exists=0
+
+        ; dummy print to handle warning message
+        print " "
+
+        return
+    )
+
+    ; Try selecting input area - if it does not exist error handler
+    ; defined above in 'ON ERROR' will be called
+    area.select &area_name
+
+    return &exists
+
+;---------------------------------------------------------------------------
+; op_area_create
+;
+; @brief Function to create an area by given name. It is a best effort case
+;        (read note for more details).
+;
+; @note 
+; T32 has a limitation on how many concurrent areas can be created/
+; opened (~10). If script(s) ran previously have exhausted this limit
+; attempt to create a separate output area will fail. 
+;
+; One of the ways to handle this is to use 'area.reset' but that impacts all
+; open areas. And it may not be desirable to clear output from previously
+; ran script(s).
+;
+; This PDC script reuses the area if it already exists (i.e. when this script
+; is run multiple times on a target w/o closing T32).
+;
+; @param area_name: Name of the output area to be created.
+; @param cols: Width of the output area.
+; @param rows: Length of the output area.
+;
+; @return 0 if op area creation is successful else non-zero.
+;---------------------------------------------------------------------------
+op_area_create:
+    entry &area_name &cols &rows
+    local &err_code
+
+    &err_code=0
+
+    ON ERROR gosub
+    (
+        &err_code=1
+        return
+    )
+
+    area.create &area_name &cols &rows
+
+    return &err_code
+

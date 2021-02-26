@@ -1,0 +1,71 @@
+//============================================================================
+//  Name:                                                                     
+//    std_debug_apps.cmm 
+//
+//  Description:                                                              
+//    APPS debug script. HLOS dependent
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who     		what, where, why
+// --------   ---     		---------------------------------------------------------
+// 10/19/2012 AJCheriyan    Created for B-family.
+
+// Following arguments are supported. 
+// ARG0 - Image to debug. 
+// ARG1 - En/Disable Sleep. LPM_ENABLE / LPM_DISABLE 
+// ARG2 - Entry point for this debug session. will default to image entry point
+//        if nothing is specified.
+// ARGn - n > 2 - Any other arguments to be passed to the script
+//
+ENTRY &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5
+
+LOCAL &HLOS_DEBUGSCRIPT
+
+&HLOS_DEBUGSCRIPT="std_debug_"+STR.LOWER("&HLOS")
+
+MAIN:
+
+	// We do all the common things first
+	
+	IF ("&ARG0"=="appsboot")
+	(
+      // We expect the device to be in 'fastdebug' mode
+	   // Attach to the RPM and break
+	   do std_utils BREAKPROC
+
+      D.S EAHB:&APPSBOOT_DEBUG_COOKIE %LONG &DEBUG_COOKIE_VALUE
+
+		// Attach to the RPM
+		do std_utils ATTACHPROC
+
+		WAIT 2.s
+
+		// Attach to apps core 0 and break
+		do std_intercom_do &APPS0_PORT std_utils BREAKPROC
+
+		// Now call the HLOS specific script and pass control to them
+		do &HLOS_DEBUGSCRIPT &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5
+	)
+
+	GOTO EXIT
+
+
+EXIT:
+	ENDDO
+
+FATALEXIT:
+	END
+
+
+	
+		
+
+

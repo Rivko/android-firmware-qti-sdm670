@@ -1,0 +1,62 @@
+#===============================================================================
+#
+# Context Change Detector
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2016-2018 by Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Id: //components/rel/ssc.slpi/3.2/sensors/ccd/build/sns_ccd.scons#4 $
+#  $DateTime: 2018/08/30 11:18:42 $
+#  $Change: 17006087 $
+#
+#===============================================================================
+Import('env')
+import os, inspect
+
+if 'SSC_TARGET_X86' in env['CPPDEFINES']:
+  Return()
+
+CBSP_API = [
+  'DAL',
+  'KERNEL',
+  'SYSTEMDRIVERS',
+  'DEBUGTOOLS',
+]
+
+if 'SNS_ISLAND_INCLUDE_CCD' in env:
+  ccd_island_sections = ['.text.sns', '.data.sns', '.rodata.*']
+else:
+  ccd_island_sections = ''
+
+if 'USES_SSC_STATIC_LIB_BUILDER' in env:
+  if 'SSC_TARGET_HEXAGON_CORE_QDSP6_2_0' in env['CPPDEFINES']:
+    env.AddSSCSU(inspect.getfile(inspect.currentframe()),
+                 ssc_protected_api = ['SNS_INTERNAL_INCLUDES'],
+                 flavor = ["hexagon_core_qdsp6_2.0"],
+                 core_public_api = CBSP_API,
+                 clean_pack_list = ['*.c','*.h'],
+                 register_func_name = "sns_ccd_register",
+                 island_sections = ccd_island_sections,
+                 diag_ssid = "MSG_SSID_SNS_SENSOR_INT")
+
+  elif 'SENSORS_DD_DEV_FLAG' in env:
+    ME = inspect.getfile(inspect.currentframe())
+    MY_ROOT = os.path.dirname(os.path.dirname(ME))
+    REMOVE_FILES  =  env.FindFiles(['*.*'], MY_ROOT)
+    env.CleanPack(env['SSC_BUILD_TAGS'], REMOVE_FILES)
+
+
+if 'USES_QDSS_SWE' in env:
+  QDSS_IMG = ['QDSS_EN_IMG']
+  events = [
+            ['SNS_CCD_AMD_REPORT_OUTPUT', '', 'F'],
+            ['SNS_CCD_WALK_REPORT_OUTPUT', '', 'F'],
+            ['SNS_CCD_TILT_REPORT_OUTPUT', '', 'F'],
+           ]
+  env.AddSWEInfo(QDSS_IMG, events)

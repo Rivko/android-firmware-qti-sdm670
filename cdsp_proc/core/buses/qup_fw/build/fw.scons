@@ -1,0 +1,122 @@
+#===============================================================================
+#
+# FW Libs
+#
+# GENERAL DESCRIPTION
+#    Public build script for QUP FW loader.
+#
+# Copyright (c) 2017 Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Qualcomm Technologies, Inc. Confidential and Proprietary.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1.c4/buses/qup_fw/build/fw.scons#1 $
+#  $DateTime: 2018/07/30 01:21:36 $
+#  $Author: pwbldsvc $
+#  $Change: 16759227 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#  
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 05/31/17   RC  	 Added support to invoke the fw initialization for ADSP.
+# 04/03/17   UNR	 Initial release
+#
+#===============================================================================
+
+import os
+
+Import('env')
+env = env.Clone()
+
+#------------------------------------------------------------------------------
+# Debug options
+#------------------------------------------------------------------------------
+# env.Append(CCFLAGS = ' -DQUP_LOG_LEVEL=0xffff')
+
+#------------------------------------------------------------------------------
+# Add API folders
+#------------------------------------------------------------------------------
+
+QUP_FW_IMAGES = ['CORE_SLPI_ROOT', 'CORE_SLPI_ADSP_ROOT']
+
+env.PublishPrivateApi('QUP_FW', [
+   "${BUILD_ROOT}/core/buses/qup_fw/inc",
+])
+
+#-----------------------------------------------------------------------------
+# Define paths
+#-----------------------------------------------------------------------------
+
+SRCPATH = "../"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-----------------------------------------------------------------------------
+# Define any features or compiler flags
+#-----------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+CBSP_API = [
+   'BUSES',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'BUSYWAIT',
+   'HWENGINES',
+   'KERNEL',
+   'PRODUCTS',
+   'SERVICES',
+   'POWER',
+   'DEBUGTRACE',
+   'FW_SETTINGS',
+   'DAL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Define sources
+#-------------------------------------------------------------------------------
+
+QUP_FW_SOURCES = [
+   '${BUILDPATH}/src/fw_config.c',
+]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+QupFw_lib = env.AddLibrary(QUP_FW_IMAGES, '${BUILDPATH}/QupFw', QUP_FW_SOURCES)
+
+#-------------------------------------------------------------------------------
+# Register initialization function and dependencies.
+#-------------------------------------------------------------------------------
+
+if ('SLPI_PROC' in env):
+   if 'USES_RCINIT' in env:
+      env.AddRCInitFunc(
+         QUP_FW_IMAGES,
+         {
+            'sequence_group'             : 'RCINIT_GROUP_0',       # required
+            'init_name'                  : 'qup_fw_init',          # required
+            'init_function'              : 'qup_fw_init',          # required
+            'dependencies'               : ['clk_regime']
+         })
+
+if env['MSM_ID'] in ['670']:
+   if ('ADSP_PROC' in env):
+      if 'USES_RCINIT' in env:
+         env.AddRCInitFunc(
+            QUP_FW_IMAGES,
+            {
+               'sequence_group'             : 'RCINIT_GROUP_0',       # required
+               'init_name'                  : 'qup_fw_init',          # required
+               'init_function'              : 'qup_fw_init',          # required
+               'dependencies'               : ['clk_regime']
+            }) 

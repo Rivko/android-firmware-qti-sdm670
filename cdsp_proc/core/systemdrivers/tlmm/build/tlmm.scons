@@ -1,0 +1,121 @@
+#===============================================================================
+#
+# TLMM LIBRARY
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2011-2016 QUALCOMM Technologies Incorporated.
+#  All Rights Reserved.
+#  QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/dev/core.mpss/5.0/dcfellow.core.mpss.5.0.tlmm_config_file_for_sdm845/systemdrivers/tlmm/build/tlmm.scons#1 $
+#  $DateTime: 2016/06/29 18:34:36 $
+#  $Author: dcfellow $
+#  $Change: 10820288 $
+#
+#===============================================================================
+
+import os
+
+Import('env')
+env = env.Clone()
+
+#------------------------------------------------------------------------------
+# Add API folders
+#------------------------------------------------------------------------------
+
+env.PublishPrivateApi("SYSTEMDRIVERS_TLMM", [
+   "${INC_ROOT}/core/systemdrivers/tlmm/inc",
+   "${INC_ROOT}/core/systemdrivers/tlmm/hw/slpi/${CHIPSET}",
+   "${INC_ROOT}/core/systemdrivers/hal/tlmmtile/inc",
+   "${INC_ROOT}/core/systemdrivers/hal/tlmmtile/${IMAGE}/inc"
+])
+
+SRCPATH = "../"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+env.Append(CPPPATH = [
+   "${INC_ROOT}/core/systemdrivers/tlmm/src",
+   "${INC_ROOT}/core/systemdrivers/tlmm/hw/v1",
+   "${INC_ROOT}/core/systemdrivers/tlmm/hw/slpi/common",
+   "${INC_ROOT}/core/systemdrivers/tlmm/hw/slpi/${CHIPSET}"
+])
+
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'HAL',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'DAL',
+   'SYSTEMDRIVERS_HAL_TLMM_INC',
+   'TLMM_DEVCFG_INTERFACE',
+
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+
+#-------------------------------------------------------------------------------
+# Build Images
+#-------------------------------------------------------------------------------
+
+TLMM_IMAGES = ['CORE_Q6_ROOT','CORE_CDSP_ROOT','CORE_ADSP_ROOT']
+if env['CHIPSET'] in ['sdm670']:
+  UTLMM_IMAGES = ['CORE_SLPI_ADSP_ROOT', 'CORE_SLPI_USER','CORE_ADSP_USER']
+else:
+  UTLMM_IMAGES = ['CORE_SLPI_ROOT', 'CORE_SLPI_USER']
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+UTLMM_SOURCES = [
+   '${BUILDPATH}/hw/slpi/common/uTlmm.c',
+   '${BUILDPATH}/hw/slpi/${CHIPSET}/uHALtlmm.c'
+]
+
+HAL_TLMM_V1_SOURCES =  [
+   '${BUILDPATH}/hw/v1/HALtlmm.c'
+]
+
+TLMM_COMMON_SOURCES =  [
+   '${BUILDPATH}/src/DALTLMMFwk.c',
+   '${BUILDPATH}/src/DALTLMMInfo.c',
+   '${BUILDPATH}/src/DALTLMM.c',
+   '${BUILDPATH}/src/DALTLMMState.c'
+]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+env.AddLibrary(TLMM_IMAGES,'${BUILDPATH}/DALtlmm',TLMM_COMMON_SOURCES)
+env.AddLibrary(TLMM_IMAGES,'${BUILDPATH}/HALtlmmV1',HAL_TLMM_V1_SOURCES)
+
+uTlmmLib = env.AddLibrary( UTLMM_IMAGES, '${BUILDPATH}/uTlmmIsland', UTLMM_SOURCES )
+
+if 'USES_ISLAND' in env:
+   env.AddIslandLibrary(UTLMM_IMAGES, uTlmmLib)
+
+#---------------------------------------------------------------------------
+# Invoke document generation SConscript
+#---------------------------------------------------------------------------
+
+if os.path.exists(env['BUILD_ROOT'] + '/core/api/systemdrivers/docsrc/tlmm/SConscript') :
+  env.SConscript(
+    '${BUILD_ROOT}/core/api/systemdrivers/docsrc/tlmm/SConscript',
+    exports='env')
+

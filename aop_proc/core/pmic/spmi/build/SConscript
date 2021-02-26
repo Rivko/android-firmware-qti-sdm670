@@ -1,0 +1,159 @@
+#===============================================================================
+# SPMI Libs
+#
+# GENERAL DESCRIPTION
+#    SPMI Build Script
+#
+# Copyright (c) 2013-2016 by Qualcomm Technologies Incorporated. All Rights Reserved.
+#-------------------------------------------------------------------------------
+#  $Header: //components/rel/aop.ho/1.1.c1/aop_proc/core/pmic/spmi/build/SConscript#1 $
+#  $DateTime: 2018/02/16 04:48:18 $
+#  $Change: 15485400 $
+#===============================================================================
+import os, re
+Import('env')
+#SDM640_CHANGES
+if env['MSM_ID'] in ['640']:
+   env['MSM_ID'] = '670'
+   
+supported_targets = ['845', '24', '670', '855', '1000']
+if env['MSM_ID'] not in supported_targets:
+    env.PrintWarning('Bailing from SPMI scripts; no support for build targets other than %s' % supported_targets)
+    Return()
+
+#-------------------------------------------------------------------------------
+# Load sub scripts
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+#-------------------------------------------------------------------------------
+# Setup
+#-------------------------------------------------------------------------------
+
+INC_DIRS = []
+
+SRCPATH = "../src"
+
+env = env.Clone()
+env['CCFLAGS'] += '${ARMCC_STDC99_CMD}'
+
+
+env.Append(CPPDEFINES = ["FEATURE_LIBRARY_ONLY"])   
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+CHIP_FAMILY='hoya'
+    
+#-------------------------------------------------------------------------------
+# Logging
+#-------------------------------------------------------------------------------
+logLevel = 'SPMI_LOG_LEVEL_FATAL'
+
+env.Append(CPPDEFINES = ["SPMI_LOG_COMPILE_LEVEL=" + logLevel])    
+
+SPMI_HWIO = 'v5'
+
+
+#-------------------------------------------------------------------------------
+# Helper Functions
+#-------------------------------------------------------------------------------
+def getConfigFiles(target, pattern='*'):
+    return getTargetFiles(target, pattern, SRCPATH + '/platform/config/' + CHIP_FAMILY)
+    
+def getTargetFiles(target, pattern, baseCfgDir):
+    t = target
+    
+    # Look for an exact match
+    file = env.GlobFiles(baseCfgDir + '/' + target + '/' + pattern, posix=True)
+        
+    if not file:
+        # Fallback to the default
+        file = env.GlobFiles(baseCfgDir + '/default/' + pattern, posix=True)
+    
+    if not file:
+        env.PrintDebugInfo('spmi', 'No SPMI files found for %s/%s/%s' % (baseCfgDir, t, pattern) )
+        
+    return file
+
+#-------------------------------------------------------------------------------
+# Private APIs
+#-------------------------------------------------------------------------------
+INC_DIRS = [
+   '${INC_ROOT}/core/pmic/spmi/src/core',
+   '${INC_ROOT}/core/pmic/spmi/src/core/hal',
+   '${INC_ROOT}/core/pmic/spmi/src/core/hal/' + CHIP_FAMILY,
+   '${INC_ROOT}/core/pmic/spmi/src/core/hal/' + CHIP_FAMILY + '/hw/' + SPMI_HWIO,
+   '${INC_ROOT}/core/pmic/spmi/src/platform/config/' + CHIP_FAMILY,
+   '${INC_ROOT}/core/pmic/spmi/src/platform/config/' + CHIP_FAMILY + '/' + env['MSM_ID'],
+   '${INC_ROOT}/core/pmic/spmi/src/platform/inc',
+   '${INC_ROOT}/core/pmic/spmi/src/platform/os',
+]
+
+INC_DIRS.append('${INC_ROOT}/core/pmic/spmi/src/platform/os/aop')
+env.PublishPrivateApi('PMIC_SPMI', INC_DIRS)
+ 
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_APIS = [
+   'BUSES',
+   'HAL',
+   'DAL',
+   'SYSTEMDRIVERS',
+   'PMIC',
+   'SERVICES',
+   'POWER',
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_APIS)
+env.RequireRestrictedApi(CBSP_APIS)
+           
+env.RequireProtectedApi([
+    'PMIC',
+    ])
+
+#-------------------------------------------------------------------------------
+# Sources & Libraries
+#-------------------------------------------------------------------------------
+MAIN_LIB_IMAGES = ['CORE_AOP']
+              
+SPMI_SOURCE_PATHS = [
+   SRCPATH + '/core',
+   SRCPATH + '/core/hal',
+   SRCPATH + '/core/hal/' + CHIP_FAMILY,
+   SRCPATH + '/core/hal/' + CHIP_FAMILY + '/hw/' + SPMI_HWIO,
+]
+
+SPMI_SOURCE_PATHS.append(SRCPATH + '/platform/os/aop')
+
+SPMI_SOURCES = []
+
+for src_path in SPMI_SOURCE_PATHS:
+   SPMI_SOURCES += env.GlobFiles(src_path + '/*.c', posix=True)
+
+SPMI_BLD_SOURCES = [f.replace(SRCPATH, '${BUILDPATH}') for f in SPMI_SOURCES]
+
+#-------------------------------------------------------------------------------
+# DAL Config Files
+#-------------------------------------------------------------------------------
+spmi_config_cfile_path = getConfigFiles(env['MSM_ID'], '*.c')
+spmi_config_cf = [f.replace(SRCPATH, '${BUILDPATH}') for f in spmi_config_cfile_path]
+
+SPMI_BLD_SOURCES.append(spmi_config_cf)  
+
+
+env.AddLibrary(MAIN_LIB_IMAGES, '${BUILDPATH}/Spmi', SPMI_BLD_SOURCES)
+
+#-------------------------------------------------------------------------------
+# QDSS SW Events
+#-------------------------------------------------------------------------------
+if 'USES_QDSS_SWE' in env:
+   QDSS_IMG = ['QDSS_EN_IMG']
+   events = [['SPMI_EVENT_FIRST=79', 'placeholder first spmi swevent'],
+             ['SPMI_EVENT_FATAL_ERROR=80', 'spmi_fatal_error: (result %d) (file %x) (line %d)'],
+             ['SPMI_EVENT_ERROR', 'spmi_error: (result %x) (file %x) (line %d)'],
+             ['SPMI_EVENT_WARNING', 'spmi_warning: (file %x) (line %d)'],         
+             ['SPMI_EVENT_LAST=100',     'placeholder last spmi swevent']
+            ]
+   env.AddSWEInfo(QDSS_IMG, events)
+

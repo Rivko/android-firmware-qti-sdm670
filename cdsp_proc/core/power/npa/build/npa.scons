@@ -1,0 +1,469 @@
+#==============================================================================
+# NPA Libs build script
+#
+# Copyright (c) 2009-2012 Qualcomm Technologies Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+# $Header: //components/rel/core.qdsp6/2.1.c4/power/npa/build/npa.scons#1 $
+#==============================================================================
+
+import os
+
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# SRC PATH
+#-------------------------------------------------------------------------------
+SRCPATH = ".."
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# External depends within CoreBSP
+#-------------------------------------------------------------------------------
+env.RequireExternalApi([
+  'DSM',
+  'MODEM_DATA',
+  'MODEM_HDR',
+])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+  'DAL',
+  'DEBUGTOOLS',
+  'POWER',
+  'SERVICES',
+  'SYSTEMDRIVERS',
+
+  # needs to be last also contains wrong comdef.h
+  'KERNEL',
+]
+
+#-------------------------------------------------------------------------------
+# Private depends within NPA
+#-------------------------------------------------------------------------------
+env.PublishPrivateApi('NPA_API', [
+  os.path.join(SRCPATH, 'src', 'framework'),
+  os.path.join(SRCPATH, 'src', 'scheduler'),
+  os.path.join(SRCPATH, 'src', 'remote')
+])
+
+#-------------------------------------------------------------------------------
+# Required APIs within NPA
+#-------------------------------------------------------------------------------
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+env.RequireProtectedApi(['POWER_UTILS'])
+
+#-----------------------------------------------------------------------------
+# Utility functions - these are not NPA-specific and could be made
+# more widely available
+# ----------------------------------------------------------------------------
+
+# Order important! We iterate through the dict in this order
+image_names = ['core_root', 'modem', 'pronto', 'apps', 'slpi_guest', 'adsp_guest', 'cdsp_guest', 'slpi', 'adsp', 'cdsp', 'core_guest', 'core']
+                 
+image_tags = {
+  'core_root'    : ['CORE_ROOT_PD'],
+  'modem'        : ['MODEM_IMAGE', 'CORE_MODEM'],
+  'pronto'       : ['WCN_IMAGE', 'CBSP_WCN_IMAGE', 'CORE_WCN'],
+  'apps'         : ['APPS_IMAGE', 'CBSP_APPS_IMAGE'],
+  'slpi_guest'   : ['CORE_SLPI_USER'],
+  'adsp_guest'   : ['CORE_ADSP_USER'],
+  'slpi'         : ['CORE_SLPI_ROOT'],  
+  'adsp'         : ['CORE_ADSP_ROOT', 'ADSP_PROC'],
+  'cdsp'         : ['CORE_CDSP_ROOT'],
+  'cdsp_guest'   : ['CORE_CDSP_USER'], # TODO: confirm
+  'core_guest'   : ['CORE_USER_PD'],
+  'core'         : ['CORE_QDSP6_SW'],
+
+}
+
+def determine_image_name( env ):
+  """
+  Determine the image being built
+  """
+  env_var_names = set(env.gvars().keys())
+  
+  for i in image_names:
+    if env_var_names.intersection(set(image_tags[i])):
+      return i
+  
+  return 'unknown'
+  
+env.AddMethod( determine_image_name, "DetermineImageName" )
+
+image = env.DetermineImageName()
+
+print "** INFO: NPA scons thinks this is a '%s' image" % image
+
+#-------------------------------------------------------------------------------
+# Check if known processor or stop 
+#-------------------------------------------------------------------------------
+if image is 'unknown':
+  Return()
+
+
+#-------------------------------------------------------------------------------
+# find_target_file - Find target-specific files (init routines, configuration etc.)
+#                    down a Target/Image directory tree 
+#-------------------------------------------------------------------------------
+def find_target_file( env, base, files ):
+  """
+  Find target-specific files under the given base. This looks for
+  target-specific files using the following search path and order:
+
+  base/<target>/<image>/<file>
+  base/<target>/<file>
+  base/<image>/<file>
+  base/<file>
+
+  This allows the build to selectively override individual files on a
+  target basis when necessary, but have a default version for the tree.
+  """
+  base = env.subst(base)
+  target_files = []
+  found = []
+
+  # Check for target file
+  search_path = [
+      os.path.join( base, env['HAL_PLATFORM'], image ),
+      os.path.join( base, env['HAL_PLATFORM'] ),
+      os.path.join( base, image ),
+      os.path.join( base )
+      ]
+
+  for file in files:
+    for path in search_path:
+      if os.path.isfile( os.path.join( SRCPATH, path, file ) ):
+        target_files.append( os.path.join( '${BUILDPATH}',path, file ) )
+        found.append( file )
+        break
+
+  if len(files) != len(found):
+    assert False, "** ERROR: NPA Scons can't find required target file(s) %s" % list(set(files)-set(found))
+
+  return target_files
+
+env.AddMethod( find_target_file, "FindTargetFile" )
+
+
+#-------------------------------------------------------------------------------
+# drop_feature() - Determine if a specific feature is disabled
+#
+# Uses drop_list for target/image : feature binding
+#
+# Supported Drop List items are...
+#  'devcfg' - NPA will not get its configuration data from DALSYS DEVCFG
+#             via Core Property routines and instead configuration data
+#             will be part of the NPA build
+#  'remoting' - Remove code and disable NPA Remoting feature
+#  'scheduler' - Remove code and disable the NPA Scheduled Requests feature
+#  'scheduler_lpr' - If 'scheduler' is enabled, turn off the use of Next Awake Set
+#                    in Sleep LPR routines. Has no affect if 'scheduler' is disabled.
+#  'runtime_npa_dump' - Remove code to turn allow NPA Dumps over the ULog Diag 
+#                       Plugin architecture. 
+#-------------------------------------------------------------------------------
+drop_list = {
+  'all'        : [ 'devcfg' ],
+  'adsp_guest' : [ 'runtime_npa_dump', 'scheduler' ],
+  'adsp'       : [ 'scheduler' ],
+  'slpi_guest' : [ 'runtime_npa_dump', 'scheduler' ],
+  'slpi'       : [ 'scheduler' ],
+  'cdsp'       : [ 'scheduler' ],
+  'cdsp_guest' : [ 'runtime_npa_dump', 'scheduler' ],
+  'apps'       : [ 'runtime_npa_dump', 'scheduler' ],
+  'pronto'     : [ 'scheduler' ],
+  'core_guest' : [ 'runtime_npa_dump', 'scheduler' ]
+}
+
+def drop_feature( feature ):
+  """
+  Determine if 'feature' is part of the drop list for this target/image
+  """
+  target = env['HAL_PLATFORM']
+  ti = target + '/' + image
+  drops = []
+  if drop_list.has_key( 'all' ):
+    drops = drop_list['all']
+  if drop_list.has_key( ti ):
+    drops.extend( drop_list[ti] )
+  if drop_list.has_key( target ):
+    drops.extend( drop_list[target] )
+  if drop_list.has_key( image ):
+    drops.extend( drop_list[image] )
+    
+  if drops and feature in drops:
+    print "** INFO: NPA Feature '%s' dropped on '%s'" % (feature, ti)
+    return True
+    
+  return False
+
+#-------------------------------------------------------------------------------
+# Determine whether to use DEVCFG
+#-------------------------------------------------------------------------------
+npa_uses_devcfg = False
+
+if 'USES_DEVCFG' in env and not drop_feature('devcfg'):
+  print "** INFO: NPA using CORE_PROPERTY"
+  npa_uses_devcfg = True
+  env.Append( CPPDEFINES=['NPA_USES_CORE_PROPERTY'] )
+
+#-------------------------------------------------------------------------------
+# Determine if DEVCFG build and build if files exist
+#-------------------------------------------------------------------------------
+if image is 'devcfg': # building devcfg image
+  if npa_uses_devcfg: # want to use DEVCFG setup
+    xml_source = 'hw/npa_config_data.xml'
+    if not os.path.isfile(os.path.join(SRCPATH, xml_source)):
+      assert False, "** ERROR: NPA Scons can't find required file %s!" % xml_source
+
+    #-------------------------------------------------------------------------------
+    # setup Device Config file and attach C file to DAL_DEVCFG_IMG
+    # THIS IS BROKEN. We use DEVCFG to figure out which config to pick
+    # a given target or image. If a target supports 2 images (adsp, adsp_guest),
+    # the current FindTargetFile is broken in that it will look for a
+    # "devcfg/<file>", rather than either "adsp/<file>" or "adsp_guest/<file>"
+    #-------------------------------------------------------------------------------
+    NPA_DEVCFG_SOURCE = env.FindTargetFile( os.path.join('hw'),
+                                            ['npa_target_config.c'] )
+
+    # Handle all the XML source, C files
+    env.AddDevCfgInfo(DEVCFG_IMG, 
+    {
+      'soc_xml' : [os.path.join('${BUILD_ROOT}/core/power/npa',xml_source)] + NPA_DEVCFG_SOURCE
+    })
+
+  # no further work to do
+  Return()
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+NPA_SOURCES = [
+  '${BUILDPATH}/src/framework/npa.c',
+  '${BUILDPATH}/src/framework/npa_client.c',
+  '${BUILDPATH}/src/framework/npa_event.c',
+  '${BUILDPATH}/src/framework/npa_graph.c',
+  '${BUILDPATH}/src/framework/npa_legacy.c',
+  '${BUILDPATH}/src/framework/npa_list.c',
+  '${BUILDPATH}/src/framework/npa_log.c',
+  '${BUILDPATH}/src/framework/npa_plugins.c',
+  '${BUILDPATH}/src/framework/npa_query.c',
+  '${BUILDPATH}/src/framework/npa_resource.c',
+  '${BUILDPATH}/src/framework/npa_transaction.c',
+  '${BUILDPATH}/src/framework/npa_lockless_mode.c',
+  env.FindTargetFile( os.path.join('hw'), ['npa_target_routines.c' ] )
+]
+
+if not drop_feature( 'runtime_npa_dump' ):
+  NPA_SOURCES.extend(['${BUILDPATH}/src/framework/npa_dump.c'])
+  env.Append( CPPDEFINES=['NPA_RUNTIME_DUMP_LOG'] )
+
+# If DEVCFG is not supported/used, fold target config data into NPA
+if not npa_uses_devcfg:
+  NPA_SOURCES.extend( env.FindTargetFile( os.path.join('hw'),
+                                          ['npa_target_config.c'] ) )
+
+#-------------------------------------------------------------------------------
+# Remote protocol support
+#-------------------------------------------------------------------------------
+remote_protocols = {
+  'core'         : [],
+  'modem'        : [],
+  'pronto'       : [],
+  'apps'         : [],
+  'adsp'         : ['qdi_server'],
+  'slpi'         : ['qdi_server'],
+  'cdsp'         : ['qdi_server'],
+  'cdsp_guest'   : ['qdi_client'],
+  'adsp_guest'   : ['qdi_client'],
+  'slpi_guest'   : ['qdi_client'],
+  'core_guest'   : ['qdi_client'],
+  'core_root'    : ['qdi_server'],
+}
+
+remote_protocol_files = {
+  'rpm' : ['${BUILDPATH}/src/remote/npa_remote_rpm_protocol.c'],
+  'qdi_server' : ['${BUILDPATH}/src/remote/npa_remote_qdi_drv.c',
+                  '${BUILDPATH}/src/remote/npa_remote_publish_resource.c'],
+  'qdi_client' : ['${BUILDPATH}/src/remote/npa_remote_qdi_protocol.c'],
+}
+
+if 'rpm' in remote_protocols[image]:
+  env.Append( CPPDEFINES=['NPA_RPM_REMOTING_SUPPORTED'] )
+
+# Check if this is a multi-PD build
+npa_multi_pd = False
+if 'USES_MULTI_PD' in env or 'USES_MPSS_MULTI_PD' in env:
+  npa_multi_pd = True
+  env.Append( CPPDEFINES=['NPA_USES_QDI'] )
+
+print "** INFO: npa_multi_pd is %s" % npa_multi_pd
+
+if os.path.exists( os.path.join(SRCPATH, 'src', 'remote') ) and not drop_feature( 'remoting' ):
+  NPA_RMT_SOURCES = [ '${BUILDPATH}/src/remote/npa_remote_resource.c' ]
+  try:
+    for protocol in remote_protocols[image]:
+      NPA_RMT_SOURCES.extend( remote_protocol_files[protocol] )
+  except KeyError:
+    print '** WARN: Remoting enabled but no protocols are defined'
+    
+  # Hack for use until CORE_ROOT_PD is available
+  if image in ['core', 'modem'] and npa_multi_pd:
+    NPA_RMT_SOURCES.extend( remote_protocol_files['qdi_server'] )
+  
+  NPA_SOURCES.extend( NPA_RMT_SOURCES )
+  env.Append( CPPDEFINES=['NPA_REMOTING_SUPPORTED'] )
+
+#-------------------------------------------------------------------------------
+# NPA Scheduler Feature
+#-------------------------------------------------------------------------------
+include_scheduler = False
+if os.path.exists( os.path.join(SRCPATH, 'src', 'scheduler') ) and not drop_feature( 'scheduler' ):
+  NPA_SCHED_SOURCES = [
+   '${BUILDPATH}/src/scheduler/lpr_definition_npa_scheduler.c',
+   '${BUILDPATH}/src/scheduler/npa_awake_until.c',
+   '${BUILDPATH}/src/scheduler/npa_scheduler.c',
+  ]
+
+  NPA_SOURCES.extend( NPA_SCHED_SOURCES )
+  
+  env.Append( CPPDEFINES=['NPA_SCHEDULED_REQUESTS_SUPPORTED'] )
+  include_scheduler = True
+
+  if not drop_feature( 'scheduler_lpr' ):
+    # NPA Scheduled Request LPR supported 
+    env.Append( CPPDEFINES=['NPA_SCHEDULER_SLEEP_LPR_SUPPORTED'] )
+    # Add LPR into build
+    if 'USES_CORESLEEP_TOOL' in env:
+      xml_file = env['BUILD_ROOT'] + '/core/power/npa/hw/lpr/'
+      env.AddCoreSleepLPR(image_tags[image], {'sleep_lpr_xml' : [xml_file]})
+    else:
+      assert False, "** ERROR: Scheduler LPR feature enabled, but unable to add LPR xml to build"
+
+    # Determine correct include file for sleep
+    if os.path.exists( env['BUILD_ROOT'] + '/core/power/sleep2.0/inc/sleep_os.h' ):
+      env.Append( CPPDEFINES=['NPA_SCHEDULER_USES_SLEEP_OS_H'] )
+  
+#-------------------------------------------------------------------------------
+# Include the test code. Touch SRCPATH/selftest to enable a test build
+#-------------------------------------------------------------------------------
+include_test = False
+if os.path.exists( os.path.join(SRCPATH, 'selftest') ):
+  print '** INFO: NPA Self Test Build'
+  env.Append( CPPDEFINES=['NPA_SELF_TEST'] )
+  env.Append( CPPPATH=['${BUILDPATH}/test'] )
+  NPA_SOURCES.extend(['${BUILDPATH}/test/app/npa_test.c',
+                      '${BUILDPATH}/test/app/npa_test_nas_rpm.c',
+                      '${BUILDPATH}/test/app/npa_remote_test.c'])
+  if include_scheduler:
+    NPA_SOURCES.extend(['${BUILDPATH}/test/app/npa_scheduler_test.c',
+   '${BUILDPATH}/test/app/npa_scheduler_profiling_test.c' ])
+
+  include_test = True
+
+if npa_multi_pd and os.path.exists( os.path.join(SRCPATH, 'remotetest') ):
+  print '** INFO: NPA QDI Remoting Self Test Build'
+  env.Append( CPPDEFINES=['NPA_REMOTE_SELF_TEST'] )
+  if 'USES_QURTOS_IMG' in env:
+    NPA_SOURCES.extend(['${BUILDPATH}/test/app/npa_remote_qdi_test_qurt.c'])
+  if 'USES_SENSOR_IMG' in env:
+    NPA_SOURCES.extend(['${BUILDPATH}/test/app/npa_remote_qdi_test_app.c'])
+    
+#-------------------------------------------------------------------------------
+# Compile and create library
+#-------------------------------------------------------------------------------
+try:
+  env.AddLibrary( image_tags[image], '${BUILDPATH}/npa', NPA_SOURCES )
+except AttributeError:
+  npa_obj = env.Object([NPA_SOURCES])
+  npa_lib = env.Library('${BUILDPATH}/npa', npa_obj)
+  env.AddLibsToImage( image_tags[image] , [npa_lib] )
+  
+#-------------------------------------------------------------------------------
+# Pack out rules
+#-------------------------------------------------------------------------------
+TEX_FILES = env.FindFiles( ['*'],
+                           '${BUILD_ROOT}/core/api/power/docsrc/npa_remote/' )
+env.CleanPack( image_tags[image], TEX_FILES )
+
+#-------------------------------------------------------------------------------
+# Setup RCINIT Environment - TODO: Clean this up; we don't need so many blocks
+#-------------------------------------------------------------------------------
+if 'USES_RCINIT' in env:
+  env.Append( CPPDEFINES=['NPA_USES_RCINIT'] )
+  RCINIT_IMG = ['CORE_MODEM', 'CORE_QDSP6_SW',
+                'CORE_WCN', 'WCN_IMAGE',
+                'APPS_IMAGE', 'CBSP_APPS_IMAGE',
+                'CORE_QDSP6_SENSOR_SW', 'CORE_QDSP6_AUDIO_SW',
+                'CORE_USER_PD']
+
+  env.AddRCInitFunc(            # Code Fragment in TMC: NO
+    RCINIT_IMG,                 # define TMC_RCINIT_INIT_NPA_INIT
+    {
+      'sequence_group'             : 'RCINIT_GROUP_0',
+      'init_name'                  : 'npa',
+      'init_function'              : 'npa_init',
+      'dependencies'               : ['dalsys',]
+    })
+
+  if 'USES_CENTRALIZED_THREAD_PRIORITY' in env:
+    # Register workloops with RCINIT
+    env.AddRCInitTask(
+      RCINIT_IMG, 
+      {
+        'sequence_group'             : 'RCINIT_GROUP_7',
+        'thread_name'                : 'NPA_ASYNC_REQUEST_WL',
+        'thread_entry'               : 'RCINIT_NULL',
+        'stack_size_bytes'           : '8192',
+        'priority_amss_order'        : 'NPA_ASYNC_REQUEST_WL_PRI_ORDER',
+      })
+
+    env.AddRCInitTask(
+      RCINIT_IMG, 
+      {
+        'sequence_group'             : 'RCINIT_GROUP_7',
+        'thread_name'                : 'NPA_ASYNC_EVENT_WL',
+        'thread_entry'               : 'RCINIT_NULL',
+        'stack_size_bytes'           : '8192',
+        'priority_amss_order'        : 'NPA_ASYNC_EVENT_WL_PRI_ORDER',
+      })
+
+  if include_scheduler:
+    env.AddRCInitFunc(           # Code Fragment in TMC: NO
+      RCINIT_IMG,                # define TMC_RCINIT_INIT_NPA_TIMER_INIT
+      {
+        'sequence_group'             : 'RCINIT_GROUP_0',
+        'init_name'                  : 'npa_timer_init',
+        'init_function'              : 'npa_timer_init',
+        'dependencies'               : ['npa','timer_task','timer']
+      })
+
+    # Enable Awake Until Initialization
+    env.AddRCInitFunc(           # Code Fragment in TMC: NO
+      RCINIT_IMG,                # define TMC_RCINIT_INIT_AWAKE_UNTL_INIT
+      {
+        'sequence_group'             : 'RCINIT_GROUP_0',
+        'init_name'                  : 'awake_until_init',
+        'init_function'              : 'awake_until_init',
+        'dependencies'               : ['npa','timer_task','timer']
+      })
+    # Create NPA Scheduler task
+    if image in ['adsp', 'adsp_guest', 'slpi', 'slpi_guest','cdsp','cdsp_guest']:
+      thread_type = 'RCINIT_TASK_QURTTASK'
+    else:
+      thread_type = 'RCINIT_TASK_REXTASK'
+    env.AddRCInitTask(
+      RCINIT_IMG,
+      {
+        'sequence_group'             : 'RCINIT_GROUP_1',
+        'thread_name'                : 'npaScheduler',
+        'thread_entry'               : 'npaScheduler_task',
+        'thread_type'                :  thread_type,
+        'stack_size_bytes'           : '8192',
+        'priority_amss_order'        : 'TIMER_SLAVE1_PRI_ORDER',
+      })

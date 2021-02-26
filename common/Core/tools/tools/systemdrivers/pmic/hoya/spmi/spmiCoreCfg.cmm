@@ -1,0 +1,231 @@
+; ============================================================================
+;
+;  spmiCoreCfg.cmm
+;
+; Script to configure SPMI
+;
+;  Execution:
+;    do spmiCoreCfg.cmm [target] true
+;
+;    e.g. do spmiCoreCfg.cmm 9x55 true
+;
+;  This script will configure SPMI for specified target
+;
+;  ====================================================================
+;
+;  Copyright (c) 2014-2016 QUALCOMM Technologies Incorporated. All Rights Reserved.
+;  QUALCOMM Proprietary and Confidential.
+;
+;  ====================================================================
+;
+;  $Header: //components/rel/core.glue/1.2/tools/tools/systemdrivers/pmic/hoya/spmi/spmiCoreCfg.cmm#1 $
+;  $DateTime: 2017/02/17 13:50:58 $
+;  $Author: pwbldsvc $
+;
+; ============================================================================
+;
+
+ENTRY &target &loadConfig
+LOCAL &ACCESS_CLASS
+
+if ("&target"=="8996") 
+(
+    &ACCESS_CLASS="anc"
+)
+else
+(
+    &ACCESS_CLASS="ezaxi"
+)
+
+if ("&target"=="") 
+(
+    print %ERROR "Specify target folder (i.e. 845)"
+    ENDDO "Specify target folder (i.e. 845)"
+)
+
+if (file.exist(&target/hwio.cmm))
+(
+  do &target/hwio.cmm
+)
+else
+(
+  print %ERROR "Target not supported!"
+  ENDDO "Target not supported!"
+)
+
+if (file.exist(&target/spmiClockEnable.cmm))
+(
+  do &target/spmiClockEnable.cmm
+)
+
+if ("&loadConfig"!="")
+(
+    GOSUB SpmiMasterInit
+)
+else
+(
+    GOSUB CHECK_GENI_IMG false
+)
+
+ENDDO SUCCESS
+
+//*****************************************************************************
+// Helper Funcs
+//*****************************************************************************
+
+PrintPadding:
+    ENTRY &pad
+    if (&pad<0xA)
+    (
+        print %CONT " "
+    )
+    if (&pad<0x64) 
+    (
+        print %CONT " "
+    )
+    RETURN
+    
+SpmiMasterInit:
+    local &rd_reg
+   
+    // 1. Write SPMI GENI FW image
+    GOSUB CHECK_GENI_IMG true
+
+    // 2. Initiate FORCE-DEFAULT command
+    d.s &ACCESS_CLASS:HWIO_SPMI_GENI_FORCE_DEFAULT_REG_ADDR %long 0x1
+
+    // 3. Switch PROGRAM-RAM clock muxing to serial clock
+    d.s &ACCESS_CLASS:HWIO_SPMI_GENI_CLK_CTRL_ADDR %long 0x1
+
+    // 4. Enable all security features
+    &rd_reg=data.long(&ACCESS_CLASS:HWIO_SPMI_SEC_DISABLE_REG_ADDR)
+    &rd_reg=0
+    d.s &ACCESS_CLASS:HWIO_SPMI_SEC_DISABLE_REG_ADDR %long &rd_reg
+
+    // 5. Disable forced High-Z driven to GENI outputs
+    // SOE0_EN
+    &rd_reg=data.long(&ACCESS_CLASS:HWIO_SPMI_GENI_OUTPUT_CTRL_ADDR)
+    &rd_reg=&rd_reg|0x1
+    d.s &ACCESS_CLASS:HWIO_SPMI_GENI_OUTPUT_CTRL_ADDR %long &rd_reg
+
+    // SOE1_EN
+    &rd_reg=data.long(&ACCESS_CLASS:HWIO_SPMI_GENI_OUTPUT_CTRL_ADDR)
+    &rd_reg=&rd_reg|0x2
+    d.s &ACCESS_CLASS:HWIO_SPMI_GENI_OUTPUT_CTRL_ADDR %long &rd_reg
+
+    // 6. Configure SPMI_MID_REG register
+    d.s &ACCESS_CLASS:HWIO_SPMI_MID_REG_ADDR %long 0x00
+
+    // 7. Set FORCE_MASTER_WRITE_ON_ERROR and enable arbiter
+    // FORCE_MASTER_WRITE_ON_ERROR
+    &rd_reg=data.long(&ACCESS_CLASS:HWIO_SPMI_CFG_REG_ADDR)
+    &rd_reg=&rd_reg|0x8
+    d.s &ACCESS_CLASS:HWIO_SPMI_CFG_REG_ADDR %long &rd_reg
+
+    // 13. Enable interrupts globally
+    d.s &ACCESS_CLASS:HWIO_SPMI_MWB_ENABLE_REG_ADDR %long 0x1
+
+    // 14. Change ROM and RAM mux to output RAM Data.
+    &rd_reg=data.long(&ACCESS_CLASS:HWIO_SPMI_GENI_PROG_ROM_CTRL_REG_ADDR)
+    &rd_reg=0
+    d.s &ACCESS_CLASS:HWIO_SPMI_GENI_PROG_ROM_CTRL_REG_ADDR %long &rd_reg
+
+    //15. Enabling HW control CGC
+    &rd_reg=data.long(&ACCESS_CLASS:HWIO_SPMI_GENI_CGC_CTRL_ADDR)
+    &rd_reg=&rd_reg|0xFF
+    d.s &ACCESS_CLASS:HWIO_SPMI_GENI_CGC_CTRL_ADDR %long &rd_reg
+
+    &rd_reg=data.long(&ACCESS_CLASS:HWIO_SPMI_CGC_CTRL_ADDR)
+    &rd_reg=0x7F
+    d.s &ACCESS_CLASS:HWIO_SPMI_CGC_CTRL_ADDR %long &rd_reg
+   
+    // ARBITER_ENABLE
+    &rd_reg=data.long(&ACCESS_CLASS:HWIO_SPMI_CFG_REG_ADDR)
+    &rd_reg=&rd_reg|0x1
+    d.s &ACCESS_CLASS:HWIO_SPMI_CFG_REG_ADDR %long &rd_reg
+
+    RETURN
+ 
+    
+//*****************************************************************************
+// Geni Image
+//*****************************************************************************
+CHECK_GENI_IMG:
+    ENTRY &updateFW
+    OPEN #1 &target/geni.txt /READ
+    LOCAL &i &base &pad &clkVal &geniCGC &spmiCGC
+
+    &clkVal=data.long(&ACCESS_CLASS:HWIO_SPMI_GENI_CLK_CTRL_ADDR)
+    &geniCGC=data.long(&ACCESS_CLASS:HWIO_SPMI_GENI_CGC_CTRL_ADDR)
+    &spmiCGC=data.long(&ACCESS_CLASS:HWIO_SPMI_CGC_CTRL_ADDR)
+    
+    // Switch PROGRAM-RAM clock muxing to AHB clock
+    d.s &ACCESS_CLASS:HWIO_SPMI_GENI_CLK_CTRL_ADDR %long 0
+    
+    // Disable CGC -- set PON reset values
+    d.s &ACCESS_CLASS:HWIO_SPMI_GENI_CGC_CTRL_ADDR %long 0x78
+    d.s &ACCESS_CLASS:HWIO_SPMI_CGC_CTRL_ADDR %long 0
+    
+    REPEAT
+    (
+        READ #1 &val
+        
+        if ("&val"=="")
+        (
+        
+        )
+        else if ("&val"=="REG") 
+        (
+            &i=0.
+            &base="HWIO_SPMI_GENI_CFG_REG"
+            print "REGISTER                        |   CURRENT VALUE   "
+            print "----------------------------------------------------"
+        )
+        else if ("&val"=="RAM") 
+        (
+            &i=0.
+            &base="HWIO_SPMI_GENI_CFG_RAM"
+            print ""
+            print "REGISTER                        |   CURRENT VALUE   "
+            print "----------------------------------------------------"
+        )
+        else
+        (
+            &tmp=data.long(&ACCESS_CLASS:(ADDRESS.OFFSET(sYmbol.begin("&(base)0_ADDR"))+(4.*&i)))
+            
+            print "&base" FORMAT.DECIMAL(0,&i) "_ADDR"
+            
+            GOSUB PrintPadding &i
+            
+            print %CONT "  |     "  FORMAT.HEX(8.,&tmp)
+            
+            if (&val!=&tmp) 
+            (
+                if ("&updateFW"=="true")
+                (
+                    print %CONT %ERROR "    Updated value: " FORMAT.HEX(8.,&val)
+                    d.s &ACCESS_CLASS:(ADDRESS.OFFSET(sYmbol.begin("&(base)0_ADDR"))+(4.*&i)) %LONG &val
+                )
+                else
+                (
+                    print %CONT %ERROR "    Correct value: " FORMAT.HEX(8.,&val)
+                )
+            )
+            else
+            (
+                print %CONT "    OK"
+            )
+            
+            &i=&i+1
+        )
+    )
+    WHILE !EOF()
+
+    CLOSE #1
+    
+    // Restore values
+    d.s &ACCESS_CLASS:HWIO_SPMI_GENI_CLK_CTRL_ADDR %long &clkVal
+    d.s &ACCESS_CLASS:HWIO_SPMI_GENI_CGC_CTRL_ADDR %long &geniCGC
+    d.s &ACCESS_CLASS:HWIO_SPMI_CGC_CTRL_ADDR %long &spmiCGC
+       
+    RETURN

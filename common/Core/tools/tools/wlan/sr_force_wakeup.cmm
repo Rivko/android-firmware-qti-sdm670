@@ -1,0 +1,80 @@
+//PMM register
+&read_data=0x0
+y.create.l WCSS_PMM_AON_INT_EN 0x188800D0
+y.create.l WCSS_PMM_AON_INT_POL 0x188800C4
+y.create.l WCSS_PMM_AON_INT_POS_EDGE_EN 0x188800C8
+
+//PMM SM registers
+y.create.l WCSS_PMM_SR_LSB 0x18822068
+y.create.l WCSSAON_SR_LSB 0x18822070
+
+//shadow register
+y.create.l  WCSS_SR_CONTROL 0x18820000
+y.create.l WCSS_SR_ADDRESS_VALID 0x188200E0
+y.create.l WCSS_SR_FORCE_WAKE 0x18822060
+y.create.l WCSS_SR_INTERRUPT_ENABLE 0x18820010
+y.create.l WCSS_SR_COMMIT_REPLAY 0x18820004
+
+y.create.done
+
+area.create sr_force_wakeup 80 40
+area.select sr_force_wakeup
+area.view sr_force_wakeup
+area.clear sr_force_wakeup
+
+//pre sleep
+
+&read_data=data.long(d:WCSS_PMM_AON_INT_EN)
+&read_data=&read_data|0x0010
+d.s WCSS_PMM_AON_INT_EN %LE %Long &read_data
+
+&read_data=data.long(d:WCSS_PMM_AON_INT_EN)
+&read_data=&read_data|0x0010
+d.s WCSS_PMM_AON_INT_EN %LE %Long &read_data
+
+&read_data=data.long(d:WCSS_PMM_AON_INT_EN)
+&read_data=&read_data|0x0010
+d.s WCSS_PMM_AON_INT_EN %LE %Long &read_data
+
+print "------------------------------------------"
+print "required configuration for SR based wake is done, please run put wcss in sleep"
+print "------------------------------------------"
+
+
+print "--------------------------------------"
+print "checking if wcss is in sleep"
+print "--------------------------------------"
+//read PMM_SR_LSB register to check if SS_SLEEP
+&read_data=data.long(WCSS_PMM_SR_LSB)
+&read_data=&read_data&0x1FFF
+    if (0x20==&read_data)
+	( 
+	  Print "WCSS IS IN SLEEP"
+	)
+    else  
+	(
+	  print "WCSS IS NOT IN SLEEP"
+	)
+
+print "--------------------------------------"
+print "waking up wcss from SR"
+print "--------------------------------------"
+
+//Post sleep
+d.s WCSS_SR_CONTROL %LE %Long 0x4
+d.s WCSS_SR_ADDRESS_VALID  %LE %Long  0xFFFFF
+d.s WCSS_SR_FORCE_WAKE  %LE %Long  0x1
+d.s WCSS_SR_INTERRUPT_ENABLE   %LE %Long  0xFFFFFFFF
+d.s WCSS_SR_COMMIT_REPLAY   %LE %Long 0x1
+
+//read PMM_SR_LSB register to check if SS_UP
+&read_data=data.long(WCSS_PMM_SR_LSB)
+&read_data=&read_data&0x1FFF
+    if (0x200==&read_data)
+	( 
+	  Print "WCSS IS UP"
+	)
+    else  
+	(
+	  print "WCSS IS NOT UP"
+	)

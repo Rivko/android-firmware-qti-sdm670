@@ -1,0 +1,81 @@
+#===============================================================================
+#
+# KERNEL SYSCALL Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009-2009 by QUALCOMM, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //source/qcom/qct/multimedia2/dsp/qdsp6/sandbox/VPMSM8974/lpass_proc/core/kernel/arch/build/SConscript#1 $
+#  $DateTime: 2013/04/11 13:57:03 $
+#  $Author: c_tduras $
+#  $Change: 3603121 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/kernel/arch/src/"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+IMAGE_SOURCES = ['CBSP_QDSP6_SW_IMAGE','CORE_QDSP6_AUDIO_SW','CORE_QDSP6_SENSOR_SW']
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DEBUGTOOLS',
+   'HAL',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'MPROC',
+   'SECUREMSM',
+   'DAL',
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+env.PublishPrivateApi('KERNEL_ARCH_SYS', "${INC_ROOT}/core/kernel/arch/src/arm11")
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+KERNEL_ARCH_SYS_SOURCES =  ['${BUILDPATH}/qdsp6/cache_mmu.c']
+
+arch_sys_obj = env.Object(KERNEL_ARCH_SYS_SOURCES)
+arch_sys_lib = env.AddBinaryLibrary(IMAGE_SOURCES, '${BUILDPATH}/kernelsys', arch_sys_obj)
+
+if 'USES_RCINIT' in env and 'USES_STACK_PROTECTOR' in env:
+   RCINIT_IMG = ['CORE_MODEM', 'CORE_QDSP6_SW']
+   env.AddRCInitFunc(           # Code Fragment in TMC: NO
+    RCINIT_IMG,                 # define TMC_RCINIT_INIT_IPCMEM_POOL_INIT
+    {
+     'sequence_group'             : 'RCINIT_GROUP_0',                   # required
+     'init_name'                  : 'stackprotect',                     # required
+     'init_function'              : '__init_stack_chk_guard',           # required
+     'dependencies'               : ['smem','dsm',]
+    })
+
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles('*', '${COREBSP_ROOT}/kernel/arch/src/qdsp6'))
+env.CleanPack(IMAGE_SOURCES, CLEAN_LIST) 

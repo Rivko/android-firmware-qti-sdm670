@@ -1,0 +1,100 @@
+#/** @file XBLRamDumpLib.inf
+#
+#  XBL RamDump
+#  
+#  Copyright (c) 2015-2017 Qualcomm Technologies, Inc.  All Rights Reserved.
+#  Qualcomm Technologies Proprietary and Confidential.
+#
+#**/
+
+#==============================================================================
+#                              EDIT HISTORY
+#
+#
+# when       who     what, where, why
+# --------   ---     ----------------------------------------------------------
+# 10/12/17   aus     Enabled crypto library for secure minidump
+# 09/22/17   rohik   Added support for saving the logdump partition with PC dump
+# 08/28/17   aus     Remove coldplug lib and use via shared function table
+# 04/26/17   vk      Make image type  USER_DEFINED
+# 06/15/16   kpa     Add support for Display
+# 03/10/16   aab     Added PmicLib and SPMILib
+# 03/09/16   kpa     Use LoaderCacheLib instead of shared functions cache api
+# 08/06/15   as      Use shared functions
+# 05/19/15   kpa     Added PIMEMTargetLib.
+# 05/12/15   bh      Replace LoaderUtilsLib with MuslLib
+# 05/01/15   plc     Initial Revision
+#
+#==============================================================================
+
+[Defines]
+  INF_VERSION                    = 0x00010005
+  BASE_NAME                      = XBLRamDump
+  FILE_GUID                      = 545E720B-F218-4DE5-9246-8A6EE0E095FA
+  MODULE_TYPE                    = USER_DEFINED
+  VERSION_STRING                 = 1.0
+
+[Sources.common]
+  ../../../XBLLoader/boot_gpt_partition_id.c
+  ../../../XBLLoader/boot_util.c
+  ../../../XBLLoader/boot_ram_init.c
+  ../../../XBLLoader/boot_shared_functions_consumer.c
+  ../../../XBLLoader/boot_hash_buffer.c
+  ../../../XBLLoader/boot_hash.c
+  ../../../XBLLoader/boot_dload_debug.c
+  ../../../XBLLoader/boot_extern_coldplug_interface.c
+  ../../../XBLLoader/boot_extern_pimem_interface.c
+  
+  ../../../XBLRamDump/boot_extern_efs_interface.c
+  ../../../XBLRamDump/boot_extern_qusb_interface.c
+  ../../../XBLRamDump/boot_raw_partition_ramdump.c
+  ../../../XBLRamDump/boot_sd_ramdump.c
+  ../../../XBLRamDump/boot_sahara.c
+  ../../../XBLRamDump/boot_minidump.c
+
+  boot_dload_debug_target.c
+  sbl1_sahara.c
+  XBLRamDump.c
+
+[Sources.Arm]
+  ModuleEntryPoint.asm | RVCT
+
+[Sources.AARCH64]
+  ModuleEntryPoint.S | GCC
+
+  ModuleEntryPoint.S | RVCT
+
+[BuildOptions.ARM]
+  RVCT:*_*_*_CC_FLAGS = --diag_error=warning -DBOOT_PBL_H=\"pbl_sbl_shared.h\" -DFEATURE_SAHARA_BOOT -DSAHARA_MAX_PACKET_SIZE_IN_BYTES=0x400 -DSAHARA_MAX_MEMORY_DATA_SIZE_IN_BYTES=0x1000 -DSAHARA_PACKET_LOG_LENGTH=0x64 -DFEATURE_BOOT_LOGGER_RAM -DFEATURE_BOOT_LOGGER_TIMER -DFEATURE_BOOT_LOGGER_JTAG -DFEATURE_BOOT_LOGGER_UART
+  RVCT:*_*_*_DLINK_FLAGS = --first=XBLDebug.lib(ModuleEntryPoint) --scatter $(WORKSPACE)/QcomPkg/$(TARGETPKG)/xbl_$(BUILDFLAVOR).scl
+
+[BuildOptions.AARCH64]
+  GCC:*_*_*_CC_FLAGS = -Werror -DBOOT_PBL_H=\"pbl_sbl_shared.h\" -DFEATURE_SAHARA_BOOT -DSAHARA_MAX_PACKET_SIZE_IN_BYTES=0x400 -DSAHARA_MAX_MEMORY_DATA_SIZE_IN_BYTES=0x1000 -DSAHARA_PACKET_LOG_LENGTH=0x64 -DUSE_GNU_LD -DUSE_LOADER_UTILS -DFEATURE_BOOT_LOGGER_RAM -DFEATURE_BOOT_LOGGER_TIMER -DFEATURE_BOOT_LOGGER_JTAG -DFEATURE_BOOT_LOGGER_UART -DBOOT_MEMORY_DEBUG_64BIT
+  
+[Packages]
+  MdePkg/MdePkg.dec
+  ArmPkg/ArmPkg.dec
+  QcomPkg/QcomPkg.dec
+  QcomPkg/XBLLoaderApi.dec
+  QcomPkg/Library/MuslLib/MuslLib.dec
+  QcomPkg/SDM670Pkg/Library/XBLRamDumpLib/XBLRamDumpLibPkg.dec
+
+[LibraryClasses]
+  MuslLib
+  BaseLib
+  ClockTargetLib
+  ClockRamDumpLib
+  HFATLib
+  QusbLib
+  ROMFSLib
+  LoaderCacheLib
+  SPMILib
+  BootDisplayLib
+  StackCanaryBaseLib
+  RNGLib
+  CryptoRDILib
+  CryptoLoaderILib
+  CryptoLib
+  HashLib
+  BamLoaderLib
+  

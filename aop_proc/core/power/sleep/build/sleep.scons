@@ -1,0 +1,86 @@
+#===========================================================================
+# Server build script
+#
+# Copyright (c) 2016 by Qualcomm Technologies, Incorporated
+# All Rights Reserved
+# Qualcomm Proprietary/GTDR
+#===========================================================================
+
+Import('env')
+
+env = env.Clone()
+SRCPATH = '../src'
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+# APIs
+CBSP_API = [
+    'DAL',
+    'POWER',
+    'POWER_UTILS',
+    'SERVICES',
+    'DEBUGTRACE',
+    'SYSTEMDRIVERS',
+    'KERNEL',
+    'UNPA',
+    'MPROC',
+    'DDR_MGR',
+    'PMIC',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+env.RequireProtectedApi(CBSP_API)
+env.RequireProtectedApi(['SLEEP'])
+
+env.PublishPublicApi('SLEEP', [
+    '${BUILD_ROOT}/core/power/sleep/inc'
+])
+
+env.Append(CFLAGS = '${ARMCC_STDC99_CMD}')
+env.Append(CPPDEFINES = 'RSC_DYNAMIC_SEQ')
+if env['MSM_ID'] == '24':
+   env.Append(CPPDEFINES = 'SDX24_STUBS')
+elif env['MSM_ID'] == '670' and env['CHIPSET_PMIC'] == 'pm670':
+   env.Append(CPPDEFINES = 'SDM670_TARGET_CONFIG')
+elif env['MSM_ID'] == '855':
+   env.Append(CPPDEFINES = 'SDM855_TARGET_CONFIG')
+elif env['MSM_ID'] == '1000':   
+   env.Append(CPPDEFINES = 'SDM1000_TARGET_CONFIG')
+#SDM640_CHANGES
+elif env['MSM_ID'] == '640':
+   env.Append(CPPDEFINES = 'SDM670_TARGET_CONFIG')
+elif env['MSM_ID'] == '670' and env['CHIPSET_PMIC'] == 'pm605':
+   env.Append(CPPDEFINES = 'QCS605_TARGET_CONFIG')
+   env.Append(CPPDEFINES = 'SDM670_TARGET_CONFIG')
+# Sources
+SLEEP_SOURCES = [
+    '${BUILDPATH}/aop_sleep.c',
+    '${BUILDPATH}/aop_cx_collapse.c',
+    '${BUILDPATH}/aop_server.c',
+    '${BUILDPATH}/aop_sleep_stats.c',
+    '${BUILDPATH}/target/${MSM_ID}/aop_pil_driver.c',
+]
+
+# Add sources to compile
+env.AddLibrary(['CORE_AOP'], '${BUILDPATH}/sleep', SLEEP_SOURCES)
+
+#-------------------------------------------------------------------------------
+# QDSS SW Events
+#-------------------------------------------------------------------------------
+if 'USES_QDSS_SWE' in env:
+    QDSS_IMG = ['QDSS_EN_IMG']
+    events = [
+             ['AOP_SLEEP_FIRST=600', 'AOP_SLEEP_FIRST'],
+             ['CX_COLLAPSE_ENTER', 'Entering CX collapse start'],
+             ['CX_COLLAPSE_EXIT', 'Exiting CX collapse start'],
+             ['CX_COLLAPSE_ENTER_COMPLETE', 'Entering CX collapse complete'],
+             ['CX_COLLAPSE_EXIT_COMPLETE', 'Exiting CX collapse complete'],   
+             ['AOSS_SLEEP_ENTER', 'Entering AOSS Sleep: (wakeup hi: 0x%x), (wakeup_lo: 0x%x)'],
+             ['AOSS_SLEEP_EXIT', 'Exiting AOSS Sleep'],
+             ['HALT_ENTER', 'Entering halt: (wakeup hi: 0x%x), (wakeup_lo: 0x%x)'],
+             ['HALT_EXIT', 'Exiting halt'],
+             ['IMAGE_NAME_INVALID', 'PIL ERROR:Invalid image name recieved over QMP!!!  (val: %s)'],
+             ['PIL_MALFORMED_JSON', 'PIL ERROR:Invalid JSON format, could not parse'],
+             ['AOP_SLEEP_LAST=680', 'AOP_SLEEP_LAST'],
+             ]
+    env.AddSWEInfo(QDSS_IMG, events)

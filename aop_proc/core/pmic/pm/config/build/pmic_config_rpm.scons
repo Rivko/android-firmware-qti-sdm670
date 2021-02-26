@@ -1,0 +1,123 @@
+#===============================================================================
+#
+#
+# GENERAL DESCRIPTION
+#
+# Copyright (c) 2011-2017 QUALCOMM Technologies Incorporated. All Rights Reserved
+#
+# Qualcomm Proprietary
+#
+# Export of this technology or software is regulated by the U.S. Government.
+# Diversion contrary to U.S. law prohibited.
+#
+# All ideas, data and information contained in or disclosed by
+# this document are confidential and proprietary information of
+# Qualcomm Technologies Incorporated and all rights therein are expressly reserved.
+# By accepting this material the recipient agrees that this material
+# and the information contained therein are held in confidence and in
+# trust and will not be used, copied, reproduced in whole or in part,
+# nor its contents revealed in any manner to others without the express
+# written permission of Qualcomm Technologies Incorporated.
+#
+#-------------------------------------------------------------------------------
+#
+# $Header: //components/rel/aop.ho/1.1.c1/aop_proc/core/pmic/pm/config/build/pmic_config_rpm.scons#1 $
+# $DateTime: 2018/02/16 04:48:18 $ 
+#
+#                      EDIT HISTORY FOR FILE
+#                      
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#  
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 04/12/13   hs      Code refactoring.
+# 01/22/13   dy      Merge target folder into common framework/npa folder
+# 06/25/12   hs      Moved to core\systemdrivers.
+# 06/20/12   hs      Created
+#===============================================================================
+
+Import('env')
+
+LIB_NAME        = 'pmic_config_rpm'
+IMAGE_SOURCES   = ['CORE_AOP']
+
+LIB_SRC         = 'src'
+LIB_PROTECTED   = 'protected'
+LIB_COMMON      = 'common'
+
+if env['CHIPSET'] in ['sdm670']:
+    if env['CHIPSET_PMIC'] in ['pm605']:
+        LIB_TARGET = 'qcs605'
+    else:
+        LIB_TARGET = 'sdm670'
+#SDM640_CHANGES
+elif env['CHIPSET'] in ['sdm640']:
+        LIB_TARGET = 'sdm670'
+else:
+    LIB_TARGET      = env['CHIPSET']
+
+from glob import glob
+
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH:  
+#-------------------------------------------------------------------------------
+SRCPATH = ".."
+
+#BUILDPATH =  image_name / processor_name, eg modem_libs / arm11 = directory where built objects stored
+env.VariantDir('${BUILDPATH}', SRCPATH , duplicate=0)
+
+
+env.RequireProtectedApi([
+    'PMIC_CONFIG',
+    'PMIC_COMM',
+    'PMIC_DRIVERS',
+    'PMIC_DEVICES',
+    'PMIC_FRAMEWORK',
+    'PMIC_VRM',
+    'PMIC_PRM',
+    'PMIC_TARGET',
+    ])
+
+env.RequirePublicApi([
+    'DAL',
+    'BUSES',
+    'PMIC',
+    'SERVICES',
+    'SYSTEMDRIVERS',
+    ],
+    area='CORE')
+
+env.Append(CPPDEFINES = ['FEATURE_LIBRARY_ONLY'])
+
+
+#uncomment this section if src directory is added
+
+LIB_SOURCES = [ ]  #empy list
+
+SOURCE_FILES = [ ] 
+
+#find all .c
+SOURCE_FILES.extend(glob(SRCPATH + '/'+LIB_SRC+'/*.c'))
+SOURCE_FILES.extend(glob(SRCPATH + '/'+LIB_COMMON+'/*.c'))
+SOURCE_FILES.extend(glob(SRCPATH + '/'+LIB_TARGET+'/*.c'))
+
+#find all .cpp files 
+SOURCE_FILES.extend(glob(SRCPATH + '/'+LIB_SRC+'/*.cpp'))
+
+#find all .s files
+SOURCE_FILES.extend(glob(SRCPATH + '/'+LIB_SRC+'/*.s'))
+
+
+for filename in SOURCE_FILES:
+        LIB_SOURCES.append('${BUILDPATH}/' + filename.replace(SRCPATH,''))
+
+
+if LIB_SOURCES:
+
+        env.AddLibrary(IMAGE_SOURCES, '${BUILDPATH}/'+LIB_NAME,[
+        LIB_SOURCES,
+        ])
+

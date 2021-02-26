@@ -1,0 +1,474 @@
+//============================================================================
+//  Name:                                                                     
+//    std_debug_fus.cmm 
+//
+//  Description:                                                              
+//    Specialized debug script for fusion targets
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who             what, where, why
+// --------   ---             ---------------------------------------------------------
+// 07/26/2017 JBILLING        Changes for sdx50 added
+// 12/16/2016 JBILLING        Added Fusion3 setup for sdx20
+// 12/10/2015 JBILLING        Created for 8906/9x55 fusion
+
+
+//**************************************************
+//                  Declarations 
+//**************************************************
+LOCAL &ArgumentLine
+LOCAL &UTILITY &Remainder
+LOCAL &targetprocessor
+
+//**************************************************
+//                  Arguments Passed 
+//**************************************************
+ENTRY %LINE &ArgumentLine
+//ENTRY &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+
+ENTRY &UTILITY %LINE &Remainder
+//**************************************************
+//                  Defaults 
+//**************************************************
+
+//**************************************************
+//                  Subroutine Checks
+//**************************************************
+// Name of the utility we are calling
+LOCAL &SUBROUTINE
+// Any subroutine specific options
+// Default exists for each subroutine
+LOCAL &OPTION
+
+
+//**************************************************
+//                  Basic Options Check
+//**************************************************
+
+&SUBROUTINE="&UTILITY"
+IF ("&ArgumentLine"=="")
+(
+    &SUBROUTINE="POWERUP_ROUTINE"
+)
+ELSE IF (STRING.UPR("&UTILITY")=="HELP")
+(
+    &SUBROUTINE="&UTILITY"
+)
+ELSE
+(
+    &SUBROUTINE="MAIN"
+)
+
+
+    LOCAL &rvalue
+    // This should be created by some top level script. The setupenv for each proc would
+    // set this up
+     AREA.SELECT
+    // Call the required utility
+    GOSUB &SUBROUTINE &ArgumentLine
+    ENTRY %LINE &rvalue
+
+    GOSUB EXIT &rvalue
+
+
+
+
+
+//**************************************************
+//
+// @Function: MAIN
+// @Description : sets up remote processor to attach on power up.
+//
+//**************************************************
+MAIN:
+        LOCAL &ArgumentLine
+        ENTRY %LINE &ArgumentLine
+        
+        do optextract Img,Lpm,Bkpts,CTI_Enable,alternateelf,extraoption &ArgumentLine
+        LOCAL &image &lpm_option &user_defined_bkpts &cti_enable &alternateelf &extraoption
+        ENTRY &image &lpm_option &user_defined_bkpts &cti_enable &alternateelf &extraoption //expect 6 returns from optextract
+        
+        IF STRING.SCAN("&extraoption","firstrundone",0)!=-1
+        (
+            GOTO CONTINUEDEBUG
+        )
+        
+        IF ("&FUSION_TYPE"=="FUSION3")
+        (
+            &extraoption="&extraoption"+",secondpass"
+            GLOBALON POWERUP DEFAULT
+        )
+        ELSE
+        (
+            &image="mpss-fus"
+        )
+        do std_debug_&CHIPSET GETDEBUGDEFAULTS NULL &image &lpm_option &cti_enable &alternateelf &extraoption
+        LOCAL &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+        ENTRY &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+        
+        do listparser FULLLIST &peripheral_processor &debugscript &symbolloadscript &imagebuildroot &targetprocessor &targetprocessorport
+        LOCAL &debugscript_local &debugscript_target &symbolloadscript_local &symbolloadscript_target &imagebuildroot_local &imagebuildroot_target &targetprocessor_local &targetprocessor_target &targetprocessorport_local &targetprocessorport_target
+        ENTRY &debugscript_local &debugscript_target &symbolloadscript_local &symbolloadscript_target &imagebuildroot_local &imagebuildroot_target &targetprocessor_local &targetprocessor_target &targetprocessorport_local &targetprocessorport_target
+    
+        IF ("&FUSION_TYPE"=="FUSION3")
+        (
+            SYSTEM.POLLING FAST
+            do hwio 
+            do std_memorymap
+            ON ERROR CONTINUE
+                b.d /all
+                b.s &entry_bkpt /onchip
+                print " "
+            ON ERROR DEFAULT
+            GLOBAL &ARGLINE
+            &ARGLINE="&ArgumentLine"
+         
+            IF STRING.SCAN("&extraoption","silent",0)==-1
+            (
+                //Print out adb commands for user
+                WINCLEAR
+                //area.reset adb_commands
+                area.create adb_commands
+                area.select adb_commands
+                winpos  0. 0. 50. 10. , , , adb_commands
+                area.view adb_commands
+                print " "
+                print %ERROR "Adb commands are the following:"
+                print "  adb wait-for-device                   "
+                print "  adb shell                             "
+                print "  su                                    "
+                print "  touch /persist/debug_mode             "
+                print "  setprop persist.mdm_boot_debug true   "
+                print "  sync                                  "
+                print "  reboot                                "
+                print " "
+                area.select A000
+                GLOBALON POWERUP do std_debug_fus
+                dialog.ok "Now reset device having done proper adb commands"
+            )
+            ELSE
+            (
+                WINCLEAR
+                //area.reset adb_commands
+                area.create adb_commands
+                area.select adb_commands
+                winpos  0. 0. 50. 10. , , , adb_commands
+                area.view adb_commands
+                
+                LOCAL &currdir
+                &currdir=os.pwd()
+                cd &TEMPDIR
+                os.area adb wait-for-device
+                os.area adb root
+                os.area adb shell touch /persist/debug_mode
+                os.area adb shell setprop persist.mdm_boot_debug true
+                os.area adb shell sync
+                os.area adb shell reboot
+                area.select A000
+                GLOBALON POWERUP do std_debug_fus
+                cd &currdir
+            )
+            
+        )
+        ELSE
+        (
+            INTERCOM.EXECUTE &targetprocessorport_target SYSTEM.POLLING FAST
+            INTERCOM.EXECUTE &targetprocessorport_target do hwio 
+            INTERCOM.WAIT    &targetprocessorport_target
+            INTERCOM.EXECUTE &targetprocessorport_target do std_memorymap
+            INTERCOM.WAIT    &targetprocessorport_target
+            INTERCOM.EXECUTE &targetprocessorport_target do std_memorymap
+            INTERCOM.WAIT    &targetprocessorport_target
+            ON ERROR CONTINUE
+            INTERCOM.EXECUTE &targetprocessorport_target b.d /all
+            INTERCOM.EXECUTE &targetprocessorport_target b.s &entry_bkpt /onchip
+            ON ERROR
+            INTERCOM.EXECUTE &targetprocessorport_target GLOBAL &ARGLINE
+            INTERCOM.EXECUTE &targetprocessorport_target &ARGLINE="&ArgumentLine"
+            INTERCOM.EXECUTE &targetprocessorport_target GLOBALON POWERUP do std_debug_fus
+        )
+        
+        IF "&cti_enable"=="true"
+        (
+            do std_cti_apps SETUPSYNCHALT
+        )
+        IF ("&FUSION_TYPE"!="FUSION3")
+        (
+            GO
+        )
+        //POWER_ROUTINE takes it from here
+        END
+        
+        
+        
+//This is run from the context of the remote chip's apps processor    
+POWERUP_ROUTINE:
+    IF ("&FUSION_TYPE"=="FUSION3")
+    (
+	    wait.8000ms
+	
+        IF (STRING.SCAN("&extraoption","silent",0)!=-1)
+        (
+            wait.2000ms
+        )
+        sys.m.a
+        GLOBALON POWERUP DEFAULT //turn off globalon feature.
+        GLOBAL &ATTACHSTATE_ATTACHED
+        &ATTACHSTATE_ATTACHED=0xB
+        //Wait until power is pulled,  attach again
+        &count=0
+	IF (STRING.SCAN("&CHIPSET","sdx50",0)!=-1)
+	(
+		&countvalue=20
+		LOCAL &exitflag
+		&exitflag="FALSE"
+        	WHILE ((SYS.MODE()==&ATTACHSTATE_ATTACHED)&&(&count<&countvalue)&&("&exitflag"!="TRUE"))
+        	(
+            
+            		Wait.100ms
+	            	&count=&count+1
+			IF (SYS.MODE()!=&ATTACHSTATE_ATTACHED)
+			(
+				SYS.M.A
+				&exitflag="TRUE"
+			)
+        	)
+        
+	)
+	ELSE
+	(
+        	&countvalue=200 //20 seconds
+	        WHILE ((SYS.MODE()==&ATTACHSTATE_ATTACHED)&&(&count<&countvalue))
+        	(
+            
+            		Wait.100ms
+	            	&count=&count+1
+        	)
+        
+	        IF (&count>&countvalue)
+       		(
+            	do std_fatalexit SYSTEM "Error! Expected Apps core to de-attach. Please review if system set up properly (adb etc.)"
+	            PLIST
+        	    PSTEP
+	        )
+
+	)
+
+        
+        
+        do optextract Img,Lpm,Bkpts,CTI_Enable,alternateelf,extraoption &ARGLINE
+        LOCAL &image &lpm_option &user_defined_bkpts &cti_enable &alternateelf &extraoption
+        ENTRY &image &lpm_option &user_defined_bkpts &cti_enable &alternateelf &extraoption //expect 6 returns from optextract
+        
+        IF ("&FUSION_TYPE"=="FUSION3")
+        (
+            &extraoption="&extraoption"+",secondpass"
+        )
+        //IF STRING.SCAN("&image","fus3",0)!=-1
+        //(
+        //    &image=STRING.CUT("&image",-STRING.LENGTH("-fus3"))
+        //)
+        do std_utils SANITIZEQUOTATIONS none &image &lpm_option &user_defined_bkpts &cti_enable &alternateelf
+            ENTRY &image &lpm_option &user_defined_bkpts &cti_enable &alternateelf
+            
+        do std_debug_&CHIPSET GETDEBUGDEFAULTS NULL &image &lpm_option &cti_enable &alternateelf &extraoption
+        LOCAL &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+        ENTRY &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+        
+        do listparser FULLLIST &peripheral_processor &debugscript &symbolloadscript &imagebuildroot &targetprocessor &targetprocessorport
+        LOCAL &debugscript_local &debugscript_target &symbolloadscript_local &symbolloadscript_target &imagebuildroot_local &imagebuildroot_target &targetprocessor_local &targetprocessor_target &targetprocessorport_local &targetprocessorport_target
+        ENTRY &debugscript_local &debugscript_target &symbolloadscript_local &symbolloadscript_target &imagebuildroot_local &imagebuildroot_target &targetprocessor_local &targetprocessor_target &targetprocessorport_local &targetprocessorport_target
+
+        ON ERROR CONTINUE
+        SYS.M.A
+        ON ERROR DEFAULT
+        do std_debug_&CHIPSET SETDEBUGCOOKIE SET &image
+        
+CONTINUEDEBUG: //will have to inherit argumentline variables from above for this case.
+        
+        if (!(("&debugscript_local"=="NULL")||("&debugscript_local"==""))||STRING.SCAN("&extraoption","firstrundone",0)!=-1)&&("&peripheral_processor"=="mproc")
+        (       
+            do &debugscript_local Img=&image Lpm=&lpm_option Bkpts=&user_defined_bkpts CTI_Enable=&cti_enable alternateelf=&alternateelf extraoption=&extraoption
+            ENTRY %LINE &rvalue
+        )
+        
+        if "&cti_enable"=="true"
+        (
+            do std_cti masters=&targetprocessor_target slaves==&targetprocessor_local 
+        )
+
+
+        
+
+            IF STRING.SCAN("&extraoption","silent",0)==-1
+            (
+                //apps proc should be running.
+                WINCLEAR
+                area.create adb_commands2
+                area.select adb_commands2
+                area.clear
+                winpos  0. 0. 50. 10. , , , adb_commands
+                area.view adb_commands2
+                print " "
+                print " "
+                print %ERROR "Adb commands are the following:"
+                print "  adb shell                              "
+                print "  su                                     "
+                print "  touch /persist/debug_mode              "
+                print "  setprop persist.mdm_boot_debug resume  "
+                print "  sync                                   "
+                print " "
+                print " "
+                print " "
+                area.select A000
+                DIALOG.OK "Now  issue adb commands to bring modem out of reset. Click OK right after you're done!"
+                
+            )
+            ELSE
+            (
+                //apps proc should be running.
+                WINCLEAR
+                area.create adb_commands2
+                area.select adb_commands2
+                area.clear
+                winpos  0. 0. 50. 10. , , , adb_commands
+                area.view adb_commands2                
+                
+                LOCAL &currdir
+                &currdir=os.pwd()
+                cd &TEMPDIR
+                os.area adb wait-for-device
+                os.area adb root
+                os.area adb shell touch /persist/debug_mode
+                os.area adb shell setprop persist.mdm_boot_debug resume
+                os.area adb shell sync
+                area.select A000
+                GLOBALON POWERUP do std_debug_fus
+                cd &currdir
+            )
+            
+            
+        if !(("&debugscript_target"=="NULL")||("&debugscript_target"==""))
+        (       
+            do &debugscript_target Img=&image Lpm=&lpm_option Bkpts=&user_defined_bkpts CTI_Enable=&cti_enable alternateelf=&alternateelf extraoption=&extraoption
+            ENTRY %LINE &rvalue
+        )
+        
+        if (!(("&debugscript_local"=="NULL")||("&debugscript_local"=="")))&&((STRING.SCAN("&extraoption","prioritizeperiphproc",0)!=-1)||("&peripheral_processor"!="mproc"))
+        (       
+            &extraoption="&extraoption"+",firstrundone"
+            do &debugscript_local Img=&image Lpm=&lpm_option Bkpts=&user_defined_bkpts CTI_Enable=&cti_enable alternateelf=&alternateelf extraoption=&extraoption
+            ENTRY %LINE &rvalue
+        )
+        
+        
+        do std_results std_debug_&FUSION_TYPE &rvalue &ArgumentLine
+        //exit from here and let std_debug take it again.
+        ENDDO &rvalue
+        
+    )    
+    ELSE
+    (
+        sys.m.a
+        on error continue
+        b.d /all
+        b.s sbl1_main_ctl /o
+        ON ERROR continue
+            G
+            G
+        ON ERROR
+        WAIT !RUN()
+        
+        
+        do optextract Img,Lpm,Bkpts,CTI_Enable,alternateelf,extraoption &ARGLINE
+        LOCAL &image &lpm_option &user_defined_bkpts &cti_enable &alternateelf &extraoption
+        ENTRY &image &lpm_option &user_defined_bkpts &cti_enable &alternateelf &extraoption //expect 6 returns from optextract
+        
+        do std_utils SANITIZEQUOTATIONS none &image &lpm_option &user_defined_bkpts &cti_enable &alternateelf
+            ENTRY &image &lpm_option &user_defined_bkpts &cti_enable &alternateelf
+            
+        
+
+        
+        
+        do std_debug_&CHIPSET GETDEBUGDEFAULTS NULL mpss-fus &lpm_option &user_defined_bkpts &cti_enable &alternateelf &extraoption
+        LOCAL &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+        ENTRY &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+        
+        do listparser FULLLIST &peripheral_processor &debugscript &symbolloadscript &imagebuildroot &targetprocessor &targetprocessorport
+        LOCAL &debugscript_local &debugscript_target &symbolloadscript_local &symbolloadscript_target &imagebuildroot_local &imagebuildroot_target &targetprocessor_local &targetprocessor_target &targetprocessorport_local &targetprocessorport_target
+        ENTRY &debugscript_local &debugscript_target &symbolloadscript_local &symbolloadscript_target &imagebuildroot_local &imagebuildroot_target &targetprocessor_local &targetprocessor_target &targetprocessorport_local &targetprocessorport_target
+            
+        do std_debug.cmm SETUPTARGETPROCESSOR apps-fus1 &processortimeoutvalue &targetprocessor_target &MPSS_PORT &bootprocessor
+        
+        //INTERCOM.EXECUTE &MPSS_PORT SYS.M.A
+        b
+        do std_intercom_do &MPSS_PORT std_utils BREAKPROC
+        
+        do std_debug_mpss &ARGLINE
+        
+        
+        IF "&cti_enable"=="true"
+        (
+            do std_intercom_do &APPS0_MSM_PORT do std_debug_apps TRACEGUI
+        )
+        
+        
+        STOP
+    )
+////////////////////////////////////////////
+//
+//          FATALEXIT
+//
+//          Exits all scripts.
+//          If logging is enabled, appends failure keyword
+//          to passed string and sends that to PRINTRESULTLOG
+//
+//
+//
+///////////////////////////////////////////
+FATALEXIT:
+    LOCAL &string
+    ENTRY %LINE &string
+
+    PRINT %ERROR "Loadsim error. Error type: &Result "
+    
+    
+    
+        IF ("&LOGSENABLED"=="TRUE")
+        (
+            //Failure keyword is sometimes passed from lower scripts. 
+            //Only append it if it's not already there for cleaner logs.
+            IF STRING.SCAN("&string","&FAILUREKEYWORD",0)!=-1
+            (
+                GOSUB PRINTRESULTLOG &string 
+            )
+            ELSE
+            (
+                GOSUB PRINTRESULTLOG &FAILUREKEYWORD " - " &string 
+            )
+        )
+
+    END
+
+EXIT:
+
+    IF ("&LOGSENABLED"=="TRUE")
+    (
+        LOCAL &string
+        ENTRY %LINE &string
+        
+        GOSUB PRINTRESULTLOG &string 
+    )
+    ENDDO
+
+    
+

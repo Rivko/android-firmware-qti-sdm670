@@ -1,0 +1,120 @@
+#===============================================================================
+#
+# Prof Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009-2012 by Qualcomm Technologies Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //source/qcom/qct/core/bsp/config/mdm9x00/main/latest/services/prof/build/SConscript#1 $
+#  $DateTime: 2012/10/15 18:48:44 $
+#  $Author: czhao $
+#  $Change: 1130987 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 07/07/16   sm      Add in SLPI support for sdm845 compilation support.
+#===============================================================================
+import os
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+
+SRCPATH = "${BUILD_ROOT}/core/services/prof/src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+env.PublishPrivateApi('SERVICES_PROF_INC', [
+   "${INC_ROOT}/core/services/prof/inc",   
+])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'SERVICES',
+   'MPROC',
+   'SYSTEMDRIVERS',
+   'DEBUGTOOLS',
+   'DEBUGTRACE',
+   'DAL',
+   'DIAG',
+   'POWER',
+   
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+PROF_SOURCES = [
+   '${BUILDPATH}/prof_diag.c',
+   '${BUILDPATH}/prof_pmon.c',
+   '${BUILDPATH}/prof_tp.c',
+]
+
+PROF_QDSP_SOURCES = [
+   '${BUILDPATH}/prof_diag.c',
+   '${BUILDPATH}/prof_pmon.c',
+   '${BUILDPATH}/prof_tp.c',
+]
+
+if env.has_key('SLPI_PROC'):
+   env.Append(CPPDEFINES = ["SLPI_PROF"])
+elif env.has_key('CDSP_PROC'):
+   env.Append(CPPDEFINES = ["CDSP_PROF"])
+elif env.has_key('ADSP_PROC'):
+   env.Append(CPPDEFINES = ["ADSP_PROF"])
+elif env.has_key('MODEM_PROC'):
+   env.Append(CPPDEFINES = ["MPSS_PROF"])
+
+prof_obj = env.Object(PROF_SOURCES)
+prof_lib = env.Library('${BUILDPATH}/prof', prof_obj)
+
+prof_obj_qdsp6 = env.Object(PROF_QDSP_SOURCES)
+prof_lib_qdsp6 = env.Library('${BUILDPATH}/prof_qdsp6', prof_obj_qdsp6)
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+#env.AddLibsToImage(
+#   ['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 
+#    'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+#    'APPS_IMAGE', 'CBSP_APPS_IMAGE', 
+#    'WCN_IMAGE', 'CORE_GSS'],
+#    prof_lib)
+   
+env.AddLibsToImage(['CORE_QDSP6_SW'], prof_lib_qdsp6)
+
+#-------------------------------------------------------------------------------
+# RCINIT Task and Init Fields and Initialization
+#-------------------------------------------------------------------------------
+RCINIT_INIT_PROF_INIT = {
+  'sequence_group'             : 'RCINIT_GROUP_1',           # required
+  'init_name'                  : 'prof',                      # required
+  'init_function'              : 'profdiag_init',            # required
+  'dependencies'               : ['diag']
+}
+
+if 'USES_RCINIT' in env:
+   RCINIT_IMG = ['CORE_QDSP6_SW']
+   # SMD INIT
+   env.AddRCInitFunc( RCINIT_IMG, RCINIT_INIT_PROF_INIT )

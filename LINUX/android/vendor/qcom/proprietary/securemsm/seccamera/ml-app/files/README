@@ -1,0 +1,106 @@
+/*===========================================================================
+ * Copyright (c) 2018 Qualcomm Technologies, Inc.
+ * All Rights Reserved.
+ * Confidential and Proprietary - Qualcomm Technologies, Inc.
+===========================================================================*/
+
+MLVM Demo APP
+=================
+
+This App runs on ML VM, processes commands received from HLOS and synchronizes
+frame buffers status with hypervisor. HLOS App Commands such as
+MLVM_APP_CMD_FRAME_NOTIFICATION are received on every frame event. Whereas,
+commands like MLVM_APP_CMD_STOP and MLVM_APP_CMD_HLOS_APP_INIT are once per run.
+
+The basic flow of a single run is as follows
+
+1. Run ML App
+2. Initialize socket communication with HLOS App, And wait for
+   MLVM_APP_CMD_HLOS_APP_INIT cmd.
+3. Wait for start command from HLOS seccamservice. On receiving this cmd,
+   open scbuf dev node and poll for POLLPRI events. Receving this event
+   signifies that phy lanes are protected, the buffers are unmapped from
+   HLOS and mapped to MLVM. Secure usecase can now begin.
+4. After receiving Start notification, service the commands from HLOS App. All
+   the Frame Events are received at this point.
+5. ML App continues to service HLOS commands(Frame events) until it receives
+   MLVM_APP_CMD_STOP cmd. On receiving STOP, ML App cleanup is expected and then
+   notify hypervisor about the use case completion (notify_hyp_done()). This
+   will allow the buffers to be unmaped.
+6. Exit the pthread that was servicing HLOS App commands.
+7. End use.
+
+
+API Info:
+================
+
+1. MLVM_app_start():
+Initialize socket communication with HLOS App.
+
+2. MLVM_app_receive_cmds():
+Waits on receiving Init from App and Start notification from hypervisor. On
+receiving both, start a pthread (hlos_rcv_cmds()) for receiving commands from
+HLOS app. Thread completes on receiving stop command from HLOS App.
+
+3. init_cmd_handler():
+Called on receiving MLVM_APP_CMD_HLOS_APP_INIT by wait_for_hlos_app_init_cmd().
+
+4. process_frame():
+Called on every frame event received from HLOS seccamservice. The camera_buffer
+received is already checked if protected. If the processing time required is
+long, buffer can be copied and returned. Return value is sent back to HLOS App
+as part of response.
+
+5. stop_cmd_handler():
+Called on receiving MLVM_APP_CMD_STOP command from HLOS App. notify_hyp_done()
+is called before exiting. This will indicate hypervisor about the session has
+ended and buffers are safe to be unmapped.
+
+seccamlib.h API's:
+
+6. wait_for_hlos_app_init_cmd()
+API blocks on MLVM_APP_CMD_HLOS_APP_INIT. Optional call. Can be removed if no
+init required before starting to receive frame events.
+
+7. wait_for_hyp_notification()
+API blocks on Start notification (RES_MGR_NOTIFY_MAPPED_REGION) from hypervisor.
+Return MLVM_APP_E_SUCCESS from this API guarantees that the buffers are
+protected. If returned MLVM_APP_E_FAIL, there was a failure in receiving message
+from the cog driver and the ml app needs to be restarted.
+
+8. notify_hyp_done()
+Notifies hypervisor about the completion of secure camera usecase. This allows
+the buffers to be unmapped.
+
+9. hlos_rcv_cmds()
+Main loop waiting for commands from HLOS. Sends response if the rsp_size is not
+null after processCommand(). Breaks on receiving MLVM_APP_E_STOP_COMMAND.
+
+10. processCommand()
+Based on the cmd_id received, appropriate function calls are made. Any new
+command needs to be added here for handling.
+
+11. frame_notification_handler()
+Handler called on receiving MLVM_APP_CMD_FRAME_NOTIFICATION. It Calls
+is_buffer_secure() to check if the capture_buffer received is protected and
+mmaps the buffer to userspace. Calls process_frame() for further processing.
+
+12. is_buffer_secure()
+Sends the frame buffer address to hypervisor to check if it is protected.
+
+13. demoExchangeTimestamp()
+Command handler for demonstrating adding new commands. New command can be added
+to enum mlvmapp_cmd_id_t, before MLVM_APP_CMD_LAST.
+
+
+Socket API:
+14. sock_init()
+Creates a socket of family AF_MSM_IPC, service_id MLAPP_SERVER_SERVICE_ID,
+instance 0. Client(HLOS App) looks for this service_id and instance number,
+before starting communication.
+ 
+15. sock_wait_for_cmd()
+Receives command request from HLOS App.
+
+16. sock_send_response()
+Sends respose to the client.

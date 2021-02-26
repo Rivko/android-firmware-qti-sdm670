@@ -1,0 +1,107 @@
+// Copyright (c) 2016-2018 Qualcomm Technologies, Inc.  All Rights Reserved.
+// Qualcomm Technologies Proprietary and Confidential.
+
+include "ICredentials.idl"
+include "IGPServices.idl"
+
+/**
+ * IApp is the interface exported by application instances.
+ */
+interface IApp {
+
+  /**
+   * Flags
+   */
+  const int32 SERVICE_WAIT = 1;
+
+  /**
+   * Error codes
+   */
+  error ERROR_SERVICE_UNKNOWN;         /**< Unknown service */
+
+  /**
+   * @brief Legacy entry point for Secure Applications not loaded via SMCInvoke.
+   *
+   * @param[in]  commandID    Command ID.
+   * @param[in]  requestAddr  Address of the request buffer.
+   * @param[in]  requestSize  Size of the request buffer.
+   * @param[in]  responseAddr Address of the response buffer.
+   * @param[in]  responseSize Size of the response buffer.
+   *
+   * @return  Object_OK on success.
+   */
+  method handleRequest(in int32 commandID,
+                       in uint64 requestAddr,
+                       in uint64 requestSize,
+                       in uint64 responseAddr,
+                       in uint64 responseSize);
+
+  /**
+   * @brief Get the object implementing the App-provided functionalities
+   *
+   * @param[in]  credentials  Caller credentials.
+   * @param[out] obj          Returned object.
+   *
+   * @return  Object_OK on success.
+   */
+  method getAppObject(in ICredentials credentials, out interface obj);
+
+  /**
+   * @brief Open a session with this secure application.
+   * This method is the entry point for the TA GP interface.
+   *
+   * The content of the 4 input/output buffers is manually marshalled by the
+   * caller/implementer depending on the type of the parameter.
+   *
+   * @param[in]  wait                            Optional object to wait-on for cancellations.
+   * @param[in]  cancellationRequestTimeout      Timeout for automatic request cancellation.
+   * @param[in]  paramTypes                      Types of the 4 parameters.
+   * @param[in]  i1                              First input buffer.
+   * @param[in]  i2                              Second input buffer.
+   * @param[in]  i3                              Third input buffer.
+   * @param[in]  i4                              Fourth input buffer.
+   * @param[out] o1                              First output buffer.
+   * @param[out] o2                              Second output buffer.
+   * @param[out] o3                              Third output buffer.
+   * @param[out] o4                              Fourth output buffer.
+   * @param[in]  imem1                           First optional memory region.
+   * @param[in]  imem2                           Second optional memory region.
+   * @param[in]  imem3                           Third optional memory region.
+   * @param[in]  imem4                           Fourth optional memory region.
+   * @param[in]  credentials                     Caller credentials.
+   * @param[out] session                         Newly opened session.
+   * @param[out] retValue                        GP return value.
+   * @param[out] retOrigin                       Where the GP return value originated.
+   *
+   * @return  Object_OK if successful.
+   */
+  method openSession(in interface wait,
+                     in uint32 cancellationRequestTimeout,
+                     in uint32 paramTypes,
+                     in buffer i1,
+                     in buffer i2,
+                     in buffer i3,
+                     in buffer i4,
+                     out buffer o1,
+                     out buffer o2,
+                     out buffer o3,
+                     out buffer o4,
+                     in interface imem1,
+                     in interface imem2,
+                     in interface imem3,
+                     in interface imem4,
+                     in ICredentials credentials,
+                     out IGPSession session,
+                     out uint32 retValue,
+                     out uint32 retOrigin);
+
+  /**
+   * @brief Install a service provided by the client
+   *
+   * @param[in] serviceType   Service type
+   * @param[in] obj           Object implementing the service
+   *
+   * @return  Object_OK on success.
+   */
+  method installService(in uint32 serviceType, in interface obj);
+};

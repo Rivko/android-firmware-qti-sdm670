@@ -1,0 +1,101 @@
+#=============================================================================
+# PMIC TZ DRIVER SHARED LIBRARY
+#
+# Target:
+# Processor:
+#
+#=============================================================================
+# $Header: //components/rel/core.tz/2.0.2/pmic/pm/config/sdm670_pm670/build/pmic_config_target.scons#1 $
+#=============================================================================
+#  Copyright 2017 Qualcomm Technologies Incorporated.
+#  All Rights Reserved.
+#  QUALCOMM Proprietary/GTDR
+#=============================================================================
+
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Python library imports
+#-------------------------------------------------------------------------------
+import glob, os
+
+#-------------------------------------------------------------------------------
+# Source PATH:
+#-------------------------------------------------------------------------------
+SRCPATH = ".."
+
+#BUILDPATH =  image_name / processor_name, eg modem_libs / arm11 = directory where built objects stored
+env.VariantDir('${BUILDPATH}', SRCPATH , duplicate=0)
+
+LIB_SRC         = 'src'
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+CBSP_API = [
+    'BUSES',
+    'DAL',
+    'DEBUGTOOLS',
+    'HWENGINES',
+    'KERNEL',
+    'SERVICES',
+    'POWER',
+    'SYSTEMDRIVERS',
+    'PMIC',
+]
+env.RequirePublicApi(CBSP_API, area = 'core')
+env.RequireRestrictedApi(CBSP_API)
+
+env.RequireProtectedApi([
+    'PMIC_COMM',
+    'PMIC_NPA',
+    'PMIC_DEVICES',
+    'PMIC_FRAMEWORK',
+    'PMIC_APP_RPMH',
+    ])
+
+SSG_API = [
+    'AC',
+    'SECUREMSM',
+]
+env.RequirePublicApi(SSG_API, area = 'ssg')
+
+#-------------------------------------------------------------------------------
+# DEVCFG - PMIC XML & CONFIG DATA
+#-------------------------------------------------------------------------------
+
+# Add HYP xml
+hyp_xml = env.GlobFiles('../src/pm_hyp_config.xml', posix=True)
+hyp_xml = ', '.join(hyp_xml) #convert list to string
+
+if 'USES_DEVCFG' in env:
+  env.AddDevCfgInfo('DAL_DEVCFG_OEM_QSEE_IMG',
+  {
+	  'devcfg_xml'         : [
+							 '${BUILDPATH}/' + '/'+LIB_SRC+'/tz_config.xml',
+							 '${BUILDPATH}/' + '/'+LIB_SRC+'/tz_config_qcs605.xml',
+							 '${BUILDPATH}/' + '/'+LIB_SRC+'/pm_config.c',
+							 '${BUILDPATH}/' + '/'+LIB_SRC+'/pm_reg_dump_config.c',
+							 '${BUILDPATH}/' + '/'+LIB_SRC+'/pm_reg_dump_config_qcs605.c',
+							  ]
+  })
+
+  if hyp_xml: #try including XML only if it is present in the build
+      env.AddDevCfgInfo(['DAL_DEVCFG_OEM_HYP_IMG'],
+      {
+          'devcfg_xml'         : [
+                                 hyp_xml,
+                                #'${BUILDPATH}/' + '/'+LIB_SRC+'/pm_spmi_config.c',
+                                 '${BUILDPATH}/' + '/'+LIB_SRC+'/pm_hyp_config.c']
+      })
+
+
+env.Append(CPPDEFINES = ['FEATURE_LIBRARY_ONLY'])
+
+if "USES_DEPLOY_BUILDER" in env:
+   env.Deploy(['pmic_config_target.scons',
+              env.Glob('../src/*.c'),
+              env.Glob('../src/*.xml'),
+             ])

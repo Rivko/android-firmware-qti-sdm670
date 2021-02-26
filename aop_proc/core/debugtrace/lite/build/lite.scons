@@ -1,0 +1,113 @@
+#===============================================================================
+#
+# GENERAL DESCRIPTION
+#    Build script 
+#
+#      Copyright (c) 2016-2017 by QUALCOMM Technologies, Incorporated.
+#                         All Rights Reserved.
+#                      QUALCOMM Proprietary/GTDR
+#===============================================================================
+
+# when       who     what, where, why
+# --------   ---     ---------------------------------------?-------------------
+# 07/26/17   rs      Added support for warlock/Chiron/Hana chips.
+#
+#?----------------------------------------?---------------------------------------?-------
+
+
+
+
+Import('env')
+
+#SDM640_CHANGES
+if env['MSM_ID'] in ['640']:
+   env['MSM_ID'] = '670'
+   
+if env['CHIPSET'] in ['sdm640']:
+   env['CHIPSET'] = 'sdm670'
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "../.."
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+env.PublishPrivateApi('QDSS_HAL',[
+   "../../tpdm/inc",
+   "../../tpdm/src/env['CHIPSET']",
+   "../../tpda/hal/inc",
+   "../../tpda/hal/src",
+   "../../tmc/hal/inc",
+   "../../tmc/hal/src",
+   "../../stm/hal/inc",
+   "../../stm/hal/src",
+   "../../csr/hal/inc",
+   "../../csr/hal/src",
+   "../../replicator/hal/inc",
+   "../../replicator/hal/src",
+])
+
+if env['MSM_ID'] not in  ['845', '670', '24', '855', '1000']:   #add to this list as more configs are added
+ Return()
+
+config = 'sdm'+env['MSM_ID']        # using sdm as per naming standard. Keep on adding MSM_ID to this list for SDM targets
+
+if env['MSM_ID'] in  ['24']:
+ config='sdx'+env['MSM_ID']         # using sdx as per naming standard. Keep on adding MSM_ID to this list for SDX targets
+ 
+CBSP_API = ['DEBUGTRACE',
+            'DAL',
+            'HAL',
+            'SERVICES',
+            'SYSTEMDRIVERS',
+            'POWER',
+            'KERNEL']
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+env.RequireProtectedApi(CBSP_API)
+
+qdss_config_dirs=map(lambda x: '../../'+ x + '/config/' + config,
+                     ['stm','tpda','csr','tpdm','tmc','replicator'])
+env.PublishPrivateApi('QDSS_CONFIG',qdss_config_dirs)
+
+
+
+#-------------------------------------------------------------------------------
+#  SW Events
+#-------------------------------------------------------------------------------
+
+if 'USES_QDSS_SWE' in env:
+    QDSS_IMG = ['QDSS_EN_IMG']
+    events = [
+        ['QDSS_TRACE_INITIALIZED=690','QDSS Trace initialized', 'T'],
+        ['QDSS_TEST_EVENT_0','QDSS Test event 0 no args', 'F'],
+        ['QDSS_TEST_EVENT_1','QDSS Test event 1 arg1=%d', 'F'],
+        ['QDSS_TEST_EVENT_2','QDSS Test event 2 arg1=%d arg2=%d', 'F'],
+        ['QDSS_TEST_EVENT_3','QDSS Test event 3 arg1=%d arg2=%d arg3=%d', 'F'],
+        ['QDSS_TEST_EVENT_4','QDSS Test event 4 arg1=%d arg2=%d arg3=%d arg4=%d', 'F'],
+        ]
+    env.AddSWEInfo(QDSS_IMG, events)
+
+
+
+    env.SWEBuilder(['${BUILD_ROOT}/core/api/debugtrace/tracer_event_ids.h',
+                    '${BUILD_ROOT}/core/api/debugtrace/tracer_event_tbl.h',
+                    '${BUILDPATH}/tracer_event_info.txt'],
+                   None)
+    env.Append(CPPPATH =['${BUILDPATH}'])
+
+
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+LITE_SRC = [
+  '${BUILDPATH}/lite/src/QDSS.c',
+  '${BUILDPATH}/tpdm/config/' + config + '/hal_qdss_tpdm_mcmb.c'
+]
+
+env.AddLibrary(['CORE_AOP',],'${BUILDPATH}/qdss_lite',LITE_SRC)
+
+

@@ -1,0 +1,55 @@
+ENTRY &loc_Path
+&size=var.sizeof(sysmon_log_t)
+d.save.binary &loc_Path\sysmon_dump.bin v.address(sysmon_pMe.target_info)++(&size-1)
+&count=v.value(sysmon_pMe.op_buf_params.op_buf_write_index)
+if v.value(sysmon_pMe.op_buf_params.sysmon_op_buf_start[sysmon_pMe.op_buf_params.op_buf_write_index].header)!=0x0
+(	
+    while ((v.value(sysmon_pMe.op_buf_params.sysmon_op_buf_start[&count].header)&0xFFFF0000)==0xBEEF0000)||((v.value(sysmon_pMe.op_buf_params.sysmon_op_buf_start[&count].header)&0xFFFF0000)==0xDEAD0000)
+    (
+     &count=&count+1
+    )
+    &count=&count-1
+	&buf_size1=((&count-v.value(sysmon_pMe.op_buf_params.op_buf_write_index)+0x1)*&size)-0x1 
+	d.save.binary &loc_Path\sysmon_dump.bin v.value(&sysmon_pMe.op_buf_params.sysmon_op_buf_start[sysmon_pMe.op_buf_params.op_buf_write_index])++&buf_size1 /APPEND
+		
+	&buf_size2=(v.value(sysmon_pMe.op_buf_params.op_buf_write_index)*&size)-0x1
+	d.save.binary &loc_Path\sysmon_dump.bin v.value(sysmon_pMe.op_buf_params.sysmon_op_buf_start)++&buf_size2 /APPEND
+)
+else
+(
+	&buf_size=(v.value(sysmon_pMe.op_buf_params.op_buf_write_index)*&size)-0x1
+	d.save.binary &loc_Path\sysmon_dump.bin v.value(sysmon_pMe.op_buf_params.sysmon_op_buf_start)++&buf_size /APPEND
+)
+OPEN #1 &loc_Path\sysmon_dump.bin /Write
+WRITEB #1 %LONG 0xDEAD2001
+WRITEB #1 %LONG 0x00000000
+WRITEB #1 %LONG 0x00000000
+WRITEB #1 %LONG v.value(sysmon_data.npa_dsp_core_vote)
+WRITEB #1 %LONG v.value(sysmon_data.icb_total_vote)
+WRITEB #1 %LONG v.value(sysmon_data.icb_total_vote)
+WRITEB #1 %LONG v.value(sysmon_data.npa_dsp_core_vote)
+WRITEB #1 %LONG v.value(sysmon_data.icb_total_vote)
+WRITEB #1 %LONG v.value(sysmon_data.icb_total_vote)
+WRITEB #1 %LONG v.value(sysmon_data.icb_ab)&0xFFFFFFFF
+WRITEB #1 %LONG (v.value(sysmon_data.icb_ab)>>32)&0xFFFFFFFF
+WRITEB #1 %LONG v.value(sysmon_data.icb_ib)&0xFFFFFFFF
+WRITEB #1 %LONG (v.value(sysmon_data.icb_ib)>>32)&0xFFFFFFFF
+if Y.EXIST(sdev_pMe)
+(
+WRITEB #1 %LONG v.value(sdev_pMe.bus_clk_desc.bus_clk_table[sdev_pMe.bus_clk_desc.currPerfLevel].freqKHz_parent)
+WRITEB #1 %LONG v.value(sdev_pMe.bus_clk_desc.bus_clk_table[sdev_pMe.bus_clk_desc.currPerfLevel].freqKHz_parent)
+)
+else
+(
+WRITEB #1 %LONG 0x00000000
+WRITEB #1 %LONG 0x00000000
+)
+&temp=&size-0x3C
+while (&temp>0)
+(
+    WRITEB #1 %BYTE 0
+    &temp=&temp-1
+)
+CLOSE #1
+printer.open &loc_Path\clock_values.txt
+printer.close

@@ -1,0 +1,76 @@
+#===============================================================================
+#
+# App Core
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+#
+#-------------------------------------------------------------------------------
+#
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains schedulerents describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 06/26/18    ac     Created
+#===============================================================================
+
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Compiler, object, and linker definitions
+#-------------------------------------------------------------------------------
+
+
+seccam_lib = env.SConscript('${BUILD_ROOT}/apps/securemsm/trustzone/qsapps/seccamlib/src/SConscript', exports='env')
+
+includes = [
+  "${BUILD_ROOT}/core/api/services",
+  "${BUILD_ROOT}/core/api/kernel/libstd/stringl",
+  "${BUILD_ROOT}/core/api/securemsm/trustzone/qsee",
+  "${BUILD_ROOT}/apps/securemsm/trustzone/qsapps/seccamlib/inc",
+]
+
+#----------------------------------------------------------------------------
+# App core Objects
+#----------------------------------------------------------------------------
+sources = [
+  'app_main.c',
+]
+
+app_name = 'seccamfa'
+
+libs = [
+    seccam_lib,
+]
+#-------------------------------------------------------------------------------
+# Add metadata to image
+#-------------------------------------------------------------------------------
+md = {
+   'appName':       app_name,
+   'privileges':    ['default',
+                     'SecureCamera',
+                     'SPCOM',
+                    ],
+   'stackSize':     0x2000,
+   'heapSize':      0x9000,
+
+}
+
+app_units = env.SecureAppBuilder(
+  sources = sources,
+  includes = includes,
+  metadata = md,
+  user_libs = libs,
+  image = app_name,
+  deploy_sources = [sources,
+                    'SConscript'],
+  deploy_variants = env.GetDefaultPublicVariants()
+)
+
+op = env.Alias(app_name, app_units)
+Return('app_units')

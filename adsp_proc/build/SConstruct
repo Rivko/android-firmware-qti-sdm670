@@ -1,0 +1,170 @@
+#===============================================================================
+#                    Copyright 2009 QUALCOMM Incorporated.
+#                           All Rights Reserved.
+#                         QUALCOMM Proprietary/GTDR
+#===============================================================================
+import os
+import fnmatch
+import sys
+import utils
+
+# Add command line parameters for target, install directory and build directory
+
+AddOption('--chipset',
+          dest='chipset',
+          default='',
+          type='string',
+          nargs=1,
+          action='store',
+          metavar='CHIPSET',
+          help='Initialize chipset')
+
+AddOption('--build_version',
+          dest='build_version',
+          default='',
+          type='string',
+          nargs=1,
+          action='store',
+          metavar='BUILD_VERSION',
+          help='Initialize build version')
+
+AddOption('--build_flavor',
+          dest='build_flavor',
+          default='',
+          type='string',
+          nargs=1,
+          action='store',
+          metavar='BUILD_FLAVOR',
+          help='Initialize build flavor')
+
+AddOption('--build_act',
+          dest='build_act',
+          default='',
+          type='string',
+          nargs=1,
+          action='store',
+          metavar='BUILD_ACT',
+          help='Initialize build action')
+
+AddOption('--build_flags',
+          dest='build_flags',
+          default='',
+          type='string',
+          nargs=1,
+          action='store',
+          metavar='BUILD_FLAGS',
+          help='Initialize build flags')
+
+AddOption('--build_verbose',
+          dest='build_verbose',
+          default='',
+          type='string',
+          nargs=1,
+          action='store',
+          metavar='BUILD_VERBOSE',
+          help='Initialize build verbose')           
+
+AddOption('--build_numcore',
+          dest='build_numcore',
+          default='',
+          type='string',
+          nargs=1,
+          action='store',
+          metavar='BUILD_NUMCORE',
+          help='Initialize number of cores for building')
+
+AddOption('--image_name',
+          dest='image_name',
+          default='',
+          type='string',
+          nargs=1,
+          action='store',
+          metavar='IMAGE',
+          help='Initialize Image name')
+
+AddOption('--build_component',
+          dest='build_component',
+          default='',
+          type='string',
+          nargs=1,
+          action='store',
+          metavar='BUILD_COMPONENT',
+          help='Initialize build component')          
+
+AddOption('--build_filter',
+          dest='build_filter',
+          default='',
+          type='string',
+          nargs=1,
+          action='store',
+          metavar='BUILD_FILTER',
+          help='Initialize build filter')
+          
+AddOption('--build_sconsargs',
+          dest='build_sconsargs',
+          default='',
+          type='string',
+          nargs=1,
+          action='store',
+          metavar='BUILD_SCONSARGS',
+          help='Initialize build scons arguments')          
+          
+
+if GetOption('help')==True:
+   print "\nUsage: \nscons ADSP" 
+   print "          --chipset=<CHIPSET>"
+   print "          --build_version=<BUILD_VERSION>"
+   print "          --build_flavor=<BUILD_FLAVOR>"
+   print "          --build_act=<BUILD_ACT>"
+   print "          --build_flags=<BUILD_FLAGS>"
+   print "          --build_verbose=<BUILD_VERBOSE>"
+   print "          --build_numcore=<BUILD_NUMCORE>"
+   print "          --build_component=<BUILD_COMPONENT>"
+   print "          --build_filter=<BUILD_FILTER>"
+   print "          --build_sconsargs=<BUILD_SCONSARGS>"
+   sys.exit(0)
+
+env = DefaultEnvironment(CHIPSET       = GetOption('chipset'),
+                         BUILD_VERSION = GetOption('build_version'),
+                         BUILD_FLAVOR = GetOption('build_flavor'),
+                         BUILD_ACT = GetOption('build_act'),
+                         BUILD_FLAGS = GetOption('build_flags'),
+                         BUILD_VERBOSE = GetOption('build_verbose'),
+                         BUILD_NUMCORE = GetOption('build_numcore'),
+                         BUILD_COMPONENT = GetOption('build_component'),
+                         BUILD_FILTER = GetOption('build_filter'),                         
+                         BUILD_SCONSARGS = GetOption('build_sconsargs'), 
+                         IMAGE = GetOption('image_name'), 
+                         ADSP_PROC_ROOT = os.getcwd())   
+
+env = env.Clone()
+
+#Initialize utilities
+utils.Init(env)
+
+# Set Q6 Tools information
+# Set config flags
+#env.InitTarget()
+
+# Create Timestamp
+env.CreateTimestamp()
+
+# Set CHIPSET information   
+env.InitChipset()  
+
+# execute the build startup command   
+env.ExecuteBuildCmd()
+
+if env.subst('$BUILD_ACT') != 'clean':   
+   # execute the split_proc command   
+   env.SplitProc()
+
+   #execute the memory_proc command
+   env.MemoryProc()
+   
+   #execute the hexagon_elf_extractor command
+   #env.ElfExtractorProc()
+   
+## Disable test_prelink for now
+#test_prelink = []
+#env.Alias('ADSP', [xxx, xxx, xxx, xxx])

@@ -1,0 +1,62 @@
+#===========================================================================
+# PDC Sequencer build script
+#
+# Copyright (c) 2016 by Qualcomm Technologies, Incorporated
+# All Rights Reserved
+# Qualcomm Proprietary/GTDR
+#===========================================================================
+
+Import('env')
+
+env = env.Clone()
+
+#SDM640_CHANGES
+if env['MSM_ID'] in ['640']:
+   env['MSM_ID'] = '670'
+SRCPATH = '..'
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+# APIs
+CBSP_API = [
+    'DAL',
+    'POWER',
+    'POWER_UTILS',
+  	'SYSTEMDRIVERS',
+	  # Keep it last as contains incorrect version of comdef.h
+  	'KERNEL'
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+env.RequireProtectedApi(CBSP_API)
+env.PublishPrivateApi('PDC_SEQ', [
+    '${BUILD_ROOT}/core/power/pdc/seq/inc',
+    '${BUILD_ROOT}/core/power/pdc/seq/hal/inc',
+    '${BUILD_ROOT}/core/power/pdc/seq/hal/hwio/${MSM_ID}',
+    '${BUILD_ROOT}/core/power/pdc/seq/common',
+])
+
+# Compilation options
+env.Append(CFLAGS = '${ARMCC_STDC99_CMD}')
+
+PDC_SEQ_ENV = 'aop'
+
+# Common source files
+PDC_SEQ_COMMON_SOURCES = [
+	'${BUILDPATH}/common/pdc_seq.c',
+	'${BUILDPATH}/common/pdc_seq_internal.c',
+	'${BUILDPATH}/hal/src/pdc_seq_hal.c',
+	'${BUILDPATH}/env/' + PDC_SEQ_ENV + '/pdc_seq_env.c',
+]
+
+# Target specific source files
+PDC_SEQ_TARGET_FILES = [
+	'${BUILDPATH}/cfg/' + env['PDC_MSM'] + '/' + env['POWER_SUBSYSTEM'].lower() + '/pdc_seq_cfg.c',
+	'${BUILDPATH}/cfg/' + env['PDC_MSM'] + '/' + env['POWER_SUBSYSTEM'].lower() + '/pdc_seq_target.c',
+]
+
+# All sources
+PDC_SEQ_SOURCES = PDC_SEQ_COMMON_SOURCES + PDC_SEQ_TARGET_FILES
+
+# Add sources to compile
+env.AddLibrary(['CORE_AOP'], '${BUILDPATH}/pdc_seq', PDC_SEQ_SOURCES)

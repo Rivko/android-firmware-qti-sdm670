@@ -1,0 +1,338 @@
+# vi: tw=128 ts=3 sw=3 et :
+# @file rcinit.scons
+# @brief This file contains the API for the Run Control Framework, API 3.0
+#===============================================================================
+# NOTE: The @brief description above does not appear in the PDF.
+# The tms_mainpage.dox file contains the group/module descriptions that
+# are displayed in the output PDF generated using Doxygen and LaTeX. To
+# edit or update any of the group/module text in the PDF, edit the
+# tms_mainpage.dox file or contact Tech Pubs.
+#===============================================================================
+#===============================================================================
+# Copyright (c) 2015-2017 Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#===============================================================================
+#===============================================================================
+# Edit History
+# $Header: //components/rel/core.qdsp6/2.1.c4/debugtools/rcinit/build/rcinit.scons#1 $
+# $DateTime: 2018/07/30 01:21:36 $
+# $Change: 16759227 $
+# $Author: pwbldsvc $
+#===============================================================================
+
+# Module Version, Python Standard PEP8, 2001, https://www.python.org/dev/peps/pep-0008/
+__version__ = "$Header: //components/rel/core.qdsp6/2.1.c4/debugtools/rcinit/build/rcinit.scons#1 $"
+
+# Shared Library Version, Semantic Versioning 2.0.0, http://semver.org/
+__version_info__ = "3.0.0"
+
+Import('env')
+
+# BUILD_TAGS For Deliverable (Supported Build_Objects)
+
+BUILD_TAGS = [
+
+   'CORE_APPS',                  # Domain(REX + MN/TN)
+   'CORE_EOS',                   # Domain(REX + EOS)
+   'CORE_GSS',                   # Domain(REX + GSS)
+   'CORE_IMC',                   # Domain(QURT_ARM + IMC)
+   'CORE_MODEM',                 # Domain(QURT Root + Modem)
+   'CORE_RPM',                   # Domain(REX + RPM)
+   'CORE_VPU',                   # Domain(REX + VPU)
+   'CORE_WCN',                   # Domain(REX + WCN)
+
+   'CORE_ROOT_PD',               # Domain(QURT Root, Generic)
+   'CORE_USER_PD',               # Domain(QURT User, Generic)
+
+   'CORE_ARMV7_ROOT_PD',         # Domain(QURT Root, ARMV7)
+   'CORE_ARMV7_USER_PD',         # Domain(QURT User, ARMV7)
+
+   'CORE_ARMV8_ROOT_PD',         # Domain(QURT Root, ARMV8)
+   'CORE_ARMV8_USER_PD',         # Domain(QURT User, ARMV8)
+
+   'CORE_QDSP6_ROOT_PD',         # Domain(QURT Root, Generic, QDSP6)
+   'CORE_QDSP6_USER_PD',         # Domain(QURT User, Generic, QDSP6)
+
+   'CORE_QDSP6_SW',              # Domain(QURT Root + Audio)
+   'MODEM_MODEM',                # Domain(QURT Root + Modem)
+   'CORE_ARMV8_IMC_SW',          # Domain(QURT User, IMC)
+   'CORE_QDSP6_AUDIO_SW',        # Domain(QURT User, Audio)
+   'CORE_QDSP6_MODEM_SW',        # Domain(QURT User, Modem)
+   'CORE_QDSP6_SENSOR_SW',       # Domain(QURT User, Sensors)
+   'CORE_QDSP6_WCN_SW',          # Domain(QURT User, Wireless)
+   'CNSS_IMAGE',                 # Domain(REX + EOS)
+
+]
+
+BUILD_TAGS_USER = [  
+   'CORE_USER_PD',               # Domain(Qurt User, Generic)
+   'CORE_ARMV8_USER_PD',         # Domain(Qurt User, Generic, ARMV8)
+   'CORE_QDSP6_USER_PD',         # Domain(Qurt User, Generic, QDSP6)
+   'CORE_QDSP6_AUDIO_SW',        # Domain(Qurt User, Audio)
+   'CORE_QDSP6_MODEM_SW',        # Domain(Qurt User, Modem)
+   'CORE_QDSP6_SENSOR_SW',       # Domain(Qurt User, Sensors)
+   'CORE_QDSP6_WCN_SW',          # Domain(Qurt User, Wireless),
+   'CORE_SSC_SLPI_USER',
+   'CORE_SLPI_USER',
+   'CORE_SSC_SLPI_USER',
+]
+
+# Required Namespaces
+import os
+import fnmatch
+
+# OPTIONAL MANUAL TUNING (SMALL RESOURCE TARGETS)
+
+if env.IsTargetEnable([ 'CORE_EOS', 'CNSS_IMAGE', ]):
+   env.Append(CPPDEFINES = ["RCINIT_DALSYS_THREAD"])             # DALSYS TASK API (WORKLOOP vs THREAD)
+   env.Append(CPPDEFINES = ["RCINIT_TASK_MAX=16"])               # TRACKING SIZE INIT/TERM HANDSHAKE TABLES
+   env.Append(CPPDEFINES = ["RCINIT_EXCLUDE_TRACER_SWEVT"])      # EXCLUDE USE QDSS TRACER
+   env.Append(CPPDEFINES = ["RCINIT_EXCLUDE_MSG_SWEVT"])         # EXCLUDE USE MSG MACRO
+   env.Append(CPPDEFINES = ["RCINIT_EXCLUDE_ULOG_SWEVT"])        # EXCLUDE Q6 REX STARTUP
+   env.Append(CPPDEFINES = ["RCINIT_EXCLUDE_POLICY_EXTENSION"])  # EXCLUDE POLICY EXTENSION
+   env.Append(CPPDEFINES = ["RCINIT_EXCLUDE_TERMINATION"])       # EXCLUDE TERMINATION PROCESSING
+   env.Append(CPPDEFINES = ["RCINIT_EXCLUDE_RCXH_HANDLER"])      # EXCLUDE EXCEPTION HANDLER
+   env.Append(CPPDEFINES = ["RCINIT_EXCLUDE_KERNEL_REX_Q6"])     # EXCLUDE Q6 REX STARTUP
+   env.Append(CPPDEFINES = ["RCINIT_EXCLUDE_RCINIT_WORKER"])     # EXCLUDE WORKER CONTEXT
+   env.Append(CPPDEFINES = ["RCINIT_EXCLUDE_DALCFG"])            # EXCLUDE DALCFG PARAMETERS
+
+# OPTIONAL MANUAL TUNING (ARM RESOURCE TARGETS)
+
+if env.IsTargetEnable([ 'CORE_APPS', 'CORE_EOS', 'CNSS_IMAGE', ]):
+   #env.Append(CPPDEFINES = ["RCINIT_DALSYS_THREAD"])             # DALSYS TASK API (WORKLOOP vs THREAD)
+   env.Append(CPPDEFINES = ["RCINIT_EXCLUDE_KERNEL_DAL_TLS"])    # EXCLUDE KERNEL DAL TLS
+   env.Append(CPPDEFINES = ["RCINIT_EXCLUDE_KERNEL_POSIX_TLS"])  # EXCLUDE KERNEL POSIX TLS
+   env.Append(CPPDEFINES = ["RCINIT_EXCLUDE_KERNEL_QURT_TLS"])   # EXCLUDE KERNEL QURT TLS
+
+# OPTIONAL MANUAL TUNING (Q6 RESOURCE TARGETS)
+
+if env.IsTargetEnable([ 'CORE_ROOT_PD', 'CORE_USER_PD', 'CORE_MODEM', 'CORE_QDSP6_SW', 'MODEM_MODEM', ]):
+   #env.Append(CPPDEFINES = ["RCINIT_DALSYS_THREAD"])             # DALSYS TASK API (WORKLOOP vs THREAD)
+   env.Append(CPPDEFINES = ["RCINIT_EXCLUDE_KERNEL_DAL_TLS"])    # EXCLUDE KERNEL DAL TLS
+   env.Append(CPPDEFINES = ["RCINIT_EXCLUDE_KERNEL_POSIX_TLS"])  # EXCLUDE KERNEL REX TLS
+   env.Append(CPPDEFINES = ["RCINIT_EXCLUDE_KERNEL_REX_TLS"])    # EXCLUDE KERNEL REX TLS
+   env.Append(CPPDEFINES = ["RCINIT_EXCLUDE_KERNEL_REX_ARM"])    # EXCLUDE ARM REX STARTUP
+
+# Disable REX from UserPD lib/.SO except WLAN PD\Audio PD on MPSS 
+if env.IsTargetEnable(BUILD_TAGS_USER) and not env.has_key('MODEM_PROC'):
+    env.Append(CPPDEFINES = ["RCINIT_EXCLUDE_KERNEL_REX"])
+
+# NHLOS API DETECTION
+
+if not 'USES_DAL' in env:
+   env.Append(CPPDEFINES = ["RCINIT_EXCLUDE_KERNEL_DAL"])
+if not 'USES_POSIX' in env:
+   env.Append(CPPDEFINES = ["RCINIT_EXCLUDE_KERNEL_POSIX"])
+if not 'USES_QURT' in env:
+   env.Append(CPPDEFINES = ["RCINIT_EXCLUDE_KERNEL_QURT"])
+if not 'USES_REX' in env:
+   env.Append(CPPDEFINES = ["RCINIT_EXCLUDE_KERNEL_REX"])
+
+#-------------------------------------------------------------------------------
+# Build Variant configurations
+#-------------------------------------------------------------------------------
+if 'USES_RMTS_ON_SPI_NOR' in env:
+   env.Append(CPPDEFINES = ["RCINIT_SPI_NOR_TIMEOUTS"])
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+
+env.VariantDir('${BUILDPATH}', '../src', duplicate=0)
+
+#-------------------------------------------------------------------------------
+# External Dependency
+#-------------------------------------------------------------------------------
+
+#env.RequireExternalApi([
+#   'XYZ',
+#])
+
+#-------------------------------------------------------------------------------
+# Internal Dependency
+#-------------------------------------------------------------------------------
+
+env.RequirePublicApi([
+   'DAL',
+   'TMS',
+   'DEBUGTOOLS',
+   'DEBUGTRACE',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'KERNEL',   # needs to be last also contains wrong comdef.h
+])
+
+env.RequireRestrictedApi([
+   'TMS_RESTRICTED',
+   'DEBUGTOOLS',
+])
+
+#-------------------------------------------------------------------------------
+# Sources
+#-------------------------------------------------------------------------------
+
+BUILD_SOURCES = [
+   '${BUILDPATH}/rcinit_dal.c',
+   '${BUILDPATH}/rcinit_dalcfg.c',
+   '${BUILDPATH}/rcinit_hs_list.c',
+   '${BUILDPATH}/rcinit_internal.c',
+   '${BUILDPATH}/rcinit_lookup.c',
+   '${BUILDPATH}/rcinit_posix.c',
+   '${BUILDPATH}/rcinit_qurt.c',
+   '${BUILDPATH}/rcinit_task.c',
+   '${BUILDPATH}/rcinit_term.c',
+   '${BUILDPATH}/rcinit_tls.c',
+]
+
+#Need to include this file only for root and user PD in modem_proc
+if env.has_key('MODEM_PROC'):
+   BUILD_SOURCES += ['${BUILDPATH}/rcinit_rex.c']
+
+#-------------------------------------------------------------------------------
+# Libraries
+#-------------------------------------------------------------------------------
+
+env.AddLibrary(BUILD_TAGS, '${BUILDPATH}/rcinit', BUILD_SOURCES)
+
+env.AddLibrary([ 'CORE_ROOT_PD', 'CORE_MODEM', 'MODEM_MODEM', 'CORE_SLPI_ROOT', 'CORE_ADSP_ROOT', 'CORE_CDSP_ROOT' ],
+   '${BUILDPATH}/rcinit_root', [
+   '${BUILDPATH}/rcinit_init_root.c',
+   '${BUILDPATH}/rcinit_drvr_root.c',
+])
+
+env.AddLibrary([ 'CORE_APPS', 'CORE_IMC', ],
+   '${BUILDPATH}/rcinit_root', [
+   '${BUILDPATH}/rcinit_init_root.c',
+])
+
+env.AddLibrary( BUILD_TAGS_USER, 
+   '${BUILDPATH}/rcinit_user', [
+   '${BUILDPATH}/rcinit_init_user.c',
+])
+
+#-------------------------------------------------------------------------------
+# Task Provisioning Information
+#-------------------------------------------------------------------------------
+
+if 'USES_RCINIT' in env:
+
+   env.AddRCInitFunc(
+      BUILD_TAGS,
+      {
+         'sequence_group'             : 'RCINIT_GROUP_0',
+         'init_name'                  : 'rcinit_startup',
+         'init_function'              : 'RCINIT_NULL',         # Bootstrap
+         'dependencies'               : [ 'dalsys', ],
+         'policy_optin'               : [ 'default', 'ftm', ],
+      })
+
+   env.AddRCInitTask(
+      BUILD_TAGS,
+      {
+         'sequence_group'             : 'RCINIT_GROUP_0',
+         'thread_name'                : 'rcinit',
+         'thread_type'                : 'RCINIT_TASK_DALTASK',
+         'thread_entry'               : 'RCINIT_NULL',         # Bootstrap
+         'priority_amss_order'        : 'SHARED_DRIVER_SERVICE_PRI_ORDER',
+         'stack_size_bytes'           : '6144',
+         'policy_optin'               : [ 'default', 'ftm', ],
+      })
+
+   env.AddRCInitTask(
+      BUILD_TAGS,
+      {
+         'sequence_group'             : 'RCINIT_GROUP_0',
+         'thread_name'                : 'rcinit_worker',
+         'thread_type'                : 'RCINIT_TASK_DALTASK',
+         'thread_entry'               : 'RCINIT_NULL',         # Bootstrap
+         'priority_amss_order'        : 'SHARED_DRIVER_PRI_ORDER',
+         'stack_size_bytes'           : '6144',
+         'policy_optin'               : [ 'default', 'ftm', ],
+      })
+
+#-------------------------------------------------------------------------------
+# Tracer Software Events
+#-------------------------------------------------------------------------------
+
+TRACER_SWE_EVENTS = [
+
+   ['RCINIT_SWE_INIT_TIMEO',   'RCINIT Init TimeO    %x %x', 'F'], # Group Process Timeout
+   ['RCINIT_SWE_INIT_BAIL',    'RCINIT Init Bail     %x %x', 'F'], # Groups Process Timeout
+
+   ['RCINIT_SWE_INIT_GROUP_0', 'RCINIT_GROUP_0 Init',        'T'], # Group 0 Begin
+   ['RCINIT_SWE_INIT_GROUP_1', 'RCINIT_GROUP_1 Init',        'T'], # Group 1 Begin
+   ['RCINIT_SWE_INIT_GROUP_2', 'RCINIT_GROUP_2 Init',        'T'], # Group 2 Begin
+   ['RCINIT_SWE_INIT_GROUP_3', 'RCINIT_GROUP_3 Init',        'T'], # Group 3 Begin
+   ['RCINIT_SWE_INIT_GROUP_4', 'RCINIT_GROUP_4 Init',        'T'], # Group 4 Begin
+   ['RCINIT_SWE_INIT_GROUP_5', 'RCINIT_GROUP_5 Init',        'T'], # Group 5 Begin
+   ['RCINIT_SWE_INIT_GROUP_6', 'RCINIT_GROUP_6 Init',        'T'], # Group 6 Begin
+   ['RCINIT_SWE_INIT_GROUP_7', 'RCINIT_GROUP_7 Init',        'T'], # Group 7 Begin
+   ['RCINIT_SWE_INITGROUPS',   'RCINIT Init Groups',         'T'], # Groups Complete
+
+   ['RCINIT_SWE_INIT_FUNC_R',  'RCINIT Init Func Reg %x %x', 'F'], # Func Register
+   ['RCINIT_SWE_INIT_FUNC_U',  'RCINIT Init Func Urg %x %x', 'F'], # Func Unregister
+   ['RCINIT_SWE_INIT_FUNC_RN', 'RCINIT Init Func Run %x %x', 'F'], # Func Run
+   ['RCINIT_SWE_INIT_FUNC_XT', 'RCINIT Init Func Ret %x %x', 'F'], # Func Return
+
+   ['RCINIT_SWE_INIT_TASK_R',  'RCINIT Init Task Reg %x %x', 'F'], # Task Register
+   ['RCINIT_SWE_INIT_TASK_RI', 'RCINIT Init Task RgI %x %x', 'F'], # Task Register Ignore
+   ['RCINIT_SWE_INIT_TASK_U',  'RCINIT Init Task Urg %x %x', 'F'], # Task Unregister
+   ['RCINIT_SWE_INIT_TASK_UO', 'RCINIT Init Task UrO %x %x', 'F'], # Task Unregister Order
+   ['RCINIT_SWE_INIT_TASK',    'RCINIT Init Task Def %x %x', 'F'], # Task Define
+   ['RCINIT_SWE_INIT_TASK_RN', 'RCINIT Init Task Run %x %x', 'F'], # Task Run
+   ['RCINIT_SWE_INIT_TASK_RS', 'RCINIT Init Task Rst %x %x', 'F'], # Task Restart
+   ['RCINIT_SWE_INIT_TASK_HS', 'RCINIT Init Task HS  %x %x', 'F'], # Task HS
+   ['RCINIT_SWE_INIT_TASK_HI', 'RCINIT Init Task HIg %x %x', 'F'], # Task HS Ignore
+   ['RCINIT_SWE_INIT_TASK_E',  'RCINIT Init Task End %x %x', 'F'], # Task Exception End
+   ['RCINIT_SWE_INIT_TASK_XT', 'RCINIT Init Task Xit %x %x', 'F'], # Task Programatic Exit
+
+   ['RCINIT_SWE_TERM_TIMEO',   'RCINIT Term TimeO    %x %x', 'T'], # Group Process Timeout
+   ['RCINIT_SWE_TERM_BAIL',    'RCINIT Term Bail     %x %x', 'T'], # Groups Process Timeout
+
+   ['RCINIT_SWE_TERMGROUPS',   'RCINIT Term Groups',         'T'], # Groups Begin
+   ['RCINIT_SWE_TERM_GROUP_7', 'RCINIT_GROUP_7 Term',        'T'], # Group 7 End
+   ['RCINIT_SWE_TERM_GROUP_6', 'RCINIT_GROUP_6 Term',        'T'], # Group 6 End
+   ['RCINIT_SWE_TERM_GROUP_5', 'RCINIT_GROUP_5 Term',        'T'], # Group 5 End
+   ['RCINIT_SWE_TERM_GROUP_4', 'RCINIT_GROUP_4 Term',        'T'], # Group 4 End
+   ['RCINIT_SWE_TERM_GROUP_3', 'RCINIT_GROUP_3 Term',        'T'], # Group 3 End
+   ['RCINIT_SWE_TERM_GROUP_2', 'RCINIT_GROUP_2 Term',        'T'], # Group 2 End
+   ['RCINIT_SWE_TERM_GROUP_1', 'RCINIT_GROUP_1 Term',        'T'], # Group 1 End
+   ['RCINIT_SWE_TERM_GROUP_0', 'RCINIT_GROUP_0 Term',        'T'], # Group 0 End
+
+   ['RCINIT_SWE_TERM_FUNC_R',  'RCINIT Term Func Reg %x %x', 'F'], # Func Register
+   ['RCINIT_SWE_TERM_FUNC_U',  'RCINIT Term Func Urg %x %x', 'F'], # Func Unregister
+   ['RCINIT_SWE_TERM_FUNC_RN', 'RCINIT Term Func Run %x %x', 'F'], # Func Run
+   ['RCINIT_SWE_TERM_FUNC_XT', 'RCINIT Term Func Run %x %x', 'F'], # Func Return
+
+   ['RCINIT_SWE_TERM_TASK_R',  'RCINIT Term Task Reg %x %x', 'F'], # Task Register
+   ['RCINIT_SWE_TERM_TASK_RI', 'RCINIT Term Task RgI %x %x', 'F'], # Task Register Ignore
+   ['RCINIT_SWE_TERM_TASK_U',  'RCINIT Term Task Urg %x %x', 'F'], # Task Unregister
+   ['RCINIT_SWE_TERM_TASK_UO', 'RCINIT Term Task UrO %x %x', 'F'], # Task Unregister Order
+   ['RCINIT_SWE_TERM_TASK',    'RCINIT Term Task Def %x %x', 'F'], # Task Define
+   ['RCINIT_SWE_TERM_TASK_RN', 'RCINIT Term Task Run %x %x', 'F'], # Task Run
+   ['RCINIT_SWE_TERM_TASK_RS', 'RCINIT Term Task Rst %x %x', 'F'], # Task Restart
+   ['RCINIT_SWE_TERM_TASK_HS', 'RCINIT Term Task HS  %x %x', 'F'], # Task HS
+   ['RCINIT_SWE_TERM_TASK_HI', 'RCINIT Term Task HIg %x %x', 'F'], # Task HS Ignore
+   ['RCINIT_SWE_TERM_TASK_E',  'RCINIT Term Task End %x %x', 'F'], # Task Exception End
+   ['RCINIT_SWE_TERM_TASK_XT', 'RCINIT Term Task Xit %x %x', 'F'], # Task Programatic Exit
+
+]
+
+if 'USES_QDSS_SWE' in env and len(TRACER_SWE_EVENTS) != 0:
+   BUILDPATH = env.RealPath('${BUILDPATH}')
+   env.Append(CPPPATH = [ BUILDPATH ])
+   env.SWEBuilder([ ''.join([ BUILDPATH, '/', 'rcinit_tracer_swe.h' ]) ], None)
+   env.AddSWEInfo(BUILD_TAGS, TRACER_SWE_EVENTS)
+else:
+   env.Append(CPPDEFINES = ["RCINIT_EXCLUDE_TRACER_SWEVT"])
+
+#-------------------------------------------------------------------------------
+# PACKOUT Configuration
+#-------------------------------------------------------------------------------
+
+#CLEAN_PACK_FILES = [
+#   '${BUILDPATH}/rcinit_packout.c',
+#]
+#
+#env.CleanPack(BUILD_TAGS, CLEAN_PACK_FILES)

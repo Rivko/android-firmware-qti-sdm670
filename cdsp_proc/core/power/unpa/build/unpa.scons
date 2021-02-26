@@ -1,0 +1,149 @@
+#===============================================================================
+# UNPA build script
+#
+# Copyright (c) 2016-2017 Qualcomm Technologies, Inc. (QTI).
+# All Rights Reserved.
+# Qualcomm Confidential and Proprietary.
+# Export of this technology or software is regulated by the U.S. Government.
+# Diversion contrary to U.S. law prohibited.
+#===============================================================================
+import os
+import fnmatch
+import itertools
+
+Import('env')
+env = env.Clone()
+
+#Do not compile uNPA if target does not support the feature
+if 'UNPA_SUPPORT' not in env:
+  env.PrintWarning('uNPA is not available for this target.')
+  Return()
+  
+#-------------------------------------------------------------------------------
+# Build options
+#-------------------------------------------------------------------------------
+#Turn off optimizations for easier debug
+#env.Append(CFLAGS = ' -O0')
+
+multi_pd = False
+userpd_local_unpa = False
+
+#Enable multi-pd support if target needs it
+if env['POWER_SUBSYSTEM'].lower() == 'adsp':
+  multi_pd = True
+  env.Append(CPPDEFINES = ['UNPA_MULTI_PD'])
+  
+if 'USES_ISLAND' in env:
+  env.Append(CPPDEFINES = ['UNPA_IN_ISLAND'])
+  env.Append(CPPDEFINES = ['UNPA_MAX_REMOTE_CLIENTS=6'])
+  env.Append(CPPDEFINES = ['UNPA_MAX_REMOTE_QUERIERS=4'])
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = os.path.join("..", "src")
+env.VariantDir( '${BUILDPATH}', SRCPATH, duplicate=0 )
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_PUBLIC_API = [
+  'DAL',
+  'POWER',
+  'SERVICES',
+  'DEBUGTOOLS',
+  'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_PUBLIC_API)
+env.RequireRestrictedApi(CBSP_PUBLIC_API)
+
+env.PublishPrivateApi('UNPA', [
+  '${BUILD_ROOT}/core/power/unpa/src',
+])
+
+#-------------------------------------------------------------------------------
+# Global source settings
+#-------------------------------------------------------------------------------
+MAIN_IMG_TAG    = ['CORE_Q6_ROOT']
+CORE_ISLAND_TAG = ['CORE_Q6_ROOT']
+USERPD_IMG_TAG  = ['CORE_SLPI_USER', 'CORE_ADSP_USER']
+
+SOURCE_PATTERN = ['*.c']
+sources = []
+main_sources = []
+userpd_sources = []
+
+#-------------------------------------------------------------------------------
+# Source directory roots (relative to SRCPATH)
+#-------------------------------------------------------------------------------
+
+unpa_source_dirs = [
+  'framework',
+]
+
+#-------------------------------------------------------------------------------
+# Pick up source files
+#-------------------------------------------------------------------------------
+for src_path_root in unpa_source_dirs:
+  for root, dirnames, filenames in os.walk(os.path.join(SRCPATH, src_path_root)):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in SOURCE_PATTERN])
+    files = [os.path.join(root, filename) for filename in matches ]
+    files = [matched_path.replace(SRCPATH,'${BUILDPATH}',1) for matched_path in files]
+    sources.extend(files)
+    
+main_sources.extend(sources)
+
+if multi_pd:
+  main_sources.append('${BUILDPATH}/qdi/unpa_qdi_driver.c')
+  userpd_sources.append('${BUILDPATH}/qdi/unpa_qdi_protocol.c')
+
+  if userpd_local_unpa:
+    userpd_sources.extend(sources)
+
+#-------------------------------------------------------------------------------
+# Create and add Libraries to image
+#-------------------------------------------------------------------------------
+unpa_lib = env.AddLibrary(MAIN_IMG_TAG, 
+                          os.path.join('${BUILDPATH}', 'unpa'), 
+                          main_sources)
+
+if multi_pd:
+  unpa_userpd_lib = env.AddLibrary(USERPD_IMG_TAG, 
+                                   os.path.join('${BUILDPATH}', 'unpa_upd'), 
+                                   userpd_sources)
+
+if 'USES_ISLAND' in env:
+  env.AddIslandLibrary(CORE_ISLAND_TAG, unpa_lib)
+  
+  if multi_pd:
+    env.AddIslandLibrary(USERPD_IMG_TAG, unpa_userpd_lib)
+
+#-------------------------------------------------------------------------------
+# Main RCINIT
+#-------------------------------------------------------------------------------
+UNPA_RCINIT_FUNC = {
+  'sequence_group'             : 'RCINIT_GROUP_0',
+  'init_name'                  : 'uNPA',
+  'init_function'              : 'unpa_init',
+  'dependencies'               : [],
+}
+
+if 'USES_RCINIT' in env:
+  env.AddRCInitFunc(MAIN_IMG_TAG, UNPA_RCINIT_FUNC)
+  
+  if userpd_local_unpa:
+    env.AddRCInitFunc(USERPD_IMG_TAG, UNPA_RCINIT_FUNC)
+
+#-------------------------------------------------------------------------------
+# UserPD RCINIT
+#-------------------------------------------------------------------------------
+if 'USES_RCINIT' in env and multi_pd:
+  UNPA_USERPD_RCINIT_FUNC = {
+    'sequence_group'             : 'RCINIT_GROUP_0',
+    'init_name'                  : 'uNPA_UserPD',
+    'init_function'              : 'unpaRemote_qdiProtocolInit',
+    'dependencies'               : [],
+  }
+  
+  env.AddRCInitFunc(USERPD_IMG_TAG, UNPA_USERPD_RCINIT_FUNC)

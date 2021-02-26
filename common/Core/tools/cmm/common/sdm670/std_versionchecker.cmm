@@ -1,0 +1,219 @@
+//============================================================================
+//  Name:                                                                     
+//    std_versionchecker.cmm
+//
+//  Description:                                                              
+//    Checks T32 current version against known bad T32 versions
+//
+//  Usage
+//  do std_versionchecker <function>
+//      where
+//          <function> (optional) is a known function: std_debug, std_cti, std_loadbuild, etc.
+
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when         who         what, where, why
+// --------     ---        --------------------------------------------------------
+// 03/14/2017   JBILLING   Napali info added
+// 12/14/2016   JBILLING   VTLB info added
+// 07/01/2016   JBILLING   Added ADSP T32 version for pagetables
+// 08/03/2015   JBILLING   Various bad t32 versions added
+// 12/09/2014   JBILLING   Created
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////// std_versionchecker ////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+//###################Arguments passed #####################
+LOCAL &ArgumentLine
+ENTRY %LINE &ArgumentLine
+LOCAL &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+ENTRY &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+
+//#####################GLOBALS###################
+//Some features are dependent on t32 versions.
+
+//Only after this version can Q6 QuRT pagetables feature be used
+GLOBAL &MINIMUM_QURT_PGT_T32_version
+//&MINIMUM_QURT_PGT_T32_version=63817.
+&MINIMUM_QURT_PGT_T32_version=66924.
+//For some reason it breaks on adsp for versions prior to 10/12/2015. argh...
+GLOBAL &MINIMUM_ADSP_QURT_PGT_T32_version
+&MINIMUM_ADSP_QURT_PGT_T32_version=66924.
+//Only after this version can Q6 Frame.CONFIG.EABI stack feature be used
+GLOBAL &MINIMUM_QURT_EABI_T32_version
+&MINIMUM_QURT_EABI_T32_version=63096.
+
+//Only after this version can Q6 QuRT VTLB feature be used
+GLOBAL &MINIMUM_QURT_VTLB_T32_version
+&MINIMUM_QURT_VTLB_T32_version=75439.
+
+GLOBAL &MINIMUM_KRYO3XX_T32BUILD &KRYO3XX_T32_COMPLIANT &KRYO3XX_VSRST_ENABLE
+&MINIMUM_KRYO3XX_T32BUILD=81550.
+&KRYO3XX_T32_COMPLIANT="TRUE"
+&KRYO3XX_VSRST_ENABLE="FALSE"
+
+GLOBAL &MINIMUM_QURT_VTLB_T32_VTLBSCAN_Version
+&MINIMUM_QURT_VTLB_T32_VTLBSCAN_Version=83984.
+
+GLOBAL &MINIMUM_Q6_EUD_Version
+&MINIMUM_Q6_EUD_Version=88144.
+//#####################Select Subroutine###################
+// Name of the utility we are calling
+LOCAL &SUBROUTINE
+// Any subroutine specific options
+// Default exists for each subroutine
+
+
+// Input Argument 0 is the name of the utility
+&SUBROUTINE="&UTILITY"
+IF !(("&SUBROUTINE"=="HELP"))
+(
+    &SUBROUTINE="MAIN"   
+)
+
+    // This should be created by some top level script. The setupenv for each proc would
+    // set this up
+     AREA.SELECT
+    // Call the required utility
+    GOSUB &SUBROUTINE &ArgumentLine
+    ENTRY &PASS &RVAL0 &RVAL1 &RVAL2
+
+    ENDDO &PASS &RVAL0 &RVAL1 &RVAL2
+
+    
+
+////////////////////////////////////////
+//
+//            MAIN
+//            Main versionchecker logic
+//
+/////////////////////////////////////////
+MAIN:
+        LOCAL &ArgumentLine
+        ENTRY &ArgumentLine
+
+        LOCAL &Rvalue &Blacklistlibrary &MinimumBuild &MinimumVersion &CurrentVersion &CPUArch &AppsArch &Gen_Blacklistlibrary &Q6_Blacklistlibrary &Apps_Blacklistlibrary &CurrentBuild
+        &Rvalue="PASS"
+        &Gen_Blacklistlibrary=""
+        &Q6_Blacklistlibrary="S.2014.04.000053271,S.2014.11.000058536,S.2015.04.000062056,S.2015.01.000059906,S.2015.03.000061410,S.2015.03.000061505,S.2015.03.000061735,S.2015.04.000062056,S.2015.04.000062542,S.2015.04.000062625,S.2015.04.000062726,S.2015.05.000062856,S.2015.05.000062886,S.2015.05.000062946,S.2015.05.000062985,S.2015.06.000063817"
+        &Apps_Blacklistlibrary="S.2014.06.000054395,S.2015.01.000059906,S.2015.06.000064056"
+        &MinimumBuild=76589.
+        &MinimumVersion="S.2016.08.000076589"
+        &AppsArch="KRYO3XX"
+        &CurrentVersion=SOFTWARE.VERSION()
+        &CurrentBuild=VERSION.BUILD()
+        &CPUArch=sys.cpu()
+
+        IF (STRING.SCAN("&Gen_Blacklistlibrary","&CurrentVersion",0)!=-1)
+        (
+            WINPOS 37% 37% 60. 10.
+            AREA.RESET
+            AREA
+            PRINT %ERROR "   Warning! This version of T32 is blacklisted"
+            PRINT %ERROR "   You may run into unexpected errors during your session"
+            PRINT %ERROR "   Blacklisted for: general &CHIPSET debugging"
+            PRINT %ERROR "   T32 Build number: &CurrentVersion"
+            PRINT " "
+            PRINT " "
+            PRINT " "
+                
+            &Rvalue="FAIL"
+            ENDDO &Rvalue
+        )
+        
+        IF (&CurrentBuild>=&MINIMUM_KRYO3XX_T32BUILD)
+        (
+            &KRYO3XX_T32_COMPLIANT="TRUE"
+        )
+
+        //Hexagon/Q6 cpu
+        IF (STRING.SCAN(STR.UPR("&CPUArch"),"HEX",0)!=-1)
+        (
+            IF (STRING.SCAN("&Q6_Blacklistlibrary","&CurrentVersion",0)!=-1)
+            (
+                WINPOS 37% 37% 60. 10.
+                AREA.RESET
+                AREA
+                PRINT %ERROR "   Warning! This version of T32 is blacklisted"
+                PRINT %ERROR "   You may run into unexpected errors during your session"
+                PRINT %ERROR "   Blacklisted for: Q6 Debugging, &CHIPSET"
+                PRINT %ERROR "   T32 Build number: &CurrentVersion"
+                PRINT " "
+                PRINT " "
+                PRINT " "
+                
+                &Rvalue="FAIL"
+                ENDDO &Rvalue
+            )
+        )
+        ELSE IF (STRING.SCAN(STR.UPR("&CPUArch"),"&AppsArch",0)!=-1)
+        (
+            IF (STRING.SCAN("&Apps_Blacklistlibrary","&CurrentVersion",0)!=-1)
+            (
+                WINPOS 37% 37% 60. 10.
+                AREA.RESET
+                AREA
+                PRINT %ERROR "   Warning! This version of T32 is blacklisted"
+                PRINT %ERROR "   You may run into unexpected errors during your session"
+                PRINT %ERROR "   Blacklisted for: ARMV8 Debugging, &CHIPSET"
+                PRINT %ERROR "   T32 Build number: &CurrentVersion"
+                PRINT " "
+                PRINT " "
+                PRINT " "
+                
+                &Rvalue="FAIL"
+                ENDDO &Rvalue
+            )
+        )
+               
+               
+        //Now check minimum build. Chipset specific.
+
+        
+
+        IF (&CurrentBuild<&MinimumBuild)
+        (
+        
+                WINPOS 37% 37% 60. 10.
+                AREA.RESET
+                AREA
+                PRINT %ERROR " Warning! This version of T32 has been identified "
+                PRINT %ERROR "      as TOO OLD for this target (&CHIPSET)"
+                PRINT %ERROR " "
+                PRINT %ERROR " You may run into unexpected errors during your session"
+                PRINT %ERROR " Current T32 Version:                  &CurrentVersion"
+                PRINT %ERROR " Recommended minimum T32 Version:      &MinimumVersion"
+                PRINT " "
+                PRINT " "
+                
+                &Rvalue="FAIL"
+                ENDDO &Rvalue
+        )
+               
+               
+         
+               
+       
+RETURN &Rvalue
+
+
+EXIT:
+    ENDDO &PASS &RVAL0 &RVAL1 &RVAL2
+
+//    Function: Fatalexit
+//    Return without return values    
+FATALEXIT:
+    END
+        
+        
+        
+        
+       

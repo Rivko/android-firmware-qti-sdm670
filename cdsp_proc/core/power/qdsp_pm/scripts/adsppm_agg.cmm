@@ -1,0 +1,791 @@
+;====================================================================
+; Copyright (c) 2015 Qualcomm Technologies, Inc.
+; All Rights Reserved.
+; Qualcomm Technologies, Inc. Confidential and Proprietary.
+;====================================================================
+
+;===================================================================
+; Name:  adsppm_agg.cmm
+;
+; Description:
+;   Print out all the aggregated values and the contributions from 
+;	client requests
+;
+; Optional Argument: 845 for Napali or 670 for Warlock
+;					 Default target is Warlock if no argument is provided 
+;====================================================================
+ENTRY &target
+
+LOCAL &AggrOutput
+&AggrOutput="adsppm_aggregated_outputs"
+
+;AREA.RESet
+
+WINPOS 0. 0. 50% 100% , , , AggrOutput
+AREA.CREATE &AggrOutput 256. 1024.
+AREA.CLEAR &AggrOutput
+AREA.VIEW &AggrOutput
+AREA.SELECT &AggrOutput
+
+LOCAL &clientNode &clientName &clientId &client &clientNodeBckup
+LOCAL &index &numClients &numClientsPrint
+LOCAL &reqArray &reqNode &resIdToDump
+LOCAL &rscIdx &counter &nRscClients &GeneralParam
+
+LOCAL &typeList
+LOCAL &nTypes   ; of AdsppmRscIds
+
+;==================================================
+; Constants used in this file
+;==================================================
+LOCAL &RscIdSleepLat &RscIdMips &RscIdBW &RscIdPwr
+LOCAL &BusPortQ6Master
+
+&RscIdPwr=8 		;Adsppm_Rsc_Id_Pwr
+&RscIdSleepLat=2	;Adsppm_Rsc_Id_Sleep_Latency
+&RscIdMips=3		;Adsppm_Rsc_Id_Mips
+&RscIdBW=4			;Adsppm_Rsc_Id_BW
+
+&BusPortQ6Master=1	;AdsppmBusPort_Q6DSP_Master
+
+
+; 845 = Napali, 670 = Warlock
+
+IF ("&target"=="")
+(
+	;If no argument was passed, Choose Warlock as the default target
+	PRINT "Choosing Default Target"
+	&target=670
+)
+
+
+IF ((&target==670))
+(
+	PRINT "Target : Warlock"
+)
+ELSE IF ((&target==845))
+(
+	PRINT "Target : Napali"
+)
+ELSE
+(
+	PRINT "Invalid target. Exiting.."
+	RETURN
+)
+
+;===================================================
+
+&output="PRINT"
+&typeList=":power:core_clk:sleep_latency:mips:bw::mempower"
+
+;The values are hardcoded since it is not working on RUMI
+
+&nTypes=9
+;WHILE (VAR.STRING((AdsppmRscIdType)&nTypes)!="Adsppm_Rsc_Id_Max")
+;(
+;    &nTypes=&nTypes+1
+;)
+
+&NumPowerDomains=8
+;WHILE (VAR.STRING((AsicPowerDomainType)&NumPowerDomains)!="AsicPowerDomain_EnumMax")
+;(
+;    &NumPowerDomains=&NumPowerDomains+1
+;)
+
+PRINT ""
+PRINT "----------------------------------------------------------------------------------------------"
+PRINT %COLOR.PURPLE "ADSPPM Aggregated Data"
+PRINT "----------------------------------------------------------------------------------------------"
+PRINT ""
+
+&clientNode=V.VALUE(gAdsppmClientManager.clients.link.pNext)
+&clientNodeBckup=&clientNode
+&numClients=V.VALUE(gAdsppmClientManager.clients.nCnt)
+&numClientsPrint=FORMAT.DECIMAL(0,&numClients)
+
+; In case of BW:
+;	When this variable is set only DDR contents are printed
+; In case of Mips:
+;	When this variable is set only mpps contents are printed
+&GeneralParam=0
+
+PRINT %COLOR.GREEN "Total No. of clients  = &numClientsPrint"
+PRINT ""
+PRINT "----------------------------------------------------------------------------------------------"
+
+;GOSUB printPowerMgr
+&output  %COLOR.BLUE "Power Requests "
+PRINT "----------------------------------------------------------------------------------------------"
+
+&resIdToDump=&RscIdPwr
+GOSUB printReq &resIdToDump &clientNodeBckup &GeneralParam
+PRINT "----------------------------------------------------------------------------------------------"
+
+GOSUB printLatencyMgr
+PRINT "----------------------------------------------------------------------------------------------"
+&resIdToDump=&RscIdSleepLat
+GOSUB printReq &resIdToDump &clientNodeBckup &GeneralParam
+PRINT "----------------------------------------------------------------------------------------------"
+
+GOSUB printMIPSMgr
+PRINT "----------------------------------------------------------------------------------------------"
+&resIdToDump=&RscIdMips
+&GeneralParam="Adsppm_Q6ClockRequestUsageType_Mpps"
+GOSUB printReq &resIdToDump &clientNodeBckup &GeneralParam
+PRINT "----------------------------------------------------------------------------------------------"
+&GeneralParam="Adsppm_Q6ClockRequestUsageType_Mips"
+GOSUB printReq &resIdToDump &clientNodeBckup &GeneralParam
+PRINT "----------------------------------------------------------------------------------------------"
+
+GOSUB printBusMgr
+PRINT "----------------------------------------------------------------------------------------------"
+&resIdToDump=&RscIdBW
+&GeneralParam=1			;Print only DDR
+GOSUB printReq &resIdToDump &clientNodeBckup &GeneralParam
+PRINT "----------------------------------------------------------------------------------------------"
+&GeneralParam=0			;Print apart from DDR
+GOSUB printReq &resIdToDump &clientNodeBckup &GeneralParam
+PRINT "----------------------------------------------------------------------------------------------"
+
+GOSUB printSleep
+PRINT "----------------------------------------------------------------------------------------------"
+
+GOSUB printDCVSMgr
+PRINT "----------------------------------------------------------------------------------------------"
+PRINT ""
+
+GOSUB printIntBWAgg
+PRINT "----------------------------------------------------------------------------------------------"
+PRINT ""
+
+
+
+PRINT %COLOR.PURPLE "Dump Completed"
+
+GOSUB cleanup_exit
+
+; This is the generic code to print the respect data for mips/bus/sleep/pwr etc.
+printReq:
+	ENTRY &resIdToDump &clientNodeBckup &GeneralParam
+
+	&index=0
+
+	&clientNode=&clientNodeBckup
+
+	WHILE &index<&numClients
+	(
+		&client=&clientNode+8
+		PRIVATE &shortTypeName
+
+		&reqArray=VAR.VALUE(gAdsppmCoreCtx.rscReqQ)
+		&rscIdx=&resIdToDump
+
+		IF (&rscIdx<&nTypes)
+		(
+			; Parse for a specific resource type
+			&shortTypeName=STRING.LoWeR(STRING.MID(VAR.STRING((AdsppmRscIdType)&rscIdx),14.,100.))  ; e.g. power, mips, bw
+
+			IF (STRing.SCAN("&typeList",":&shortTypeName",0.)>=0)
+			(
+				&reqNode=VAR.VALUE(gAdsppmCoreCtx.rscReqQ[&rscIdx-1].link.pNext)        ; Head of the list of clients for the current resource type
+				&nRscClients=VAR.VALUE(((coreUtils_Q_Type *)&reqArray)[&rscIdx-1].nCnt) ; number of clients for the current resource type
+				&counter=0
+
+				WHILE (&counter<&nRscClients)
+				(
+					IF (&counter==&index)
+					(
+						IF ("&shortTypeName"=="power")
+                        (
+                            GOSUB printPower &client &reqNode
+                        )
+						ELSE IF ("&shortTypeName"=="sleep_latency")
+                        (
+                            GOSUB printLatency &client &reqNode
+                        )
+						ELSE IF ("&shortTypeName"=="mips")
+						(
+							GOSUB printMIPS &client &reqNode &GeneralParam
+						)
+						ELSE IF ("&shortTypeName"=="bw")
+						(
+							GOSUB printBW &client &reqNode &GeneralParam
+						)
+					)    ; if counter == index
+				
+					&reqNode=VAR.VALUE((*((coreUtils_Q_LinkType *)&reqNode)).pNext)
+					&counter=&counter+1
+				)   ; counter < nRscClients loop
+			)
+		) ; rscIdx loop
+
+		&clientNode=V.VALUE((*((coreUtils_Q_LinkType *)&clientNode)).pNext)
+		&index=&index+1	
+	) ; index loop
+RETURN
+
+
+
+;
+;	ADSPPM Power Requests
+;
+printPower:
+	ENTRY &client &reqNode
+	LOCAL &validFlag &validFlagExt &reqData &pwrDomain &coreId
+	
+	&clientId=FORMAT.DECIMAL(3.,V.VALUE((*((AdsppmClientType *)&client)).clientId))
+	&clientName=DATA.STRING(D:V.VALUE((*((AdsppmClientType *)&client)).clientName))
+
+    &validFlag=VAR.VALUE((*((RMHandleType *)&reqNode)).validFlag)
+    &validFlagExt=VAR.VALUE((*((RMHandleType *)&reqNode)).validFlag_Ext)
+    &coreId=VAR.VALUE((*(*((RMHandleType *)&reqNode)).pClient).coreId)
+	
+	GOSUB GetPwrDomainFromCoreId  &coreId
+	ENTRY &pwrDomain
+
+	IF &validFlag==1
+    (
+		&output  FORMAT.STRing("&clientName",20.,' ') "CID: &clientId CoreId: "+VAR.STRING((AdsppmCoreIdType)&coreId) "  Domain: &pwrDomain" 
+    )
+	
+RETURN
+
+printPowerMgr:
+    
+    IF (sYmbol.EXIST("gPowerMgrCtx"))
+    (
+        ;Power Domains Status
+		PRIVATE &pwrDomainStatus &pwrDomainNum &numDomains
+		PRIVATE &activeStateIndex &indexToDump
+		
+		; General Info
+        &activeStateIndex=VAR.VALUE(gPowerMgrCtx.activeStateIndex)
+        &indexToDump=&activeStateIndex^1
+		&pwrDomainNum=0
+		
+		
+		PRINT ""
+		&output %COLOR.BLUE "Power Domain Status "
+		
+		WHILE (&pwrDomainNum<&NumPowerDomains)
+		(
+			&pwrDomainStatus=FORMAT.DECIMAL(0.,VAR.VALUE(gPowerMgrCtx.pwrDomainState[&pwrDomainNum][&indexToDump]))
+			&output "        "
+			&output %CONTinue %COLOR.RED VAR.STRING((AsicPowerDomainType)&pwrDomainNum)
+			&output %CONTinue %COLOR.RED ": &pwrDomainStatus"
+			&pwrDomainNum=&pwrDomainNum+1;
+		)
+		PRINT ""
+		&output %COLOR.BLUE "Power Requests "
+		
+	)
+    ELSE
+    (
+        &err "Ignoring PowerMgr dump: no such symbol"
+    )
+RETURN
+	
+RETURN
+;
+;   ADSPPM Sleep Latency requests
+;
+printLatency:
+    ENTRY   &client &reqNode
+    LOCAL   &validFlag &validFlagExt &reqData &latencyVote
+	
+	&clientId=FORMAT.DECIMAL(3.,V.VALUE((*((AdsppmClientType *)&client)).clientId))
+	&clientName=DATA.STRING(D:V.VALUE((*((AdsppmClientType *)&client)).clientName))
+
+    &validFlag=VAR.VALUE((*((RMHandleType *)&reqNode)).validFlag)
+    &validFlagExt=VAR.VALUE((*((RMHandleType *)&reqNode)).validFlag_Ext)
+    &reqData=VAR.VALUE((*((RMHandleType *)&reqNode)).pRequestData)
+    &latencyVote=FORMAT.DECIMAL(0,VAR.VALUE(*((uint32 *)(&reqData))))
+
+    IF &validFlag==1
+    (
+		&output  FORMAT.STRing("&clientName",15.,' ') "CID: &clientId   latencyVote       : &latencyVote" 
+    )
+
+RETURN
+
+printLatencyMgr:
+    PRIVATE &qdsp6Clk
+    IF (sYmbol.EXIST("gSleepMgrCtx"))
+    (
+        ; MPPS Aggregate Data
+        PRIVATE &totalLatency
+		PRIVATE &activeStateIndex &indexToDump
+		
+		; General Info
+        &activeStateIndex=VAR.VALUE(gSleepMgrCtx.activeStateIndex)
+        &indexToDump=&activeStateIndex^1
+
+		&totalLatency=FORMAT.DECIMAL(0.,VAR.VALUE(gSleepMgrCtx.latencyUs[&indexToDump]))     
+		PRINT ""
+		&output  %COLOR.BLUE "Total Latency Aggr    Latency : &totalLatency"
+    )
+    ELSE
+    (
+        &err "Ignoring LatencyMgr dump: no such symbol"
+    )
+RETURN
+
+;
+;   ADSPPM Bandwidth requests
+;
+printBW:
+    ENTRY   &client &reqNode &GeneralParam
+    LOCAL   &validFlag &validFlagExt &reqData &reqDataExt &numBwReq &bwReq
+    LOCAL   &bwIndex &bwIndexPrint &reqArray
+    LOCAL   &bytesPerSec &usagePercentage
+	LOCAL   &masterPort &slavePort
+	LOCAL 	&reqType
+
+    &validFlag=VAR.VALUE((*((RMHandleType *)&reqNode)).validFlag)
+    &validFlagExt=VAR.VALUE((*((RMHandleType *)&reqNode)).validFlag_Ext)
+    &reqData=VAR.VALUE((*((RMHandleType *)&reqNode)).pRequestData)
+    &reqDataExt=VAR.VALUE((*((RMHandleType *)&reqNode)).pRequestData_Ext)
+    &numBwReq=VAR.VALUE((*((AdsppmBwReqType *)&reqData)).numOfBw)
+
+    &bwReq=FORMAT.DECIMAL(0,VAR.VALUE((*((AdsppmBwReqType *)&reqData)).pBwArray))
+
+    IF &validFlag==1||&validFlagExt==1
+    (
+		&clientId=FORMAT.DECIMAL(3.,V.VALUE((*((AdsppmClientType *)&client)).clientId))
+		&clientName=DATA.STRING(D:V.VALUE((*((AdsppmClientType *)&client)).clientName))
+	)
+	
+    IF &validFlag==1
+    (
+        &bwIndex=0
+        &bwIndexPrint=FORMAT.DECIMAL(1.,&bwIndex)
+        &reqArray=VAR.VALUE((*((AdsppmBwReqType *)&reqData)).pBwArray)
+		&reqType=VAR.VALUE((*((AdsppmBwReqType *)&reqData)).requestClass)
+		
+		IF &reqType==0x0
+			&reqType="Gen"
+		ELSE
+			&reqType="Comp"
+		
+        WHILE (&bwIndex<&numBwReq)
+        (
+            &bwReq=VAR.VALUE((AdsppmBusBWRequestValueType *)&reqArray)+Var.SIZEOF(((AdsppmBusBWRequestValueType *)&reqArray)[0])*&bwIndex
+
+			&masterPort=FORMAT.UDECIMAL(3.,VAR.VALUE((*((AdsppmBusBWRequestValueType *)&bwReq)).busRoute.masterPort))
+			&slavePort=FORMAT.UDECIMAL(3.,VAR.VALUE((*((AdsppmBusBWRequestValueType *)&bwReq)).busRoute.slavePort))
+			;&masterPort=VAR.STRING((AdsppmBusPortIdType)(*((AdsppmBusBWRequestValueType *)&bwReq)).busRoute.masterPort)
+			;&slavePort=VAR.STRING((AdsppmBusPortIdType)(*((AdsppmBusBWRequestValueType *)&bwReq)).busRoute.slavePort)
+
+            &bytesPerSec=FORMAT.UDECIMAL(10.,VAR.VALUE((*((AdsppmBusBWRequestValueType *)&bwReq)).bwValue.busBwValue.bwBytePerSec))
+            &usagePercentage=FORMAT.DECIMAL(5.,VAR.VALUE((*((AdsppmBusBWRequestValueType *)&bwReq)).bwValue.busBwValue.usagePercentage))
+			
+			IF &GeneralParam==1		;Dump DDR BW
+			(	
+				IF (VAR.VALUE((*((AdsppmBusBWRequestValueType *)&bwReq)).busRoute.masterPort)==&BusPortQ6Master)
+				(
+					;AdsppmBusPort_Ddr_Slave
+					IF (VAR.STRING((AdsppmBusPortIdType)(*((AdsppmBusBWRequestValueType *)&bwReq)).busRoute.slavePort)=="AdsppmBusPort_Ddr_Slave")
+					(
+						&output  FORMAT.STRing("&clientName",15.,' ') "CID: &clientId" "   Class:" FORMAT.STRing("&reqType",4.,' ') FORMAT.STRing("BW-> ",-8.,' ') "&bwIndexPrint  BytesPerSec &bytesPerSec" " : Usage% &usagePercentage Route: &masterPort -> &slavePort"
+					)
+				)
+			)
+			ELSE IF &GeneralParam==0
+			(
+				; Other than DDR BW
+				IF (VAR.STRING((AdsppmBusPortIdType)(*((AdsppmBusBWRequestValueType *)&bwReq)).busRoute.slavePort)!="AdsppmBusPort_Ddr_Slave")
+				(
+					&output  FORMAT.STRing("&clientName",15.,' ') "CID: &clientId" "   Class:" FORMAT.STRing("&reqType",4.,' ') FORMAT.STRing("BW-> ",-8.,' ') "&bwIndexPrint    BytesPerSec &bytesPerSec" " : Usage% &usagePercentage Route: &masterPort -> &slavePort"
+				)
+				ELSE IF (VAR.VALUE((*((AdsppmBusBWRequestValueType *)&bwReq)).busRoute.masterPort)!=&BusPortQ6Master)
+				(
+					&output  FORMAT.STRing("&clientName",15.,' ') "CID: &clientId" "   Class:" FORMAT.STRing("&reqType",4.,' ') FORMAT.STRing("BW-> ",-8.,' ') "&bwIndexPrint    BytesPerSec &bytesPerSec" " : Usage% &usagePercentage Route: &masterPort -> &slavePort"
+				)
+			)
+
+            &bwIndex=&bwIndex+1
+            &bwIndexPrint=FORMAT.DECIMAL(0,&bwIndex)
+        )
+    )
+
+    IF &validFlagExt==1
+    (
+		&bwIndex=0
+		&bwIndexPrint=FORMAT.DECIMAL(1.,&bwIndex)
+
+		&masterPort=FORMAT.UDECIMAL(3.,VAR.VALUE((*((AdsppmBusBWRequestValueType *)&bwReq)).busRoute.masterPort))
+		&slavePort=FORMAT.UDECIMAL(3.,VAR.VALUE((*((AdsppmBusBWRequestValueType *)&bwReq)).busRoute.slavePort))
+		;&masterPort=VAR.STRING((AdsppmBusPortIdType)(*((AdsppmBusBWRequestValueType *)&bwReq)).busRoute.masterPort)
+		;&slavePort=VAR.STRING((AdsppmBusPortIdType)(*((AdsppmBusBWRequestValueType *)&bwReq)).busRoute.slavePort)
+		
+
+        &bytesPerSec=FORMAT.UDECIMAL(10.,VAR.VALUE((*((AdsppmBusBWRequestValueType *)&reqDataExt)).bwValue.busBwValue.bwBytePerSec))
+        &usagePercentage=FORMAT.DECIMAL(5.,VAR.VALUE((*((AdsppmBusBWRequestValueType *)&reqDataExt)).bwValue.busBwValue.usagePercentage))
+
+		IF &GeneralParam==1		;Dump DDR BW
+		(	
+			IF (VAR.VALUE((*((AdsppmBusBWRequestValueType *)&bwReq)).busRoute.masterPort)==&BusPortQ6Master)
+			(
+				;AdsppmBusPort_Ddr_Slave
+				IF (VAR.STRING((AdsppmBusPortIdType)(*((AdsppmBusBWRequestValueType *)&bwReq)).busRoute.slavePort)=="AdsppmBusPort_Ddr_Slave")
+				(
+					&output  FORMAT.STRing("&clientName",15.,' ') "CID: &clientId" FORMAT.STRing("Reg->",-10.,' ') "&bwIndexPrint    BytesPerSec &bytesPerSec" " : Usage% &usagePercentage Route: &masterPort -> &slavePort"
+				)
+			)
+		)
+		ELSE IF &GeneralParam==0
+		(
+			; Other than DDR BW
+			IF (VAR.STRING((AdsppmBusPortIdType)(*((AdsppmBusBWRequestValueType *)&bwReq)).busRoute.slavePort)!="AdsppmBusPort_Ddr_Slave")
+			(
+				&output  FORMAT.STRing("&clientName",15.,' ') "CID: &clientId" FORMAT.STRing("Reg->",-10.,' ') "&bwIndexPrint    BytesPerSec &bytesPerSec" " : Usage% &usagePercentage Route: &masterPort -> &slavePort"
+			)
+			ELSE IF (VAR.VALUE((*((AdsppmBusBWRequestValueType *)&bwReq)).busRoute.masterPort)!=&BusPortQ6Master)
+			(
+				&output  FORMAT.STRing("&clientName",15.,' ') "CID: &clientId" FORMAT.STRing("BW-> ",-10.,' ') "&bwIndexPrint    BytesPerSec &bytesPerSec" " : Usage% &usagePercentage Route: &masterPort -> &slavePort"
+			)
+		)
+    )
+	RETURN
+
+printBusMgr:
+    PRIVATE &preCurrentIndex &indexToDump
+    PRIVATE &masterPort &slavePort
+    PRIVATE &abVal &ibVal &latVal
+	
+	
+	LOCAL   &argument
+
+    IF (sYmbol.EXIST("gBusMgrCtx"))
+    (
+        ; General Info
+        &preCurrentIndex=VAR.VALUE(gBusMgrCtx.preCurrentIndex)
+        &indexToDump=&preCurrentIndex^1
+
+        &masterPort=VAR.STRING((*(gBusMgrCtx.pExtBwAggregateData[&indexToDump])).busRoute.masterPort)
+        &slavePort=VAR.STRING((*(gBusMgrCtx.pExtBwAggregateData[&indexToDump])).busRoute.slavePort)
+        &abVal=FORMAT.DECIMAL(0.,VAR.VALUE((*(gBusMgrCtx.pExtBwAggregateData[&indexToDump])).bwValue.busBwAbIb.Ab))
+        &ibVal=FORMAT.DECIMAL(0.,VAR.VALUE((*(gBusMgrCtx.pExtBwAggregateData[&indexToDump])).bwValue.busBwAbIb.Ib))
+		&latVal=FORMAT.DECIMAL(0.,VAR.VALUE((*(gBusMgrCtx.pExtBwAggregateData[&indexToDump])).bwValue.busBwAbIb.latencyNs))
+		
+		
+		
+		PRINT ""
+		&output  %COLOR.BLUE "Total DDR BW Aggr         AB : &abVal    IB : &ibVal    lat : &latVal"
+		
+		
+    )
+    ELSE
+    (
+        &err "Ignoring BusMgr dump: No such symbol"
+    )
+RETURN
+
+printIntBWAgg:
+	PRIVATE &totalBwAb &totalBwIb &totalBwLat
+	PRIVATE &nonSuppressibleBwAb &nonSuppressibleBwIb &nonSuppressibleBwLat
+	PRIVATE &Q6LpassSlpiMasterBwAb &Q6LpassSlpiMasterBwIb &Q6LpassSlpiMasterBwLat
+	PRIVATE &nonQ6NonLpassMasterBwAb &nonQ6NonLpassMasterBwIb &nonQ6NonLpassMasterBwLat
+	
+	PRIVATE &adspMasterBwAb &adspMasterBwIb &adspMasterBwLat
+	PRIVATE &adspMasterSlpiBwAb &adspMasterSlpiBwIb &adspMasterSlpiBwLat
+	PRIVATE &nonAdspMasterBwAb &nonAdspMasterBwIb &nonAdspMasterBwLat
+	PRIVATE &nonSuppressibleBwCompAb &nonSuppressibleBwCompIb &nonSuppressibleBwCompLat
+	PRIVATE &nonQ6LpassSlpiMasterBwAb &nonQ6LpassSlpiMasterBwIb &nonQ6LpassSlpiMasterBwLat
+	PRIVATE &nonQ6NonLpassMasterBwCompAb &nonQ6NonLpassMasterBwCompIb &nonQ6NonLpassMasterBwCompLat
+	
+	PRIVATE &nocAhbBwAb &nocAhbBwIb &nocAhbBwLat
+	PRIVATE &nonSuppressibleAhbBWAb &nonSuppressibleAhbBWIb &nonSuppressibleAhbBWLat
+	PRIVATE &curAHBBwDataAb &curAHBBwDataIb &curAHBBwDataLat
+	
+	LOCAL   &argument
+	
+
+	IF (sYmbol.EXIST("gBusMgrCtx"))
+    (
+        ; General Info
+        &preCurrentIndex=VAR.VALUE(gBusMgrCtx.preCurrentIndex)
+        &indexToDump=&preCurrentIndex^1
+		
+		
+		&nocAhbBwAb=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.nocAhbBW.Ab))
+		&nocAhbBwIb=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.nocAhbBW.Ib))
+		&nocAhbBwLat=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.nocAhbBW.latencyNs))
+		
+		&nonSuppressibleAhbBWAb=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.nonSuppressibleAhbBW.Ab))
+		&nonSuppressibleAhbBWIb=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.nonSuppressibleAhbBW.Ib))
+		&nonSuppressibleAhbBWLat=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.nonSuppressibleAhbBW.latencyNs))
+		
+		&curAHBBwDataAb=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.curAHBBwData.Ab))
+		&curAHBBwDataIb=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.curAHBBwData.Ib))
+		&curAHBBwDataLat=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.curAHBBwData.latencyNs))
+		
+		PRINT ""
+		PRINT %COLOR.BLUE "Internal BW Aggregation"
+		
+		PRINT %COLOR.GREEN "---------------------AGGREGATED---------------------------" 
+		&output  %COLOR.BLUE "AHB-E"
+		&output  %COLOR.BLUE "     Noc AHB BW              C1+C2+C4+G2        AB : &nocAhbBwAb    IB : &nocAhbBwIb          lat : &nocAhbBwLat"
+		&output  %COLOR.BLUE "     Non Suppresible AHB BW  C5+G3              AB : &nonSuppressibleAhbBWAb    IB : &nonSuppressibleAhbBWIb      lat : &nonSuppressibleAhbBWLat"
+		&output  %COLOR.BLUE "AHB-IX"
+        &output  %COLOR.BLUE "     Current AHB BW          C1+C3+G1           AB : &curAHBBwDataAb    IB : &curAHBBwDataIb   lat : &curAHBBwDataLat"
+	
+		&totalBwAb=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.intPreAggregateData.generic.totalBw.Ab))
+		&totalBwIb=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.intPreAggregateData.generic.totalBw.Ib))
+		&totalBwLat=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.intPreAggregateData.generic.totalBw.latencyNs))
+		
+		&nonSuppressibleBwAb=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.intPreAggregateData.generic.nonSuppressibleBw.Ab))
+		&nonSuppressibleBwIb=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.intPreAggregateData.generic.nonSuppressibleBw.Ib))
+		&nonSuppressibleBwLat=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.intPreAggregateData.generic.nonSuppressibleBw.latencyNs))
+		
+		IF (&target==670)
+		(	
+			&Q6LpassSlpiMasterBwAb=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.intPreAggregateData.generic.Q6LpassSlpiMasterBw.Ab))
+			&Q6LpassSlpiMasterBwIb=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.intPreAggregateData.generic.Q6LpassSlpiMasterBw.Ib))
+			&Q6LpassSlpiMasterBwLat=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.intPreAggregateData.generic.Q6LpassSlpiMasterBw.latencyNs))
+		)
+		
+		IF (&target==845)
+		(	
+			&nonQ6NonLpassMasterBwAb=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.intPreAggregateData.generic.nonQ6NonLpassMasterBw.Ab))
+			&nonQ6NonLpassMasterBwIb=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.intPreAggregateData.generic.nonQ6NonLpassMasterBw.Ib))
+			&nonQ6NonLpassMasterBwLat=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.intPreAggregateData.generic.nonQ6NonLpassMasterBw.latencyNs))
+		)
+		
+		
+		&adspMasterBwAb=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.intPreAggregateData.compensated.adspMasterBw.Ab))
+		&adspMasterBwIb=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.intPreAggregateData.compensated.adspMasterBw.Ib))
+		&adspMasterBwLat=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.intPreAggregateData.compensated.adspMasterBw.latencyNs))
+		
+		&adspMasterSlpiBwAb=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.intPreAggregateData.compensated.adspMasterSlpiBw.Ab))
+		&adspMasterSlpiBwIb=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.intPreAggregateData.compensated.adspMasterSlpiBw.Ib))
+		&adspMasterSlpiBwLat=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.intPreAggregateData.compensated.adspMasterSlpiBw.latencyNs))
+		
+		&nonAdspMasterBwAb=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.intPreAggregateData.compensated.nonAdspMasterBw.Ab))
+		&nonAdspMasterBwIb=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.intPreAggregateData.compensated.nonAdspMasterBw.Ib))
+		&nonAdspMasterBwLat=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.intPreAggregateData.compensated.nonAdspMasterBw.latencyNs))
+		
+		&nonSuppressibleBwCompAb=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.intPreAggregateData.compensated.nonSuppressibleBw.Ab))
+		&nonSuppressibleBwCompIb=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.intPreAggregateData.compensated.nonSuppressibleBw.Ib))
+		&nonSuppressibleBwCompLat=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.intPreAggregateData.compensated.nonSuppressibleBw.latencyNs))
+		
+		IF (&target==670)
+		(
+			&nonQ6LpassSlpiMasterBwAb=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.intPreAggregateData.compensated.nonQ6LpassSlpiMasterBw.Ab))
+			&nonQ6LpassSlpiMasterBwIb=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.intPreAggregateData.compensated.nonQ6LpassSlpiMasterBw.Ib))
+			&nonQ6LpassSlpiMasterBwLat=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.intPreAggregateData.compensated.nonQ6LpassSlpiMasterBw.latencyNs))
+		)
+		IF (&target==845)
+		(
+			&nonQ6NonLpassMasterBwCompAb=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.intPreAggregateData.compensated.nonQ6NonLpassMasterBw.Ab))
+			&nonQ6NonLpassMasterBwCompIb=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.intPreAggregateData.compensated.nonQ6NonLpassMasterBw.Ib))
+			&nonQ6NonLpassMasterBwCompLat=FORMAT.DECIMAL(0.,VAR.VALUE(gBusMgrCtx.intPreAggregateData.compensated.nonQ6NonLpassMasterBw.latencyNs))
+		)
+		
+		PRINT %COLOR.GREEN "---------------------GENERIC------------------------------"  
+		&output  %COLOR.BLACK "Generic TotalBW               G1   AB : &totalBwAb    IB : &totalBwIb    lat : &totalBwLat"
+		&output  %COLOR.BLACK "Generic NonSuppresibleBW      G3   AB : &nonSuppressibleBwAb    IB : &nonSuppressibleBwIb    lat : &nonSuppressibleBwLat"
+		IF (&target==670)
+		(
+			&output  %COLOR.BLACK "Generic Q6LpassSlpiMasterBW   G2   AB : &Q6LpassSlpiMasterBwAb    IB : &Q6LpassSlpiMasterBwIb    lat : &Q6LpassSlpiMasterBwLat"
+		)
+		IF (&target==845)
+		(
+			&output  %COLOR.BLACK "Generic NonQ6NonLpassMasterBW G2   AB : &nonQ6NonLpassMasterBwAb    IB : &nonQ6NonLpassMasterBwIb    lat : &nonQ6NonLpassMasterBwLat"
+		)
+		PRINT %COLOR.BLACK "-----------------------------------------------------------" 
+		PRINT %COLOR.GREEN "---------------------COMPENSATED---------------------------"  
+		&output  %COLOR.BLACK "Compensated AdspMasterBW                 C1   AB : &adspMasterBwAb    IB : &adspMasterBwIb    lat : &adspMasterBwLat"
+		&output  %COLOR.BLACK "Compensated AdspMasterSlpiBW             C2   AB : &adspMasterSlpiBwAb    IB : &adspMasterSlpiBwIb    lat : &adspMasterSlpiBwLat"
+        &output  %COLOR.BLACK "Compensated NonAdspMasterBW              C3   AB : &nonAdspMasterBwAb    IB : &nonAdspMasterBwIb    lat : &nonAdspMasterBwLat"
+		&output  %COLOR.BLACK "Compensated NonSuppresibleMasterBW       C5   AB : &nonSuppressibleBwCompAb    IB : &nonSuppressibleBwCompIb    lat : &nonSuppressibleBwCompLat"
+		IF (&target==670)
+		(
+			&output  %COLOR.BLACK "Compensated NonQ6LpassSlpiMasterBW       C4   AB : &nonQ6LpassSlpiMasterBwAb    IB : &nonQ6LpassSlpiMasterBwIb    lat : &nonQ6LpassSlpiMasterBwLat"
+		)
+		IF (&target==845)
+		(
+			&output  %COLOR.BLACK "Compensated NonQ6NonLpassMasterBW        C4   AB : &nonQ6NonLpassMasterBwCompAb    IB : &nonQ6NonLpassMasterBwCompIb    lat : &nonQ6NonLpassMasterBwCompLat"
+		)
+		PRINT %COLOR.GREEN "-----------------------------------------------------------" 
+		
+		PRINT %COLOR.BLUE "Legend:"
+		PRINT %COLOR.BLACK "-------"
+		PRINT %COLOR.GREEN "Compensated:"
+		PRINT %COLOR.BLACK "    C1 -> Q6->Others except SRAM (Q6->LPASS/LPM)"
+		PRINT %COLOR.BLACK "    C2 -> Q6->SRAM "
+		PRINT %COLOR.BLACK "    C3 -> LPASS Core internal routes, LPASS->DDR"
+		PRINT %COLOR.BLACK "    C4 -> SDC, QUP (SDC->DDR, SDC->SRAM, QUP->DDR, QUP->SRAM), LPASS->DDR"
+		PRINT %COLOR.BLACK "    C5 -> All routes where Q6 is not master"
+		PRINT %COLOR.GREEN "Generic:"
+		PRINT %COLOR.BLACK "    G1 -> LPASS Core internal routes, LPASS->DDR, Q6->LPASS/LPM"
+		PRINT %COLOR.BLACK "    G2 -> SDC, QUP (SDC->DDR, SDC->SRAM, QUP->DDR, QUP->SRAM), LPASS->DDR, Q6->SRAM, Q6->LPASS/LPM"
+		PRINT %COLOR.BLACK "    G3 -> All routes where Q6 is not master"
+		
+	)
+    ELSE
+    (
+        &err "Ignoring BusMgr dump: No such symbol"
+    )
+RETURN
+
+
+;
+;   ADSPPM MIPS requests
+;
+printMIPS:
+    ENTRY   &client &reqNode &GeneralParam
+    LOCAL   &validFlag &validFlagExt &reqData &usageType
+    PRIVATE &mipsTotal &mipsPerThread
+	
+
+    &validFlag=VAR.VALUE((*((RMHandleType *)&reqNode)).validFlag)
+    &validFlagExt=VAR.VALUE((*((RMHandleType *)&reqNode)).validFlag_Ext)
+    &reqData=VAR.VALUE((*((RMHandleType *)&reqNode)).pRequestData)
+	
+    IF &validFlag==1||&validFlagExt==1
+    (
+	&clientId=FORMAT.DECIMAL(3.,V.VALUE((*((AdsppmClientType *)&client)).clientId))
+    &clientName=DATA.STRING(D:V.VALUE((*((AdsppmClientType *)&client)).clientName))
+	&usageType=VAR.VALUE((*((AdsppmQ6ClockRequestInfoType *)&reqData)).usageType)
+	)
+
+    IF &validFlag==1
+    (
+		IF (VAR.STRING((AdsppmQ6ClockRequestUsageType)(*((AdsppmQ6ClockRequestInfoType *)&reqData)).usageType)=="&GeneralParam")
+		(
+			;Adsppm_Q6ClockRequestUsageType_Mpps
+			IF (VAR.STRING((AdsppmQ6ClockRequestUsageType)(*((AdsppmQ6ClockRequestInfoType *)&reqData)).usageType)=="Adsppm_Q6ClockRequestUsageType_Mpps")
+			(
+				&mppsTotal=FORMAT.DECIMAL(5.,VAR.VALUE((*((AdsppmQ6ClockRequestInfoType *)&reqData)).AdsppmQ6ClockRequestType.mppsRequestData.mppsTotal))
+				&adspFloorClock=FORMAT.DECIMAL(5.,VAR.VALUE((*((AdsppmQ6ClockRequestInfoType *)&reqData)).AdsppmQ6ClockRequestType.mppsRequestData.adspFloorClock))
+				&output  FORMAT.STRing("&clientName",15.,' ') "CID: &clientId    MPPS total &mppsTotal    ADSP floor clock &adspFloorClock"
+			)
+			ELSE
+			(
+				&mipsTotal=FORMAT.DECIMAL(5.,VAR.VALUE((*((AdsppmQ6ClockRequestInfoType *)&reqData)).AdsppmQ6ClockRequestType.mipsRequestData.mipsTotal))
+				&mipsPerThread=FORMAT.DECIMAL(5.,VAR.VALUE((*((AdsppmQ6ClockRequestInfoType *)&reqData)).AdsppmQ6ClockRequestType.mipsRequestData.mipsPerThread))
+				&output  FORMAT.STRing("&clientName",15.,' ') "CID: &clientId    MIPS total &mipsTotal    Mips Per Thread  &mipsPerThread"
+			)
+		)
+    )
+RETURN
+
+printMIPSMgr:
+    PRIVATE &qdsp6Clk
+    IF (sYmbol.EXIST("mipsMgrCtx"))
+    (
+        ; MPPS Aggregate Data
+        PRIVATE &totalMPPS &nDominantThreads
+
+        &totalMPPS=FORMAT.Decimal(0.,VAR.VALUE(mipsMgrCtx.mppsAggregateData.classData[0].mppsTotal+mipsMgrCtx.mppsAggregateData.classData[1].mppsTotal +mipsMgrCtx.mppsAggregateData.classData[2].mppsTotal +mipsMgrCtx.mppsAggregateData.classData[3].mppsTotal ))
+        ;&nDominantThreads=FORMAT.Decimal(0.,VAR.VALUE(mipsMgrCtx.mppsAggregateData.numDominantThreads))
+        &qdsp6Clk=FORMAT.DECIMAL(0.,VAR.VALUE(mipsMgrCtx.currentAggregateData.mipsToClockData.qDSP6Clock))
+		PRINT ""
+		&output  %COLOR.BLUE "Total MPPS Aggr    MPPS : &totalMPPS    QDSP6_Clk : &qdsp6Clk"
+    )
+    ELSE
+    (
+        &err "Ignoring mipsMgr dump: no such symbol"
+    )
+RETURN
+
+printSleep:
+    IF (sYmbol.EXIST("gUSleepMgrCtx"))
+    (
+		PRIVATE &activeStateIndex &currActiveStateIndex
+		PRIVATE &currentSleepVote &maxVoterId &currVoterIndex
+		PRIVATE	&currVote
+
+		&maxVoterId=0
+		WHILE (VAR.STRING((USleepMgr_VoterIdType)&maxVoterId)!="USleepMgr_VoterId_Max")
+		(
+			&maxVoterId=&maxVoterId+1		;this includes USleepMgr_VoterId_None
+		)
+        &activeStateIndex=VAR.VALUE(gUSleepMgrCtx.activeStateIndex)
+        &currActiveStateIndex=&activeStateIndex^1
+		
+		&currentSleepVote=VAR.VALUE((gUSleepMgrCtx.currentAggrVote[&currActiveStateIndex]))
+		PRINT ""
+		&output  %COLOR.BLUE "Final Sleep Vote &currentSleepVote ("+VAR.STRING((USleepMgr_VoteType)&currentSleepVote)+")"
+		PRINT "----------------------------------------------------------------------------------------------"
+
+		&currVoterIndex=0
+		WHILE (&currVoterIndex<(&maxVoterId-1))
+        (
+			&currVote=VAR.VALUE((gUSleepMgrCtx.votes[&currVoterIndex]))
+			&currVoterIndex=&currVoterIndex+1
+			&output FORMAT.STRing(VAR.STRING((USleepMgr_VoterIdType)&currVoterIndex),30.,' ') ": "+VAR.STRING((USleepMgr_VoteType)&currVote)
+		)
+	)
+	ELSE
+    (
+        &err "Ignoring uSleep dump: no such symbol"
+    )
+RETURN
+
+printDCVSMgr:
+    IF (sYmbol.EXIST("gAdsppmDcvsManager"))
+    (
+		PRIVATE &dcvsAdsp2DdrBwVote
+		PRIVATE &abVal &ibVal &latVal
+
+        ;&dcvsAdsp2DdrBwVote=FORMAT.Decimal(0.,VAR.VALUE(gAdsppmDcvsManager.dcvsAdsp2DdrBwVote))
+		&abVal=FORMAT.DECIMAL(0.,VAR.VALUE(gAdsppmDcvsManager.dcvsAdsp2DdrBwVote.Ab))
+        &ibVal=FORMAT.DECIMAL(0.,VAR.VALUE(gAdsppmDcvsManager.dcvsAdsp2DdrBwVote.Ib))
+		&latVal=FORMAT.DECIMAL(0.,VAR.VALUE(gAdsppmDcvsManager.dcvsAdsp2DdrBwVote.latencyNs))
+        &dcvsAdspClockVote=FORMAT.Decimal(0.,VAR.VALUE(gAdsppmDcvsManager.dcvsAdspClockVote))
+
+		PRINT ""
+		&output  %COLOR.BLUE "DCVS Vote Info    Q6 Clock :: &dcvsAdspClockVote    DDR Bw:: AB : &abVal    IB : &ibVal    lat : &latVal"
+	)
+	ELSE
+    (
+        &err "Ignoring DCVSMgr dump: no such symbol"
+    )
+RETURN
+
+GetPwrDomainFromCoreId:
+		ENTRY	&coreId
+		
+		LOCAL	&numElements &index &foundId
+		LOCAL	&coreIndex &tempCoreId
+		LOCAL 	&pwrDomain
+		
+		&index=0
+		&coreIndex=0
+		&tempCoreId=0
+		&foundId=0
+		&pwrDomain="AsicPowerDomain_EnumMax"
+
+
+		;parse the config data
+		&numElements=VAR.VALUE(g_AsicConfig.cores->numElements)
+		WHILE ((&index<&numElements)&&(&foundId==0))
+		(
+			&tempCoreId=VAR.VALUE(g_AsicConfig.cores->pCores[&index].coreId)
+			IF (&coreId==&tempCoreId)
+			(
+				&coreIndex=&index
+				&foundId=1
+			)
+			&index=&index+1
+		)
+
+		IF &foundId==1
+		(
+			&pwrDomain=VAR.STRING((AsicPowerDomainType)g_AsicConfig.cores->pCores[&coreIndex].pwrDomain)
+		)
+
+		RETURN  &pwrDomain
+
+cleanup_exit:
+    AREA.CLOSE  ; close everything since we're exiting
+
+    IF ("&output"!="PRINT")
+    (
+        CLOSE #1
+    )
+
+    PRINT %COLOR.PURPLE "Exiting..."
+    ENDDO

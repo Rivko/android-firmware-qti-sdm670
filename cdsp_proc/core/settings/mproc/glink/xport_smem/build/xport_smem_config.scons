@@ -1,0 +1,68 @@
+#===============================================================================
+#
+# Xport SMEM Settings
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2017 Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Qualcomm Technologies, Inc. Confidential and Proprietary.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1.c4/settings/mproc/glink/xport_smem/build/xport_smem_config.scons#1 $
+#  $DateTime: 2018/07/30 01:21:36 $
+#  $Author: pwbldsvc $
+#  $Change: 16759227 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 02/25/17   vr      Initial version. Moved settings to core/settings
+#
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+env.VariantDir('${BUILDPATH}', '../config', duplicate=0)
+
+#-------------------------------------------------------------------------------
+#  Publish Private APIs
+#-------------------------------------------------------------------------------
+env.PublishPrivateApi('MPROC_GLINK_XPORT_SMEM_SETTINGS', [
+   "${BUILD_ROOT}/core/settings/mproc/glink/xport_smem/interface"
+] )
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+env.RequirePublicApi(['DAL', 
+                      'DEBUGTOOLS', 
+                      'KERNEL', 
+                      'MPROC', 
+                      'SERVICES', 
+                      'SYSTEMDRIVERS'])
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+env.AddBinaryLibrary(['CORE_MODEM'],
+                     '${BUILDPATH}/xport_smem_spss',
+                     ['${BUILDPATH}/%s/xport_smem_spss.c' %('${MSM_ID}')])
+
+#-------------------------------------------------------------------------------
+# Device configuration
+#-------------------------------------------------------------------------------
+if env.has_key('USES_DEVCFG'):
+  DEVCFG_IMG = ['DAL_DEVCFG_IMG']
+  DEVCFG_XML = '../config/xport_smem_devcfg.xml'
+  DEVCFG_SRC = '${BUILDPATH}/%s/xport_smem_devcfg_%s.c'
+  
+  devcfg_cfg_dict = {}
+  devcfg_cfg_dict['soc_xml'] = [DEVCFG_XML,
+                                DEVCFG_SRC % ('${MSM_ID}', env['MPROC_PROC_NAME'])]
+  env.AddDevCfgInfo(DEVCFG_IMG, devcfg_cfg_dict)

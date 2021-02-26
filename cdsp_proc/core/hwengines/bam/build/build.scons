@@ -1,0 +1,143 @@
+#===============================================================================
+#
+# Bam Libs
+#
+# GENERAL DESCRIPTION
+#    BAM Libs build script
+#
+# Copyright (c) 2011-2017 by QUALCOMM Technologies Inc.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header:  $
+#  $DateTime:  $
+#  $Author:  $
+#  $Change:  $
+#                      EDIT HISTORY FOR FILE
+#                      
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#  
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 06/01/17   SS      Enabled BAM for SDM670
+# 01/17/17   SS      Enabled BAM for SDM845
+# 01/26/16   SS      Added support for 8998
+# 01/12/15   SS      Optimize for 8996 multi PD support
+# 05/20/13   RL      Added 8926 support
+# 05/14/13   SS      Added 9x35 support
+# 01/25/13   SS      Added 8x10 support.
+# 12/06/12   RL      Updated for 8092
+# 12/04/12   SS      Added 8x26 support and devcfg support for tgtcfg. 
+# 10/30/12   SS      Made changes for B family binary compatibility
+# 09/13/11   MK      Created
+#===============================================================================
+
+import os
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Publish Private APIs
+#-------------------------------------------------------------------------------
+if env['MSM_ID'] in ['845', '670']:
+    if not env.has_key('ADSP_PROC'):
+       Return();
+
+if env['MSM_ID'] in ['845', '670']:
+   env.PublishPrivateApi('HWENGINES_BAM', [
+       "${INC_ROOT}/core/hwengines/bam/core4",
+       "${INC_ROOT}/core/hwengines/bam"
+   ])
+
+if env['MSM_ID'] in ['845', '670']:
+   env.Append(CPPDEFINES= ['HWIO_CORE5'])
+
+#-------------------------------------------------------------------------------
+# Defines
+#-------------------------------------------------------------------------------
+
+if env.has_key('MBA_CORE_SW'):
+    env.Append(CPPDEFINES = [ 'BAM_MBA' ])
+else : 
+     env.Append(CPPDEFINES = [ 'BAM_XML_PROPS' ])
+     
+#To enable debug messages uncomment the line below:for TZ image level will be MSG_ERR
+if not (env.has_key('BUILD_TOOL_CHAIN') or env.has_key('BUILD_BOOT_CHAIN')):
+    env.Append(CPPDEFINES = ['BAM_OSAL_DEBUG'])
+    env.Append(CPPDEFINES = [ 'BAM_OSAL_MSG_LEVEL=MSG_HIGH' ])
+
+if env['MSM_ID'] in ['9x25', '9x35']:
+    env.Append(CPPDEFINES = [ "BAM_PIPE_MEM_CLOCK_ID=\\\"cc_pmem_aclk\\\""  ])
+else:
+    env.Append(CPPDEFINES = [ "BAM_PIPE_MEM_CLOCK_ID=NULL"  ])
+
+# Bam config
+if env['MSM_ID'] in ['845', '670']:
+    if env.has_key('ADSP_PROC'):
+       env.Append(CPPDEFINES = ['BAM_ADSP_CONFIG'])
+   
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/hwengines/bam/"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'HAL',
+   'BAM',
+   'HWENGINES',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'DAL',   
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+   'POWER',
+   'DEBUGTOOLS',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+if env['MSM_ID'] in ['845', '670']:
+    BAM_COMMON_SOURCES =  [
+       '${BUILDPATH}/bam.c',
+       '${BUILDPATH}/bamosal.c',
+       '${BUILDPATH}/bam_debug.c',
+       '${BUILDPATH}/core4/bamcore.c',
+       '${BUILDPATH}/${MSM_ID}/bamtgtcfg.c',
+    ]
+else:
+   BAM_COMMON_SOURCES =  [
+       '${BUILDPATH}/stub/bam_stub.c',
+    ]
+    
+       
+env.AddLibrary(['APPS_IMAGE', 'CBSP_APPS_IMAGE', 'MBA_CORE_SW','TZOS_IMAGE', 'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE'],
+   '${BUILDPATH}/bam', BAM_COMMON_SOURCES)
+
+env.AddLibrary(['CORE_QDSP6_AUDIO_SW'],'${BUILDPATH}/bam_usr_pd', BAM_COMMON_SOURCES)
+
+if 'USES_RCINIT' in env:
+  RCINIT_IMG = ['MODEM_IMAGE',    'CBSP_MODEM_IMAGE',  'CORE_APPS',
+                'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'CORE_QDSP6_AUDIO_SW']
+  env.AddRCInitFunc(
+    RCINIT_IMG,
+    {
+      'sequence_group'             : 'RCINIT_GROUP_0',
+      'init_name'                  : 'bam_drv',
+      'init_function'              : 'bam_drv_init',
+      'dependencies'               : ['clk_regime']
+    })
+    
+       

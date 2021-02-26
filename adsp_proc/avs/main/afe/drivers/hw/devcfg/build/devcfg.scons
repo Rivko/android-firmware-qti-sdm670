@@ -1,0 +1,182 @@
+#===============================================================================
+#
+# AVS AU
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2009-2017 QUALCOMM Technologies, Inc.  All Rights Reserved.
+# QUALCOMM Technologies, Inc Proprietary.  Export of this technology or software is regulated
+# by the U.S. Government, Diversion contrary to U.S. law prohibited.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/avs.adsp/2.8.5/afe/drivers/hw/devcfg/build/devcfg.scons#2 $
+#  $DateTime: 2018/02/08 23:50:29 $
+#  $Author: svutukur $
+#  $Change: 15429611 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# $DateTime: 2018/02/08 23:50:29 $        sv        added devcfg changes for 660
+#===============================================================================
+Import('env')
+
+from glob import glob
+from os.path import join, basename
+
+CBSP_API = [
+   'BOOT',
+   'DAL',
+   'DEBUGTOOLS',
+   'HAL',
+   'MPROC',
+   'POWER',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',   
+]
+
+env.RequirePublicApi(CBSP_API,area='core')
+env.RequireRestrictedApi('AVS')
+env.RequireProtectedApi('AVS')
+
+
+#env.PublishPrivateApi('HWIO',[
+#   '${AVS_ROOT}/afe/drivers/hw/lpasshwio/inc',
+#   ])
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${AVS_ROOT}/afe/drivers/hw/devcfg"
+LIBNAME_HWIO = 'devcfg'
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+srcpath = env.RealPath(SRCPATH, posix=True)
+devcfg_sources = env.GlobFiles([srcpath+'/src/*.cpp', srcpath+'/src/*.c', srcpath+'/tst/*.cpp', srcpath+'/tst/*.c'], posix=True)
+# Since there is no multi-devcfg support for AUDIO and SENSOR for ADSP MPD env, can't add .c file to devcfg into user pd.
+# multi-devcfg support for user pd on ADSP is under discussion. On 8994 audio pd is not POR, used for development on target while 8996 is pre-silicon
+if 'AUDIO_IN_USERPD' in env:
+    if env['MSM_ID'] in ['8994']:
+        hwio_config = [
+            '${BUILDPATH}/config/lpasshwio_devcfg_8994.c',
+        ]
+    elif env['MSM_ID'] in ['8996']:
+        hwio_config = [
+            '${BUILDPATH}/config/lpasshwio_devcfg_8996.c',
+        ]
+    elif env['MSM_ID'] in ['8998']:
+        hwio_config = [
+            '${BUILDPATH}/config/lpasshwio_devcfg_8998.c',
+        ]
+    elif env['MSM_ID'] in ['660']:
+        hwio_config = [
+            '${BUILDPATH}/config/lpasshwio_devcfg_660.c',
+        ]
+
+    
+devcfg_sources = [source.replace(srcpath, '${BUILDPATH}') for source in devcfg_sources]
+
+env.AddLibrary(['AVS_ADSP','AVS_ADSP_USER'], '${BUILDPATH}/'+LIBNAME_HWIO, devcfg_sources)
+
+
+
+#-------------------------------------------------------------------------------
+# Device CFG data
+#-------------------------------------------------------------------------------
+LIBNAME_DEVCFG = 'devcfg_data'
+
+if 'USES_DEVCFG' in env:
+    if 'ADSPMODE' in env:
+      if 'AUDIO_IN_USERPD' in env:
+         DEVCFG_IMG = ['DAL_DEVCFG_IMG', 'DEVCFG_CORE_QDSP6_AUDIO_SW']
+      else:
+         DEVCFG_IMG = ['DAL_DEVCFG_IMG']
+    else:
+      DEVCFG_IMG = ['DAL_DEVCFG_IMG','DAL_DEVCFG_AUDIO_PD_IMG']
+    if 'USES_DEVCFG_STRICT_XML' in env:
+        # DevCfg is expecting XML-compliance for Napali onwards; USES_DEVCFG_STRICT_XML variable tells
+        # whether the new DevCfg is in this build or not.
+        env.AddDevCfgInfo(DEVCFG_IMG, 
+        {
+          '845_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_strict_xml.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_845.c'],
+          '670_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_strict_xml.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_670.c'],
+          '24_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_strict_xml.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_24.c'],
+          '855_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_strict_xml.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_855.c']
+        })
+    else:
+        env.AddDevCfgInfo(DEVCFG_IMG, 
+        {
+          '8974_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_8974.c'],
+          '8x10_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio.xml',
+                        '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_8x10.c'],
+          '8x26_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_8x26.c'],
+          '9x25_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_9x25.c'],
+          '8084_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_8084.c'],
+          '9x35_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_9x35.c'],
+          '9655_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_9x55.c'],
+          '9665_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_9x65.c'],
+          '8x62_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_8x62.c'],
+          '8962_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_8x62.c'],
+          '8092_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_8092.c'],
+          '8992_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_8992.c'],
+          '8994_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_8994.c'],
+          '8996_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_8996.c'],
+          '8952_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_8952.c'],
+          '8937_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_8937.c'],
+          '8953_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_8953.c'],
+          '439_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_8953.c'],
+          '8998_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_8998.c'],
+          '660_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_660.c'],
+          '8976_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_8976.c'],
+          '8909_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_8909.c'],
+          '8916_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_8916.c'],   
+          '845_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_845.c'],
+          '9607_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_9607.c'],
+          '9665_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_9x65.c'],
+          '670_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_670.c'],
+          '855_xml' : ['${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio.xml',
+                       '${AVS_ROOT}/afe/drivers/hw/devcfg/config/lpasshwio_devcfg_855.c']
+        })
+
+
+
+

@@ -1,0 +1,75 @@
+#define SDC_CODE_START      0x0
+#define SDC_CODE_SIZE       0x10000           // 64KB
+#define SDC_DATA_START      0xE0000
+#define SDC_DATA_SIZE       0x8000           // 32KB
+#define SDC_CODE_END        (SDC_CODE_START + SDC_CODE_SIZE)
+#define SDC_DATA_END        (SDC_DATA_START + SDC_DATA_SIZE)
+
+
+#define IMAGE_INFO_HEADER_SIZE  0x40
+#define STACK_SIZE              0xA00   //2.5K
+#define STACK_OVERFLOW_SIZE     0x20
+#define STACK_START             (SDC_DATA_END - STACK_SIZE)
+#define STACK_OVERFLOW_START    (STACK_START - STACK_OVERFLOW_SIZE)
+
+#define VECTOR_TABLE_SIZE    0x400
+
+ENTRY (__main)
+PHDRS {
+  SDC_CODE PT_LOAD;
+  SDC_DATA PT_LOAD;
+}
+
+
+SECTIONS {
+  CODE_RAM SDC_CODE_START : {
+    KEEP(*\startup.o(SDC_ENTRY))
+    *(.text*)
+    *(RexSyscalls)
+    *(.rodata.*)
+  } : SDC_CODE
+  ASSERT(SIZEOF(CODE_RAM) <= SDC_CODE_SIZE, "SDC_CODE oversized");
+
+  CODE_RAM_END SDC_CODE_END : {
+    Image$$CODE_RAM_END$$Base = .;
+   /*Marker section for end of coderam*/
+  }
+
+  IMAGE_INFO_HEADER SDC_DATA_START : {
+    Image$$IMAGE_INFO_HEADER$$Base = .;
+    /* reserved space */
+  } : SDC_DATA
+
+  DATA_RAM (ADDR(IMAGE_INFO_HEADER)+IMAGE_INFO_HEADER_SIZE) : {
+    Image$$DATA_RAM$$Base = .;
+    * (.data*)
+    * (.bss*)
+  }
+
+  VECTOR_TABLE ALIGN(VECTOR_TABLE_SIZE) : {
+    *(VECTOR_TABLE_SECTION)
+  }
+
+  STACK_OVERFLOW STACK_OVERFLOW_START : {
+    . += STACK_OVERFLOW_SIZE;
+  }
+  STACK STACK_START : {
+    Image$$STACK$$Base = .;
+    . += STACK_SIZE;
+    Image$$STACK$$ZI$$Limit = .;
+  }
+/*  DATA_RAM_HEAP ImageBase(STACK)+STACK_SIZE EMPTY 0x0
+//  {
+//  }
+*/
+  DATA_RAM_END SDC_DATA_END : {
+    Image$$DATA_RAM_END$$Base = .;
+   /*Marker section for end of dataram*/
+  }
+
+  ASSERT(SIZEOF(IMAGE_INFO_HEADER) + SIZEOF(DATA_RAM) + SIZEOF(STACK_OVERFLOW) + SIZEOF(STACK) < SDC_DATA_SIZE, "SDC_DATA oversized");
+
+  /DISCARD/ : {
+    *(.ARM.exidx*)
+  }
+}

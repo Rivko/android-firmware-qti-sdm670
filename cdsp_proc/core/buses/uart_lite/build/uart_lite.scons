@@ -1,0 +1,170 @@
+#===============================================================================
+#
+# UART Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2013-2015,2017 Qualcomm Technologies, Inc.
+#         All Rights Reserved.
+# Qualcomm Technologies, Inc. Confidential and Proprietary.
+#
+#-------------------------------------------------------------------------------
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 08/01/17   RC      Added the support for the WARLOCK
+# 09/25/13   VV      Initial revision.
+#===============================================================================
+import os.path
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Load sub scripts
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+#-------------------------------------------------------------------------------
+#  Publish protected APIs
+#-------------------------------------------------------------------------------
+
+#  There are none.
+
+#-------------------------------------------------------------------------------
+#  Figure out UART_ROOT dynamically.  Look at the usual suspects.
+#-------------------------------------------------------------------------------
+
+SRCPATH = "${BUILD_ROOT}/core/buses/uart_lite"
+
+env.Replace( UART_ROOT = SRCPATH )
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+
+#-------------------------------------------------------------------------------
+#  Publish Private APIs
+#-------------------------------------------------------------------------------
+env.PublishPrivateApi('BUSES_UART_LITE_API', [
+        '${INC_ROOT}/core/buses/uart_lite/hw',
+        '${INC_ROOT}/core/buses/uart_lite/inc',
+        '${INC_ROOT}/core/buses/uart_lite/src',
+])
+
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_APIS = [
+   'BUSES',
+   'HAL',
+   'KERNEL',
+   'DAL',
+   'SERVICES',
+   'POWER',
+   'SYSTEMDRIVERS',
+   'DEBUGTRACE',
+   'DEBUGTOOLS',
+]
+env.RequirePublicApi(CBSP_APIS)
+env.RequireRestrictedApi(CBSP_APIS)
+
+
+env.Append(CPPDEFINES = [
+   "UART_LOG_ALL",
+])
+
+UART_USER_SOURCES = [
+   '${BUILDPATH}/src/uart_user_pd.c',
+    #Uncomment for test
+#   '${BUILDPATH}/src/uart_test.c',
+]
+
+UART_SOURCES = [
+   '${BUILDPATH}/src/uart.c',
+   '${BUILDPATH}/src/uart_root_pd.c',
+   '${BUILDPATH}/src/uart_uimage_os.c',
+   '${BUILDPATH}/src/uart_log.c',
+]
+#-------------------------------------------------------------------------------
+
+IMAGES = ['CORE_SLPI_USER']
+user_uimg_libs = env.AddLibrary(IMAGES, '${BUILDPATH}/UART_USER_LITE', UART_USER_SOURCES)
+
+IMAGES = ['CORE_SLPI_ROOT', 'CORE_ADSP_ROOT', 'CORE_SLPI_ADSP_ROOT' ]
+driver_uimg_libs = env.AddLibrary(IMAGES, '${BUILDPATH}/UART_LITE', UART_SOURCES)
+
+#-------------------------------------------------------------------------------
+# UART QDSS Events. Must be enabled only if QDSS is not using UART as transport
+#-------------------------------------------------------------------------------
+
+#env.Replace(USES_UART_QDSS_EVENTS=True)
+if 'USES_ISLAND' in env:
+    env.AddIslandLibrary(['CORE_SLPI_ADSP_ROOT'], driver_uimg_libs)
+    env.AddIslandLibrary(['CORE_SLPI_USER'], user_uimg_libs)
+
+if 'USES_RCINIT' in env:
+   RCINIT_IMG = ['CORE_SLPI_USER']
+   env.AddRCInitFunc(
+    RCINIT_IMG,
+    {
+     'sequence_group'             : 'RCINIT_GROUP_0',
+     'init_name'                  : 'uart_worker_thread',
+     'init_function'              : 'uart_spawn_user_thread',
+     'dependencies'               : ['qdi_uart_init']
+
+    })
+
+   RCINIT_IMG = ['CORE_SLPI_ADSP_ROOT']
+   env.AddRCInitFunc(
+    RCINIT_IMG,
+    {
+     'sequence_group'             : 'RCINIT_GROUP_0',
+     'init_name'                  : 'qdi_uart_init',
+     'init_function'              : 'qdi_uart_init',
+
+    })
+
+
+if 0:
+   RCINIT_IMG = ['CORE_SLPI_USER']
+   env.AddRCInitFunc(
+   RCINIT_IMG,
+   {
+   'sequence_group'             : 'RCINIT_GROUP_2',
+   'init_name'                  : 'uart_test',
+   'init_function'              : 'uart_test_init',
+   'dependencies'               : ['dalsys']
+
+   })
+if 0:
+   if 'USES_UART_QDSS_EVENTS' in env:
+       env.Append(CPPDEFINES = [
+          "UART_QDSS_ENABLE",
+       ])
+
+       if 'USES_QDSS_SWE' in env:
+         env.Append(CPPDEFINES = ["UART_TRACER_SWEVT"])
+         QDSS_IMG = ['QDSS_EN_IMG']
+         events = [
+           ['UART_INIT',    'UART_INIT'],
+           ['UART_INIT_DONE',    'UART_INIT_DONE'],
+           ['UART_TRANSMIT',  'UART_TRANSMIT: tx_len = %d'],
+           ['UART_TRANSMIT_DONE',  'UART_TRANSMIT_DONE'],
+           ['UART_RECEIVE',  'UART_RECEIVE'],
+           ['UART_RECEIVE_DONE',  'UART_RECEIVE_DONE: rx_len = %d'],
+           ['UART_DEINIT',    'UART_DEINIT'],
+           ['UART_DEINIT_DONE',    'UART_DEINIT_DONE']]
+         env.AddSWEInfo(QDSS_IMG, events)
+
+       if 'QDSS_TRACER_SWE' in env:
+         env.SWEBuilder(['${BUILD_ROOT}/core/buses/uart_lite/build/${BUILDPATH}/src/UARTLiteSWEventId.h'], None)
+         env.Append(CPPPATH = ['${BUILD_ROOT}/core/buses/uart_lite/build/${BUILDPATH}/src'])
+
+      # Uncomment for test
+
+

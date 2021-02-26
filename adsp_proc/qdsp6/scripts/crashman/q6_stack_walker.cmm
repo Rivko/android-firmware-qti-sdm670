@@ -1,0 +1,151 @@
+;======================================================================
+;
+;q6_stack_walker.cmm
+;
+;written and maintained by Danny Chen
+:
+;usage: do q6_stack_walker.cmm [blast_tcb_address]
+;
+;by default, it loads registers from register window
+;
+;======================================================================
+
+entry &tcb
+
+local &fp
+local &pc
+local &lr
+local &func_name
+local &max_loop
+local &loop
+
+;Show the area for call stack
+Area.Create q6_sw 200. 1000.
+Area.Select q6_sw
+Area q6_sw
+
+
+ON ERROR JUMPTO stack_walker_end
+
+if ("&tcb")=="" ;no tcb is passed, read registers from register window
+(
+   &fp=r(FP)
+   &lr=r(LR)
+   &pc=r(PC)	
+)
+else
+(
+   if y.exist(BLASTK_thread_objs)
+   (
+	   &value=v.value(((BLASTK_thread_context*)&tcb)->ssrelr)
+   	   &pc=&value&0xFFFFFFFF
+
+	   &value=v.value(((BLASTK_thread_context*)&tcb)->r3130)
+   	   &fp=&value&0xFFFFFFFF
+   	   &lr=&value>>0x20   
+   )
+   else
+   (
+	   if y.exist(QURTK_thread_objs)
+	   (
+		   &value=v.value(((QURTK_thread_context*)&tcb)->ssrelr)
+	   	   &pc=&value&0xFFFFFFFF
+	
+		   &value=v.value(((QURTK_thread_context*)&tcb)->r3130)
+	   	   &fp=&value&0xFFFFFFFF
+	   	   &lr=&value>>0x20   
+	   	)
+	   	else
+	   	(
+	   	   print "This script only supports BLAST or QURT, can not find either BLASTK_thread_objs or QURT_thread_objs!!!"
+	   	   print " "
+	   	   enddo
+	   	)
+   )
+)
+
+mmu.tlb.scan
+
+if (&pc!=0x0)
+(
+   gosub PRINT_FUNC_NAME &pc
+)
+
+if (&lr!=0x0)
+(
+   gosub PRINT_FUNC_NAME &lr
+)
+
+if (&fp==0x0)
+(
+    print %ERROR "FP register can not be 0x0"
+    print " "
+    enddo  
+)
+
+&max_loop=0x64
+
+&loop=0x0
+
+while (&fp!=0x0)
+(
+   &lr=&fp+4
+   ON ERROR JUMPTO stack_walker_end
+   &lr=data.long(d:&lr)
+   
+   gosub PRINT_FUNC_NAME &lr
+   
+   if ("&func_name"=="blast_trampoline")
+   (
+      enddo
+   )
+
+   if ("&func_name"=="qurt_trampoline")
+   (
+      enddo
+   )
+        
+   ON ERROR JUMPTO stack_walker_end
+   &fp=data.long(d:&fp)
+   
+   &loop=&loop+1
+   if (&loop>=&max_loop)
+   (
+      print "&max_loop loops is reached, maybe an infinitely loop"
+      print " "
+      enddo
+   )
+)
+
+enddo
+
+PRINT_FUNC_NAME:
+entry &addr
+
+&func_name=Y.NAME(D:&addr)
+
+if ("&func_name"!="")
+(
+  &slash_index=1;
+  while (&slash_index!=0)
+  (
+     &slash_index=STRING.SCAN("&func_name","\",0)
+     &slash_index=&slash_index+1
+     if (&slash_index!=0)
+     (
+        &func_name=STRING.CUT("&func_name",&slash_index)
+     )
+  )   
+  print "&func_name (&addr)"
+)
+else
+(
+  ;print out the address since the function name is not available
+  print "&addr"
+)
+return
+
+enddo
+stack_walker_end:
+do &CurrentDirectory\cmm_error.cmm "q6_stack_walker.cmm"
+enddo

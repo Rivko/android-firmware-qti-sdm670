@@ -1,0 +1,80 @@
+#=============================================================================
+#
+#                                    SConstruct
+#
+# GENERAL DESCRIPTION
+#
+# EXTERNAL FUNCTIONS
+#        None.
+#
+# INITIALIZATION AND SEQUENCING REQUIREMENTS
+#        None.
+#
+#             Copyright (c) 2013  by Qualcomm Technologies, Inc.  All Rights Reserved.
+#=============================================================================
+import os
+
+AddOption('--build_dir',
+          dest='blddir',
+          default='build',
+          type='string',
+          nargs=1,
+          action='store',
+          metavar='BUILD_DIR',
+          help='Initialize Build directory')
+
+env=Environment(ENV = {'PATH' : os.environ['PATH']},
+                TRGT = 'ADSPv5MP',
+                BUILD_DIR = os.path.realpath(GetOption('blddir')),
+                USE_LLVM = False)
+
+env.Replace(Q6_RTOS_ROOT=os.environ['Q6_RTOS_ROOT'])
+env.VariantDir('${BUILD_DIR}', '.', duplicate=0)
+
+env.Tool('target_tools', toolpath=["${Q6_RTOS_ROOT}/${TRGT}/scripts"])
+env.Tool('qurt_builders', toolpath = ["${Q6_RTOS_ROOT}/scripts"])
+
+env.Replace(CCFLAGS=['-m${Q6VERSION}','-g','-O2'])
+env.Replace(CPPPATH=['.','${Q6_RTOS_ROOT}/include/qurt'])
+
+#Generate example object from c files in current directory
+qurtobj = SConscript('qurt/SConscript', exports='env')
+app1obj = SConscript('app1/SConscript', exports='env')
+app2obj = SConscript('app2/SConscript', exports='env')
+
+#Generate PBN
+env.Replace(PADDR = '0x1e000000')
+image = env.QurtImage('${BUILD_DIR}/bootimg.pbn', [qurtobj, app1obj, app2obj])
+
+env.Replace(OBJDUMPOPT = "-dClx")
+imgdump = env.ObjectDump("${BUILD_DIR}/bootimg.dump", image)
+
+if os.name == 'posix':
+    q6ss_timer_cfg = "${Q6_TOOLS_ROOT}/qc/lib/iss/qtimer.so --csr_base=0xab000000 --irq_p=3 --freq=19200000 --cnttid=1"
+    q6ss_int_cfg = "${Q6_TOOLS_ROOT}/qc/lib/iss/l2vic.so 32 0xab010000"
+    t32cfg = env.Command("${BUILD_DIR}/t32sim.cfg", 't32/t32sim.cfg', "cat $SOURCE | sed -e 's;T32_MCD.dll;${Q6_TOOLS_ROOT}/qc/lib/iss/T32_MCD.so;' >> $TARGET")
+elif os.name == 'nt':
+    q6ss_timer_cfg = "${Q6_TOOLS_ROOT}/qc/lib/iss/L2timer.dll 19200000 0xab020000 3 0xab010000"
+    q6ss_int_cfg = "${Q6_TOOLS_ROOT}/qc/lib/iss/l2vic.dll 32 0xab010000"
+    temppath = env.subst("${Q6_TOOLS_ROOT}").replace("\\", "/")
+    t32cfg = env.Command("${BUILD_DIR}/t32sim.cfg", 't32/t32sim.cfg', "cat $SOURCE | sed -e 's;T32_MCD.dll;"+temppath+"/qc/lib/iss/T32_MCD.dll;' >> $TARGET")
+
+osamcfg = env.Command("${BUILD_DIR}/osam.cfg", '', "echo ${QURT_MODEL} > $TARGET")
+q6cfg = env.Command("${BUILD_DIR}/q6ss.cfg", '', ["echo "+q6ss_timer_cfg+" > $TARGET","echo "+q6ss_int_cfg+" >> $TARGET"])
+
+#run simulator
+t32sirccfg = env.InstallAs("${BUILD_DIR}/t32sim_sirc.cfg", q6cfg)
+t32cmm = env.Command("${BUILD_DIR}/t32sim.cmm", 't32/t32sim.cmm', "cat $SOURCE | sed -e 's;HexagonV5L;${T32_SYS_CPU};' -e 's;v5l;${T32_MCD_ARCH};' >> $TARGET")
+env.Install("${BUILD_DIR}", "${QURT_MODEL}")
+t32men1=env.Install("${BUILD_DIR}", "${Q6_RTOS_ROOT}/debugger/T32/qurt_model.men")
+t32men2=env.Install("${BUILD_DIR}", "${Q6_RTOS_ROOT}/debugger/T32/qurt_model.t32")
+t32men=t32men1+t32men2
+t32bat = env.Command("${BUILD_DIR}/T32.bat", '', ["echo set PATH=%PATH%;${Q6_TOOLS_ROOT}/qc/bin; > $TARGET","echo c:/t32/t32mqdsp6.exe -c t32sim.cfg >> $TARGET"])
+env.Depends(t32bat, [t32cfg, t32sirccfg, t32cmm,t32men])
+
+env.Replace(SIM_RTOS = "--rtos " + str(osamcfg[0]))
+env.Replace(SIM_COSIM = "--cosim_file " + str(q6cfg[0]))
+env.Replace(SYMFILE = "--symfile " + str(qurtobj[0])+" --symfile " + str(app1obj[0])+" --symfile " + str(app2obj[0]))
+simout = env.Simulator("${BUILD_DIR}/stats", image)
+env.Depends(simout, [t32bat, imgdump])
+AlwaysBuild(simout)

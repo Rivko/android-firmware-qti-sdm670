@@ -1,0 +1,74 @@
+; rpm_load_dump.cmm
+; ------------------------------------------------------------------
+;
+; When to use this script 
+; -----------------------
+; This script should be used take a series of dump files (presumably from
+; rpm_dump.cmm, but maybe from a usb dump, etc.) and load them into the
+; appropriate place in the simulator.
+;
+; What this script does
+; -----------------------
+; This script simply reverses the d.save command from the dump script.
+;
+; How to use this script
+; ----------------------
+; Open a T32 simulator and run...
+;
+; do rpm_load_dump <dumpPath>
+;
+ENTRY &dumpPath
+
+; Trim trailing "\" if necessary
+IF string.char("&(dumpPath)", string.len("&(dumpPath)")-1)=='\'
+(
+  &dumpPath=string.cut("&(dumpPath)", -1)
+)
+
+; Get a fresh M3
+sys.d
+sys.cpu CortexM3
+sys.u
+
+; The current RPM registers.
+do "&(dumpPath)\rpm_registers.cmm"
+
+; All of the data regions of the RPM.
+d.load.binary "&(dumpPath)\rpm_data_ram.bin" 0x90000
+
+; All of the inter-processor communication RAM.
+d.load.binary "&(dumpPath)\rpm_msg_ram.bin"  0x60068000
+
+; All of the Cortex-M3's internal controls (the interrupt controller, etc.)
+d.load.binary "&(dumpPath)\rpm_scs.bin"      0xE000E000
+
+; Qualcomm's assorted RPM wrapper hardware (CSR/GPO/etc.)
+;d.load.binary "&(dumpPath)\rpm_periph.bin"   0x180000
+
+; All of the Cortex-M3's private peripheral space.  Superset of the SCS.
+;d.load.binary "&(dumpPath)\rpm_ppi.bin"      0xE0000000
+
+; The location where all of the RPM code is stored.  This is so late because typically
+; this region is completely RO and doesn't often change (one exception: the interrupt
+; vector table must be in code RAM to lower ISR latency).
+d.load.binary "&(dumpPath)\rpm_code_ram.bin" 0x0
+
+; The MPM hardware block.  The MPM is critical to all chip sleep tasks.
+d.load.binary "&(dumpPath)\mpm.bin" 0x4A0000
+
+; The main clock control block.  This block encapsulates the most important and
+; frequently changing pieces of the general system configuration.
+d.load.binary "&(dumpPath)\clk_ctl.bin" 0x300000
+
+; RBCPR, a block for lowering power consumption by strategically under- or
+; over-volting the silicon based on PVT conditions.
+;d.load.binary "&(dumpPath)\rbcpr.bin" 0x50000
+;d.load.binary "&(dumpPath)\rbcpr_mx.bin" 0x54000
+
+; The SPDM, which is the main sensory mechanism for implementing bus DCVS.
+;d.load.binary "&(dumpPath)\spdm.bin" 0x48000
+
+; The top level CSR's for the chip.  RPM probably can't even read most of
+; these, but there may be something relevant.
+;d.load.binary "&(dumpPath)\tcsr_regs.bin" 0x7A0000
+

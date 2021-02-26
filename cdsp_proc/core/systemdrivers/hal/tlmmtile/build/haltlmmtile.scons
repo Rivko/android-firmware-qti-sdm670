@@ -1,0 +1,107 @@
+#===============================================================================
+#           Copyright 2015 QUALCOMM Technologies Incorporated.
+#                           All Rights Reserved.
+#                         QUALCOMM Proprietary/GTDR
+#=============================================================================
+# $Header: //components/rel/core.qdsp6/2.1.c4/systemdrivers/hal/tlmmtile/build/haltlmmtile.scons#1 $
+#===============================================================================
+# HAL TLMM Tile Libs
+#-------------------------------------------------------------------------------
+Import('env')
+import os
+env = env.Clone()
+
+env.PublishPrivateApi("SYSTEMDRIVERS_HAL_TLMM_INC", [
+   "${INC_ROOT}/core/systemdrivers/hal/tlmmtile/inc",
+   "${INC_ROOT}/core/systemdrivers/hal/tlmmtile/src"
+  ])
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+
+SRCPATH = "${BUILD_ROOT}/core/systemdrivers/hal/tlmmtile"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+CBSP_API = [
+   'DAL',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Image Definitions
+#-------------------------------------------------------------------------------
+HALTLMMTILE_IMAGES = ['CORE_Q6_ROOT',
+                      'CORE_SLPI_USER',
+                      'CORE_ADSP_USER',
+                      'CORE_CDSP_USER',
+                      'CORE_SSC_ADSP_USER',
+                      'CORE_AVS_ADSP_USER']
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+env.UsesInc([
+   "${HAL_API}",
+   "${SERVICES_API}",
+   "${SYSTEMDRIVERS}",
+   "${SYSTEMDRIVERS_API}",
+   "${KERNEL_API}",
+])
+
+env.UsesInc([
+   "${HAL_LEGACY}",
+   # needs to be last also contains wrong comdef.h
+   "${KERNEL_LEGACY}",
+])
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+HALTLMMTILE_SOURCES = [
+   '${BUILDPATH}/src/HALtlmmtile.c'  
+   ]
+
+image_path = os.path.join(env['INC_ROOT'],'core','systemdrivers','hal','tlmmtile','image',env['IMAGE'],'hw',env['CHIPSET'])
+
+if os.path.exists(image_path):
+    HALTLMMTILE_PLATFORM_SOURCES = [
+       '${BUILDPATH}/image/${IMAGE}/hw/${CHIPSET}/HALtlmmtilePlatform.c',
+       ]
+else:
+    HALTLMMTILE_PLATFORM_SOURCES = [
+       '${BUILDPATH}/image/stub/HALtlmmtilePlatformStub.c',
+       ]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+env.AddLibrary(HALTLMMTILE_IMAGES, '${BUILDPATH}/HALtlmmtile', HALTLMMTILE_SOURCES)
+env.AddLibrary(HALTLMMTILE_IMAGES, '${BUILDPATH}/HALtlmmtilePlatform', HALTLMMTILE_PLATFORM_SOURCES)
+
+#---------------------------------------------------------------------------
+# Pack out target specific files not needed
+#---------------------------------------------------------------------------
+
+# Remove target specific hardware files
+ALL_HW_FILES = env.FindFiles(
+  ['*'],
+  '../image/')
+MY_HW_FILES = env.FindFiles(
+  ['*'],
+  '../image/${IMAGE}/hw/${CHIPSET}')
+PACK_HW_FILES = list(set(ALL_HW_FILES) - set(MY_HW_FILES))
+env.CleanPack(HALTLMMTILE_IMAGES, PACK_HW_FILES)
+
+
+

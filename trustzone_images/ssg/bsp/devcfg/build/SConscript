@@ -1,0 +1,410 @@
+#===============================================================================
+#
+# CoreBSP Scorpion build script
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2017 Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/ssg.tz/1.0.2/bsp/devcfg/build/SConscript#6 $
+#  $DateTime: 2019/01/02 04:05:11 $
+#  $Author: pwbldsvc $
+#  $Change: 17954207 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 12/04/2017  sm     Modify linking conditionals to allow --filter option.
+# 01/12/2017  sm     Load 'ssg' Software Component.
+# 03/04/2015  aa     Add entry point address to device config ELF
+# 03/04/2015  aa     cleanup
+# 10/31/2014  aa     Initial Version
+#===============================================================================
+import os
+import sys
+import SCons.Script
+
+Import('env')
+
+
+def SetupDevCfgBuild(env, aliases, name, should_deploy=True):
+   # init environment variables
+   if env['TZ_EXEC_MODE'] == 'aarch32':
+      proc_type = 'scorpion'
+   else:
+      proc_type = 'A53_64'
+
+   env.InitImageVars(
+      alias_list = aliases,         # aliases
+      proc=proc_type,               # proc
+      config='apps',                # config type, proc_name
+      plat='boot',
+      target=name+'_${BUILD_ID}',# target (elf, image file name)
+      build_tags = ['DAL_DEVCFG_OEM_IMG', 'DAL_DEVCFG_OEM_QSEE_IMG', 'DAL_DEVCFG_OEM_HYP_IMG'],
+      tools = ['${BUILD_ROOT}/core/bsp/build/scripts/mbn_builder.py',
+               '${BUILD_ROOT}/core/bsp/build/scripts/bin_builder.py',
+               '${BUILD_ROOT}/core/bsp/build/scripts/scl_builder.py',
+               'buildspec_builder.py',
+               '${BUILD_ROOT}/sectools/sectools_builder.py',
+      ]
+   )
+
+   if not env.CheckAlias():
+      return None
+
+   #------------------------------------------------------------------------------
+   # Setting up export paths for access to elfparserutil.py
+   #------------------------------------------------------------------------------
+   corebsp_scripts_path = env.RealPath('${BUILD_ROOT}/core/bsp/build/scripts/')
+   sys.path.append(corebsp_scripts_path)
+
+   #------------------------------------------------------------------------------
+   # Init default values this PROC/Image
+   #------------------------------------------------------------------------------
+   env.Replace(USES_DEVCFG = 'yes')
+
+   #---------------------------------------------------------------------------
+   # Load in CBSP uses and path variables
+   #---------------------------------------------------------------------------
+   env.InitBuildConfig()
+   env.Append(CFLAGS = " -Werror ")
+   env.Append(CPPDEFINES = [
+      "HYP",
+      "BUILD_BOOT_CHAIN",
+      "BUILD_BOOT_CHAIN_SPBL",
+      "BOOT_LOADER",
+      "BOOT_WATCHDOG_DISABLED",
+      "FLASH_NAND_SINGLE_THREADED",
+      "FLASH_CLIENT_BOOT",
+      "FLASH_USE_DM_PAGES",
+      "FEATURE_HS_USB_BASIC",
+      "BOOT_SBL_H=\\\"boot_comdef.h\\\"",
+      "BOOT_CUSTSBL_H=\\\"custsbl.h\\\"",
+      "BOOT_MODULE_BUILD_VERSION=" + env['BUILD_VER'],
+      "FEATURE_USES_TURBO",
+      "RUMIBUILD",
+      "DEVCFG_OEM_BASEADDR=DEVCFG_DATA_TZ_ADDR",
+   ])
+   #---------------------------------------------------------------------------
+   # Load in the tools scripts
+   #---------------------------------------------------------------------------
+   env.LoadToolScript('llvm', toolpath = ['${BUILD_SCRIPTS_ROOT}'])
+   #env.LoadToolScript('arm', toolpath = ["${BUILD_ROOT}/tools/build/scons/scripts"])
+
+   #---------------------------------------------------------------------------
+   # Load in the compiler options for the devcfg image
+   #---------------------------------------------------------------------------
+   # This ensures that there is no .bss section created in the devcfg image (int max = 65535)
+   #env.Append(CFLAGS = "--bss_threshold=65535 ")
+
+   LinkByGNU = True
+   #---------------------------------------------------------------------------
+   # Load in the compiler options for the devcfg image
+   # This ensures that there is no .sdata section created in the devcfg image
+   #---------------------------------------------------------------------------
+   if(LinkByGNU):
+      env.Append(CFLAGS = "-fno-zero-initialized-in-bss ")
+      if env ['CHIPSET'] == 'msm8996':
+         env.Append(LINKFLAGS = "-entry 0x862D4000") # add entry point as first segment address
+      elif env['TARGET_FAMILY'] == 'honeybadger':
+         env.Append(LINKFLAGS = "-entry 0x1C1E8000") # add entry point as first segment address
+         # TZBSP_TZ_DDR_BASE + TZBSP_TZ_DDR_SIZE - TZBSP_DBG_POLICY_SIZE - XBL_SEC_PIMEM_SIZE
+      elif env['TARGET_FAMILY'] == 'hoya':
+         if env ['CHIPSET'] == 'sdx24':
+           env.Append(LINKFLAGS = "-entry 0x8FFE6000") # add entry point as first segment address
+         else:
+           env.Append(LINKFLAGS = "-entry 0x1C1E8000") # add entry point as first segment address
+         # TZBSP_TZ_DDR_BASE + TZBSP_TZ_DDR_SIZE - TZBSP_DBG_POLICY_SIZE - XBL_SEC_PIMEM_SIZE
+      elif env['TARGET_FAMILY'] == 'bear':
+         env.Append(LINKFLAGS = "-entry 0x866E6000") # add entry point as first segment address
+      elif env['TARGET_FAMILY'] == 'badger':
+         env.Append(LINKFLAGS = "-entry 0x880E6000") # add entry point as first segment address
+      elif env['TARGET_FAMILY'] == 'none':
+         env.Append(LINKFLAGS = "-entry 0x862D4000") # For CHIPSTUBS chipset only
+      else:
+         raise RuntimeError, "!! Unknown Chipset ID. Devcfg entry unknown"
+
+   #---------------------------------------------------------------------------
+   # Definitions
+   #---------------------------------------------------------------------------
+   devcfg_elf_name = env.RealPath('${BUILD_ROOT}/ssg/bsp/devcfg/build/${QC_SHORT_BUILDPATH}/'+name+'.elf')
+
+   #---------------------------------------------------------------------------
+   # Clone env for HYP and TZ and load devcfg_builder with each
+   #---------------------------------------------------------------------------
+   #Setting up env for TZ
+   env_qsee                    = env.Clone()
+   env_qsee.Replace(BUILD_TAGS = ['DAL_DEVCFG_OEM_QSEE_IMG'])
+   env_qsee.Replace(IMAGE_ENV  = env_qsee)
+   env_qsee.Replace(BUILDPATH  = env.get('BUILDPATH')+'/'+env_qsee.get('BUILD_TAGS')[0])
+   env_qsee.Replace(IMAGE_CONFIG_XML = env.subst("${BUILD_ROOT}/core/bsp/build/chipset/${CHIPSET}/image_cfg_tz.xml"))
+   env_qsee.LoadToolScript('devcfg_builder', toolpath = ['${BUILD_ROOT}/core/kernel/devcfg/scripts'])
+   env_qsee.LoadToolScript('ssg_devcfg_tools', toolpath = ['${BUILD_ROOT}/ssg/bsp/build/scripts'])
+
+   #Setting up env for HYP
+   env_hyp                    = env.Clone()
+   env_hyp.Replace(BUILD_TAGS = ['DAL_DEVCFG_OEM_HYP_IMG'])
+   env_hyp.Replace(IMAGE_ENV  = env_hyp)
+   env_hyp.Replace(BUILDPATH  = env.get('BUILDPATH')+'/'+env_hyp.get('BUILD_TAGS')[0])
+   env_hyp.Replace(IMAGE_CONFIG_XML = env.subst("${BUILD_ROOT}/core/bsp/build/chipset/${CHIPSET}/image_cfg_hyp.xml"))
+   env_hyp.LoadToolScript('devcfg_builder', toolpath = ['${BUILD_ROOT}/core/kernel/devcfg/scripts'])
+   env_hyp.LoadToolScript('ssg_devcfg_tools', toolpath = ['${BUILD_ROOT}/ssg/bsp/build/scripts'])
+
+   env_list    = [env_qsee, env_hyp]
+
+   env.Replace(QSEE_OEM_ENV = env_qsee)
+   env.Replace(HYP_OEM_ENV  = env_hyp)
+
+   #---------------------------------------------------------------------------
+   # Libs/Objs
+   #---------------------------------------------------------------------------
+   devcfgimg_libs = []
+   devcfgimg_objs = []
+   devcfg_units = []
+
+   for environment in env_list:
+      core_path = environment.RealPath('${BUILD_ROOT}/core')
+      if environment.PathExists(core_path):
+         core_au_items = environment.LoadAreaSoftwareUnits('core')
+         devcfgimg_libs.extend(core_au_items['LIBS'])
+         devcfgimg_objs.extend(core_au_items['OBJS'])
+
+      ssg_path = environment.RealPath('${BUILD_ROOT}/ssg')
+      if environment.PathExists(ssg_path):
+         ssg_au_items = environment.LoadAreaSoftwareUnits('ssg')
+         devcfgimg_libs.extend(ssg_au_items['LIBS'])
+         devcfgimg_objs.extend(ssg_au_items['OBJS'])
+
+      devcfg_units = [devcfgimg_libs, devcfgimg_objs]
+
+   #------------------------------------------------------------------------------
+   # Decide which build steps to perform
+   #------------------------------------------------------------------------------
+   # Regular build steps (no filter) is build everything, once a user starts
+   # using filters we have to make decisions depending on user input.
+   #
+   # The LoadAUSoftwareUnits function will take care of filtering subsystem, units,
+   # etc.  This is to take care of what steps to enable disable from the top level
+   # script, such as building files specify in this script i.e. quartz, stubs, etc.
+
+   do_local_files = True
+   do_link = True
+   do_post_link = True
+
+   # Get user input from command line
+   filter_opt = env.get('FILTER_OPT')
+
+   # Limit build processing based on filter option
+   if filter_opt is not None:
+      do_link = False
+      do_post_link = False
+
+      if not env.FilterMatch(os.getcwd()):
+         do_local_files = False
+
+   #------------------------------------------------------------------------------
+   # Rule for compiling devcfg_main.c
+   #------------------------------------------------------------------------------
+   # filter is not define or filter is current target files only, ok to build misc files
+   if do_local_files:
+
+      #=========================================================================
+      # Begin building DEVCFG Image
+      #-------------------------------------------------------------------------
+      if(LinkByGNU):
+         env.LoadToolScript('devcfg_lcs_builder_llvm', toolpath = ['${BUILD_ROOT}/core/kernel/devcfg/scripts'])
+         target_dynamic_scl = env.DevcfgLCSBuilder('${SHORT_BUILDPATH}/'+name+'_data_dynamic.ld', None)
+      else:
+         env.LoadToolScript('devcfg_lcs_builder_arm', toolpath = ['${BUILD_ROOT}/core/bsp/build/scripts'])
+         target_dynamic_scl = env.DevcfgLCSBuilder('${SHORT_BUILDPATH}/'+name+'_data_dynamic.scl', None)
+
+      target_scl = env.SclBuilder('${SHORT_BUILDPATH}/'+name+'_${BUILD_ID}_${BUILD_VER}',
+                                  [target_dynamic_scl])
+      devcfg_units.extend(target_scl)
+
+   # the following steps can only be performed if there is no filters in effect
+   if do_link:
+      debug_symbols = []
+      libs_path = env['INSTALL_LIBPATH']
+      devcfg_elf = env.Program('${SHORT_BUILDPATH}/'+name+'_${BUILD_ID}_${BUILD_VER}',
+                               source=[devcfgimg_objs], LIBS=[devcfgimg_libs], LIBPATH=libs_path)
+      debug_symbols.append(devcfg_elf)
+      env.Depends(devcfg_elf, target_scl)
+      install_devcfg_elf = env.InstallAs(devcfg_elf_name, devcfg_elf)
+      debug_symbols.append(install_devcfg_elf)
+      devcfg_units.extend(install_devcfg_elf)
+      devcfg_map = env.SideEffect(env.subst('${SHORT_BUILDPATH}/'+name+'_${BUILD_ID}_${BUILD_VER}.map'), devcfg_elf)
+      debug_symbols.append(devcfg_map)
+      env.Clean(devcfg_elf, devcfg_map)
+      if not LinkByGNU:
+         # .sym files are generally not created, but we attempt to clean them anyway
+         env.Clean(devcfg_elf, env.subst('${SHORT_BUILDPATH}/'+name+'_${BUILD_ID}_${BUILD_VER}.sym'))
+      env.DeployInternal(debug_symbols)
+
+   if do_post_link:
+      #----------------------------------------------------------------------------
+      # Generate MBN
+      #----------------------------------------------------------------------------
+      install_unsigned_root = env.SectoolGetUnsignedInstallPath(install_base_dir =env.subst('${MBN_ROOT}'))
+      env.Replace(MBN_FILE = os.path.join(install_unsigned_root, name))
+
+      devcfg_pbn = env.InstallAs('${SHORT_BUILDPATH}/${TARGET_NAME}.pbn', devcfg_elf)
+      # Need update once support for loading device config elf is available
+      devcfg_mbn = env.MbnBuilder('${SHORT_BUILDPATH}/${TARGET_NAME}',
+                                  devcfg_pbn, IMAGE_TYPE="devcfg", MBN_TYPE="elf",
+                                  IMAGE_ID=4, FLASH_TYPE="sdcc")
+
+      devcfg_units.extend(devcfg_mbn)
+
+      #----------------------------------------------------------------------------
+      # Sectools signing
+      # Sectools V2 sign uses SOC_HW_VERSION and SOC_VERS which will default to
+      # "" <blank string> for MSM8996 and prior chipsets executing else case
+      #----------------------------------------------------------------------------
+      if (SCons.Script.ARGUMENTS.get("SOC_HW_VERSION")):
+         sectools_signed_mbn = env.SectoolBuilder(
+            target_base_dir = '${SHORT_BUILDPATH}',
+            source=devcfg_mbn,
+            sign_id="devcfg",
+            sectools_install_base_dir = '${MBN_ROOT}',
+            config = '${BUILD_ROOT}/sectools/config/integration/${SECIMAGE_CONFIG}',
+            soc_hw_version = SCons.Script.ARGUMENTS.get("SOC_HW_VERSION"),
+            soc_vers=SCons.Script.ARGUMENTS.get("SOC_VERS"),
+            install_file_name = name+".mbn")
+
+      else:
+         sectools_signed_mbn = env.SectoolBuilder(
+            target_base_dir = '${SHORT_BUILDPATH}',
+            source=devcfg_mbn,
+            sign_id="devcfg",
+            msmid = env['MSM_ID'],
+            sectools_install_base_dir = '${MBN_ROOT}',
+            install_file_name = name+".mbn")
+      devcfg_units += [sectools_signed_mbn]
+
+      if should_deploy:
+	      env.Deploy([target_scl,
+	            target_dynamic_scl,
+	            devcfg_pbn,
+	            devcfg_mbn,
+	            sectools_signed_mbn,
+	           ])
+      else:
+         env.DeployInternal([target_scl,
+               target_dynamic_scl,
+               devcfg_pbn,
+               devcfg_mbn,
+               sectools_signed_mbn,
+              ])
+
+   #=========================================================================
+   # Finish up... Please do not use the signed image it has xbl dependency, please use signed version.
+   env.BindAliasesToTargets(devcfg_units)
+   if should_deploy:
+	   env.Deploy([
+	      'SConscript'
+	      ])
+   else:
+      env.DeployInternal([
+         'SConscript'
+         ])
+   return env
+
+#------------------------------------------------------------------------------
+# Create Scons build environment for devcfg
+#------------------------------------------------------------------------------
+aliases = ['devcfg', 'all', 'deploy']
+devcfg_env = env.Clone()
+SetupDevCfgBuild(devcfg_env, aliases, 'devcfg')
+
+#------------------------------------------------------------------------------
+# Create Scons build environment for devcfg_with_test
+#
+# This is a test only devcfg which populates the "devcfg_with_test_svc" boolean
+# as true in the scons environment as well as the C preprocessor define
+# DEVCFG_WITH_TEST.
+#
+# This allows dependent scons devcfg builds to populate the devcfg image with
+# desired test data.
+#------------------------------------------------------------------------------
+aliases = ['devcfg_with_test', 'all', 'uefitzt', 'tzbsptest']
+devcfg_test_env = env.Clone()
+
+vars = Variables()
+vars.Add(BoolVariable('devcfg_with_test_svc', 'unit_tests', 1))
+vars.Update(devcfg_test_env)
+
+devcfg_test_env.Append(CPPDEFINES = ["DEVCFG_WITH_TEST"])
+
+SetupDevCfgBuild(devcfg_test_env, aliases, 'devcfg_with_test', should_deploy=False)
+
+#------------------------------------------------------------------------------
+# Create Scons build environment for devcfg_qcs605
+#------------------------------------------------------------------------------
+aliases = ['devcfg_qcs605', 'all', 'deploy']
+devcfg_qcs605_env = env.Clone()
+
+devcfg_qcs605_env.Append(CPPDEFINES = ["USES_QCS605_OVERRIDES"])
+
+SetupDevCfgBuild(devcfg_qcs605_env, aliases, 'devcfg_qcs605',should_deploy=True)
+
+#------------------------------------------------------------------------------
+# Create Scons build environment for devcfg_QCS605_noac
+#------------------------------------------------------------------------------
+aliases = ['devcfg_qcs605_noac', 'all']
+devcfg_qcs605_noac_env = env.Clone()
+
+devcfg_qcs605_noac_env.Replace(USES_NOAC = 'yes')
+devcfg_qcs605_noac_env.Append(CPPDEFINES = ["USES_QCS605_OVERRIDES"])
+
+SetupDevCfgBuild(devcfg_qcs605_noac_env, aliases, 'devcfg_QCS605_noac',should_deploy=False)
+
+#------------------------------------------------------------------------------
+# Create Scons build environment for devcfg_secdsp
+#------------------------------------------------------------------------------
+aliases = ['devcfg_secdsp', 'all', 'deploy']
+devcfg_secdsp_env = env.Clone()
+
+devcfg_secdsp_env.Append(CPPDEFINES = ["USES_SECDSP_OVERRIDES"])
+
+SetupDevCfgBuild(devcfg_secdsp_env, aliases, 'devcfg_secdsp')
+
+#------------------------------------------------------------------------------
+# Create Scons build environment for devcfg_secdsp_noac
+#------------------------------------------------------------------------------
+aliases = ['devcfg_secdsp_noac', 'all']
+devcfg_secdsp_noac_env = env.Clone()
+
+devcfg_secdsp_noac_env.Replace(USES_NOAC = 'yes')
+devcfg_secdsp_noac_env.Append(CPPDEFINES = ["USES_SECDSP_OVERRIDES"])
+
+SetupDevCfgBuild(devcfg_secdsp_noac_env, aliases, 'devcfg_secdsp_noac',should_deploy=False)
+
+#------------------------------------------------------------------------------
+# Create Scons build environment for devcfg_key
+#------------------------------------------------------------------------------
+aliases = ['devcfg_key', 'all', 'deploy']
+devcfg_key_env = env.Clone()
+
+devcfg_key_env.Replace(USES_KEY_OVERRIDES = 'yes')
+devcfg_key_env.Append(CPPDEFINES = ["USES_KEY_OVERRIDES"])
+
+SetupDevCfgBuild(devcfg_key_env, aliases, 'devcfg_key', should_deploy=False)
+
+#------------------------------------------------------------------------------
+# Create Scons build environment for devcfg_soter
+#------------------------------------------------------------------------------
+aliases = ['devcfg_soter', 'all', 'deploy']
+devcfg_soter_env = env.Clone()
+
+devcfg_soter_env.Append(CPPDEFINES = ["USES_SOTER_OVERRIDES"])
+
+SetupDevCfgBuild(devcfg_soter_env, aliases, 'devcfg_soter', should_deploy=False)

@@ -1,0 +1,71 @@
+#===============================================================================
+#                   Copyright (c) 2009-2014 QUALCOMM Incorporated
+#                             All Rights Reserved
+#                          QUALCOMM Proprietary/GTDR
+#===============================================================================
+#
+#  GENERAL DESCRIPTION
+#    HAL UART build script
+#
+#  $Header: //components/rel/core.qdsp6/2.1.c4/buses/uart/hal/build/SConscript#1 $
+#
+#===============================================================================
+
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+#  Source PATH
+#-------------------------------------------------------------------------------
+
+env.Replace(SRCPATH = "${BUILD_ROOT}/core/buses/uart/hal/src")
+
+if not env.PathExists( env['SRCPATH'] ):
+   env.Replace(SRCPATH = "${BUILD_ROOT}/drivers/uart")
+
+if not env.PathExists( env['SRCPATH'] ):
+   env.Replace(SRCPATH = "${BUILD_ROOT}/drivers/sio")
+
+env.VariantDir('${BUILDPATH}', env['SRCPATH'], duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+CBSP_APIS = [
+   'DAL',
+   'HAL',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'KERNEL',
+]
+
+env.RequirePublicApi( CBSP_APIS )
+env.RequireRestrictedApi( CBSP_APIS )
+
+#-------------------------------------------------------------------------------
+#  Sources
+#-------------------------------------------------------------------------------
+
+HAL_UART_SOURCES = [
+   '${BUILDPATH}/HALuart_bam.c',
+   '${BUILDPATH}/HALuart_dm.c',
+]
+
+#-------------------------------------------------------------------------------
+#  Images
+#-------------------------------------------------------------------------------
+
+IMAGES = []
+
+if env['MSM_ID'] in ['6615','6695']:
+   IMAGES = ['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE']
+elif env['MSM_ID'] in ['7x30','8660','8x60']:
+   IMAGES = ['MODEM_IMAGE', 'CBSP_MODEM_IMAGE', 'APPS_IMAGE', 'CBSP_APPS_IMAGE']
+else:
+   #  Do this for all targets moving forward (8960,9x15,8974,etc.).  We don't want to add
+   #  a line for each new target.
+   IMAGES = ['MODEM_IMAGE', 'CBSP_MODEM_IMAGE', 'APPS_IMAGE', 'CBSP_APPS_IMAGE', 'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'CORE_QDSP6_SW']
+
+env.AddLibrary( IMAGES,'${BUILDPATH}/HALuart',HAL_UART_SOURCES )
+

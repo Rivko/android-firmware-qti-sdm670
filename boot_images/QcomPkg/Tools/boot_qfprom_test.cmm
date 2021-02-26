@@ -1,0 +1,431 @@
+;****************************************************************************
+;**         boot_qfprom_test.cmm
+;**
+;**         This script invokes Qfprom test framework
+;**
+;** Copyright  2017 , 2018, 2019 Qualcomm Technologies, Inc. All Rights Reserved
+;**
+;****************************************************************************
+;**
+;**                        EDIT HISTORY FOR MODULE
+;**
+;**
+;** when       who     what, where, why
+;** --------   ---     ------------------------------------------------------
+;** 09/21/17   rohik    Changed the address for qfprom blow timer
+;** 07/07/15   ck       Increase boot timeout due to DDR training taking longer
+;** 04/10/15   ck       Updated for HoneyBadger qfprom test framework
+;** 03/25/14   ck       Updated to Bear qfprom test framework
+;** 10/05/12   dh       Ported to 8974
+;** 12/21/11   kpa      Move QFPROM_BLOW_TIMER value, other stats to separate 
+;**                     display option
+;** 12/15/11   kpa      Updates to display blow timer, tz racr val, disp format
+;** 10/26/11   kpa      Initial revision
+
+ 
+;****************************************************************************
+;  CMM script variables
+;****************************************************************************
+
+  local &boot_qfprom_test_start  ; Start of Qfprom Test Framework
+  local &qfprom_test_always      ; Flag to loop forever in qfprom test framework
+  local &qfprom_fuse_addr        ; qfprom row addr for single fuse blow/read
+  local &qfprom_fuse_lsb         ; lower 32 bit value of fuse row
+  local &qfprom_fuse_msb         ; Upper 32 bit value of fuse row
+  local &qfprom_addr_type        ; fuse addr type: Raw/Corrected
+  local &fuse_addr               ; temporary addr variable
+  local &fuse_value              ; temporary value variable
+  local &fuse_array_file         ; variable to hold input fuse list file name
+  local &smc_api_error_stat      ; Tz smc call status
+  local &qfprom_api_error_stat   ; qfprom driver api status
+  local &scan_delimiter          ; value separater in input file
+  local &qfprom_test_single_fuse_blow   ; select single fuse blow test case
+  local &qfprom_test_multiple_fuse_blow ; select multiple fuse blow test case
+  local &qfprom_test_read_fuse          ; select read fuse test case
+  local &qfprom_blow_timer_addr
+  local &qfprom_perm_racr_addr
+  local &qfprom_perm_racr_tz_val
+  local &run_once
+  local &blow_at_least_once
+
+  local &Choice     
+  local &status_qfprom_api &data_value
+  global &qfprom_array_base &array_length ; script variables pointing to src
+                                         ;  code qfprom array and length variables
+                                          
+  
+
+;****************************************************************************
+; Set up defaults for some variables
+;****************************************************************************
+
+;Important stop points
+&boot_qfprom_test_start="boot_qfprom_test"
+
+; Initialize script variables to src code variables
+&qfprom_fuse_addr="boot_qfprom_test_data.qfprom_fuse_addr"
+&qfprom_fuse_lsb="boot_qfprom_test_data.qfprom_fuse_data[0]"
+&qfprom_fuse_msb="boot_qfprom_test_data.qfprom_fuse_data[1]"
+&qfprom_addr_type="boot_qfprom_test_data.addr_type"
+&qfprom_api_error_stat="boot_qfprom_test_data.qfprom_service_api_status"
+&qfprom_array_base="boot_qfprom_test_data.qfprom_test_fuse_array"
+
+&smc_api_error_stat="qfprom_fastcall_status"
+&qfprom_test_always="qfprom_test_run_always"
+&array_length=0x0
+
+&qfprom_test_single_fuse_blow="test_single_fuse_blow";
+&qfprom_test_multiple_fuse_blow="test_multiple_fuse_blow";
+&qfprom_test_read_fuse="test_read_fuse";
+&scan_delimiter=","
+&qfprom_blow_timer_addr=0x0078203C
+&qfprom_perm_racr_addr=0x00706108
+&run_once=0x0
+&blow_at_least_once=0x0
+
+;****************************************************************************
+; Qfprom test framework main menu
+;****************************************************************************
+; At this point qsee elf is assumed to be loaded and system paths set.
+boot_qfprom_main:
+  gosub setup_main_window
+  gosub boot_qfprom_init
+  print
+  print   
+  print "------------------------------------------------"
+  print "|                                              |"
+  print "|               Boot Qfprom Test               |"
+  print "|     On target with secboot3.0 architecture   |"
+  print "|     Copyright (c) 2014 by QUALCOMM, Inc.     |"
+  print "|                                              |"
+  print "------------------------------------------------"
+  print
+  print
+  print "  0: Exit"
+  print "  1: Read Single Fuse"
+  print "  2: Blow Single Fuse"
+  print "  3: Blow Multiple Fuses (max "+format.decimal(2.,&array_length)+")"
+  print "  4: Print Blow Timer value and other stats"
+  print
+  print 
+  print " Please make a choice: "
+  enter &Choice
+  print
+  print
+    if "&Choice"=="0"  
+  (  
+    goto end_of_script
+  )
+  else if "&Choice"=="1"  
+  (  
+    print " Enter Fuse Row Address:"
+    enter &fuse_addr
+    v.set &qfprom_fuse_addr=&fuse_addr
+       
+    print " Enter Address Type (0: Raw,  1: Corrected): "
+    enter &addr_type
+    v.set &qfprom_addr_type=&addr_type
+    
+    ; Set src code flag to enable fuse read
+    v.set &qfprom_test_read_fuse=0x1
+    
+    ;Go to end of boot_qfprom_test()
+    g.r    
+    WAIT !run() 10.s
+    
+    ;Display read values
+    &data_value=Format.hex(8.,data.long(v.address(&qfprom_fuse_lsb)))
+    print
+    print "---------------------------------------"
+    print "* Lower  32 bit value(lsb): 0x&data_value"    
+    &data_value=Format.hex(8.,data.long(v.address(&qfprom_fuse_msb)))
+    print "* Higher 32 bit value(msb): 0x&data_value"
+    print "---------------------------------------"
+    print    
+    print
+    print
+    print " Status of Qfprom fuse Read test:"
+  )
+  else if "&Choice"=="2"  
+  (  
+    print " Enter Fuse Address in hex [eg 0x700440]:"
+    enter &fuse_addr
+    v.set &qfprom_fuse_addr=&fuse_addr
+    print " Enter Fuse Low 32 bit value in hex (lsb):"
+    enter &fuse_value
+    v.set &qfprom_fuse_lsb=&fuse_value
+    &fuse_value=0
+    print " Enter Fuse High 32 bit value in hex (msb):"
+    enter &fuse_value
+    v.set &qfprom_fuse_msb=&fuse_value
+
+    ; Set src code flag to enable fuse blow
+    v.set &qfprom_test_single_fuse_blow=0x1
+    
+    ;Go to end of boot_qfprom_test()
+    g.r
+    WAIT !run() 10.s
+
+    ; Set blow operation performed flag
+    &blow_at_least_once=0x1
+    
+    print
+    print
+    print " Status of Qfprom Single fuse blow test:"
+  )
+  else if "&Choice"=="3"  
+  (  
+    ;Parse input file and extract fuse list to be blown. 
+    gosub populate_qfprom_array
+    
+    ; Set src code flag to enable multiple fuse blow
+    v.set &qfprom_test_multiple_fuse_blow=0x1
+    
+    ;Go to end of boot_qfprom_test()
+    g.r
+    WAIT !run() 10.s
+    
+    ;Dump the fuse address
+    gosub print_fuses_blown
+
+    ; Set blow operation performed flag
+    &blow_at_least_once=0x1    
+    print
+    print
+    print " Status of Qfprom Multiple fuse blow test:"
+  )
+  else if "&Choice"=="4"  
+  (  
+    if &blow_at_least_once==0x1
+    (
+      &data_value=(data.long(AZ:&qfprom_blow_timer_addr))
+      print
+      print " --------------------------------------------------------------------"
+      print " Register QFPROM_BLOW_TIMER value : &data_value "
+      print " --------------------------------------------------------------------"
+      print " Register QFPROM_PERM_RACR value set by TZ : &qfprom_perm_racr_tz_val"
+      print " *Note: qfprom_perm_racr is reset to 0x0 for test purposes via t32 "
+      print " --------------------------------------------------------------------"
+      print
+      print
+    )
+    else
+    (
+      print " --------------------------------------------------------------------"
+      print " *Note: To get valid QFPROM_BLOW_TIMER value, Single/or multiple Fuse"
+      print "        blow operation must be performed at least ONCE "
+      print " --------------------------------------------------------------------"
+    )    
+    goto skip_status
+  )
+  else
+  (
+    ; invalid choice
+    goto skip_status
+  )
+  
+  &status_qfprom_api=data.long(v.address(&qfprom_api_error_stat))
+
+  print
+  if &status_qfprom_api==0
+  (
+    print "  Successful !! "
+  )
+  else
+  (
+    print "  Failed !"
+    print
+    print " Error status qfprom api [expected val 0]: &status_qfprom_api"
+    print " Refer to QFPROM_ERR_CODE enum for qfprom err description"
+  )
+
+skip_status:
+  print
+  print
+  print " EXIT test framework (y/n) "
+  enter &Choice
+  if "&Choice"=="y"||"&Choice"=="Y"
+  (
+    ; dont return to fuse blowing main menu
+    v.set &qfprom_test_always=0x0
+    goto end_of_script
+  )
+    
+  r.s pc &boot_qfprom_test_start
+  goto boot_qfprom_main
+
+
+;****************************************************************************
+; This Subroutine loads the required Qfprom Test symbols and then executes
+; till the beginning of qfprom test framework
+;****************************************************************************
+boot_qfprom_init:  
+  local &array_index
+  map.bo
+
+  if Register(pc)!=Address.offset(&boot_qfprom_test_start)
+  (
+    b.d
+    b.s &boot_qfprom_test_start
+    g
+    WAIT !run() 30.s
+  )
+  
+  ;read value from code. Subtract 1 as last element needs to be empty.
+  &array_length=(data.long(V.ADDRESS(qfprom_test_array_length))-1)
+  
+  if Register(pc)!=Address.offset(&boot_qfprom_test_start)
+  (
+   print " FAIL:  Qfprom Test API not reached"
+   goto end_of_script
+  )
+  ;Disable all options by default
+  v.set &qfprom_test_read_fuse=0x0
+  v.set &qfprom_test_single_fuse_blow=0x0
+  v.set &qfprom_test_multiple_fuse_blow=0x0
+  v.set &qfprom_fuse_addr=0x0
+  v.set &qfprom_fuse_lsb=0x0
+  v.set &qfprom_fuse_msb=0x0
+  &fuse_value=0x0
+
+  ;&data_value=(data.long(AZ:&qfprom_perm_racr_addr))
+  ;if &run_once==0x0
+  ;(
+  ;  ; Store racr Tz val for reference. 
+  ;  &qfprom_perm_racr_tz_val=&data_value
+  ;  &run_once=0x1
+  ;)  
+  ; To bypass TZ checks while testing set it to 0x0  
+  ;D.S (AZ:&qfprom_perm_racr_addr) %LE %LONG 0x0
+
+  ;Initialize the qfprom test array to 0.
+  &array_index=0x0
+  while &array_index<&array_length
+  (
+    v.set &qfprom_array_base[&array_index].raw_row_address=0x0
+    v.set &qfprom_array_base[&array_index].row_data_msb=0x0
+    v.set &qfprom_array_base[&array_index].row_data_lsb=0x0
+
+    &array_index=&array_index+1
+  )
+  return ;boot_qfprom_init
+
+;****************************************************************************
+; Below subroutine creates and selects main window
+; 
+;****************************************************************************
+setup_main_window:
+  winclear
+  WINPOS 0% 50% 68% 50% 0. 0. W001
+  Area.create MAIN
+  Area.view MAIN
+  Area.select MAIN
+  return ;setup_main_window
+
+;****************************************************************************
+; Below subroutine extracts array information from input file and populates
+; qfprom fuse array in code
+;****************************************************************************
+populate_qfprom_array:
+  local &index1 &index2 &array_index
+  local &row_addr &lsb_val &msb_val
+  
+  &array_index=0
+  
+  print " Enter File name containing fuse array:"
+  enter &fuse_array_file
+  
+  open #1 &fuse_array_file /read
+  read #1 %line &fuse_array_line
+ 
+  while !EOF()
+  (
+    ;skip comments. if 1st char in input line is ';' the line is
+    ; considered as comment
+    if string.char("&fuse_array_line",0)!=';'
+    ( 
+      if (&array_index>=&array_length)
+      (
+        print " ERROR: Fuse list exceeding Limit. Split the list"
+        ; Close input file
+        close #1 
+        goto end_of_script
+      )
+
+      ; example input line: <row addr>, <msb val>, <lsb val>
+      ; 0x7002D8,0x8450E1D5,0xEC307D34    
+      
+      ;find the first and second ','
+      &index1=string.scan("&fuse_array_line","&scan_delimiter",0)
+      &index2=string.scan("&fuse_array_line","&scan_delimiter",&index1+1)
+              
+      ;row addr is from start till first ','
+      &row_addr=string.mid("&fuse_array_line",0,&index1)
+        
+      ;Msb data is in between first and second ','
+      &msb_val=string.mid("&fuse_array_line",&index1+1,(&index2-&index1-1))
+      
+      ;Lsb data is second ',' onwards 
+      &lsb_val=string.mid("&fuse_array_line",&index2+1,100.)
+        
+      ;Fill in the src code array entry with values from input file row.
+      v.set &qfprom_array_base[&array_index].raw_row_address=&row_addr
+      v.set &qfprom_array_base[&array_index].row_data_msb=&msb_val
+      v.set &qfprom_array_base[&array_index].row_data_lsb=&lsb_val
+
+      &array_index=&array_index+1
+    )   
+    read #1 %line &fuse_array_line
+  )
+  ; Close input file
+  close #1
+  print " Parsed array: "
+  v.v %Hex.On &qfprom_array_base
+  
+  print
+  print " Press 'y' to Continue Blowing Fuses: "
+  enter &Choice
+  if "&Choice"!="y"&&"&Choice"!="Y"
+  (
+    ; dont return to fuse blowing. skip to main menu.
+    goto boot_qfprom_main
+  )
+  return ;populate_qfprom_array
+
+;****************************************************************************
+; This Subroutine displays address value pairs for all fuses blown.
+; 
+;****************************************************************************
+print_fuses_blown:  
+  local &array_index
+  local &row_addr &lsb_val &msb_val   
+
+  &array_index=0x0
+  
+  print
+  print "Dump of Qfprom fuse addresses: "
+  print "----------------------------------"
+  print " Address    MSB_val    LSB_val "
+  print "----------------------------------"
+  while &array_index<&array_length
+  (
+    ;get address in the src code array entry.
+    &row_addr=data.long(v.address(&qfprom_array_base[&array_index].raw_row_address))
+    if &row_addr!=0x0
+    (
+      &lsb_val=Format.hex(8.,data.long(AZ:(&row_addr)))
+      &msb_val=Format.hex(8.,data.long(AZ:(&row_addr+0x4)))
+      ; Also convert address to 32 bit hex value.
+      &row_addr=Format.hex(8.,&row_addr)
+      print " 0x&row_addr 0x&msb_val 0x&lsb_val"
+    )
+    &array_index=&array_index+1
+  )
+  print "----------------------------------"
+  print
+
+  return ; print_fuses_blown
+  
+end_of_script:
+  enddo
+ 

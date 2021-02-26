@@ -1,0 +1,792 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--========================================================================-->
+<!-- Copyright (c) 2016-2018 Qualcomm Technologies, Inc.                    -->
+<!-- All Rights Reserved.                                                   -->
+<!-- Confidential and Proprietary - Qualcomm Technologies, Inc.             -->
+<!--========================================================================-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+    <xs:include schemaLocation="camxsensorcommon.xsd"/>
+
+    <xs:complexType name="EEPROMSlaveInformation">
+        <xs:annotation>
+            <xs:documentation>EEPROM slave information</xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <!-- element for EEPROMName -->
+            <xs:element name="EEPROMName" type="xs:string">
+                <xs:annotation>
+                    <xs:documentation>Name of the EEPROM device</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+            <!-- element for slaveAddress -->
+            <xs:element name="slaveAddress" type="xs:unsignedShort">
+                <xs:annotation>
+                    <xs:documentation>8-bit or 10-bit I2C slave Write address</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+            <!-- elemet for regAddrType -->
+            <xs:element name="regAddrType" type="I2CRegAddrDataType" />
+
+            <!-- element for regDataType -->
+            <xs:element name="regDataType" type="I2CRegAddrDataType" />
+
+            <!-- element for I2CFrequencyMode -->
+            <xs:element name="i2cFrequencyMode" type="I2CFrequencyMode" default="FAST" />
+
+            <!-- element for power up sequence -->
+            <xs:element name="powerUpSequence" type="PowerSequenceInfo" />
+
+            <!-- element for power down sequence -->
+            <xs:element name="powerDownSequence" type="PowerSequenceInfo" />
+        </xs:sequence>
+        <xs:attribute name="description" type="xs:string" default="EEPROM Slave Information" />
+    </xs:complexType>
+
+    <xs:simpleType name="EndianType">
+        <xs:annotation>
+            <xs:documentation>Type of the Endianness</xs:documentation>
+            <xs:documentation>Valid values are: BIG, LITTLE</xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="BIG"/>
+            <xs:enumeration value="LITTLE"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <xs:complexType name="MemoryType">
+        <xs:annotation>
+            <xs:documentation>Specifies the availability of the specified data and type of endianness</xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="isAvailable" type="xs:boolean">
+                <xs:annotation>
+                    <xs:documentation>Specifies whether a particular OTP data available or not</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+            <!-- element for operation -->
+            <xs:element name="endianness" type="EndianType" default="BIG"/>
+        </xs:sequence>
+        <xs:attribute name="description" type="xs:string" default="Memory Type"/>
+    </xs:complexType>
+
+    <xs:complexType name="MemoryInfo">
+        <xs:annotation>
+            <xs:documentation>Specifies memory offset value and mask information</xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="offset" type="xs:unsignedShort">
+                <xs:annotation>
+                    <xs:documentation>Offset value in the OTP memory</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+            <xs:element name="mask" type="xs:unsignedInt">
+                <xs:annotation>
+                    <xs:documentation>mask value which will be applied to obtain required data bits</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+        </xs:sequence>
+    </xs:complexType>
+    <xs:simpleType name="AfLensSagType">
+        <xs:annotation>
+            <xs:documentation>Type of the Lens sag when AF infinity and macro calibration</xs:documentation>
+            <xs:documentation>Supported values are</xs:documentation>
+            <xs:documentation> DEFAULT     : Deg 90, Default, face forward </xs:documentation>
+            <xs:documentation> DEG0_OTP    : Face up, OTP/EEPROM calibrated </xs:documentation>
+            <xs:documentation> DEG0_AVG    : Face up, Average value </xs:documentation>
+            <xs:documentation> DEG180_OTP  : Face down, OTP/EEPROM calibrated </xs:documentation>
+            <xs:documentation> DEG180_AVG  : Face down, Average value </xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="DEFAULT"/>
+            <xs:enumeration value="DEG0_OTP"/>
+            <xs:enumeration value="DEG0_AVG"/>
+            <xs:enumeration value="DEG180_OTP"/>
+            <xs:enumeration value="DEG180_AVG"/>
+            <xs:enumeration value="MAX"/>
+        </xs:restriction>
+    </xs:simpleType>
+    <xs:complexType name="AFInfo">
+        <xs:annotation>
+            <xs:documentation>Specifies auto focus data information to format the OTP data</xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <!-- element for AF data availablity and endian -->
+            <xs:element name="autoFocusData" type="MemoryType"/>
+
+            <!-- element for macro information -->
+            <xs:element name="macro" type="MemoryInfo"/>
+
+            <!-- element for infinity information -->
+            <xs:element name="infinity" type="MemoryInfo"/>
+
+            <!-- element for hall information -->
+            <xs:element name="hall" type="MemoryInfo"/>
+
+            <!-- element for hall bias information -->
+            <xs:element name="hallBias" type="MemoryInfo"/>
+
+            <xs:element name="hallRegisterAddr" type="xs:unsignedInt">
+                <xs:annotation>
+                    <xs:documentation>Hall register address to update with calibrated data</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+            <!-- element for vertical macro information -->
+            <xs:element name="verticalMacro" type="MemoryInfo"/>
+
+            <!-- element for vertical infinity information -->
+            <xs:element name="verticalInfinity" type="MemoryInfo"/>
+
+            <!-- element for horizontal macro information -->
+            <xs:element name="horizontalMacro" type="MemoryInfo"/>
+
+            <!-- element for horizontal infinity -->
+            <xs:element name="horizontalInfinity" type="MemoryInfo"/>
+
+            <!-- element for macro margin value information -->
+            <xs:element name="macroMargin" type="xs:float">
+                <xs:annotation>
+                    <xs:documentation>Margin value to extend towards macro region</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+            <!-- element for infinity margin value -->
+            <xs:element name="infinityMargin" type="xs:float">
+                <xs:annotation>
+                    <xs:documentation>margin value to extend towards infinity region</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+            <!-- element for lens sag in macro calibration -->
+            <xs:element name="lensSagCalMac" type="AfLensSagType"/>
+
+            <!-- element for lens sag in infinity calibration -->
+            <xs:element name="lensSagCalInf" type="AfLensSagType"/>
+
+            <!-- element for calibrated value of gravity offset from 0 to 90 in eeprom or otp -->
+            <xs:element name="otpGravityOfs0to90" type="MemoryInfo"/>
+
+            <!-- element for calibrated value of gravity offset from 90 to 180 in eeprom or otp -->
+            <xs:element name="otpGravityOfs90to180" type="MemoryInfo"/>
+
+            <!-- element for average value of gravity offset from 0 to 90 -->
+            <xs:element name="avgGravityOfs0to90" type="xs:short">
+                <xs:annotation>
+                    <xs:documentation>average value of gravity offset from 0 to 90</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+            <!-- element for average value of gravity offset from 90 to 180 -->
+            <xs:element name="avgGravityOfs90to180" type="xs:short">
+                <xs:annotation>
+                    <xs:documentation>average value of gravity offset from 90 to 180</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:simpleType name="WBType">
+        <xs:annotation>
+            <xs:documentation>Type of the white balance data</xs:documentation>
+            <xs:documentation>Valid values are: INDIVIDUAL, RATIO</xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="INDIVIDUAL"/>
+            <xs:enumeration value="RATIO"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <xs:simpleType name="EEPROMIlluminantType">
+        <xs:annotation>
+            <xs:documentation>Type of the illuminant</xs:documentation>
+            <xs:documentation>Supported illuminants are D65, TL84, A, D50 and H</xs:documentation>
+        </xs:annotation>
+        <xs:restriction base="xs:string">
+            <xs:enumeration value="D65"/>
+            <xs:enumeration value="TL84"/>
+            <xs:enumeration value="A"/>
+            <xs:enumeration value="D50"/>
+            <xs:enumeration value="H"/>
+            <xs:enumeration value="MAX"/>
+        </xs:restriction>
+    </xs:simpleType>
+
+    <xs:complexType name="WBlightInfo">
+          <xs:annotation>
+            <xs:documentation>whitebalance information for a particular light type</xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <!-- element for light type -->
+            <xs:element name="illuminantType" type="EEPROMIlluminantType"/>
+
+            <!-- element for R value information -->
+            <xs:element name="rValue" type="MemoryInfo"/>
+
+            <!-- element for gr Value information -->
+            <xs:element name="grValue" type="MemoryInfo"/>
+
+            <!-- element for b Value information -->
+            <xs:element name="bValue" type="MemoryInfo"/>
+
+            <!-- element for gb Value information -->
+            <xs:element name="gbValue" type="MemoryInfo"/>
+
+            <!-- element for rOverG Value information -->
+            <xs:element name="rOverGValue" type="MemoryInfo"/>
+
+            <!-- element for bOverG Value information -->
+            <xs:element name="bOverGValue" type="MemoryInfo"/>
+
+            <!-- element for grOverGB Value information -->
+            <xs:element name="grOverGBValue" type="MemoryInfo"/>
+
+        </xs:sequence>
+        <xs:attribute name="description" type="xs:string" default="White balance light Information" />
+    </xs:complexType>
+
+    <xs:complexType name="WBInfo">
+        <xs:annotation>
+            <xs:documentation>Specifies white balance data information to format the OTP data</xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <!-- element for WB data availablity and endian -->
+            <xs:element name="WBData" type="MemoryType"/>
+
+            <!-- element for WBType information -->
+            <xs:element name="datatype" type="WBType"/>
+
+            <!-- element for WB light information -->
+            <xs:element name="lightInfo" type="WBlightInfo" maxOccurs="unbounded" />
+
+            <!-- element for mirror information -->
+            <xs:element name="mirror" type="MemoryInfo"/>
+
+            <!-- element for flip information -->
+            <xs:element name="flip" type="MemoryInfo"/>
+
+            <!-- element for qValue information -->
+            <xs:element name="qValue" type="xs:float">
+                <xs:annotation>
+                    <xs:documentation>Q value</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+            <!-- element for isInvertGROverGB information -->
+            <xs:element name="isInvertGROverGB" type="xs:boolean">
+                <xs:annotation>
+                    <xs:documentation>Set to TRUE if GRoverGB needs to be inverted</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="LSClightInfo">
+          <xs:annotation>
+            <xs:documentation>Lens shading information for a particular rolloff light</xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <!-- element for light type -->
+            <xs:element name="illuminantType" type="EEPROMIlluminantType"/>
+
+            <!-- element for MSB part of the R gain value information -->
+            <xs:element name="rGainMSB" type="MemoryInfo"/>
+
+            <!-- element for LSB part of the R gain value information -->
+            <xs:element name="rGainLSB" type="MemoryInfo"/>
+
+            <!-- element for MSB part of the gr gain value information -->
+            <xs:element name="grGainMSB" type="MemoryInfo"/>
+
+            <!-- element for LSB part of the gr gain value information -->
+            <xs:element name="grGainLSB" type="MemoryInfo"/>
+
+            <!-- element for MSB part of the gb gain value information -->
+            <xs:element name="gbGainMSB" type="MemoryInfo"/>
+
+            <!-- element for LSB part of the gb gain value information -->
+            <xs:element name="gbGainLSB" type="MemoryInfo"/>
+
+            <!-- element for MSB part of the b gain value information -->
+            <xs:element name="bGainMSB" type="MemoryInfo"/>
+
+            <!-- element for LSB part of the b gain value information -->
+            <xs:element name="bGainLSB" type="MemoryInfo"/>
+
+        </xs:sequence>
+        <xs:attribute name="description" type="xs:string" default="Lens shading light information" />
+    </xs:complexType>
+
+    <xs:complexType name="LSCInfo">
+        <xs:annotation>
+            <xs:documentation>Specifies LSC data information to format the OTP data</xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <!-- element for LSC data availablity and endian -->
+            <xs:element name="LSCData" type="MemoryType"/>
+
+            <!-- element for LSC light information -->
+            <xs:element name="lightInfo" type="LSClightInfo" maxOccurs="unbounded" />
+
+            <!-- element for mesh HW roll off size information -->
+            <xs:element name="meshHWRollOffSize" type="xs:unsignedShort">
+                <xs:annotation>
+                    <xs:documentation>mesh HW rolloff size</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+            <!-- element for incrimenting value for obtaing R value information -->
+            <xs:element name="rIncrement" type="xs:unsignedShort">
+                <xs:annotation>
+                    <xs:documentation>position of the next R value from the current R</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+            <!-- element for incrimenting value for obtaing GR value information -->
+            <xs:element name="grIncrement" type="xs:unsignedShort">
+                <xs:annotation>
+                    <xs:documentation>position of the next GR value from the current GR</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+            <!-- element for incrimenting value for obtaing GB value information -->
+            <xs:element name="gbIncrement" type="xs:unsignedShort">
+                <xs:annotation>
+                    <xs:documentation>position of the next GB value from the current GB</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+            <!-- element for incrimenting value for obtaing B value information -->
+            <xs:element name="bIncrement" type="xs:unsignedShort">
+                <xs:annotation>
+                    <xs:documentation>position of the next B value from the current B</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="DualCameraLensInfo">
+        <xs:annotation>
+            <xs:documentation>Specifies lens information to format the dual camera data</xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <!-- element for focal length information -->
+            <xs:element name="focalLength" type="MemoryInfo"/>
+
+            <!-- element for focal length ratio information -->
+            <xs:element name="focalLengthRatio" type="MemoryInfo"/>
+
+            <!-- element for native sensor resolution width information -->
+            <xs:element name="nativeSensorResolutionWidth" type="MemoryInfo"/>
+
+            <!-- element for native sensor resolution height information -->
+            <xs:element name="nativeSensorResolutionHeight" type="MemoryInfo"/>
+
+            <!-- element for calibration resolution width information -->
+            <xs:element name="calibrationResolutionWidth" type="MemoryInfo"/>
+
+            <!-- element for incrimenting value for obtaing B value information -->
+            <xs:element name="calibrationResolutionHeight" type="MemoryInfo"/>
+
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="DualCameraSystemInfo">
+        <xs:annotation>
+            <xs:documentation>Specifies dural camera system information to format the dual camera data</xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <!-- element for calibration format version information -->
+            <xs:element name="calibrationFormatVersion" type="MemoryInfo"/>
+
+            <!-- element for rotation matrix size information -->
+            <xs:element name="rotationMatrixSize" type="xs:unsignedInt">
+                <xs:annotation>
+                    <xs:documentation>size of the rotation matrix</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+            <!-- element for relative rotation matrix offset information -->
+            <xs:element name="relativeRotationMatrixOffset" type="MemoryInfo"/>
+
+            <!-- element for geometric matrix size information -->
+            <xs:element name="geometricMatrixSize" type="xs:unsignedInt">
+                <xs:annotation>
+                    <xs:documentation>size of the geometric matrix</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+            <!-- element for relative geometric surface parameters offset information -->
+            <xs:element name="relativeGeometricSurfaceParametersOffset" type="MemoryInfo"/>
+
+            <!-- element for relative principle point X information -->
+            <xs:element name="relativePrinciplePointX" type="MemoryInfo"/>
+
+            <!-- element for relative principle point Y information -->
+            <xs:element name="relativePrinciplePointY" type="MemoryInfo"/>
+
+            <!-- element for relative position flag information -->
+            <xs:element name="relativePositionFlag" type="MemoryInfo"/>
+
+            <!-- element for relative baseline distance information -->
+            <xs:element name="relativeBaselineDistance" type="MemoryInfo"/>
+
+            <!-- element for master sensor mirror flip setting information -->
+            <xs:element name="masterSensorMirrorFlipSetting" type="MemoryInfo"/>
+
+            <!-- element for auxilary sensor mirror flip setting information -->
+            <xs:element name="auxSensorMirrorFlipSetting" type="MemoryInfo"/>
+
+            <!-- element for module orientation flag information -->
+            <xs:element name="moduleOrientationFlag" type="MemoryInfo"/>
+
+            <!-- element for rotation flag information -->
+            <xs:element name="rotationFlag" type="MemoryInfo"/>
+
+            <!-- element for brightness ratio information -->
+            <xs:element name="brightnessRatio" type="MemoryInfo" minOccurs="0"/>
+
+            <!-- element for slave gain information -->
+            <xs:element name="referenceSlaveGain" type="MemoryInfo" minOccurs="0"/>
+
+            <!-- element for slave exposure time information -->
+            <xs:element name="referenceSlaveExpTime" type="MemoryInfo" minOccurs="0"/>
+
+            <!-- element for  master gain information -->
+            <xs:element name="referenceMasterGain" type="MemoryInfo" minOccurs="0"/>
+
+            <!-- element for master exposure time information -->
+            <xs:element name="referenceMasterExpTime" type="MemoryInfo" minOccurs="0"/>
+
+            <!-- element for master color temperature information -->
+            <xs:element name="referenceMasterColorTemp" type="MemoryInfo" minOccurs="0"/>
+
+            <!-- element for qValue -->
+            <xs:element name="qValue" type="xs:float" minOccurs="0"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="DualCameraInfo">
+        <xs:annotation>
+            <xs:documentation>Specifies dual camera data information to format the OTP data</xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <!-- element for dual camera data availablity and endian -->
+            <xs:element name="DualCameraData" type="MemoryType"/>
+
+            <!-- element for offset address of the dual camera data -->
+            <xs:element name="offset" type="xs:unsignedShort">
+                <xs:annotation>
+                    <xs:documentation>offset value to locate dual camera data</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+            <!-- element for size of the dual camera data information -->
+            <xs:element name="settingsize" type="xs:unsignedInt">
+                <xs:annotation>
+                    <xs:documentation>size of the dual camera settings</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+            <!-- element for master sensor information -->
+            <xs:element name="masterInfo" type="DualCameraLensInfo"/>
+
+            <!-- element for aux sensor information -->
+            <xs:element name="auxInfo" type="DualCameraLensInfo"/>
+
+            <!-- element for dual camera system information -->
+            <xs:element name="systemInfo" type="DualCameraSystemInfo"/>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="SPCInfo">
+        <xs:annotation>
+            <xs:documentation>Specifies shield pixel correction data information to format the OTP data</xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <!-- element for SPC data availablity and endian -->
+            <xs:element name="SPCData" type="MemoryType"/>
+
+            <!-- element for offset address of the SPC data -->
+            <xs:element name="dataOffset" type="MemoryInfo"/>
+
+            <!-- element for SPC address information -->
+            <xs:element name="SPCAddress" type="xs:unsignedShort">
+                <xs:annotation>
+                    <xs:documentation>register address value to write SPC data</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+            <!-- element for size of the SPC settings information -->
+            <xs:element name="settingsSize" type="xs:unsignedInt">
+                <xs:annotation>
+                    <xs:documentation>size of the SPC data settings</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+            <!-- element for address type information -->
+            <xs:element name="addressType" type="I2CRegAddrDataType"/>
+
+            <!-- element for data type information -->
+            <xs:element name="dataType" type="I2CRegAddrDataType"/>
+
+            <!-- element for delay to write each registry entry information -->
+            <xs:element name="delay" type="xs:unsignedShort">
+                <xs:annotation>
+                    <xs:documentation>Delay in milli seconds. Delay is 0 if not explicitly provided</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="OISInfo">
+        <xs:annotation>
+            <xs:documentation>Specifies ois calibration data information to format the OTP data</xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <!-- element for OIS data availablity and endian -->
+            <xs:element name="OISData" type="MemoryType"/>
+
+            <!-- element for offset address of the SPC data -->
+            <xs:element name="dataOffset" type="MemoryInfo"/>
+
+            <!-- element for OIS address information -->
+            <xs:element name="OISAddressArray" type="xs:unsignedInt" maxOccurs="unbounded"/>
+
+            <!-- element for size of the OIS settings information -->
+            <xs:element name="settingsSize" type="xs:unsignedInt">
+                <xs:annotation>
+                    <xs:documentation>size of the OIS data settings</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+            <!-- element for address type information -->
+            <xs:element name="addressType" type="I2CRegAddrDataType"/>
+
+            <!-- element for data type information -->
+            <xs:element name="dataType" type="I2CRegAddrDataType"/>
+
+            <!-- element for delay to write each registry entry information -->
+            <xs:element name="delay" type="xs:unsignedShort">
+                <xs:annotation>
+                    <xs:documentation>Delay in milli seconds. Delay is 0 if not explicitly provided</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="PDAFDCCInfo">
+        <xs:annotation>
+            <xs:documentation>Specifies PDAF defocus conversion coefficient data information to format the OTP data</xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <!-- element for DCC data availablity and endian -->
+            <xs:element name="DCCData" type="MemoryType"/>
+
+            <!-- element for offset address of the slope data -->
+            <xs:element name="slopeDataOffset" type="MemoryInfo"/>
+
+            <!-- element for offset data offset information -->
+            <xs:element name="offsetDataOffset" type="MemoryInfo"/>
+
+            <!-- element for knot X information -->
+            <xs:element name="knotX" type="xs:unsignedShort">
+                <xs:annotation>
+                    <xs:documentation>knot X value</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+            <!-- element for knot Y information -->
+            <xs:element name="knotY" type="xs:unsignedShort">
+                <xs:annotation>
+                    <xs:documentation>knot Y value</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+            <!-- element for offset X information -->
+            <xs:element name="offsetX" type="xs:unsignedShort">
+                <xs:annotation>
+                    <xs:documentation>offset X value</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+            <!-- element for offset Y information -->
+            <xs:element name="offsetY" type="xs:unsignedShort">
+                <xs:annotation>
+                    <xs:documentation>offset Y value</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+            <!-- element for area X information -->
+            <xs:element name="areaX" type="xs:unsignedShort">
+                <xs:annotation>
+                    <xs:documentation>area X value</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+            <!-- element for area Y information -->
+            <xs:element name="areaY" type="xs:unsignedShort">
+                <xs:annotation>
+                    <xs:documentation>area Y value</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+            <!-- element for Q value information -->
+            <xs:element name="qValue" type="xs:unsignedShort">
+                <xs:annotation>
+                    <xs:documentation>Q value</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="PDAF2DInfo">
+        <xs:annotation>
+            <xs:documentation>Specifies PDAF defocus conversion coefficient data information to format the OTP data</xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <!-- element for PDAF 2D data availablity and endian -->
+            <xs:element name="PDAF2DData" type="MemoryType"/>
+
+            <!-- element for version information -->
+            <xs:element name="version" type="MemoryInfo"/>
+
+            <!-- element for map width information -->
+            <xs:element name="mapWidth" type="MemoryInfo"/>
+
+            <!-- element for map height information -->
+            <xs:element name="mapHeight" type="MemoryInfo"/>
+
+            <!-- element for gain width information -->
+            <xs:element name="gainWidth" type="xs:unsignedShort">
+                <xs:annotation>
+                    <xs:documentation>gain width</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+            <!-- element for gain height information -->
+            <xs:element name="gainHeight" type="xs:unsignedShort">
+                <xs:annotation>
+                    <xs:documentation>gain height</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+            <!-- element for left gain map information -->
+            <xs:element name="leftGainMap" type="MemoryInfo"/>
+
+            <!-- element for right gain map information -->
+            <xs:element name="rightGainMap" type="MemoryInfo"/>
+
+            <!-- element for conversion Coefficient Count information -->
+            <xs:element name="conversionCoefficientCount" type="xs:unsignedShort">
+                <xs:annotation>
+                    <xs:documentation>count of the conversion coefficient</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+            <!-- element for conversion Coefficient information -->
+            <xs:element name="conversionCoefficient" type="MemoryInfo"/>
+
+            <!-- element for DCC Q Format -->
+            <xs:element name="DCCQFormat" type="xs:unsignedShort"/>
+
+            <!-- element for DCC map width information -->
+            <xs:element name="DCCMapWidth" type="xs:unsignedShort"/>
+
+            <!-- element for DCC map height information -->
+            <xs:element name="DCCMapHeight" type="xs:unsignedShort"/>
+
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="EEPROMDataFormatInformation">
+        <xs:annotation>
+            <xs:documentation>EEPROM data format information</xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+
+            <!-- element for auto focus information -->
+            <xs:element name="AF" type="AFInfo"/>
+
+            <!-- element for white balance information -->
+            <xs:element name="WB" type="WBInfo"/>
+
+            <!-- element for lens shading information -->
+            <xs:element name="LSC" type="LSCInfo"/>
+
+            <!-- element for dual camera information -->
+            <xs:element name="dualCamera" type="DualCameraInfo"/>
+
+            <!-- element for shield pixel information -->
+            <xs:element name="SPC" type="SPCInfo"/>
+
+            <!-- element for OIS calibration information -->
+            <xs:element name="OIS" type="OISInfo"/>
+
+            <!-- element for PDAF DCC information -->
+            <xs:element name="PDAFDCC" type="PDAFDCCInfo"/>
+
+            <!-- element for pdaf 2D information -->
+            <xs:element name="PDAF2D" type="PDAF2DInfo"/>
+
+        </xs:sequence>
+        <xs:attribute name="description" type="xs:string" default="EEPROM Data Format Information" />
+    </xs:complexType>
+
+    <xs:complexType name="CustomInformation">
+        <xs:annotation>
+            <xs:documentation>Custom Information for formating the OTP data or for any other purpose</xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <!-- custom element name -->
+            <xs:element name="name" type="xs:string">
+                <xs:annotation>
+                    <xs:documentation>Name of the custom element to identify what kind of information it is</xs:documentation>
+                    <xs:documentation>There are some fixed name for custom info:</xs:documentation>
+                    <xs:documentation>AFOffset, WBOffset, SensorVersionOffset, ModuleVersionOffset...</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+
+            <!-- custom element value -->
+            <xs:element name="value" type="xs:int" default="0">
+                <xs:annotation>
+                    <xs:documentation>value of the custom element corresponding to the custom name</xs:documentation>
+                </xs:annotation>
+            </xs:element>
+        </xs:sequence>
+    </xs:complexType>
+
+    <xs:complexType name="EEPROMDriverData">
+        <xs:annotation>
+            <xs:documentation>EEPROM driver data</xs:documentation>
+        </xs:annotation>
+        <xs:sequence>
+            <xs:element name="module_version">
+                <xs:complexType>
+                    <xs:attribute name="major_revision" type="xs:int" default="1"/>
+                    <xs:attribute name="minor_revision" type="xs:int" default="0"/>
+                    <xs:attribute name="incr_revision" type="xs:int" default="0"/>
+                </xs:complexType>
+            </xs:element>
+            <!-- element for slaveInfo -->
+            <xs:element name="slaveInfo" type="EEPROMSlaveInformation" />
+
+            <!-- element for memoryMap -->
+            <xs:element name="memoryMap" type="SettingsInfo" />
+
+            <!-- element for slaveInfo -->
+            <xs:element name="formatInfo" type="EEPROMDataFormatInformation" />
+
+            <!-- element for customInfo -->
+            <xs:element name="customInfo" type="CustomInformation" minOccurs="0" maxOccurs="50" />
+
+        </xs:sequence>
+    </xs:complexType>
+
+    <!-- EEPROM module element -->
+    <xs:element name="EEPROMDriverData" type="EEPROMDriverData" />
+</xs:schema>

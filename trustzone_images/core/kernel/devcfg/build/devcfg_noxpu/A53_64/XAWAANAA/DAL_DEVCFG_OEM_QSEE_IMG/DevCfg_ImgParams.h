@@ -1,0 +1,2 @@
+extern DEVCFG_TARGET_INFO devcfg_target_soc_info_oem_tz[];
+#define devcfg_target_soc_info devcfg_target_soc_info_oem_tz

@@ -1,0 +1,165 @@
+;****************************************************************************
+;**                            dsm.cmm
+;**
+;** This script dumps dsm pool item data onto a file upon a crash. It 
+;** generates dsm_memory_pool_dump.txt.
+;**  
+;** Usage: do dsm3.cmm
+;**         
+;** Copyright (c) 2009 by Qualcomm Technologies, Incorporated.  All Rights Reserved.
+;**
+;****************************************************************************
+;**
+;**                        EDIT HISTORY FOR MODULE
+;**
+;**  $Header: //source/qcom/qct/modem/mcs/dsm/rel/1h09/tools/dsm3.cmm#1
+;**
+;** when       who     what, where, why
+;** --------   ---     ------------------------------------------------------
+;** 05/04/09   ag      Merged from CVS.
+;**
+;** --------------------------------------------------------------------------
+
+local &pool_id
+local &dsm_item_ptr
+local &pkt_ptr
+local &dup_ptr
+local &link
+local &references
+local &used
+local &size
+local &data_ptr
+local &kind
+local &priority
+local &app_field
+local &app_ptr
+local &tracer
+local &pool_head_ptr
+local &desc
+local &desc_name
+local &header_size
+local &file0
+local &line0
+local &file_name0
+local &file1
+local &line1
+local &file_name1
+local &file2
+local &line2
+local &file_name2
+local &file3
+local &line3
+local &file_name3
+local &file4
+local &line4
+local &file_name4
+
+OPEN  #4 c:/dsm_memory_pool_dump.txt /CREATE
+CLOSE #4
+OPEN #4 c:/dsm_memory_pool_dump.txt /WRITE
+
+&header_size=v.value(((sizeof(dsm_item_type)+39)/32)*32)
+
+&pool=v.value(dsm_pool_head_ptr)
+
+while &pool!=0
+(
+  if v.value(((dsm_pool_mgmt_table_type *)&pool)->desc)!=0
+  (
+    &desc_name=Data.String(RD:&desc)
+  )
+  else
+  (
+    &desc_name="none"
+  )
+  &item_count=v.value(((dsm_pool_mgmt_table_type*)&pool)->item_count)
+  &pool_item_size=v.value(((dsm_pool_mgmt_table_type*)&pool)->pool_item_size)
+
+WRITE #4 "#POOL_ID,ADDR,PKT_PTR,DUP_PTR,LINK,REFERENCES,USED,SIZE,DATA_PTR,KIND,PRIORITY,APP_FIELD,APP_PTR,TRACER,FILE1,LINE1,FILE2,LINE2,FILE3,LINE3,FILE4,LINE4,FILE5,LINE5,DESC"
+
+&y=0
+while &y<&item_count
+(
+  &dsm_item_ptr=v.value((dsm_item_type *)(((dsm_pool_mgmt_table_type*)&pool)->item_array+((&pool_item_size+&header_size)*&y)))
+  &pkt_ptr=v.value(((dsm_item_type *)&dsm_item_ptr)->pkt_ptr)
+  &dup_ptr=v.value(((dsm_item_type *)&dsm_item_ptr)->dup_ptr)
+  &link=v.value(((dsm_item_type *)&dsm_item_ptr)->link.next_ptr)
+  &references=v.value(((dsm_item_type *)&dsm_item_ptr)->references)
+  &used=v.value(((dsm_item_type *)&dsm_item_ptr)->used)
+  &size=v.value(((dsm_item_type *)&dsm_item_ptr)->size)
+  &data_ptr=v.value(((dsm_item_type *)&dsm_item_ptr)->data_ptr)
+  &kind=v.value(((dsm_item_type *)&dsm_item_ptr)->kind)
+  &priority=v.value(((dsm_item_type *)&dsm_item_ptr)->priority)
+  &app_field=v.value(((dsm_item_type *)&dsm_item_ptr)->app_field)
+  &app_ptr=v.value(((dsm_item_type *)&dsm_item_ptr)->app_ptr)
+  &tracer=v.value(((dsm_item_type *)&dsm_item_ptr)->tracer)
+
+  &file0=v.value(((dsm_item_type *)&dsm_item_ptr)->trace[0].file)
+  if &file0!=0
+  (  
+    &file_name0=Data.String(D:&file0)
+  )
+  else
+  ( 
+    &file_name0="nofile"
+  )
+  &line0=v.value(((dsm_item_type *)&dsm_item_ptr)->trace[0].line)
+ 
+  &file1=v.value(((dsm_item_type *)&dsm_item_ptr)->trace[1].file)
+  if &file1!=0
+  (  
+    &file_name1=Data.String(D:&file1)
+  )
+  else
+  ( 
+    &file_name1="nofile"
+  )
+  &line1=v.value(((dsm_item_type *)&dsm_item_ptr)->trace[1].line)
+
+  &file2=v.value(((dsm_item_type *)&dsm_item_ptr)->trace[2].file)
+  if &file2!=0
+  (  
+    &file_name2=Data.String(D:&file2)
+  )
+  else
+  ( 
+    &file_name2="nofile"
+  )
+  &line2=v.value(((dsm_item_type *)&dsm_item_ptr)->trace[2].line)
+
+  &file3=v.value(((dsm_item_type *)&dsm_item_ptr)->trace[3].file)
+  if &file3!=0
+  (  
+    &file_name3=Data.String(D:&file3)
+  )
+  else
+  ( 
+    &file_name3="nofile"
+  )
+  &line3=v.value(((dsm_item_type *)&dsm_item_ptr)->trace[3].line)
+
+  &file4=v.value(((dsm_item_type *)&dsm_item_ptr)->trace[4].file)
+  if &file4!=0
+  (  
+    &file_name4=Data.String(D:&file4)
+  )
+  else
+  ( 
+    &file_name4="nofile"
+  )
+  &line4=v.value(((dsm_item_type *)&dsm_item_ptr)->trace[4].line)
+ 
+  WRITE #4 "&pool,&dsm_item_ptr,&pkt_ptr,&dup_ptr,&link,&references,&used,&size,&data_ptr,&kind,&priority,&app_field,&app_ptr,&tracer,&file_name0,&line0,&file_name1,&line1,&file_name2,&line2,&file_name3,&line3,&file_name4,&line4,&desc_name"
+
+  &y=&y+1
+ )
+&pool=v.value(((dsm_pool_mgmt_table_type*)&pool)->next)
+
+WRITE #4 " "
+)
+
+CLOSE #4
+
+
+
+

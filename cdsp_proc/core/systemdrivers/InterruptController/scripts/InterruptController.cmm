@@ -1,0 +1,200 @@
+;============================================================================
+;  Name:
+;    INTERRUPTCONTROLLER.CMM
+;
+;  Description:
+;    This script lets the user enter the processor platform. By doing this
+;    it lets the user route to the specific interrupt controller platform 
+;    script.
+;
+; Copyright (c) 2011 Qualcomm Technologies, Incorporated.  
+; All Rights Reserved.
+; Qualcomm Confidential and Proprietary
+;----------------------------------------------------------------------------
+;============================================================================
+;
+;                        EDIT HISTORY FOR MODULE
+;
+; when       who     what, where, why
+; -------    ---     --------------------------------------------------------
+; 10/2/2011  an      Created for querying InterruptController data.
+;============================================================================;
+
+
+
+;============================================================================
+; Set up some defaults for some variables
+;============================================================================
+GLOBAL &GICDBASE &nIdx &PlatformSet &PlatformNum
+GLOBAL &GICCBASE &L2VICBASE &Presult &nPrintRes
+
+;============================================================================
+; Get the arguments passed in.
+;============================================================================
+ENTRY
+
+&Presult=0
+AREA.RESet
+WINPOS 0. 0. 100% 100%
+AREA.Create INTRMENU
+AREA.view INTRMENU
+
+
+on error gosub
+(
+  print "An Error has Occured"
+  enddo (1==0)
+)
+
+DISPLAYMENU:
+AREA.view INTRMENU
+AREA.Select INTRMENU
+;============================================================================
+; don't proceed without user confirmation
+;============================================================================
+      
+print "      "
+print "************************************************************************"
+print " "     
+print "  T H E     I N T E R R U P T C O N T R O L L E R     S C R I P T     "
+print " "      
+print "************************************************************************"      
+
+if &Presult!=0
+(
+print " "
+  GOSUB ERRORHNDLRMAIN &PlatformNum
+print " "
+print "************************************************************************" 
+)
+else if &Presult==0
+(
+)
+&Presult=0
+print " "
+print " "
+print " "
+print "PLEASE CHOOSE FROM THE FOLLOWING OPTIONS TO SET THE INTERRUPT CONTROLLER" 
+print "PLATFORM."
+print " "
+print " "
+print "0.  Exit the InterruptController script."
+print "1.  SDM845 ADSP"
+print "2.  SDM845 CDSP"
+print "3.  SDM845 SLPI"
+print "4.  SDM845 MPSS"
+print "5.  SDM670 LPASS"
+print " "
+print "************************************************************************"    
+print
+print
+print
+print
+&t32_cmm_stopped=1
+enter &Platform
+&t32_cmm_stopped=0
+print
+print
+&PlatformNum=&Platform.
+if &PlatformNum>5.
+(
+  &Presult=1
+  &PlatformSet=0
+  &PlatformNum=0
+  GOTO DISPLAYMENU
+)
+if (&PlatformNum==0)
+(
+  AREA.CLEAR INTRMENU
+  GOTO INTCTLEND
+  &Presult=0
+  &nPrintRes=0
+  &PlatformSet=0
+)
+; SDM845 ADSP
+if &PlatformNum==1.
+(
+  &Presult=1
+  &PlatformSet=1
+  AREA.CLEAR INTRMENU
+  &L2VICBASE=0x17390000
+  &PlatformSet=1
+  do InterruptControllerL2VIC.cmm
+)
+; SDM845 CDSP
+if &PlatformNum==2.
+(
+  &Presult=1
+  &PlatformSet=1
+  AREA.CLEAR INTRMENU
+  &L2VICBASE=0x08390000
+  &PlatformSet=1
+  do InterruptControllerL2VIC.cmm
+)
+; SDM845 SLPI
+if &PlatformNum==3.
+(
+  &Presult=1
+  &PlatformSet=1
+  AREA.CLEAR INTRMENU
+  &L2VICBASE=0x05890000
+  &PlatformSet=1
+  do InterruptControllerL2VIC.cmm
+)
+; SDM845 MPSS
+if &PlatformNum==4.
+(
+  &Presult=1
+  &PlatformSet=1
+  AREA.CLEAR INTRMENU
+  &L2VICBASE=0x04110000
+  &PlatformSet=1
+  do InterruptControllerL2VIC.cmm
+)
+; SDM670 LPASS
+if &PlatformNum==5.
+(
+  &Presult=1
+  &PlatformSet=1
+  AREA.CLEAR INTRMENU
+  &L2VICBASE=0x62490000
+  &PlatformSet=1
+  &MaxIRQ=274
+  do InterruptControllerL2VIC.cmm
+)
+INTCTLEND:
+AREA.CLEAR INTRMENU
+AREA.RESET
+WINCLEAR
+term.close 
+enddo (0==0)
+
+ERRORHNDLRMAIN: 
+  ENTRY &MenuEntry
+  if &MenuEntry==0
+  (
+  print "  !! DATA ENTRY ERROR !!"
+  print "  INVALID PLATFORM CONFIGURATION ENTERED"
+  )
+  if &MenuEntry==1.
+  (
+   print " You chose the SDM845 L2VIC for ADSP."
+  )
+  if &MenuEntry==2.
+  (
+   print " You chose the SDM845 L2VIC for CDSP."
+  )
+  if &MenuEntry==3.
+  (
+   print " You chose the SDM845 L2VIC for SLPI."
+  )
+  if &MenuEntry==4.
+  (
+   print " You chose the SDM845 L2VIC for MPSS."
+  )
+  if &MenuEntry==5.
+  (
+   print " You chose the SDM670 L2VIC for LPASS."
+  )
+  
+RETURN

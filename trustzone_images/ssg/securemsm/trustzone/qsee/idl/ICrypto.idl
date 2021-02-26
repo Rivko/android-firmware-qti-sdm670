@@ -1,0 +1,77 @@
+/** @file  ICrypto.idl */
+
+/* Copyright (c) 2015-2017 Qualcomm Technologies, Inc.  All Rights Reserved.
+   Qualcomm Technologies Proprietary and Confidential. */
+
+
+
+interface ICrypto { /** @cond */
+  const int32 CMAC_ALGO_AES_128 = 1;
+  const int32 CMAC_ALGO_AES_256 = 2;
+  const int32 CMAC_ALGO_INVALID = 99; /** @endcond */
+
+/**
+ * @addtogroup crypto
+ * @{
+*/
+
+/** Create a cipher MAC per @xhyperref{FIPS198,FIPS PUB 198-1} using
+    the specified hash algorithm.
+  
+     @param[in]  alg    128-bit or 256-bit AES algorithm.
+     @param[in]  msg    Message to be authenticated.
+     @param[in]  key    Input key to CMAC algorithm.
+     @param[out] digest CMAC digest.
+  
+     @return
+     Object_OK if successful. 
+*/
+  method cmac(in int32 alg, in buffer msg, in buffer key, out buffer digest);
+  
+/** KDF key derivation algorithm.
+
+    @param[in] key           Key derivation key.
+    @param[in] label         Key derivation label.
+    @param[in] context       Key derivation context.
+    @param[out] output       Derived key.
+
+    @detdesc
+    The software is a three-level stack as follows:
+    -# AES (lowest level)  
+    -# CMAC algorithm from @xhyperref{NIST80038B, SP 800-38B} 
+    -# Counter-based algorithm from @xhyperref{NIST800108, SP 800-108} (named KDF in the implementation)
+    @par
+    The inputs are a key derivation key, a label, and a context. 
+    The output is the derived key.
+    All sensitive data is zeroized before return.
+  
+     @return
+     Object_OK if successful.
+*/
+  method kdf(in buffer key, in buffer label, in buffer context, out buffer output);
+
+ /** KDF binding key derivation algorithm.
+    Internally unique key-generation process derived by binding user data with SHK. 
+
+ 
+    @param[in] context       Key derivation context.
+    @param[out] output       Derived key.
+
+    @detdesc
+    The software is a three-level stack as follows:
+    -# AES (lowest level)  
+    -# CMAC algorithm from @xhyperref{NIST80038B, SP 800-38B} 
+    -# Counter-based algorithm from @xhyperref{NIST800108, SP 800-108} (named KDF in the implementation)
+    @par
+    The input is a key derivation context. 
+    The output is the derived key.
+    All sensitive data is zeroized before return.
+    
+  
+     @return
+     Object_OK if successful.
+*/ 
+  method device_kdf(in buffer context, out buffer output);
+
+/** @} */ /* end_addtogroup crypto */
+};

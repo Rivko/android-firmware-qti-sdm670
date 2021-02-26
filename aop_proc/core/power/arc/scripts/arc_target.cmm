@@ -1,0 +1,461 @@
+;***************************************************************************
+; arc_target.cmm
+;
+; This file contains target specific definitions used by ARC dump script.
+;
+; DEPENDENCY:
+; Typically, there is a dependency on where this target file resides since
+; it is invoked from common ARC script. Currently, it is in same directory
+; but if that changes, the invoke call in common ARC script will need an
+; update.
+;
+; Copyright 2017 Qualcomm Technologies Incorporated
+;***************************************************************************
+
+entry %line &tgt_args
+
+GLOBAL &access ; External Globals defined by callers
+
+; Globals for ARC instantiation config - initialize by each target function
+; based on given target
+GLOBAL &arc_drv_count &arc_rm_count &arc_seq_instr_size
+
+;fields for various attributes for DRV
+GLOBAL &arc_drv_id_f           ; SoC wide DRV id
+GLOBAL &arc_drv_cc_f           ; Clients sharing the same DRV ID (cc - Client Count)
+GLOBAL &arc_drv_props_count    ; Indicates total number of fields for DRV props
+
+LOCAL &ret_val
+
+gosub arc_target_dispatch &tgt_args
+entry &ret_val
+
+enddo &ret_val
+
+;-------------------------------------------------------------------------------
+; arc_target_dispatch
+; 
+; This is the central dispatch function for that invokes appropriate functions
+; to setup target specific configuration.
+;-------------------------------------------------------------------------------
+arc_target_dispatch:
+    entry &tgt_args
+
+    LOCAL &soc_id &err_code
+
+    &err_code=0
+
+    ; We construct target function to be dispatch at runtime so it is possible
+    ; it may create invalid/unsupported function, causing exception. Catch it
+    ; and set the error code.
+    ON ERROR gosub
+    (
+        &err_code=1
+        return
+    )
+
+    &soc_id=string.scanandextract(string.lwr(&tgt_args), "soc=", "")
+    gosub arc_target_&(soc_id)
+
+    ; if we add any logic here, check the err_code value before continuing
+    return &err_code
+
+
+;******************************************************************************
+;                           TARGET SPECIFIC FUNCTIONS
+;
+;                   Please keep latest/active targets on top.
+;******************************************************************************
+
+;-------------------------------------------------------------------------------
+; arc_target_sdm670
+; 
+; Sets up various variables/register macros for SDM670 target 
+;-------------------------------------------------------------------------------
+arc_target_sdm670:
+    &offset=0x0
+    &access_view="ezaxi:"
+
+    ;During Cx_collapse cnoc would also turn OFF. Use AOP addresses to dump ARC
+    IF ("&access"=="aop")
+    (
+      &offset=0xB000000
+      &access_view="a:"
+    )
+
+    y.create.l ARC_EN &(access_view)0x0B7ED004-&offset
+    y.create.macro ARC_ENABLE(val) ((val)&0x1)
+
+    y.create.l DRVd_RMm_VOTE &(access_view)0x0B600000-&offset
+    y.create.macro DRVd_RMm_VOTE_OL(val) ((val)&0xF)
+
+    y.create.l ARC_RMm_CTRL &(access_view)0x0B7E0000-&offset
+    y.create.macro ARC_RMm_CTRL_EN(val) ((val)&0x1)
+
+    ; RM operational levels
+    y.create.l RMm_OPERATIONAL_LEVEL &(access_view)0xB7E00C0-&offset
+    y.create.macro RMm_OPERATIONAL_LEVEL_CURRENT_OL(val)     (((val)>>12.)&0xF)
+    y.create.macro RMm_OPERATIONAL_LEVEL_SOLVED_OL(val)      (((val)>>16.)&0xF)
+    y.create.macro RMm_OPERATIONAL_LEVEL_AGGREGATED_OL(val)  (((val)>>20.)&0xF)
+    y.create.macro RMm_OPERATIONAL_LEVEL_SEQUENCE_OL(val)    (((val)>>24.)&0xF)
+    y.create.macro RMm_OPERATIONAL_LEVEL_DESTINATION_OL(val) (((val)>>28.)&0xF)
+
+    ; Sequencer status register
+    y.create.l RMm_SEQ_STS_CSR &(access_view)0xB7E4500-&offset
+    y.create.macro RMmm_SEQ_STS_CSR(mm) (RMm_SEQ_STS_CSR+0x40*(mm))
+    y.create.macro RMm_SEQ_STS_CSR_PC(val)   ((val)&0xFFF)
+    y.create.macro RMm_SEQ_STS_CSR_BUSY(val) (((val)>>31.)&0x1)
+
+    ; Sequncer memory
+    y.create.l ARC_SEQ_MEM &(access_view)0xB7EF000-&offset
+    y.create.macro ARC_SEQ_MEM_i(idx)  (ARC_SEQ_MEM+(&idx))
+
+    ; DDRAUX Sequencer registers
+    y.create.l DDRAUX_SEQ_STS &(access_view)0xBC00234-&offset
+    y.create.macro DDRAUX_SEQ_STSi(idx) (DDRAUX_SEQ_STAT+0x4*(&idx))
+    y.create.macro DDRAUX_SEQ_STSi_BUSY(val) (((val)>>9.)&0x1)
+    y.create.macro DDRAUX_SEQ_STSi_PC(val) ((val)&0x1FF)
+
+    y.create.l DDRAUX_SEQ_MEM &(access_view)0xBC00418-&offset
+    y.create.macro DDRAUX_SEQ_MEMi(idx) (DDRAUX_SEQ_MEM+(&idx))
+
+    y.create.done
+
+    &arc_drv_count=30.            ; keep . at the end to force as decimal value
+    &arc_rm_count=9.
+    &arc_seq_instr_size=2.
+
+    ;fields for various attributes for DRV
+    &arc_drv_id_f=0.           ; SoC wide DRV id
+    &arc_drv_cc_f=1.           ; Clients sharing the same DRV (Client Count)
+    &arc_drv_props_count=2.    ; Indicates total number of fields for DRV props
+
+    V.NEWGLOBAL int[&arc_drv_count] \arc_req_drvs
+    V.NEWGLOBAL int[&arc_rm_count] \arc_req_rms
+    V.NEWGLOBAL char[&arc_rm_count][16] \arc_rm_map
+    V.NEWGLOBAL char[&arc_drv_count][16] \arc_drv_map
+    V.NEWGLOBAL int[&arc_drv_count][&arc_drv_props_count] \arc_drv_props
+
+    &iter=0
+    WHILE (&iter<&arc_drv_count)
+    (
+        v.a \arc_req_drvs[&iter]=-1
+        &iter=&iter+1
+    )
+
+    &iter=0
+    WHILE (&iter<&arc_rm_count)
+    (
+        v.a \arc_req_rms[&iter]=-1
+        &iter=&iter+1
+    )
+
+    v.a \arc_rm_map[0]="cx"
+    v.a \arc_rm_map[1]="mx"
+    v.a \arc_rm_map[2]="ebi"
+    v.a \arc_rm_map[3]="lcx"
+    v.a \arc_rm_map[4]="lmx"
+    v.a \arc_rm_map[5]="gfx"
+    v.a \arc_rm_map[6]="mss"
+    v.a \arc_rm_map[7]="ddrss"
+    v.a \arc_rm_map[8]="xo"
+
+    v.a \arc_drv_map[0]="tz"        
+    v.a \arc_drv_map[1]="hyp"
+    v.a \arc_drv_map[2]="hlos"
+    v.a \arc_drv_map[3]="sec_proc"
+    v.a \arc_drv_map[4]="lpss"
+    v.a \arc_drv_map[5]="ssc"
+    v.a \arc_drv_map[6]="aop"
+    v.a \arc_drv_map[7]="debug"
+    v.a \arc_drv_map[8]="gpu"
+    v.a \arc_drv_map[9]="display"
+    v.a \arc_drv_map[10]="cdsp"
+    v.a \arc_drv_map[11]="mss"
+    v.a \arc_drv_map[12]="mss_hw"
+    v.a \arc_drv_map[13]="cprf"
+    v.a \arc_drv_map[14]="bcm_cd0"
+    v.a \arc_drv_map[15]="bcm_cd1"
+    v.a \arc_drv_map[16]="bcm_cd2"
+    v.a \arc_drv_map[17]="bcm_cd3"
+    v.a \arc_drv_map[18]="bcm_cd4"
+    v.a \arc_drv_map[19]="bcm_cd5"
+    v.a \arc_drv_map[20]="bcm_cd6"
+    v.a \arc_drv_map[21]="bcm_cd7"
+    v.a \arc_drv_map[22]="bcm_cd8"
+    v.a \arc_drv_map[23]="bcm_cd9"
+    v.a \arc_drv_map[24]="bcm_cd10"
+    v.a \arc_drv_map[25]="bcm_cd11"
+    v.a \arc_drv_map[26]="bcm_cd12"
+    v.a \arc_drv_map[27]="bcm_cd13"
+    v.a \arc_drv_map[28]="bcm_cd14"
+    v.a \arc_drv_map[29]="bcm_cd15"
+
+    ; Initializing ARC DRV properties - Napali has simpler contiguous DRV
+    ; mapping with each DRV ID used by only one client.
+    &iter=0
+    WHILE (&iter<&arc_drv_count)
+    (
+        v.a \arc_drv_props[&iter][&arc_drv_id_f]=&iter
+        v.a \arc_drv_props[&iter][&arc_drv_cc_f]=1.
+        &iter=&iter+1
+    )
+
+    return
+
+;-------------------------------------------------------------------------------
+; arc_target_sdx24
+; 
+; Sets up various variables/register macros for SDX24 target 
+;-------------------------------------------------------------------------------
+arc_target_sdx24:
+    &offset=0x0
+    &access_view="ezaxi:"
+
+    ;During Cx_collapse cnoc would also turn OFF. Use AOP addresses to dump ARC
+    IF ("&access"=="aop")
+    (
+      &offset=0xB000000
+      &access_view="a:"
+    )
+
+    y.create.l ARC_EN &(access_view)0x0B7FD004-&offset
+    y.create.macro ARC_ENABLE(val) ((val)&0x1)
+
+    y.create.l DRVd_RMm_VOTE &(access_view)0x0B600000-&offset
+    y.create.macro DRVd_RMm_VOTE_OL(val) ((val)&0xF)
+
+    y.create.l ARC_RMm_CTRL &(access_view)0x0B7F0000-&offset
+    y.create.macro ARC_RMm_CTRL_EN(val) ((val)&0x1)
+
+    ; RM operational levels
+    y.create.l RMm_OPERATIONAL_LEVEL &(access_view)0xB7F00C0-&offset
+    y.create.macro RMm_OPERATIONAL_LEVEL_CURRENT_OL(val)     (((val)>>12.)&0xF)
+    y.create.macro RMm_OPERATIONAL_LEVEL_SOLVED_OL(val)      (((val)>>16.)&0xF)
+    y.create.macro RMm_OPERATIONAL_LEVEL_AGGREGATED_OL(val)  (((val)>>20.)&0xF)
+    y.create.macro RMm_OPERATIONAL_LEVEL_SEQUENCE_OL(val)    (((val)>>24.)&0xF)
+    y.create.macro RMm_OPERATIONAL_LEVEL_DESTINATION_OL(val) (((val)>>28.)&0xF)
+
+    ; Sequencer status register
+    y.create.l RMm_SEQ_STS_CSR &(access_view)0xB7F4500-&offset
+    y.create.macro RMmm_SEQ_STS_CSR(mm) (RMm_SEQ_STS_CSR+0x40*(mm))
+    y.create.macro RMm_SEQ_STS_CSR_PC(val)   ((val)&0xFFF)
+    y.create.macro RMm_SEQ_STS_CSR_BUSY(val) (((val)>>31.)&0x1)
+
+    ; Sequncer memory
+    y.create.l ARC_SEQ_MEM &(access_view)0xB7FF000-&offset
+    y.create.macro ARC_SEQ_MEM_i(idx)  (ARC_SEQ_MEM+(&idx))
+
+    ; DDRAUX Sequencer registers
+    y.create.l DDRAUX_SEQ_STS &(access_view)0xBC00234-&offset
+    y.create.macro DDRAUX_SEQ_STSi(idx) (DDRAUX_SEQ_STAT+0x4*(&idx))
+    y.create.macro DDRAUX_SEQ_STSi_BUSY(val) (((val)>>9.)&0x1)
+    y.create.macro DDRAUX_SEQ_STSi_PC(val) ((val)&0x1FF)
+
+    y.create.l DDRAUX_SEQ_MEM &(access_view)0xBC00418-&offset
+    y.create.macro DDRAUX_SEQ_MEMi(idx) (DDRAUX_SEQ_MEM+(&idx))
+
+    y.create.done
+
+    &arc_drv_count=7.            ; keep . at the end to force as decimal value
+    &arc_rm_count=6.
+    &arc_seq_instr_size=2.
+
+    ;fields for various attributes for DRV
+    &arc_drv_id_f=0.           ; SoC wide DRV id field
+    &arc_drv_cc_f=1.           ; Clients sharing the same DRV (Client Count)
+    &arc_drv_props_count=2.    ; Indicates total number of fields for DRV props
+
+    V.NEWGLOBAL int[&arc_drv_count] \arc_req_drvs
+    V.NEWGLOBAL int[&arc_rm_count] \arc_req_rms
+    V.NEWGLOBAL char[&arc_rm_count][16] \arc_rm_map
+    V.NEWGLOBAL char[&arc_drv_count][16] \arc_drv_map
+    V.NEWGLOBAL int[&arc_drv_count][&arc_drv_props_count] \arc_drv_props
+
+    &iter=0
+    WHILE (&iter<&arc_drv_count)
+    (
+        v.a \arc_req_drvs[&iter]=-1
+        &iter=&iter+1
+    )
+
+    &iter=0
+    WHILE (&iter<&arc_rm_count)
+    (
+        v.a \arc_req_rms[&iter]=-1
+        &iter=&iter+1
+    )
+
+    v.a \arc_rm_map[0]="cx"
+    v.a \arc_rm_map[1]="mx"
+    v.a \arc_rm_map[2]="ebi"
+    v.a \arc_rm_map[3]="mss"
+    v.a \arc_rm_map[4]="ddrss"
+    v.a \arc_rm_map[5]="xo"
+
+    v.a \arc_drv_map[0]="tz"
+    v.a \arc_drv_props[0][&arc_drv_id_f]=0
+    v.a \arc_drv_props[0][&arc_drv_cc_f]=1
+
+    v.a \arc_drv_map[1]="hlos"
+    v.a \arc_drv_props[1][&arc_drv_id_f]=1
+    v.a \arc_drv_props[1][&arc_drv_cc_f]=1
+
+    v.a \arc_drv_map[2]="aop"
+    v.a \arc_drv_props[2][&arc_drv_id_f]=2
+    v.a \arc_drv_props[2][&arc_drv_cc_f]=1
+
+    v.a \arc_drv_map[3]="debug"
+    v.a \arc_drv_props[3][&arc_drv_id_f]=3
+    v.a \arc_drv_props[3][&arc_drv_cc_f]=1
+
+    v.a \arc_drv_map[4]="mss"
+    v.a \arc_drv_props[4][&arc_drv_id_f]=4
+    v.a \arc_drv_props[4][&arc_drv_cc_f]=1
+
+    v.a \arc_drv_map[5]="mss_hw"
+    v.a \arc_drv_props[5][&arc_drv_id_f]=5
+    v.a \arc_drv_props[5][&arc_drv_cc_f]=1
+
+    v.a \arc_drv_map[6]="bcm-cd"
+    v.a \arc_drv_props[6][&arc_drv_id_f]=30.
+    v.a \arc_drv_props[6][&arc_drv_cc_f]=16.
+
+    return
+
+
+;-------------------------------------------------------------------------------
+; arc_target_sdm845
+; 
+; Sets up various variables/register macros for SDM845 target 
+;-------------------------------------------------------------------------------
+arc_target_sdm845:
+    &offset=0x0
+    &access_view="ezaxi:"
+
+    ;During Cx_collapse cnoc would also turn OFF. Use AOP addresses to dump ARC
+    IF ("&access"=="aop")
+    (
+      &offset=0xB000000
+      &access_view="a:"
+    )
+
+    y.create.l ARC_EN &(access_view)0x0B7ED004-&offset
+    y.create.macro ARC_ENABLE(val) ((val)&0x1)
+
+    y.create.l DRVd_RMm_VOTE &(access_view)0x0B600000-&offset
+    y.create.macro DRVd_RMm_VOTE_OL(val) ((val)&0xF)
+
+    y.create.l ARC_RMm_CTRL &(access_view)0x0B7E0000-&offset
+    y.create.macro ARC_RMm_CTRL_EN(val) ((val)&0x1)
+
+    ; RM operational levels
+    y.create.l RMm_OPERATIONAL_LEVEL &(access_view)0xB7E00C0-&offset
+    y.create.macro RMm_OPERATIONAL_LEVEL_CURRENT_OL(val)     (((val)>>12.)&0xF)
+    y.create.macro RMm_OPERATIONAL_LEVEL_SOLVED_OL(val)      (((val)>>16.)&0xF)
+    y.create.macro RMm_OPERATIONAL_LEVEL_AGGREGATED_OL(val)  (((val)>>20.)&0xF)
+    y.create.macro RMm_OPERATIONAL_LEVEL_SEQUENCE_OL(val)    (((val)>>24.)&0xF)
+    y.create.macro RMm_OPERATIONAL_LEVEL_DESTINATION_OL(val) (((val)>>28.)&0xF)
+
+    ; Sequencer status register
+    y.create.l RMm_SEQ_STS_CSR &(access_view)0xB7E4500-&offset
+    y.create.macro RMmm_SEQ_STS_CSR(mm) (RMm_SEQ_STS_CSR+0x40*(mm))
+    y.create.macro RMm_SEQ_STS_CSR_PC(val)   ((val)&0xFFF)
+    y.create.macro RMm_SEQ_STS_CSR_BUSY(val) (((val)>>31.)&0x1)
+
+    ; Sequncer memory
+    y.create.l ARC_SEQ_MEM &(access_view)0xB7EF000-&offset
+    y.create.macro ARC_SEQ_MEM_i(idx)  (ARC_SEQ_MEM+(&idx))
+
+    ; DDRAUX Sequencer registers
+    y.create.l DDRAUX_SEQ_STS &(access_view)0xBC00234-&offset
+    y.create.macro DDRAUX_SEQ_STSi(idx) (DDRAUX_SEQ_STAT+0x4*(&idx))
+    y.create.macro DDRAUX_SEQ_STSi_BUSY(val) (((val)>>9.)&0x1)
+    y.create.macro DDRAUX_SEQ_STSi_PC(val) ((val)&0x1FF)
+
+    y.create.l DDRAUX_SEQ_MEM &(access_view)0xBC00418-&offset
+    y.create.macro DDRAUX_SEQ_MEMi(idx) (DDRAUX_SEQ_MEM+(&idx))
+
+    y.create.done
+
+    &arc_drv_count=30.            ; keep . at the end to force as decimal value
+    &arc_rm_count=9.
+    &arc_seq_instr_size=2.
+
+    ;fields for various attributes for DRV
+    &arc_drv_id_f=0.           ; SoC wide DRV id
+    &arc_drv_cc_f=1.           ; Clients sharing the same DRV (Client Count)
+    &arc_drv_props_count=2.    ; Indicates total number of fields for DRV props
+
+    V.NEWGLOBAL int[&arc_drv_count] \arc_req_drvs
+    V.NEWGLOBAL int[&arc_rm_count] \arc_req_rms
+    V.NEWGLOBAL char[&arc_rm_count][16] \arc_rm_map
+    V.NEWGLOBAL char[&arc_drv_count][16] \arc_drv_map
+    V.NEWGLOBAL int[&arc_drv_count][&arc_drv_props_count] \arc_drv_props
+
+    &iter=0
+    WHILE (&iter<&arc_drv_count)
+    (
+        v.a \arc_req_drvs[&iter]=-1
+        &iter=&iter+1
+    )
+
+    &iter=0
+    WHILE (&iter<&arc_rm_count)
+    (
+        v.a \arc_req_rms[&iter]=-1
+        &iter=&iter+1
+    )
+
+    v.a \arc_rm_map[0]="cx"
+    v.a \arc_rm_map[1]="mx"
+    v.a \arc_rm_map[2]="ebi"
+    v.a \arc_rm_map[3]="lcx"
+    v.a \arc_rm_map[4]="lmx"
+    v.a \arc_rm_map[5]="gfx"
+    v.a \arc_rm_map[6]="mss"
+    v.a \arc_rm_map[7]="ddrss"
+    v.a \arc_rm_map[8]="xo"
+
+    v.a \arc_drv_map[0]="tz"        
+    v.a \arc_drv_map[1]="hyp"
+    v.a \arc_drv_map[2]="hlos"
+    v.a \arc_drv_map[3]="sec_proc"
+    v.a \arc_drv_map[4]="lpss"
+    v.a \arc_drv_map[5]="ssc"
+    v.a \arc_drv_map[6]="aop"
+    v.a \arc_drv_map[7]="debug"
+    v.a \arc_drv_map[8]="gpu"
+    v.a \arc_drv_map[9]="display"
+    v.a \arc_drv_map[10]="mss"
+    v.a \arc_drv_map[11]="mss_hw"
+    v.a \arc_drv_map[12]="cdsp"
+    v.a \arc_drv_map[13]="cprf"
+    v.a \arc_drv_map[14]="bcm_cd0"
+    v.a \arc_drv_map[15]="bcm_cd1"
+    v.a \arc_drv_map[16]="bcm_cd2"
+    v.a \arc_drv_map[17]="bcm_cd3"
+    v.a \arc_drv_map[18]="bcm_cd4"
+    v.a \arc_drv_map[19]="bcm_cd5"
+    v.a \arc_drv_map[20]="bcm_cd6"
+    v.a \arc_drv_map[21]="bcm_cd7"
+    v.a \arc_drv_map[22]="bcm_cd8"
+    v.a \arc_drv_map[23]="bcm_cd9"
+    v.a \arc_drv_map[24]="bcm_cd10"
+    v.a \arc_drv_map[25]="bcm_cd11"
+    v.a \arc_drv_map[26]="bcm_cd12"
+    v.a \arc_drv_map[27]="bcm_cd13"
+    v.a \arc_drv_map[28]="bcm_cd14"
+    v.a \arc_drv_map[29]="bcm_cd15"
+
+    ; Initializing ARC DRV properties - Napali has simpler contiguous DRV
+    ; mapping with each DRV ID used by only one client.
+    &iter=0
+    WHILE (&iter<&arc_drv_count)
+    (
+        v.a \arc_drv_props[&iter][&arc_drv_id_f]=&iter
+        v.a \arc_drv_props[&iter][&arc_drv_cc_f]=1.
+        &iter=&iter+1
+    )
+
+    return

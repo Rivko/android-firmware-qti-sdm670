@@ -1,0 +1,105 @@
+
+
+Import('env')
+env = env.Clone()
+
+if not env.IsTargetEnable(['ADSP_SHARED_LIBS']):
+    Return()
+
+core_public_apis = [
+   'DEBUGTOOLS',
+   'SERVICES',
+   'KERNEL',
+   'POWER',
+   'DAL',
+   ]
+
+platform_public_apis = [
+   'A1STD',
+   'A1ENV',
+   'QI',
+   'STDDEF',
+   'REMOTE',
+   'MOD_TABLE',
+   'PLATFORM_LIBS',
+   'UTILS',
+   'HAPSDK',
+   'QAIC',
+   'HAP',
+   ]
+   
+env.RequirePublicApi(platform_public_apis, area='platform') 
+env.RequirePublicApi(core_public_apis, area='core')
+
+###if you want to add  a dependant library append the below flags to link flags(commented for now)
+## eg: env.Append(SHLINKFLAGS = ' -dy -L${BUILD_ROOT}/jpeg/depso -lSAPlusCmnModule ')
+
+#-------------------------------------------------------------------------------
+# Get the required Include directories
+#-------------------------------------------------------------------------------
+env.PublishPrivateApi('UBWCDMA_DYNLIB',[
+    '${BUILD_ROOT}/core/api/kernel/qurt',
+    '${BUILD_ROOT}/core/api/kernel/posix',
+    '../inc',
+#    '../src', 
+#<<<include dirs
+   ])
+
+env.RequirePrivateApi('UBWCDMA_DYNLIB')
+#env.RequirePublicApi('UBWCDMA_DYNLIB', area='ubwcdma_dynlib') 
+if 'USE_DMA_DEBUG' in env:
+	env.Append(CFLAGS='-DUBWCDMA_DEBUG=1')
+env.Append(CFLAGS='-DUSE_HAP_CACHE_API')
+
+env.Append(CFLAGS='-DNAPALI_V2_SW_WA')
+#env.Append(CFLAGS='-O3')
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/vap/ubwcdma/dynlib"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+SOURCES = [                    
+			'${BUILDPATH}/src/dma_qdi_dyn.c',
+			'${BUILDPATH}/src/dmaOsal.c',
+			'${BUILDPATH}/src/dmaOsal_primWrapper.c',
+			'${BUILDPATH}/src/dmaSvc_app.c',
+			'${BUILDPATH}/src/dmaSvc_fmt.c',
+			'${BUILDPATH}/src/dmaSvc_utils.c',
+			'${BUILDPATH}/src/dmaWrapper.c',
+			'${BUILDPATH}/src/dma_transfer.c',
+			'${BUILDPATH}/src/dma_app.c',
+
+          ]    
+#env.Depends(skel_c,idl_header)    
+#env.Depends(stub_c,idl_header)                
+
+LIBNAME = 'ubwcdma_dynlib'
+                   
+
+#wdt_sources = env.GlobSourceFiles(SOURCES, SRCPATH,posix=True)
+
+#-------------------------------------------------------------------------------
+# Setup env Flags
+#-------------------------------------------------------------------------------
+env.Append(SHLINKFLAGS = ' -Bdynamic --gc-sections --print-gc-sections -soname=ubwcdma_dynlib.so ')
+#env.Append(SHLINKFLAGS = ' -Bdynamic --wrap=malloc --wrap=calloc --wrap=free --wrap=realloc --wrap=memalign --wrap=__stack_chk_fail --gc-sections --print-gc-sections -soname=ubwcdma_dynlib.so ')
+#hcp_cppflags = ' -DDVP_OPT_HQV_FW_RUMI -DHCP_USRSPC -DLOGGING_EN -DBUILDING_SO -ffunction-sections -fvisibility=hidden   \"-D__QAIC_HEADER_EXPORT=__attribute__((__visibility__(\\\"default\\\")))\"  \"-D__QAIC_SKEL_EXPORT=__attribute__((__visibility__(\\\"default\\\")))\"  '
+#env.Append(CPPFLAGS = hcp_cppflags)
+
+
+#-------------------------------------------------------------------------------
+# Call the build command
+#-------------------------------------------------------------------------------
+env.AddMySharedLibrary(['ADSP_SHARED_LIBS'], '${BUILDPATH}/'+LIBNAME, SOURCES, [])
+#node=env.AddHcpSharedLibrary(['ADSP_SHARED_LIBS'], '${BUILDPATH}/'+LIBNAME, SOURCES, [])
+
+
+#-------------------------------------------------------------------------------
+# Load Subunits (sys)
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+
+

@@ -1,0 +1,219 @@
+#===============================================================================
+# SPMI Libs
+#
+# GENERAL DESCRIPTION
+#    SPMI Build Script
+#
+# Copyright (c) 2013-2017 Qualcomm Technologies Incorporated. All Rights Reserved.
+#-------------------------------------------------------------------------------
+#  $Header: //components/rel/core.tz/2.0.2/pmic/spmi/build/SConscript#2 $
+#  $DateTime: 2018/07/12 03:45:51 $
+#  $Change: 16626739 $
+#===============================================================================
+import os, re
+Import('env')
+
+#-------------------------------------------------------------------------------
+# Load sub scripts
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+#-------------------------------------------------------------------------------
+# Setup
+#-------------------------------------------------------------------------------
+
+INC_DIRS = []
+
+SRCPATH = "../src"
+
+env = env.Clone()
+
+if env.get('ARMTOOLSVERSION') == 5:
+    env['CCFLAGS'] += '--c99'
+elif env.has_key('SPMI_BOOT_DRIVER') or env.get('TZOS_IMAGE') == 'A53_64' or env.get('TZOS_IMAGE') == 'scorpion' or env.get('HYPERVISOR_IMAGE') == 'A53_64' or env.get('QHEEBSP_IMAGE') == 'A53_64' or env.get('XBL_SEC_IMAGE') == 'A53_64' or env.get('XBL_SEC_IMAGE') == 'scorpion':
+    pass
+elif env.has_key('MODEM_PROC') or env.get('ARMTOOLS') == 'ARMCT6':
+    env['CCFLAGS'] += '-std=c99'
+else:
+    env['CCFLAGS'] += '--c99'
+
+env.Append(CPPDEFINES = ["FEATURE_LIBRARY_ONLY"])   
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+CHIP_FAMILY='hoya'
+    
+#-------------------------------------------------------------------------------
+# Logging
+#-------------------------------------------------------------------------------
+logLevel = 'SPMI_LOG_LEVEL_ERROR'
+
+if env.has_key('EMMCBLD_IMAGE') or env.has_key('EHOSTDL_IMAGE') or env.has_key('HOSTDL_IMAGE') or env.has_key('DEVICEPROGRAMMER_NAND_IMAGE') or env.has_key('XBL_SEC_IMAGE'):
+    logLevel = 'SPMI_LOG_LEVEL_ERROR'
+elif env.has_key('SPMI_BOOT_DRIVER'):
+    logLevel = 'SPMI_LOG_LEVEL_ERROR'
+elif env.has_key('RPM_IMAGE'):
+    logLevel = 'SPMI_LOG_LEVEL_FATAL'
+elif env.has_key('TZOS_IMAGE'):
+    logLevel = 'SPMI_LOG_LEVEL_FATAL'
+elif env.has_key('MODEM_PROC'):
+    logLevel = 'SPMI_LOG_LEVEL_INFO'    
+elif env.has_key('APPS_PROC'):
+    logLevel = 'SPMI_LOG_LEVEL_INFO'
+
+env.Append(CPPDEFINES = ["SPMI_LOG_COMPILE_LEVEL=" + logLevel])    
+
+SPMI_HWIO = 'v5'
+
+
+#-------------------------------------------------------------------------------
+# Helper Functions
+#-------------------------------------------------------------------------------
+def getConfigFiles(target, pattern='*'):
+    return getTargetFiles(target, pattern, SRCPATH + '/platform/config/' + CHIP_FAMILY)
+    
+def getTargetFiles(target, pattern, baseCfgDir):
+    t = target
+    
+    # Look for an exact match
+    file = env.GlobFiles(baseCfgDir + '/' + target + '/' + pattern, posix=True)
+    
+    if not file:
+        # Fallback to the default
+        file = env.GlobFiles(baseCfgDir + '/default/' + pattern, posix=True)
+    
+    if not file:
+        env.PrintDebugInfo('spmi', 'No SPMI files found for %s/%s/%s' % (baseCfgDir, t, pattern) )
+        
+    return file
+
+#-------------------------------------------------------------------------------
+# Private APIs
+#-------------------------------------------------------------------------------
+INC_DIRS = [
+   '${INC_ROOT}/core/pmic/spmi/src/core',
+   '${INC_ROOT}/core/pmic/spmi/src/core/hal',
+   '${INC_ROOT}/core/pmic/spmi/src/core/hal/' + CHIP_FAMILY,
+   '${INC_ROOT}/core/pmic/spmi/src/core/hal/' + CHIP_FAMILY + '/hw/' + SPMI_HWIO,
+   '${INC_ROOT}/core/pmic/spmi/src/platform/config/' + CHIP_FAMILY,
+   '${INC_ROOT}/core/pmic/spmi/src/platform/os',
+]
+
+if env.has_key('EMMCBLD_IMAGE') or env.has_key('EHOSTDL_IMAGE') or env.has_key('HOSTDL_IMAGE') or env.has_key('DEVICEPROGRAMMER_NAND_IMAGE') or env.has_key('HYPERVISOR_IMAGE') or env.has_key('QHEEBSP_IMAGE'):
+    INC_DIRS.append('${INC_ROOT}/core/pmic/spmi/src/platform/os/bare')
+elif env.has_key('XBL_SEC_IMAGE'):
+    INC_DIRS.append('${INC_ROOT}/core/pmic/spmi/src/platform/os/xbl_sec')
+else:
+    INC_DIRS.append('${INC_ROOT}/core/pmic/spmi/src/platform/os/tz')
+env.PublishPrivateApi('SPMI', INC_DIRS)
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_APIS = [
+   'HAL',
+   'DAL',
+   'SYSTEMDRIVERS',
+   'PMIC',
+   'SERVICES',
+   'POWER',
+   'KERNEL',
+   'DEBUGTRACE',
+   'SECUREMSM',  # for tzos_log   
+   'BOOT',       # for boot_log
+   'MINK'
+]
+
+env.RequirePublicApi(CBSP_APIS)
+env.RequireRestrictedApi(CBSP_APIS)
+
+#-------------------------------------------------------------------------------
+# Sources & Libraries
+#-------------------------------------------------------------------------------
+MAIN_LIB_IMAGES = ['QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 
+                   'RPM_IMAGE', 
+                   'TZOS_IMAGE', 'XBL_SEC_IMAGE', 
+                   'EMMCBLD_IMAGE', 'EHOSTDL_IMAGE', 'HOSTDL_IMAGE',
+                   'SPMI_BOOT_DRIVER',
+                   'WCN_IMAGE', 'CBSP_WCN_IMAGE', 'CORE_WCN',
+                   'APPS_IMAGE', 'CBSP_APPS_IMAGE', 'DEVICEPROGRAMMER_NAND_IMAGE']
+
+if env.get('CHIPSET').startswith('msm') or env.get('CHIPSET').startswith('sdm'):
+    ARCH_LIB_IMAGES = ['HYPERVISOR_IMAGE']
+else:
+    ARCH_LIB_IMAGES = ['']
+                   
+HALT_LIB_IMAGES = ['TZOS_IMAGE']
+
+BARE_LIB_IMAGES = ['EMMCBLD_IMAGE','EHOSTDL_IMAGE','HOSTDL_IMAGE','DEVICEPROGRAMMER_NAND_IMAGE']
+
+XBL_SEC_LIB_IMAGES = ['XBL_SEC_IMAGE']
+
+SPMI_SOURCE_PATHS = [
+   SRCPATH + '/core',
+   SRCPATH + '/core/hal',
+   SRCPATH + '/core/hal/' + CHIP_FAMILY,
+   SRCPATH + '/core/hal/' + CHIP_FAMILY + '/hw/' + SPMI_HWIO,
+]
+
+spmi_config_cfile_path = getConfigFiles(env['MSM_ID'], '*.c')
+spmi_block_cfg_arr = [f.replace(SRCPATH, '${BUILDPATH}') for f in spmi_config_cfile_path]
+
+for spmi_block in spmi_block_cfg_arr:
+    if 'SpmiBlockMin.c' not in spmi_block and env.has_key('XBL_SEC_IMAGE'):
+        spmi_block_cfg_arr.remove(spmi_block)
+    elif 'SpmiBlockMin.c' in spmi_block:
+        spmi_block_cfg_arr.remove(spmi_block)
+
+
+if env.has_key('EMMCBLD_IMAGE') or env.has_key('EHOSTDL_IMAGE') or env.has_key('HOSTDL_IMAGE') or env.has_key('DEVICEPROGRAMMER_NAND_IMAGE') or env.has_key('HYPERVISOR_IMAGE') or env.has_key('QHEEBSP_IMAGE'):
+    SPMI_SOURCE_PATHS.append(SRCPATH + '/platform/os/bare')
+    env.AddLibrary(BARE_LIB_IMAGES + ARCH_LIB_IMAGES, '${BUILDPATH}/SpmiCfg', spmi_block_cfg_arr)
+    env.AddBinaryObject('QHEEBSP_IMAGE', spmi_block_cfg_arr)
+elif env.has_key('XBL_SEC_IMAGE'):
+    SPMI_SOURCE_PATHS = [SRCPATH + '/platform/os/xbl_sec']
+    env.AddLibrary(XBL_SEC_LIB_IMAGES, '${BUILDPATH}/SpmiCfg', spmi_block_cfg_arr)
+else:
+    SPMI_SOURCE_PATHS.append(SRCPATH + '/platform')
+    SPMI_SOURCE_PATHS.append(SRCPATH + '/platform/os/tz')
+
+SPMI_HALT_SOURCES = env.FindFiles(['SpmiHalt.c'], SRCPATH + '/core/hal/' + CHIP_FAMILY, posix=True)
+env.AddLibrary(HALT_LIB_IMAGES, '${BUILDPATH}/SpmiHalt', [f.replace(env.RealPath(SRCPATH, True), '${BUILDPATH}') for f in SPMI_HALT_SOURCES])
+
+SPMI_SOURCES = []
+
+for src_path in SPMI_SOURCE_PATHS:
+    SPMI_SOURCES += env.GlobFiles(src_path + '/*.c', posix=True)
+
+SPMI_BLD_SOURCES = [f.replace(SRCPATH, '${BUILDPATH}') for f in SPMI_SOURCES]
+
+spmi_tz_config_xml = getConfigFiles(env['MSM_ID'], 'spmi_tz.xml')
+spmi_tz_config_xml = ', '.join(spmi_tz_config_xml)
+spmi_block_cfg = ', '.join(spmi_block_cfg_arr)
+
+
+if spmi_tz_config_xml and 'USES_DEVCFG' in env:
+      env.AddDevCfgInfo('DAL_DEVCFG_IMG',
+      {
+          'devcfg_xml'         : [spmi_tz_config_xml, spmi_block_cfg]
+      })
+
+env.AddLibrary(MAIN_LIB_IMAGES + ARCH_LIB_IMAGES, '${BUILDPATH}/Spmi', SPMI_BLD_SOURCES)
+env.AddBinaryObject('QHEEBSP_IMAGE', SPMI_BLD_SOURCES)
+
+
+#-----------------------------------------------------------------------------
+# Register with RCINIT framework so that it can call our init function.
+#-----------------------------------------------------------------------------
+if 'USES_RCINIT' in env:
+  RCINIT_IMG = ['CORE_MODEM', 'CORE_QDSP6_SW']
+  env.AddRCInitFunc(
+    RCINIT_IMG,
+    {
+      'sequence_group'             : 'RCINIT_GROUP_0',
+      'init_name'                  : 'SpmiClkStatus',
+      'init_function'              : 'SpmiOs_ClkStatusInit',
+      'dependencies'               : ['clk_regime']
+    })           
+    
+if "USES_DEPLOY_BUILDER" in env:
+   env.Deploy('SConscript')

@@ -1,0 +1,77 @@
+#===============================================================================
+#
+# Power scpm manager utility
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2017 by Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+import json
+import subprocess
+import os, inspect
+import platform
+
+#-------------------------------------------------------------------------------
+# External dependencies
+#-------------------------------------------------------------------------------
+CBSP_API = [
+  'SERVICES',
+  'POWER',
+  'DAL',        # for DALSys.h included in npa.h
+  'DEBUGTOOLS',
+  'KERNEL',
+  'SYSTEMDRIVERS',
+]
+
+#-------------------------------------------------------------------------------
+# Adds self
+#-------------------------------------------------------------------------------
+flag = False
+if 'SENSORS_DD_DEV_FLAG' in env:
+   flag = True
+me = inspect.getfile(inspect.currentframe())
+my_root = os.path.dirname(os.path.dirname(me))
+pwr_scpm_mgr_x86_dir = os.path.join(my_root, "x86")
+pwr_scpm_mgr_hex_dir = os.path.join(my_root, "hexagon")
+pwr_scpm_mgr_hex_core_2_0_dir = os.path.join(my_root, "hexagon_core_qdsp6_2.0")
+pwr_scpm_mgr_hex_core_1_0_dir = os.path.join(my_root, "hexagon_core_slpi_1.0")
+REMOVE_FILES =  env.FindFiles(['*.*'], pwr_scpm_mgr_x86_dir)
+if 'SENSORS_DD_DEV_FLAG' in env:
+  REMOVE_FILES +=  env.FindFiles(['*.*'], pwr_scpm_mgr_hex_dir)
+  REMOVE_FILES +=  env.FindFiles(['*.*'], pwr_scpm_mgr_hex_core_2_0_dir)
+  REMOVE_FILES +=  env.FindFiles(['*.*'], pwr_scpm_mgr_hex_core_1_0_dir)
+
+
+env.CleanPack(env['SSC_BUILD_TAGS'], REMOVE_FILES)
+
+if 'SSC_TARGET_X86' in env['CPPDEFINES']:
+  pwr_scpm_mgr_flavor = ["x86"]
+elif 'SSC_TARGET_HEXAGON_CORE_SLPI_1_0' in env['CPPDEFINES']:
+  pwr_scpm_mgr_flavor = ["hexagon", "hexagon_core_slpi_1.0"]
+elif 'SSC_TARGET_HEXAGON_CORE_QDSP6_2_0' in env['CPPDEFINES']:
+  pwr_scpm_mgr_flavor = ["hexagon", "hexagon_core_qdsp6_2.0"]
+else:
+  Return()
+
+if 'USES_SSC_STATIC_LIB_BUILDER' in env:
+  env.AddSSCSU(inspect.getfile(inspect.currentframe()),
+               flavor = pwr_scpm_mgr_flavor,
+               core_public_api = CBSP_API,
+               ssc_protected_api = ['SNS_FRAMEWORK','SNS_INTERNAL_INCLUDES'],
+               clean_pack_list = [],
+               island_sections = ['.text.sns', '.data.sns', '.rodata.sns'],
+               binary_lib = flag)
+
+if 'USES_QDSS_SWE' in env:
+  QDSS_IMG = ['QDSS_EN_IMG']
+  events = [
+            ['SNS_PWR_SCPM_MGR_SET_Q6_MCPS', 'Setting SSC Q6 MCPS to %d', 'F'],
+           ]
+  env.AddSWEInfo(QDSS_IMG, events)

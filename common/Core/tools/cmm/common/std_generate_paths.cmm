@@ -1,0 +1,81 @@
+
+global &TEMPDIR
+
+// Delete the Previously generated temp file
+LOCAL &pwd &cpu &scripts_dir &SWD
+
+IF ("&HOSTOS"=="Windows")
+(
+    //&TEMPDIR="c:\temp"
+    &TEMPDIR=OS.ENV(TEMP)
+)
+ELSE
+(
+    &TEMPDIR="~~~"
+)
+
+
+
+IF ((("&CONNECT"=="SWD")||("&CONNECT"=="swd"))&&(CABLE.TWOWIRE()))
+(
+    &SWD="SWD"
+)
+ELSE 
+(
+    &SWD=""
+)
+
+&scripts_dir=os.pwd()
+cd &scripts_dir/../
+
+&cpu=CPU()
+
+&MBA_BUILDROOT=""
+
+IF (STRING.SCAN("&cpu","CortexA7",0)!=-1)
+(
+    
+    IF OS.FILE(&TEMPDIR/gen_buildinfo.cmm)
+    (
+    DEL &TEMPDIR/gen_buildinfo.cmm
+    ) 
+
+    IF OS.FILE(&TEMPDIR/SUCCESS.txt)
+    (
+    DEL &TEMPDIR/SUCCESS.txt
+    )
+
+    // Call the python script to generate the temp file
+    cd ../../../  
+    cd build/app
+    &pwd=os.pwd()
+
+
+    OS.screen pushd &pwd
+    OS.screen cd &pwd
+    OS.screen python gen_cmm_data3.py ../../.. &TEMPDIR/gen_buildinfo.cmm -paths_only
+    OS.screen exit
+
+    WHILE !(OS.FILE(&TEMPDIR/SUCCESS.txt))
+    (
+
+    )
+    
+    cd &scripts_dir/../
+    do &scripts_dir\..\config\startup.cmm DAP MDM9655 APPS 0 &SWD
+)
+
+ELSE IF (STRING.SCAN("&cpu","CortexM3",0)!=-1)
+(
+    do &scripts_dir\..\config\startup.cmm DAP MDM9655 RPM 0 &SWD
+)
+ELSE IF (STRING.SCAN("&cpu","HexagonV61",0)!=-1)
+(
+    do &scripts_dir\..\config\startup.cmm DAP MDM9655 MPSS 0 &SWD
+)
+
+cd &scripts_dir/../
+
+ENDDO
+
+

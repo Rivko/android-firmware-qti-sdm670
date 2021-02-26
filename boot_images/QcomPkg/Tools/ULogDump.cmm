@@ -1,0 +1,2121 @@
+; ULogDump.cmm
+; ------------------------------------------------------------------
+;
+; Copyright (c) 2009-2014 Qualcomm Technologies Incorporated.
+; All Rights Reserved.
+; QUALCOMM Proprietary/GTDR
+;
+; When to use this script 
+; -----------------------
+; This script should be used to dump ULog logs from T32 when the 
+; on-target application is not practical.
+;
+; 
+; How to use this script
+; ----------------------
+; After breaking, retrieve all logs by running
+;
+; do ULogDump <logPath> <ulog>
+;
+;
+ENTRY &logPath &ulog
+
+LOCAL &dump
+GLOBAL &ReadStringReturnValue &Use64BitTimeStamps
+; mpm globals roughly based on the way the C code decodes a MPM
+Global &mpm_active &mpm_nextMsgStart &mpm_endOfData
+GLOBAL &DebugPrintCount
+GLOBAL &imageDisabledDetected
+GLOBAL &logPATH
+; This value can be set by a calling script so we will provide reset info if we see it. 
+GLOBAL &ULOG_OUTPUT_RESETCOUNT_INFO
+
+; Select the output area for messages
+AREA.SELECT A000
+AREA.VIEW
+
+; New support for faster EAHB reads. Needs more testing before becoming the default option.
+&USE_EAHB_FASTER_READS=0
+
+&imageDisabledDetected=0
+&logPATH="&logPath"
+
+;==== Debug Info Options==============================================================
+; Show buffer size info and other info 
+  &DEBUG_SHOW_LOG_DETAILS=0               ;(0=OFF, 1=ON)
+;=============================================================================
+;==== Debug Dump Raw Log Data when a trigger TS is hit ========================
+  &DEBUG_ENABLE_LOG_AT_TS_DETAILS=0    ;(0=OFF, 1=ON)
+    &DEBUG_TS_TO_START="0x2001004"
+    &DEBUG_NUMBER_OF_LOGMSGS_TO_DUMP=2
+
+  ; While getting this extra information we can try to decode some fields
+  ; of the data, or, if you just want the data, set this value to one.
+    &DEBUG_DUMP_UNFORMATED_DATA=0         ;(0=OFF, 1=ON)
+      ; Want data before the start of the msg? (0=Off, #=How many words)
+      &DEBUG_DUMP_WORDS_BEFORE_LOG_START="0x0"
+      ; Would you like to ignore the msg size info and just dump this many bytes? 
+      ; 0==use the msg size provided by the msg, any other number==how many bytes to dump
+      &DEBUG_DUMP_THIS_MANY_BYTES="0x0" 
+;=============================================================================
+;== Hardcode the log name to open ============================================    
+    ;&ulog="NPA Log"
+;=============================================================================
+;== Try to get extra messages out of the log when decode is getting stopped 
+;== by a bad message.  Note: A bad message is an error condition. This attempting
+;== to find more messages can only be a best attempt in the face of bad data. 
+   &DEBUG_TRYTOFINDNEXTMSG_ON_BADMSG=0    ;(0=OFF, 1=ON)
+;=============================================================================
+
+;if this global value is set we will output reset data if we see resets have occured. 
+IF "&ULOG_OUTPUT_RESETCOUNT_INFO"==""
+(
+   ;the global isn't set.  Don't enable this info.
+   &ULOG_OUTPUT_RESETCOUNT_INFO=0
+)
+
+; Ulog constants for logStatus as of header version 3 and up
+local &ULOG_VER3_STATUS_DEFINED &ULOG_VER3_STATUS_ENABLED &ULOG_VER3_STATUS_MPM_ACTIVE
+&ULOG_VER3_STATUS_DEFINED=1            ; Set if the log is defined
+&ULOG_VER3_STATUS_ENABLED=2            ; Set if the log is enabled
+&ULOG_VER3_STATUS_MPM_ACTIVE=4         ; Set if the log is currently handling a
+
+local &ULOG_SUBTYPE_REALTIME_WORDDATA &ULOG_SUBTYPE_REALTIME_PRINTF &ULOG_SUBTYPE_REALTIME_BYTEDATA &ULOG_SUBTYPE_REALTIME_STRINGDATA &ULOG_SUBTYPE_RESERVED_FOR_RAW
+local &ULOG_SUBTYPE_REALTIME_CSVDATA &ULOG_SUBTYPE_REALTIME_VECTOR &ULOG_SUBTYPE_REALTIME_MULTIPART &ULOG_SUBTYPE_RAW8 &ULOG_SUBTYPE_RAW16 &ULOG_SUBTYPE_RAW32
+&ULOG_SUBTYPE_RESERVED_FOR_RAW=0
+&ULOG_SUBTYPE_REALTIME_PRINTF=1
+&ULOG_SUBTYPE_REALTIME_BYTEDATA=2
+&ULOG_SUBTYPE_REALTIME_STRINGDATA=3
+&ULOG_SUBTYPE_REALTIME_WORDDATA=4 
+&ULOG_SUBTYPE_REALTIME_CSVDATA=5
+&ULOG_SUBTYPE_REALTIME_VECTOR=6
+&ULOG_SUBTYPE_REALTIME_MULTIPART=7
+
+&ULOG_SUBTYPE_RAW8=0xd
+&ULOG_SUBTYPE_RAW16=0xe
+&ULOG_SUBTYPE_RAW32=0xf
+
+; For printing out a number of requested log msgs when the debug code matches the TS. 
+&DebugPrintCount=0
+
+;Call DumpUlogs for each ulogContext in symbol space
+Y.FOREACH "GOSUB DumpULogs" ulogContext
+ENDDO
+
+DumpULogs:
+ENTRY &loggerContext
+LOCAL &imageName &logHead
+
+IF "&ulog"==""
+(
+  &ulog="*"
+)
+
+
+;The earlier Y.FOREACH has issues when this script is called without arguments.  Cleaning up the variables here. 
+IF "&logPATH"=="ulogContext"
+(
+  &logPATH=""
+)
+IF "&loggerContext"==""
+( 
+  &loggerContext="ulogContext"
+)
+
+
+
+IF ("&logPATH"=="")||("&logPATH"=="stdout")
+(
+  &logPATH="stdout"
+  &dump="PRINT"
+  &imageName=""
+)
+else 
+(
+  ; Trim trailing "\" if necessary
+  IF string.char("&(logPATH)", string.len("&(logPATH)")-1)=='\'
+  (
+    &logPATH=string.cut("&(logPATH)", -1)
+  )
+
+  if string.scan("&(loggerContext)","\Global\",0)==-1
+  (
+    // Only one ulogContext found so no need to append image to file name
+    // This will be reached on single-pd builds
+    &imageName=""
+  )
+  else
+  (
+    // Found the string \Global\, will find the name of the image to add to
+    // all filenames
+    &imageName=string.mid("&(loggerContext)",2,\
+              string.scan("&(loggerContext)","\Global\",0)-2)
+    &imageName=" &(imageName)"
+    print "Dumping logs from symbol &(loggerContext)"
+  )
+  &dump="WRITE #1"
+)
+
+
+  
+; Get the head of the logs
+ON ERROR GOSUB imageDisabled
+&logHead=V.VALUE(&(loggerContext).logHead)
+ON ERROR
+
+IF (&imageDisabledDetected==1)
+(
+  PRINT "---------------------------------------------------------------------"
+  PRINT "&imageName is disabled, moving to next ulogContext"
+  PRINT "---------------------------------------------------------------------"
+  &imageDisabledDetected=0
+  RETURN
+)
+
+;If there are no logs, no need to continue
+IF (&logHead==0)
+(
+  PRINT "---------------------------------------------------------------------"
+  PRINT "No ULogs Found. &(loggerContext).loghead (the ULog linked list ptr) is NULL"
+  PRINT "---------------------------------------------------------------------"
+  RETURN
+)
+
+LOCAL &currentLog &logVersion
+&currentLog=&logHead
+
+
+&logVersion=V.VALUE(((ULOG_TYPE *)&currentLog).version)
+
+;if the logVersion reads as one of the old or different versions, we can't continue. 
+IF (&logVersion==3)||(&logVersion==2)||(&logVersion==0x1000)
+(
+  PRINT "---------------------------------------------------------------------"
+  PRINT "This version of ULogDump.cmm is for version 4 (Originating May 2012)"
+  PRINT "It appears your logs are version : " &logVersion
+  PRINT "Please check your source code for the correct ULogDump.cmm script"
+  PRINT "---------------------------------------------------------------------"
+  RETURN
+)
+
+;if the log version isn't 0 (no logs), and isn't an old version (2,3, or 0x1000),
+;and isn't the correct version (4), something else is wrong.  
+;Maybe the symbols aren't correct?
+IF (&logVersion!=5)
+(
+  PRINT "---------------------------------------------------------------------"
+  PRINT "This version of ULogDump.cmm is for version 5 (Originating Sept 2014)"
+  PRINT "Your log version value returned : &(logVersion) which " 
+  PRINT "doesn't match the known ULog versions this script is familar with."
+  PRINT "This error is most often caused by a symbols problem with your T32 "
+  PRINT "session's ulogContext [&(loggerContext)] global variable."  
+  PRINT "---------------------------------------------------------------------"
+  RETURN
+)
+
+IF &DEBUG_SHOW_LOG_DETAILS==1
+(
+   PRINT "DEBUG: Ulog Version: &(logVersion)"
+)
+ 
+IF "&logPATH"!="stdout"
+(
+  OPEN #2 "&(logPATH)\AvailableLogs&(imageName).txt" /Create
+)
+
+; No log was specified.  Dump all logs.
+WHILE &currentLog!=0
+(
+  LOCAL &name &logName
+  IF &USE_EAHB_FASTER_READS==1
+  (
+    &logName=DATA.STRING(eahb:V.VALUE(((ULOG_TYPE *)&currentLog).name))
+  )
+  else
+  (  
+    &logName=DATA.STRING(D:V.VALUE(((ULOG_TYPE *)&currentLog).name))
+  )
+  IF "&logPATH"!="stdout"
+  (
+    WRITE #2 "&(logName)"
+  )
+
+  ; Last expression handles quoted strings as arguments
+  IF "&ulog"=="*"||"&ulog"=="&logName"||"&ulog"=="""&logName"""
+  (
+    &name="&(logPATH)\&(logName)&(imageName).ulog"
+    IF "&logPATH"!="stdout"
+    (
+      PRINT "Writing file: &(name)"
+      OPEN #1 "&(name)" /Create
+    )
+    else
+    (
+      PRINT "**** &(logName) ****"
+    )
+
+    ;does this log use 64 or 32 bit timestamps? Set the global indicator.
+    &Use64BitTimeStamps=V.VALUE(((ULOG_TYPE *)&currentLog).feature_flags1 & 0x1)
+  
+  
+    GOSUB DumpOneLog &currentLog
+    IF "&logPATH"!="stdout"
+    (
+      CLOSE #1
+    )
+  )
+  &currentLog=V.VALUE(((ULOG_TYPE *)&currentLog).next)
+)
+
+IF "&logPATH"!="stdout"
+(
+  CLOSE #2
+  PRINT "Completed..."
+)
+
+RETURN
+
+
+imageDisabled: 
+  &imageDisabledDetected=1
+  RETURN
+
+DumpOneLog:
+  ENTRY &log
+  ;check whether the log is enabled.
+  IF V.VALUE(((ULOG_TYPE *)&log).sharedHeader->logStatus & &ULOG_VER3_STATUS_ENABLED)!=0 
+  (
+    LOCAL &buffer &logsize &mask &read &write &value &readers_read  &bytes_in_log &usage_data &reset_count
+   
+    IF V.VALUE(((ULOG_TYPE *)&log).header)!=0
+    (
+      GOSUB DumpHeader 
+    )
+
+    ; Get the buffer pointer,
+    ; the buffer size mask,
+    ; the read pointer,
+    ; the write pointer
+    &buffer=V.VALUE(((ULOG_TYPE *)&log).buffer)
+    &logsize=V.VALUE(((ULOG_TYPE *)&log).bufSize)
+    &mask=V.VALUE(((ULOG_TYPE *)&log).bufSizeMask)
+    &read=V.VALUE(((ULOG_TYPE *)&log).writerCore->readWriter)
+    &readers_read=V.VALUE(((ULOG_TYPE *)&log).readerCore->read)
+    &write=V.VALUE(((ULOG_TYPE *)&log).writerCore->write)
+    &bytes_in_log=V.VALUE(&write-&read)
+    &usage_data=V.VALUE(((ULOG_TYPE *)&log).writerCore->usageData)
+    &reset_count=V.VALUE((unsigned char)((ULOG_TYPE *)&log).resetCount)
+     
+    IF &bytes_in_log>&logsize
+    (
+      &dump "-------------------------------------------------------------------------------------------------------" 
+      PRINT ">> WARNING: Size calculation issue reading &(logName)  <<<<<<"
+      &dump "DEBUG: (write - read) size of: &(bytes_in_log) is bigger than the reported log size : &(logsize)" 
+      &dump "DEBUG: The most common cause of this is memory corruption, under-voltage, or writes to unpowered RAM."
+      &dump "DEBUG: Will try to continue with this [&(logName)] ULog decode, but results may be unpredictable."
+      &dump "-------------------------------------------------------------------------------------------------------"      
+    )
+    
+    ;scripts like npa dump can set this so we'll add info to their log if we see resets. 
+    IF &ULOG_OUTPUT_RESETCOUNT_INFO==1
+    (
+      IF (&(usage_data)&0x8)==0x8
+      (
+         &dump "DEBUG: This log has been reset at some point. The reset count is &(reset_count)"
+      )     
+    )
+    
+    IF &DEBUG_SHOW_LOG_DETAILS==1
+    (
+      &dump "-------------------------------------------------------------------------------------------------------"   
+      &dump "DEBUG: [&(logName)]"
+      &dump "DEBUG: buffer start at: &(buffer)   size: &(logsize)    mask (should be -1 of the power-of-2 buffer size): &(mask)"
+      &value=V.VALUE(&buffer+&logsize)
+      &dump "DEBUG: buffer ends at: &(value)   (buffer + logsize)"
+      &value=V.VALUE(&read & &mask)
+      &dump "DEBUG: readWrite: &(read)   reads start at index: &(value)"
+      &value=V.VALUE(((uint32 *)(&buffer+(&read & &mask))))
+      &dump "DEBUG: The first msg to read will be at address : &(value)"
+      &value=V.VALUE(&write & &mask)
+      &dump "DEBUG: write byte count: &(write)    new writes start at index: &(value)"
+      &value=V.VALUE(((uint32 *)(&buffer+(&write & &mask))))
+      &dump "DEBUG: The next msg to write will be at address : &(value)"
+      &dump "DEBUG: writes index - read index = bytes in log : &(bytes_in_log)"
+      IF (&(usage_data)&0x8)==0x8
+      (
+         &dump "DEBUG: This log has been reset at some point. The reset count is &(reset_count)"
+      )              
+      IF &readers_read==0
+      (
+        ; a zero pointer indicates that no software on the device has tried to read this log. 
+        &dump "DEBUG: SW read pointer=0: On target software has not tried to this log."
+      )
+      ELSE
+      (
+        &dump "DEBUG: read byte count: &(readers_read)"       
+        &value=V.VALUE(&readers_read & &mask)
+        &dump "DEBUG: device software would read at index: &(value)"
+      )
+      &dump "-------------------------------------------------------------------------------------------------------"       
+    )  
+
+
+    ; Step through the buffer until we have dumped all the log data.
+    WHILE &read<&write
+    (
+      LOCAL &msgLength &msgExtra
+    
+      ; Advance past the message format value.
+      &read=&read+2
+      
+      ; Read the number of bytes in this message
+      &msgLength=V.VALUE(*((uint16 *)(&buffer + (&read & &mask))))
+
+      ; Back up to the format.
+      &read=&read-2
+ 
+      ; Read the message format
+      &format=V.VALUE(*((uint16 *)(&buffer+(&read & &mask))))
+
+      ;check for incorrect length message sizes.  This should be rare, but has happened on crashed systems.
+      IF ((&msgLength<=4)||(&msgLength>0x400)||(&msgLength>&logsize))
+      (
+         ; The message is too small or too large, we can't continue.  Try to give some usefull debug information. 
+         &remainingBytes=V.VALUE((uint32)&write - (int32)&read)
+         &addressOfBadMsg=V.VALUE((&buffer + (&read & &mask)))
+         &formatOfBadMsg=V.VALUE(*((uint16 *)(&buffer + (&read & &mask))))
+
+         &dump "-------------------------------------------------------------------------------------------------------" 
+         PRINT ">> WARNING: Message length issue encountered reading &(logName) <<<<<<"
+         &dump "Read an invalid ULog msgLength of [&(msgLength)] at address &(addressOfBadMsg)."
+         IF ((&msgLength>&logsize)&&(&logsize<0x400))
+         (
+             &dump "Log size is &(logsize) so a message length of &(msgLength) is an invalid size."
+         )
+         &dump "Further reading on this particular log [&(logName)] cannot continue."
+         &dump "An incorrect length message may be caused by a corrupted log, or by a lockless (ULOG_LOCK_NONE) being"
+         &dump "used in a reentrant way that should maybe be using a ULOG_LOCK_OS lock."
+         IF &msgLength==0
+         (
+            &dump "A zero length message can also be caused, in rare cases, by stopping the system in a middle of a logging operation," 
+         )
+         &dump ">>(write - read) indicates that there are &(remainingBytes) bytes unread in this log."
+         IF &formatOfBadMsg<=0xf            
+         (
+            &dump ">>Format field of bad size msg is &(formatOfBadMsg), which [may] indicate this"
+            &dump ">>this was the start of a legitimate ULog msg, or may be a random value."            
+         )
+         ELSE
+         (
+            &dump ">>Format field of zero size msg is &(formatOfBadMsg), which is not an expected ULog format value."                       
+         )
+         IF &formatOfBadMsg==0x7
+         (
+            &dump ">>A format field of 7 may indicate a ULog Multipart Message was started."
+         )
+    
+         IF &DEBUG_TRYTOFINDNEXTMSG_ON_BADMSG==1
+         (
+             &dump ">>Read a bad msgLength of [&(msgLength)] at address &(addressOfBadMsg). Attempted to find further messages"             
+             GOSUB DebugFindNextMessage &buffer &mask &read &write
+             &dump "-------------------------------------------------------------------------------------------------------"  
+   		     IF &read==&write   ;function will set &read == write if it can't find a next message
+             (
+               RETURN 
+             )
+             ; Read the new message format
+             &format=V.VALUE(*((uint16 *)(&buffer+(&read & &mask))))             
+             ; Advance past the new format value.
+             &read=&read+2
+             ; Read the new number of bytes in this message
+             &msgLength=V.VALUE(*((uint16 *)(&buffer + (&read & &mask))))
+             ; Back up to the format.
+             &read=&read-2
+         )
+         ELSE
+         (
+            &dump "-------------------------------------------------------------------------------------------------------"         
+            &read=&write
+            RETURN         ;return so we stop trying to read this log further.
+         )         
+      )
+
+     
+      ;check for incorrect format field.  This should be rare, but has happened.
+      IF &format>0xf
+      (
+         &addressOfBadMsg=V.VALUE((&buffer + (&read & &mask)))
+         &dump "-------------------------------------------------------------------------------------------------------"  
+         PRINT ">> WARNING: Format type issue encountered reading &(logName)  <<<<<<"
+         &dump "Read an invalid ULog format type [&(format)] at address &(addressOfBadMsg)"
+         &dump "The size field of this odd looking message is &(msgLength) bytes"
+         
+         IF ((&msgLength>4)&&(&msgLength<0x400))
+         (
+             &dump "Reading will continue on this particular log [&(logName)] but results may be unpredictable."
+         )
+
+         IF &DEBUG_TRYTOFINDNEXTMSG_ON_BADMSG==1
+         (
+             &dump ">>Read a bad msg format of &(format) at address &(addressOfBadMsg). Attempted to find further messages"             
+             GOSUB DebugFindNextMessage &buffer &mask &read &write
+             IF &read==&write   ;function will set &read == write if it can't find a next message
+             (
+               &dump "-------------------------------------------------------------------------------------------------------"  
+               RETURN 
+             )
+             ; Read the new message format
+             &format=V.VALUE(*((uint16 *)(&buffer+(&read & &mask))))             
+             ; Advance past the new format value.
+             &read=&read+2
+             ; Read the new number of bytes in this message
+             &msgLength=V.VALUE(*((uint16 *)(&buffer + (&read & &mask))))
+             ; Back up to the format.
+             &read=&read-2
+         )
+         &dump "-------------------------------------------------------------------------------------------------------"           
+       )     
+
+      ;---FOR_DEBUGGING----FOR_DEBUGGING---FOR_DEBUGGING----FOR_DEBUGGING
+      ; This is an important loop.  These lines may help debug issues.
+      ;&remainingBytes=V.VALUE((uint32)&write - (uint32)&read)
+      ;&addressOfNextMsg=V.VALUE((&buffer + (&read & &mask)))
+      ;&formatOfMsg=V.VALUE(*((uint16 *)(&buffer + (&read & &mask))))
+      ;PRINT "Reading next msg format= &(formatOfMsg) of [&(msgLength) bytes] at address &(addressOfNextMsg)."
+      ;PRINT "(write - read) indicates that there are &(remainingBytes) bytes remaining in this log. "      
+      ;---FOR_DEBUGGING----FOR_DEBUGGING---FOR_DEBUGGING----FOR_DEBUGGING
+
+      &msgExtra=&msgLength&0x03
+      IF &msgExtra!=0
+      (
+        &msgExtra=4-&msgExtra
+      )
+      
+      ; Handle the current ULog message
+      GOSUB DumpULogMsg &buffer &mask &read &msgLength
+       
+      ;move our read pointer past the message we just finished.
+      &read=&read+&msgExtra+&msgLength 
+    )
+  )
+  RETURN
+
+
+
+DumpHeader:
+  ; Copy the log header to the output file.
+  ;
+  LOCAL &bytePtr
+  &bytePtr=V.VALUE(((ULOG_TYPE *)&log).header)
+  IF &USE_EAHB_FASTER_READS==1
+  (
+     &dump DATA.STRING(eahb:&bytePtr)
+  )
+  ELSE
+  (
+     &dump DATA.STRING(D:&bytePtr)
+  )
+  RETURN
+ 
+
+
+; The general RealTime format is:
+; <Len/Fmt> <Timestamp> <Data> 
+; The general Raw format is:
+; <Len/Fmt>  <Data> 
+DumpULogMsg:
+  ENTRY &buffer &mask &localRead &localMsgLength   ;localRead is similar to the log's ReadWriter pointer (trailing ptr, first valid message in the log) except advanced one word past the size indicator
+  LOCAL &format &outputString 
+  GLOBAL &ULogTimestamp 
+
+  &outputString=""
+  
+  ; Read the message format
+  &format=V.VALUE(*((uint16 *)(&buffer+(&localRead & &mask))))
+  ;Advance our pointer past the format value
+  &localRead=&localRead+4                          
+  
+  IF ((&format>&ULOG_SUBTYPE_RESERVED_FOR_RAW)&&(&format<&ULOG_SUBTYPE_RAW8))
+  (
+    ; Read the message timestamp
+    IF (&Use64BitTimeStamps==1)
+    (
+       &ULogTimestamp=V.VALUE(*((uint32 *)(&buffer+(&localRead & &mask))))
+       ; Advance our pointer past the lower timestamp value 32 bits
+       &localRead=&localRead+4                      
+       &ULogTimestamp=V.VALUE(((uint64)&ULogTimestamp)|((uint64)(*((uint32 *)(&buffer+(&localRead & &mask))))<<32))
+       ; Advance our pointer past the upper timestamp value 32 bits
+       &localRead=&localRead+4
+    )
+    ELSE
+    (
+       &ULogTimestamp=V.VALUE(*((uint32 *)(&buffer+(&localRead & &mask))))
+       ; Advance our pointer past the timestamp value
+       &localRead=&localRead+4                               
+    )
+ 
+  
+    ; - DEBUG - - DEBUG - - DEBUG - - DEBUG - - DEBUG - - DEBUG - - DEBUG - 
+    IF &DEBUG_ENABLE_LOG_AT_TS_DETAILS==1
+    (
+       IF &ULogTimestamp==&DEBUG_TS_TO_START
+       (
+          ;initialize our counter to print out this many msgs info
+          &DebugPrintCount=&DEBUG_NUMBER_OF_LOGMSGS_TO_DUMP
+       )
+       IF &DebugPrintCount!=0
+       (    
+          GOSUB DumpRealTimeDebugInfo &buffer &mask &localRead &localMsgLength
+          ;we will only print out as many messages as they requested, decrease the count.           
+          &DebugPrintCount=&DebugPrintCount-1
+       )
+    )
+    ; - DEBUG - - DEBUG - - DEBUG - - DEBUG - - DEBUG - - DEBUG - - DEBUG - 
+  )
+  
+  IF &format==&ULOG_SUBTYPE_REALTIME_WORDDATA
+  (
+    ; Handle the RealTime Data type
+    ON ERROR GOSUB bypassMissingString
+    GOSUB DumpRealTimeWordArray &buffer &mask &localRead &localMsgLength &format &outputString 
+    &dump "&(ULogTimestamp): &(outputString)"
+    ON ERROR
+  )
+  IF &format==&ULOG_SUBTYPE_REALTIME_PRINTF
+  (
+    ; Handle the RealTime Printf type
+    ON ERROR GOSUB bypassMissingString
+    GOSUB DumpRealTimePrintf &buffer &mask &localRead &localMsgLength &outputString
+    &dump "&(ULogTimestamp): &(outputString)"
+    ON ERROR
+  )
+  IF &format==&ULOG_SUBTYPE_REALTIME_BYTEDATA
+  (
+    ; Handle the RealTime Char Array type
+    ON ERROR GOSUB bypassMissingString
+    GOSUB DumpRealTimeCharArray &buffer &mask &localRead &localMsgLength &outputString
+    &dump "&(ULogTimestamp): &(outputString)"
+    ON ERROR
+  )
+  IF &format==&ULOG_SUBTYPE_REALTIME_STRINGDATA
+  (
+    ; Handle RealTime String type
+    ON ERROR GOSUB bypassMissingString
+    GOSUB DumpRealTimeString &buffer &mask &localRead &localMsgLength &outputString
+    &dump "&(ULogTimestamp): &(outputString)"
+    ON ERROR
+  )
+  IF &format==&ULOG_SUBTYPE_REALTIME_CSVDATA
+  (
+    ON ERROR GOSUB bypassMissingString
+    GOSUB DumpRealTimeWordArray &buffer &mask &localRead &localMsgLength &format &outputString
+    &ULogTimestamp=FORMAT.UDECIMAL(0,&ULogTimestamp)
+    &dump "&(ULogTimestamp): &(outputString)"
+    ON ERROR 
+  )
+  IF &format==&ULOG_SUBTYPE_REALTIME_VECTOR
+  (
+    ; Handle RealTime Vector type
+    ON ERROR GOSUB bypassMissingString
+    GOSUB DumpRealTimeVector &buffer &mask &localRead &localMsgLength &outputString
+    &dump "&(ULogTimestamp): &(outputString)"
+    ON ERROR
+  )
+  IF &format==&ULOG_SUBTYPE_REALTIME_MULTIPART
+  (
+    ; Handle RealTime Multipart Message type
+    ON ERROR GOSUB bypassMissingString
+    GOSUB DumpRealTimeMultipart &buffer &mask &localRead &localMsgLength &outputString
+    &dump "&(ULogTimestamp): &(outputString)"
+    ON ERROR
+  )
+  IF &format==&ULOG_SUBTYPE_RESERVED_FOR_RAW
+  (
+    ; Handle Raw format
+    ON ERROR GOSUB bypassMissingString
+    GOSUB DumpRaw8 &buffer &mask &localRead &localMsgLength &outputString
+    &dump "&(outputString)"
+    ON ERROR
+  )
+  IF &format==&ULOG_SUBTYPE_RAW8
+  (
+    ; Handle Raw 8 format
+  ON ERROR GOSUB bypassMissingString
+    GOSUB DumpRaw8 &buffer &mask &localRead &localMsgLength &outputString
+    &dump "&(outputString)"
+  ON ERROR
+  )
+  IF &format==&ULOG_SUBTYPE_RAW16
+  (
+    ; Handle Raw 16 format
+    ON ERROR GOSUB bypassMissingString
+    GOSUB DumpRaw16 &buffer &mask &localRead &localMsgLength &outputString
+    &dump "&(outputString)"
+    ON ERROR
+  )
+  IF &format==&ULOG_SUBTYPE_RAW32
+  (
+    ; Handle Raw 32 format
+    ON ERROR GOSUB bypassMissingString
+    GOSUB DumpRaw32 &buffer &mask &localRead &localMsgLength &outputString
+    &dump "&(outputString)"
+    ON ERROR
+  )
+
+  RETURN
+
+
+bypassMissingString:
+  &dump "*+*+*~~~Missing String Detected~~~*+*+*"
+  RETURN
+
+; This function returns the string it read through
+; the global value &ReadStringReturnValue
+;
+ReadString:
+  ENTRY &localAddress
+  LOCAL &outputString &localString &localLength
+
+  &localLength=0x80
+  WHILE &localLength==0x80
+  (
+    IF &USE_EAHB_FASTER_READS==1
+    (
+      &localString=DATA.STRING(eahb:&localAddress)
+    )
+    else
+    (
+      &localString=DATA.STRING(D:&localAddress)
+    )
+    &localAddress=&localAddress+0x80
+    &outputString="&(outputString)&(localString)"
+    &localLength=STRING.LEN("&(localString)")
+  )
+  &ReadStringReturnValue="&(outputString)"
+
+  RETURN
+
+
+
+
+  ; example message  ::
+  ; <readPtr> ->  0x0100 00200001   ( Size/Format )
+  ;               0x0104 0x7699     ( TimeStamp )
+  ; <localRead>-> 0x0108 0x40001200 ( Ptr to format string )
+  ;               0x010C 0x20       ( First %d data )
+  ;               0x011c 0x30       ( Second %d data )
+DumpRealTimePrintf:
+  ENTRY &buffer &mask &localRead &localMsgLength &outputString
+  LOCAL &formatStringPtr &subFormatString &g_format_size 
+  LOCAL &char &formatString &is64bitvalue
+  &formatStringPtr=V.VALUE(*((uint32 *)(&buffer+(&localRead & &mask))))
+
+  IF &formatStringPtr==0
+  (
+    &outputString="<NULL REFERENCE FORMAT STRING>"
+    RETURN
+  )
+
+  GOSUB ReadString &formatStringPtr
+  &formatString="&(ReadStringReturnValue)"
+  &localRead=&localRead+4
+  
+  WHILE STRING.LEN("&(formatString)")!=0
+  (
+    ; Get the first character of the format string
+    &char=string.mid("&(formatString)", 0, 1)     
+
+    ; Tear appart the format string one character at a time looking for format strings.
+    IF "&(char)"=="%"
+    (
+      LOCAL &isAtEnd &parmaValue &paramAddress
+      &subFormatString="%"
+      
+      &fmtstringCharCount=0
+      REPEAT
+      ( 
+        &formatString=STRING.CUT("&(formatString)",1)
+        &fmtstringCharCount=&fmtstringCharCount+1
+        &char=string.mid("&(formatString)", 0, 1)
+        GOSUB IsEndOfFormat &char
+        ENTRY &isAtEnd
+        &subFormatString="&(subFormatString)&(char)"
+        IF &fmtstringCharCount>0x14
+        (
+           PRINT ">> Printf format string greater than 20 chars found.  Skipping..."
+           &dump ">> Printf format string greater than  20 chars found.  Skipping..."
+           &subFormatString=""
+           &isAtEnd=1
+        )
+      )
+      WHILE &isAtEnd==0  
+      &is64bitvalue=0
+      IF string.scan("&(subFormatString)", "lld", 0)!=-1
+      (
+        &is64bitvalue=1
+      )
+      IF string.scan("&(subFormatString)", "llu", 0)!=-1
+      (
+        &is64bitvalue=1         
+      )
+      IF string.scan("&(subFormatString)", "llx", 0)!=-1
+      (
+        &is64bitvalue=1         
+      )
+      IF string.scan("&(subFormatString)", "llX", 0)!=-1
+      (
+        &is64bitvalue=1         
+      )      
+      ; Add substring to outputString
+      IF "&(char)"=="%"
+      (
+      )
+      ELSE
+      (
+        ; If the value isn't a 't' or 'm' we will be reading in the next value
+        IF string.scan("tm", "&(char)", 0)==-1 
+        (
+          IF (&is64bitvalue==0)
+          (
+            &g_format_size=0x20  ;32 bit value
+            &paramAddress=V.VALUE(&buffer+(&localRead & &mask))
+            &parmaValue=V.VALUE(*((uint32 *)&paramAddress))
+
+            ; Check whether the 32 bit value is an address or data  
+            IF string.scan("&subFormatString", "&", 0)!=-1
+            (
+              ; The 32-bit value is an address. Dereference it to get the data 
+              IF (&parmaValue!=0)
+              (
+                &paramAddress=&parmaValue
+                &parmaValue=V.VALUE(*(uint32 *)&paramAddress)
+              )
+            )
+            ; Increment the local read pointer
+            &localRead=&localRead+4
+          )
+          IF (&is64bitvalue==1)
+          (
+            &g_format_size=0x40  ;64 bit value
+            &paramAddress=V.VALUE(&buffer+(&localRead & &mask))
+            
+            ; Check whether the 64 bit value is an address or data  
+            IF string.scan("&subFormatString", "&", 0)!=-1
+            (
+              ; The 64-bit value is an address. Dereference it to get the data 
+              &parmaValue=V.VALUE(*((uint32 *)&paramAddress))
+              &localRead=&localRead+4              
+              IF (&parmaValue!=0)
+              (
+                &paramAddress=&parmaValue
+                IF string.scan("&(subFormatString)", "lld", 0)!=-1
+                (
+                  ;read in the 64 bit value as a signed value
+                  &parmaValue=V.VALUE(*(int64 *)&paramAddress) 
+                )
+                ELSE
+                (
+                  ;read in the 64 bit balue as an unsigned value
+                  &parmaValue=V.VALUE(*(uint64 *)&paramAddress) 
+                )
+              )
+            ) 
+            ELSE
+            (
+              IF string.scan("&(subFormatString)", "lld", 0)!=-1
+              (
+                ;read in the 64 bit value as a signed value
+                &parmaValue=V.VALUE(*((int64 *)&paramAddress))
+              ) 
+              ELSE
+              (
+                ;read in the 64 bit balue as an unsigned value
+                &parmaValue=V.VALUE(*((uint64 *)&paramAddress))
+              ) 
+              ; Increment the local read pointer
+              &localRead=&localRead+8
+            )
+          )    
+        )
+      
+        IF "&(char)"=="d"
+        (
+          GOSUB HandleNumberFormating
+          IF (&is64bitvalue==0)
+          (
+            ;T32 Is using 64 bit data widths and needs this to correctly use 32 bit negative numbers.
+            IF ((&(parmaValue)&0x80000000)==0x80000000)
+            (
+              &parmaValue=CONV.SignedLong(&parmaValue)
+              &char=FORMAT.DECIMAL(&g_format_size,&parmaValue)
+            )
+            ELSE
+            (
+              &char=FORMAT.DECIMAL(&g_format_size,&parmaValue)
+            )
+          )
+          ELSE
+          (
+            &char=FORMAT.DECIMAL(&g_format_size,&parmaValue)
+          )
+        )
+        ELSE IF "&(char)"=="u"
+        (
+          GOSUB HandleNumberFormating
+          &char=FORMAT.UDECIMAL(&g_format_size,&parmaValue)
+        )
+        ELSE IF "&(char)"=="f"
+        (
+          IF &USE_EAHB_FASTER_READS==1
+          (
+            &char=DATA.FLOAT("IEEE",eahb:&paramAddress)
+          )
+          else
+          (
+            &char=DATA.FLOAT("IEEE",D:&paramAddress)
+          )
+        )
+        ELSE IF "&(char)"=="s"
+        (
+          IF (&parmaValue==0)
+          (
+            &char="<NULL REFERENCE>"
+          )
+          ELSE
+          (
+             IF &USE_EAHB_FASTER_READS==1
+             (
+                &char=DATA.STRING(eahb:&parmaValue)
+              )
+             else
+             (
+                &char=DATA.STRING(D:&parmaValue)
+             )
+          )
+        )
+        ELSE IF string.scan("xX", "&(char)", 0)!=-1
+        (
+          GOSUB HandleNumberFormating
+          &char=FORMAT.HEX(&g_format_size,&parmaValue)
+        )
+        ELSE IF "&(char)"=="c"
+        (
+          &char=CONV.CHAR(&parmaValue)
+          &char=STRING.MID("&char", 1, 1)
+        )
+        ELSE IF "&(char)"=="t"
+        (
+          ; Mark the current timestamp as 0 
+          &char="0"
+        )
+        ELSE IF "&(char)"=="m"
+        (
+          GOSUB HandleNextMultipartMsg ;&buffer &mask &localRead &localMsgLength &(outputString)
+          &char=""; the results should have already been added to &outputString so we don't use &char for this %m case
+        )
+        ELSE
+        (
+          &char=""
+        )
+      )
+      &outputString="&(outputString)&(char)"
+    )
+    ELSE
+    (
+      ; Add the non-format data
+      &outputString="&(outputString)&(char)"
+    )
+    &formatString=STRING.CUT("&(formatString)",1)
+  )
+  
+  RETURN
+
+
+ 
+  
+; Allow for formating strings like %03d. %3d Return the &g_format_size 
+; This isn't perfect because TRACE32 FORMAT.DECIMAL doesn't zero fill, while 
+; FORMAT.HEX does, but it somewhat matches the requested formating. 
+HandleNumberFormating:
+  LOCAL &c_ascii &c_ascii_0 &c
+  &g_format_size=0
+  &c=14
+  
+  IF string.find("&(subFormatString)", "0123456789")
+  (
+    REPEAT
+    (
+      &c_ascii_0=FORMAT.DECIMAL(0,&c)
+      &c_ascii_0="0&(c_ascii_0)"      ;020, 019, 018, etc...    
+      &c_ascii=FORMAT.DECIMAL(0,&c)   ;20, 19, 18, etc...
+     
+      IF string.scan("&(subFormatString)", "&(c_ascii_0)", 0)!=-1 
+      (
+        ; found a format string with a %08d style format 
+        &g_format_size=&c
+        RETURN
+      )
+      
+      IF string.scan("&(subFormatString)", "&(c_ascii)", 0)!=-1 
+      (
+        ;found a format string with a %8d style format 
+        IF &c==0
+        (
+          ; format strings in the format %0d are a special case.
+          IF (&is64bitvalue==1)
+          (
+            &g_format_size=16
+          )
+          ELSE
+          (
+             &g_format_size=8
+          )
+        )
+        ELSE
+        (
+          &g_format_size=&c
+          RETURN
+        )
+      )
+      &c=&c-1
+    )
+    WHILE &c!=0
+  )
+  RETURN
+
+
+
+  
+; Returns 0 when a non format character is found. 
+IsEndOfFormat:
+  ENTRY &char
+  LOCAL &isEndValue
+  &isEndValue=1
+  IF string.scan("%EGXcdefginopsuxtm", "&(char)", 0)==-1
+  (
+    &isEndValue=0
+  )
+  RETURN &isEndValue
+
+
+
+  
+  ; example message  ::
+  ; <readPtr> ->  0x0100 00100002   ( Size/Format )
+  ;               0x0104 0x7699     ( TimeStamp )
+  ; <localRead>-> 0x0105 0x10       ( each byte follows )
+  ;               0x0105 0x20       ( each byte follows )
+  ;               0x0106 0x30       ( each byte follows )
+  ;               0x0107 0x40       ( each byte follows )
+DumpRealTimeCharArray:
+  ;ENTRY &buffer &mask &localRead &localMsgLength &outputString
+  LOCAL &bytesOut &columns &charDataLength
+  LOCAL &outChar
+
+  &bytesOut=0
+  &columns=0
+
+  ; Subtract the timestamp and message format from the original message
+  ; to obtain the length of the char data 
+  IF (&Use64BitTimeStamps==1)
+  (
+    &charDataLength=&localMsgLength-0xC  
+  )
+  ELSE
+  (
+    &charDataLength=&localMsgLength-8
+  )
+  
+  WHILE &charDataLength!=0
+  (
+    ; Read each character which follows
+    &outChar=V.VALUE(*((char *)(&buffer+(&localRead & &mask))))
+    &outChar=FORMAT.HEX(2,&outChar)
+  
+    ; Add it to output string 
+    &outputString="&(outputString)&(outChar)"
+  
+    ; Add a space after the byte
+    &outChar=" "
+    &outputString="&(outputString)&(outChar)"
+  
+    ; Increment the total bytes in the string
+    &bytesOut=&bytesOut+1
+
+    ; Increment the number of bytes read
+    &columns=&columns+1
+
+    ;Put an extra space inbetween groups of four bytes
+    IF &columns==4 
+    (
+      &outChar=" "
+      &outputString="&(outputString)&(outChar)"
+    )
+    
+    ; check if the row of data has been reached.
+    IF &columns==24&&&charDataLength!=0 
+    (
+      ; prep for the next line of data
+      ; add a carriage return for this data
+      &outChar="\n"
+      &outputString="&(outputString)&(outChar)"
+      ; increment the total bytes in the string
+      &bytesOut=&bytesOut+1
+    )
+
+    ; Increment localRead to point to next byte.
+    &localRead=&localRead+1 
+
+    ; Decrement the message length
+    &charDataLength=&charDataLength-1 
+    
+  ); end of WHILE &charDataLength != 0
+
+  ; We keep things on word boundaries.  if the char copies didn't end on a boundry advance the pointer to the next boundary
+  &bytesOut=&bytesOut&0x03
+  IF &bytesOut!=0
+  (
+    &bytesOut=4-&bytesOut
+  )
+  &localRead=&localRead+&bytesOut
+
+  RETURN
+
+
+
+
+  ; example 32 bit TS message  ::
+  ; <readPtr> ->  0x0104 0x0020000  ( Size/Format )
+  ;               0x0108 0x7699     ( TimeStamp )
+  ; <localRead>-> 0x010C 0x12345678 ( each word follows )
+  ;               0x0110 0x12345678 ( each word follows )
+  ; example 64 bit TS message  ::
+  ;               0x0100 0x18       ( Size )
+  ; <readPtr> ->  0x0104 0          ( Format )
+  ;               0x0108 0x0        ( TimeStamp )
+  ;               0x010C 0x7699     ( TimeStamp )  
+  ; <localRead>-> 0x0110 0x12345678 ( each word follows )
+  ;               0x0114 0x12345678 ( each word follows )
+DumpRealTimeWordArray:
+  ;ENTRY &buffer &mask &localRead &localMsgLength &format &outputString
+  LOCAL &columns &charDataLength
+  LOCAL &outChar
+
+  &columns=0
+
+  ; Subtract the timestamp and message format from the original message
+  ; to obtain the length of the char data 
+  IF (&Use64BitTimeStamps==1)
+  (
+    &charDataLength=&localMsgLength-0xC  
+  )
+  ELSE
+  (
+    &charDataLength=&localMsgLength-0x8
+  )
+
+  WHILE &charDataLength!=0
+  (
+    ; Read each character which follows
+    &outChar=V.VALUE(*((unsigned int *)(&buffer+(&localRead & &mask))))
+    
+    IF &format==&ULOG_SUBTYPE_REALTIME_WORDDATA
+    (
+      &outChar=FORMAT.HEX(8,&outChar)
+      ; add it to output string 
+      &outputString="&(outputString)0x&(outChar) "
+    )
+    
+    IF &format==&ULOG_SUBTYPE_REALTIME_CSVDATA
+    (
+      &outChar=FORMAT.UDECIMAL(0,&outChar)
+      &outputString="&(outputString)&(outChar), "
+    )
+
+    ; Increment the number of bytes read
+    &columns=&columns+1
+
+    ; check if the row of data has been reached.
+    IF &columns==8&&&charDataLength!=0&&&format==4 
+    (
+      ; prep for the next line of data
+      ; add a carriage return for this data
+      &outChar="\n            "
+      &outputString="&(outputString)&(outChar)"
+      ; increment the total bytes in the string
+    )
+    ; Increment localRead to point to next word.
+    &localRead=&localRead+4 
+
+    ; Decrement the message length
+    &charDataLength=&charDataLength-4
+  ); end of WHILE &charDataLength != 0
+  RETURN
+
+
+
+
+  ; example message  ::
+  ; <readPtr> ->  0x0100 0x00200003 ( Size/Format )
+  ;               0x0104 0x7699     ( TimeStamp )
+  ; <localRead>-> 0x0108 0x4002004  ( Ptr to String )
+DumpRealTimeString:
+  ;ENTRY &buffer &mask &localRead &localMsgLength &outputString
+  LOCAL &stringDataLength &string_read &char_count
+
+  ; Subtract the timestamp and message format from the original message
+  ; to obtain the length of the char data 
+  IF (&Use64BitTimeStamps==1)
+  (
+    &stringDataLength=&localMsgLength-0xC
+  )
+  ELSE
+  (
+    &stringDataLength=&localMsgLength-8
+  )
+ 
+  &string_read=""
+  &char_count=0
+  WHILE (&stringDataLength!=0)
+  (
+    &outChar=V.VALUE(*((char *)(&buffer+((&localRead+&char_count) & &mask))))
+    &string_read="&string_read"+convert.char(&outChar)
+    &char_count=&char_count+1
+    &stringDataLength=&stringDataLength-1
+  )
+
+  ;record the progress reading the buffer.
+  &localRead=&localRead+&char_count
+  
+  ; We keep things on word boundaries.  if the char copies didn't end on a boundry advance the pointer to the next boundary
+  &char_count=&char_count&0x03
+  IF &char_count!=0
+  (
+    &char_count=4-&char_count
+  )
+  &localRead=&localRead+&char_count
+    
+  &outputString="&(outputString)&(string_read)"
+  RETURN
+
+
+
+
+  ; example message  ::
+  ; <readPtr> -> 0x0100 00200006   ( Size/Format )
+  ;              0x0104 0x7699     ( TimeStamp )
+  ;<localRead>-> 0x0108 0x40000004 ( FormatString Ptr )
+  ;              0x010A 0x0005     ( vectorLength )
+  ;              0x010C 0x02       ( entryByteSize )
+  ;              0x0110 0x30       ( each short follows )
+  ;              0x0112 0x40       ( each short follows )
+DumpRealTimeVector:
+  ;ENTRY &buffer &mask &localRead &localMsgLength &outputString
+  LOCAL &vectorDataLength &formatStr_ptr &formatString &formatString_saved
+  LOCAL &subFormatString &char &workingString &offset
+    
+  &formatStr_ptr=V.VALUE(*((unsigned int *)(&buffer+(&localRead & &mask))))
+  IF &USE_EAHB_FASTER_READS==1
+  (
+     &formatString=DATA.STRING(eahb:&formatStr_ptr)
+  )
+  else
+  (    
+     &formatString=DATA.STRING(D:&formatStr_ptr)
+  )
+  ;Advance to the vectorLength short
+  &localRead=&localRead+4   
+  &vectorLength=V.VALUE(*((unsigned short *)(&buffer+(&localRead & &mask))))
+
+  ; Advance to the entryByteCount short
+  &localRead=&localRead+2   
+  &entryByteCount=V.VALUE(*((unsigned short *)(&buffer+(&localRead & &mask))))
+
+  ; Advance to the first vector data element
+  &localRead=&localRead+2   
+  
+  ; We tear apart the format string when we process each vector element.  Save it so we can restore it later. 
+  &formatString_saved="&formatString"   
+  WHILE &vectorLength!=0    ;loop once for each element in our vector
+  (
+    ; Loop once for each character in the format string to insert the vector data into the string
+    WHILE STRING.LEN("&(formatString)")!=0   
+    (
+      ;Read the first character in the format string
+      &char=string.mid("&(formatString)", 0, 1)   
+      IF "&(char)"=="%"
+      (
+        LOCAL &isAtEnd
+        &subFormatString="%"
+        ; Get the complete format string
+        REPEAT   
+        ( 
+          &formatString=STRING.CUT("&(formatString)",1)
+          &char=string.mid("&(formatString)", 0, 1)
+          GOSUB IsEndOfFormat &char
+          ENTRY &isAtEnd
+          &subFormatString="&(subFormatString)&(char)"       
+        )
+        WHILE &isAtEnd==0                        
+        
+        ; At this point we have the %d or whatever the format text was removed
+        ; &char is set to the last character in the format string.  
+              
+        ; Add vector data to workingString
+        IF "&(char)"=="%"
+        (
+        )
+        ELSE
+        (
+          IF string.scan("di", "&(char)", 0)!=-1
+          (
+            IF &entryByteCount==4
+            (
+              &char=FORMAT.DECIMAL(0,V.VALUE(*((int *)(&buffer+(&localRead & &mask)))))
+              &localRead=&localRead+4
+            )
+            IF &entryByteCount==2
+            (
+              &char=FORMAT.DECIMAL(0,V.VALUE(*((short *)(&buffer+(&localRead & &mask)))))
+              &localRead=&localRead+2   
+            )
+            IF &entryByteCount==1
+            (
+              &char=FORMAT.DECIMAL(0,V.VALUE(*((char *)(&buffer+(&localRead & &mask)))))
+              &localRead=&localRead+1
+            )
+          )
+          ELSE IF "&(char)"=="u"
+          (
+            IF &entryByteCount==4
+              (
+                &char=FORMAT.UDECIMAL(0,V.VALUE(*((unsigned int *)(&buffer+(&localRead & &mask)))))
+                &localRead=&localRead+4
+              )
+              IF &entryByteCount==2
+              (
+                &char=FORMAT.UDECIMAL(0,V.VALUE(*((unsigned short *)(&buffer+(&localRead & &mask)))))
+                &localRead=&localRead+2
+              )
+              IF &entryByteCount==1
+              (
+                &char=FORMAT.UDECIMAL(0,V.VALUE(*((unsigned char *)(&buffer+(&localRead & &mask)))))
+                &localRead=&localRead+1
+              )
+          )
+          ELSE IF string.scan("xX", "&(char)", 0)!=-1
+          (
+            IF &entryByteCount==4
+            (
+              &char=FORMAT.HEX(8,V.VALUE(*((unsigned int *)(&buffer+(&localRead & &mask)))))
+              &localRead=&localRead+4
+            )
+            IF &entryByteCount==2
+            (
+              &char=FORMAT.HEX(8,V.VALUE(*((unsigned short *)(&buffer+(&localRead & &mask)))))
+              &localRead=&localRead+2
+            )
+            IF &entryByteCount==1
+            (
+              &char=FORMAT.HEX(8,V.VALUE(*((unsigned char *)(&buffer+(&localRead & &mask)))))
+              &localRead=&localRead+1
+            )
+          )
+          ELSE
+          (
+            &char=""
+          )
+        )
+        &workingString="&(workingString)&(char)"
+      )
+      ELSE
+      (
+        ; Add the non-format chars to the working string
+        &workingString="&(workingString)&(char)"
+      )
+      &formatString=STRING.CUT("&(formatString)",1)   ;remove the first character we just finished processing. 
+    )
+    
+    ;add the new working string to the final string
+    &outputString="&(outputString)&(workingString)"
+    
+    ;we tear apart the format string when we process it.  Restore it. 
+    &formatString="&formatString_saved"   
+    
+    ;empty the output string for the next pass. 
+    &workingString=""
+    
+    &vectorLength=&vectorLength-1
+  )
+  RETURN
+
+
+
+  ; example Raw8 message  ::
+  ; <readPtr> ->  0x0100 0008000d   ( Size/Format )
+  ; <localRead>-> 0x0104 0x10       ( each byte follows )
+  ;               0x0105 0x20       ( each byte follows )
+  ;               0x0106 0x30       ( each byte follows )
+  ;               0x0107 0x40       ( each byte follows )
+DumpRaw8:
+  ;ENTRY &buffer &mask &localRead &localMsgLength &outputString
+  LOCAL &bytesOut &raw8DataLength
+  LOCAL &outChar
+  
+  ; Subtract off the length/format word
+  &raw8DataLength=&localMsgLength-4
+  
+  &outputString="- "
+  
+  WHILE &raw8DataLength!=0
+  (
+    ; Read each character which follows
+    &outChar=V.VALUE(*((char *)(&buffer+(&localRead & &mask))))
+    &outChar=FORMAT.HEX(2,&outChar)
+  
+    ; Add it to output string 
+    &outputString="&(outputString)0x&(outChar), "
+  
+    ; Increment the total bytes read our of the message
+    &bytesOut=&bytesOut+1
+
+    ; Increment localRead to point to next byte.
+    &localRead=&localRead+1 
+
+    ; Decrement the message length
+    &raw8DataLength=&raw8DataLength-1 
+    
+  ); end of WHILE &raw8DataLength != 0
+
+  ; We keep things on word boundaries.  If the char copies didn't end on a boundry advance the pointer to the next boundary
+  &bytesOut=&bytesOut&0x03
+  IF &bytesOut!=0
+  (
+    &bytesOut=4-&bytesOut
+  )
+  &localRead=&localRead+&bytesOut
+
+  RETURN
+
+
+  
+  ; example Raw16 message  ::
+  ; <readPtr> ->  0x0100 000c000e   ( Size/Format )
+  ; <localRead>-> 0x0104 0x10       ( each short follows )
+  ;               0x0106 0x20       ( each short follows )
+  ;               0x0108 0x30       ( each short follows )
+  ;               0x010a 0x40       ( each short follows )
+DumpRaw16:
+  ;ENTRY &buffer &mask &localRead &localMsgLength &outputString
+  LOCAL &bytesOut &raw16DataLength
+  LOCAL &outChar
+  
+  ; Subtract off the length/format word
+  &raw16DataLength=&localMsgLength-4
+  
+  &outputString="- "
+  
+  WHILE &raw16DataLength!=0
+  (
+    ; Read each character which follows
+    &outChar=V.VALUE(*((unsigned short *)(&buffer+(&localRead & &mask))))
+    &outChar=FORMAT.HEX(4,&outChar)
+  
+    ; Add it to output string 
+    &outputString="&(outputString)0x&(outChar), "
+  
+    ; Increment the total bytes read
+    &bytesOut=&bytesOut+2
+
+    ; Increment localRead to point to next byte.
+    &localRead=&localRead+2 
+
+    ; Decrement the message length
+    &raw16DataLength=&raw16DataLength-2
+    
+  ); end of WHILE &raw16DataLength != 0
+
+  ; We keep things on word boundaries.  If the reads didn't end on a boundry advance the pointer to the next boundary
+  &bytesOut=&bytesOut&0x03
+  IF &bytesOut!=0
+  (
+    &bytesOut=4-&bytesOut
+  )
+  &localRead=&localRead+&bytesOut
+
+  RETURN
+
+  
+  
+  ; example Raw32 message  ::
+  ; <readPtr> ->  0x0100 0010000e   ( Size/Format )
+  ; <localRead>-> 0x0104 0x10       ( each word follows )
+  ;               0x0108 0x20       ( each word follows )
+  ;               0x010c 0x30       ( each word follows )
+DumpRaw32:
+  ;ENTRY &buffer &mask &localRead &localMsgLength &outputString
+  LOCAL &bytesOut &raw32DataLength
+  LOCAL &outChar
+
+  ; Subtract off the length/format word
+  &raw32DataLength=&localMsgLength-4
+
+  &outputString="- "
+  
+  WHILE &raw32DataLength!=0
+  (
+    ; Read each character which follows
+    &outChar=V.VALUE(*((unsigned short *)(&buffer+(&localRead & &mask))))
+    &outChar=FORMAT.HEX(8,&outChar)
+  
+    ; Add it to output string 
+    &outputString="&(outputString)0x&(outChar), "
+  
+    ; Increment the total bytes read
+    &bytesOut=&bytesOut+4
+
+    ; Increment localRead to point to next byte.
+    &localRead=&localRead+4 
+
+    ; Decrement the message length
+    &raw32DataLength=&raw32DataLength-4
+    
+  ); end of WHILE &raw32DataLength != 0
+
+  ; We keep things on word boundaries.  If the reads didn't end on a boundry advance the pointer to the next boundary
+  &bytesOut=&bytesOut&0x03
+  IF &bytesOut!=0
+  (
+    &bytesOut=4-&bytesOut
+  )
+  &localRead=&localRead+&bytesOut
+
+  RETURN  
+
+
+  ; 32 bit TS example message  
+  ; <readPtr> ->  0x0100 00200007   ( Size/Format )
+  ;               0x0104 0x7699     ( TimeStamp )
+  ; <localRead>-> 0x0108 0x50       ( first mpm element size )
+  ;               0x010C 0x7700     ( first mpm element timestamp )
+  ;               0x0110 0x1        ( first mpm element's format )
+  ;               0x0114 0x40001200 ( first mpm element's data )
+DumpRealTimeMultipart:
+  ;ENTRY &buffer &mask &localRead &localMsgLength &outputString
+  LOCAL &outputBuildString &inputString &localEndCalc &temp
+
+  ;check for a zero message length
+  IF &localMsgLength==0
+  (
+    PRINT "<Incomplete (zero length) multipart ULog message>"
+    ; This should be the end of the log, but since it's a MPM there "may" be more messages afterwards.
+    ; Any MPM messages past this point can't be completely trusted, but we'll try to read them anyway 
+    ; if the write index indicates there were more messages written.
+    ; We can continue reading them if we just advance the high level global &read pointer past this 
+    ; zero size MPM message's Format and TS values.
+    &outputString="<Mutipart Err>"
+    IF (&Use64BitTimeStamps==1)
+    (  
+      &read=&read+0xC    
+    )
+    ELSE    
+    (
+      &read=&read+0x8
+    )
+    RETURN
+  )
+  ; We're doing as subset of the larger parsing loop here.  
+  ; Instead of looping through the entire ULog buffer, we're going 
+  ; to loop through this mpm buffer.
+  
+  ;calculate the amount of log bytes inside this mpm we need to process (minus the format and TS words of the mpm)
+  IF (&Use64BitTimeStamps==1)
+  (  
+    &localEndCalc=&localRead+&localMsgLength-0xC
+  )
+  ELSE
+  (
+    &localEndCalc=&localRead+&localMsgLength-0x8
+  )
+  
+  ;make sure our output string where we're going to assemble the mpm output is empty
+  &outputBuildString=""
+  
+  ;---FOR_DEBUGGING----FOR_DEBUGGING---FOR_DEBUGGING----FOR_DEBUGGING
+  ;&temp=&buffer+&localRead
+  ;PRINT "DumpRealTimeMultipart at: " &temp
+  ;PRINT "localMsgLength: " &localMsgLength
+  ;PRINT "localRead: " &localRead
+  ;PRINT "localEndCalc: " &localEndCalc
+  ;---FOR_DEBUGGING----FOR_DEBUGGING---FOR_DEBUGGING----FOR_DEBUGGING
+
+  ;indicate a MPM has started and load in the paramaters.
+  &mpm_active=1
+  &mpm_depth=0  ;for depths over 1 we no longer accept %m references. 
+  &mpm_nextMsgStart=&localRead
+  &mpm_endOfData=&localEndCalc
+
+  ; this is the start of a MPM, we begin a recursive process that will return here after all the messages in this MPM are handled.
+  GOSUB HandleNextMultipartMsg ;&buffer &mask &localRead &localMsgLength &outputString)
+  
+  ;We're back so the MPM paramaters are cleared. 
+  &mpm_active=0
+  &mpm_nextMsgStart=0   ;just to be safe set these to also indicate there's no MPM going on.
+  &mpm_endOfData=0
+ 
+  RETURN
+
+
+
+
+; The general RealTime format is:
+; <Size/Fmt> <Timestamp> <Data> 
+DumpULogMsgInMPM:
+  ;ENTRY &buffer &mask &localRead &localMsgLength &outputString  ;localRead is similar to the log's ReadWriter pointer (trailing ptr, first valid message in the log) except advanced one word past the size indicator
+  LOCAL &format &TS_to_discard
+
+  ; Read the message format
+  &format=V.VALUE(*((uint16 *)(&buffer+(&localRead & &mask))))
+
+  ; Advance our pointer past the format and size values
+  &localRead=&localRead+4  
+  
+  IF (&Use64BitTimeStamps==1)
+  (
+      ; Read the message timestamp
+      &TS_to_discard=V.VALUE(*((uint64 *)(&buffer+(&localRead & &mask))))
+      ; Advance our pointer past the timestamp value
+      &localRead=&localRead+8
+  )
+  ELSE
+  (
+    ; Read the message timestamp
+    &TS_to_discard=V.VALUE(*((uint32 *)(&buffer+(&localRead & &mask))))
+    ; Advance our pointer past the timestamp value    
+    &localRead=&localRead+4                          
+  )
+  
+  IF &format==&ULOG_SUBTYPE_REALTIME_WORDDATA
+  (
+    ; Handle the RealTime Data type
+    GOSUB DumpRealTimeWordArray &buffer &mask &localRead &localMsgLength &format &outputString 
+  )
+  IF &format==&ULOG_SUBTYPE_REALTIME_PRINTF
+  (
+    ; Handle the RealTime Printf type
+    
+    ; We need two versions of the RealTimePrintf parser because in MPMs there could be 
+    ; RealTimePrintfs referenced inside the original printf. The recursion should only
+    ; ever be 1 deep. 
+    IF &mpm_depth==0
+    (
+      &mpm_depth=&mpm_depth+1
+      GOSUB DumpRealTimePrintf &buffer &mask &localRead &localMsgLength &outputString    
+      &mpm_depth=&mpm_depth-1
+    )
+    IF &mpm_depth>0
+    (
+      GOSUB DumpRealTimePrintfInMPM &buffer &mask &localRead &localMsgLength &outputString
+    )
+  )
+  IF &format==&ULOG_SUBTYPE_REALTIME_BYTEDATA
+  (
+    ; Handle the RealTime Char Array type
+    GOSUB DumpRealTimeCharArray &buffer &mask &localRead &localMsgLength &outputString
+  )
+  IF &format==&ULOG_SUBTYPE_REALTIME_STRINGDATA
+  (
+    ; Handle RealTime String type
+    GOSUB DumpRealTimeString &buffer &mask &localRead &localMsgLength &outputString
+  )
+  IF &format==&ULOG_SUBTYPE_RESERVED_FOR_RAW
+  (
+    ; Formerly another uint32 array format so we'll try to read it
+    GOSUB DumpRealTimeWordArray &buffer &mask &localRead &localMsgLength &format &outputString 
+  )
+  IF &format==&ULOG_SUBTYPE_REALTIME_CSVDATA
+  (
+    GOSUB DumpRealTimeWordArray &buffer &mask &localRead &localMsgLength &format &outputString
+  
+    ; Normally we modify the timestamp for CSV so that it's in decimal format instead of 0x hex format.
+    ; This is so the formating is nicer for spreadsheets. 
+    ; For MPM, the timestamp applies to all the parts of the message so we're not reformating her.
+    ; Uncomment this line if you need the decimal formating for MPM CSV timestamps.  &ULogTimestamp=FORMAT.UDECIMAL(0,&ULogTimestamp)
+    ;&ULogTimestamp=FORMAT.UDECIMAL(0,&ULogTimestamp)
+  )
+  IF &format==&ULOG_SUBTYPE_REALTIME_VECTOR
+  (
+    ; Handle RealTime Vector type
+    GOSUB DumpRealTimeVector &buffer &mask &localRead &localMsgLength &outputString
+  )
+
+  IF &format==&ULOG_SUBTYPE_REALTIME_MULTIPART
+  (
+    ; A Multipart Message inside a Multipart message????  That seems incorrect
+    PRINT "Error: Multipart Message Inside a Multipart Message? Unusual data format in log."
+    &outputString="<Mutipart Err>"
+  )
+  
+  RETURN
+
+
+
+
+HandleNextMultipartMsg:
+  LOCAL &multipart_padding
+  
+  IF &mpm_active==0
+  (
+    ; We were asked to parse the next message, but there wasn't one,
+    ; which should be some kind of error.
+    &outputString="&(outputString) <Mutipart Err>"
+    RETURN
+  )
+
+  IF &mpm_nextMsgStart>=&mpm_endOfData
+  (
+    ; We were asked to parse the next message, but there wasn't one,
+    ; which should be an error.
+    &outputString="&(outputString) <Mutipart Err>"
+    RETURN
+  )
+  
+  ; Advance past the format to read the len
+  &localRead=&localRead+2                        
+  
+  &localMsgLength=V.VALUE(*((uint16 *)(&buffer+(&localRead & &mask))))
+  
+  ; Back up to the format.
+  &localRead=&localRead-2                        
+  
+  
+  &multipart_padding=0
+  IF V.VALUE(&localMsgLength&0x3)!=0
+  (
+    &multipart_padding=V.VALUE(4-(&localMsgLength&0x3))
+  )
+
+  ;Advance the nextMsgStart pointer past the message we're about to parse.  We'll use this value if another HandleNextMultipartMsg gets called in this MPM.
+  &mpm_nextMsgStart=&localRead+&localMsgLength+&multipart_padding
+
+  GOSUB DumpULogMsgInMPM &buffer &mask &localRead &localMsgLength &outputString
+
+  RETURN
+
+
+
+
+  ; example 32 bit TS message  ::
+  
+  ; <readPtr> ->  0x0100 0x00200001 ( Size/ Format )
+  ;               0x0104 0x7699     ( TimeStamp )
+  ; <localRead>-> 0x0108 0x40001200 ( Ptr to format string )
+  ;               0x010C 0x20       ( First %d data )
+  ;               0x011c 0x30       ( Second %d data )
+DumpRealTimePrintfInMPM:
+  ;ENTRY &buffer &mask &localRead &localMsgLength &outputString
+  LOCAL &formatStringPtrInMPM &subFormatStringInMPM &g_format_size 
+  LOCAL &charInMPM &formatStringInMPM &is64bitvalueInMPM
+  
+  &formatStringPtrInMPM=V.VALUE(*((uint32 *)(&buffer+(&localRead & &mask))))
+
+  IF &formatStringPtrInMPM==0
+  (
+    &outputString="&(outputString) <NULL REFERENCE FORMAT STRING>"
+    RETURN
+  )
+
+  GOSUB ReadString &formatStringPtrInMPM
+  &formatStringInMPM="&(ReadStringReturnValue)"
+  &localRead=&localRead+4
+
+  WHILE STRING.LEN("&(formatStringInMPM)")!=0
+  (
+    ; Get the first character of the format string
+    &charInMPM=string.mid("&(formatStringInMPM)", 0, 1)     
+
+    ; Tear appart the format string one character at a time looking for format strings.
+    IF "&(charInMPM)"=="%"
+    (
+      LOCAL &isAtEndInMPM &parmaValueInMPM &paramAddressInMPM
+      &subFormatStringInMPM="%"
+
+      REPEAT
+      ( 
+        &formatStringInMPM=STRING.CUT("&(formatStringInMPM)",1)
+        &charInMPM=string.mid("&(formatStringInMPM)", 0, 1)
+        GOSUB IsEndOfFormat &charInMPM
+        ENTRY &isAtEndInMPM
+        &subFormatStringInMPM="&(subFormatStringInMPM)&(charInMPM)"
+      )
+      WHILE &isAtEndInMPM==0  
+
+      &is64bitvalueInMPM=0
+      IF string.scan("&(subFormatStringInMPM)", "lld", 0)!=-1
+      (
+        &is64bitvalueInMPM=1
+      )
+      IF string.scan("&(subFormatStringInMPM)", "llu", 0)!=-1
+      (
+        &is64bitvalueInMPM=1         
+      )
+      IF string.scan("&(subFormatStringInMPM)", "llx", 0)!=-1
+      (
+        &is64bitvalueInMPM=1         
+      )
+      IF string.scan("&(subFormatStringInMPM)", "llX", 0)!=-1
+      (
+        &is64bitvalueInMPM=1         
+      )      
+      ; Add substring to outputString
+      IF "&(charInMPM)"=="%"
+      (
+      )
+      ELSE
+      (
+        ;IF "&(charInMPM)"!="t"
+        ; If the value isn't a 't' or 'm' we will be reading in the next value
+        IF string.scan("tm", "&(charInMPM)", 0)==-1 
+        (
+          IF (&is64bitvalueInMPM==0)
+          (
+            &paramAddressInMPM=V.VALUE(&buffer+(&localRead & &mask))
+            &parmaValueInMPM=V.VALUE(*((uint32 *)&paramAddressInMPM))
+
+            ; Check whether the 32 bit value is an address or data  
+            IF string.scan("&subFormatStringInMPM", "&", 0)!=-1
+            (
+              ; The 32-bit value is an address. Dereference it to get the data 
+              IF (&parmaValueInMPM!=0)
+              (
+                &paramAddressInMPM=&parmaValueInMPM
+                &parmaValueInMPM=V.VALUE(*(uint32 *)&paramAddressInMPM)
+              )
+            )
+            ; Increment the local read pointer
+            &localRead=&localRead+4
+          )
+          IF (&is64bitvalueInMPM==1)
+          (
+            &paramAddressInMPM=V.VALUE(&buffer+(&localRead & &mask))
+            
+            ; Check whether the 64 bit value is an address or data  
+            IF string.scan("&subFormatStringInMPM", "&", 0)!=-1
+            (
+              ; The 64-bit value is an address. Dereference it to get the data 
+              &parmaValueInMPM=V.VALUE(*((uint32 *)&paramAddressInMPM))
+              &localRead=&localRead+4              
+              IF (&parmaValueInMPM!=0)
+              (
+                &paramAddressInMPM=&parmaValueInMPM
+                &parmaValueInMPM=V.VALUE(*(uint64 *)&paramAddressInMPM)
+              )
+            ) 
+            ELSE
+            (
+              &parmaValueInMPM=V.VALUE(*((uint64 *)&paramAddressInMPM))
+              ; Increment the local read pointer
+              &localRead=&localRead+8
+            )
+          )    
+        )
+      
+        IF "&(charInMPM)"=="d"
+        (
+          GOSUB HandleNumberFormating
+          &charInMPM=FORMAT.DECIMAL(&g_format_size,&parmaValueInMPM)
+        )
+        ELSE IF "&(charInMPM)"=="u"
+        (
+          GOSUB HandleNumberFormating
+          &charInMPM=FORMAT.UDECIMAL(&g_format_size,&parmaValueInMPM)
+        )
+        ELSE IF "&(charInMPM)"=="f"
+        (
+          IF &USE_EAHB_FASTER_READS==1
+          (
+            &charInMPM=DATA.FLOAT("IEEE",eahb:&paramAddressInMPM)
+          )
+          else
+          (
+            &charInMPM=DATA.FLOAT("IEEE",D:&paramAddressInMPM)
+          )
+        )
+        ELSE IF "&(charInMPM)"=="s"
+        (
+          IF (&parmaValueInMPM==0)
+          (
+            &charInMPM="<NULL REFERENCE>"
+          )
+          ELSE
+          (
+            IF &USE_EAHB_FASTER_READS==1
+            (
+              &charInMPM=DATA.STRING(eahb:&parmaValueInMPM)
+            )
+            ELSE
+            (
+              &charInMPM=DATA.STRING(D:&parmaValueInMPM)
+            )
+          )
+        )
+        ELSE IF string.scan("xX", "&(charInMPM)", 0)!=-1
+        (
+          GOSUB HandleNumberFormating
+          &charInMPM=FORMAT.HEX(&g_format_size,&parmaValueInMPM)
+        )
+        ELSE IF "&(charInMPM)"=="c"
+        (
+          &charInMPM=CONV.CHAR(&parmaValueInMPM)
+          &charInMPM=STRING.MID("&charInMPM", 1, 1)
+        )
+        ELSE IF "&(charInMPM)"=="t"
+        (
+          ; Mark the current timestamp as 0 
+          &charInMPM="0"
+        )
+        ELSE IF "&(charInMPM)"=="m"
+        (
+          ;nested multipart messages not supported
+        )
+        ELSE
+        (
+          &charInMPM=""
+        )
+      )
+      &outputString="&(outputString)&(charInMPM)"
+    )
+    ELSE
+    (
+      ; Add the non-format data
+      &outputString="&(outputString)&(charInMPM)"
+    )
+    &formatStringInMPM=STRING.CUT("&(formatStringInMPM)",1)
+  )
+  
+  RETURN
+
+
+  
+DumpRealTimeDebugInfo:
+  ENTRY &buffer &mask &localRead &localMsgLength 
+  LOCAL &logstart &value &address &debugbytesremaining &addressdiff
+  
+  ;dump the data in the sequence it should be ordered as in the log. 
+           
+  
+  IF (&Use64BitTimeStamps==1)
+  (
+    ;back the pointer up to the start of this log (4 bytes for Size/Format, and 8 TS)
+    &logstart=V.VALUE(&buffer+((&localRead-0xC) & &mask))
+  )
+  ELSE
+  (
+    ;back the pointer up to the start of this log (4 bytes each for Size/Format, and TS)
+    &logstart=V.VALUE(&buffer+((&localRead-0x8) & &mask))
+  )
+  &dump "-------------------------DEBUG-----DEBUG-----DEBUG----------------------"
+  &dump "Message at: &(logstart)"
+
+  IF V.VALUE(&logstart & 0x3)!=0
+  (
+    &dump "DEBUG: Log message not on a word boundary? This should not happen"
+  )
+
+  IF &DEBUG_DUMP_UNFORMATED_DATA!=1   
+  (
+    &dump "Size of entire message: &(localMsgLength)"
+    IF &format==&ULOG_SUBTYPE_REALTIME_WORDDATA
+    (
+      &dump "Format reads as: &(format) ULOG_SUBTYPE_REALTIME_WORDDATA"
+    )
+    ELSE IF &format==&ULOG_SUBTYPE_REALTIME_PRINTF
+    (
+      &dump "Format reads as: &(format) ULOG_SUBTYPE_REALTIME_PRINTF"
+    )
+    ELSE IF &format==&ULOG_SUBTYPE_REALTIME_BYTEDATA
+    (
+      &dump "Format reads as: &(format) ULOG_SUBTYPE_REALTIME_BYTEDATA"
+    )
+    ELSE IF &format==&ULOG_SUBTYPE_REALTIME_STRINGDATA
+    (
+      &dump "Format reads as: &(format) ULOG_SUBTYPE_REALTIME_STRINGDATA"
+    )
+    ELSE IF &format==&ULOG_SUBTYPE_RESERVED_FOR_RAW
+    (
+      &dump "Format reads as: &(format) ULOG_SUBTYPE_RESERVED_FOR_RAW"
+    )
+    ELSE IF &format==&ULOG_SUBTYPE_REALTIME_CSVDATA
+    (
+      &dump "Format reads as: &(format) ULOG_SUBTYPE_REALTIME_CSVDATA"
+    )
+    ELSE IF &format==&ULOG_SUBTYPE_REALTIME_VECTOR
+    (
+      &dump "Format reads as: &(format) ULOG_SUBTYPE_REALTIME_VECTOR"
+    )
+    ELSE IF &format==&ULOG_SUBTYPE_REALTIME_MULTIPART
+    (
+      &dump "Format reads as: &(format) ULOG_SUBTYPE_REALTIME_MULTIPART"
+    )
+    ELSE IF &format==&ULOG_SUBTYPE_RAW8
+    (
+      &dump "Format reads as: &(format) ULOG_SUBTYPE_RAW8"
+    )
+    ELSE IF &format==&ULOG_SUBTYPE_RAW16
+    (
+      &dump "Format reads as: &(format) ULOG_SUBTYPE_RAW16"
+    )
+    ELSE IF &format==&ULOG_SUBTYPE_RAW32
+    (
+      &dump "Format reads as: &(format) ULOG_SUBTYPE_RAW32"
+    )
+    ELSE 
+    (
+      &dump "Format reads as: &(format)"
+    )
+    &dump "Timestamp: &(ULogTimestamp)"
+
+    IF (&Use64BitTimeStamps==1)
+    (
+      &debugbytesremaining=&localMsgLength-0xC
+    )
+    ELSE
+    (
+      &debugbytesremaining=&localMsgLength-8      
+    )
+        
+    &dump "Remaining &(debugbytesremaining) bytes in this message:"  
+      
+    &address=V.VALUE(&buffer+(&localRead & &mask))
+      
+    WHILE &debugbytesremaining>0
+    (
+      IF &debugbytesremaining>=4&&&format!=&ULOG_SUBTYPE_REALTIME_STRINGDATA&&&format!=&ULOG_SUBTYPE_REALTIME_BYTEDATA
+      (
+        &value=V.VALUE(*((uint32 *)&address))
+        &dump "W: &(address): &(value)"
+        &debugbytesremaining=&debugbytesremaining-4
+        &address=&address+4
+      )
+      ELSE 
+      (
+        ;this isn't the cleanest way to deal with byte data, but MOST of the time we really want the word data. 
+        &value=V.VALUE(*((unsigned char *)&address))
+        &dump "B: &(address): &(value)"
+        &debugbytesremaining=&debugbytesremaining-1
+        &address=&address+1
+      )
+    )
+  )
+  ELSE    
+  (
+    ; Print out some of the preceding words if this feature has been requested. 
+    IF &DEBUG_DUMP_WORDS_BEFORE_LOG_START!=0
+    ( 
+      &debugbytesremaining=&DEBUG_DUMP_WORDS_BEFORE_LOG_START*4
+      &address=&logstart-&debugbytesremaining
+      WHILE &debugbytesremaining>0
+      (
+        IF &debugbytesremaining>=4
+        (
+          &value=V.VALUE(*((uint32 *)&address))
+          &addressdiff=&logstart-&address
+          &dump "[-&(addressdiff)]W: &(address): &(value)"
+          &debugbytesremaining=&debugbytesremaining-4
+          &address=&address+4
+        )
+        ELSE 
+        ( 
+          ;this isn't the cleanest way to deal with byte data, but MOST of the time we really want the word data. 
+          &value=V.VALUE(*((unsigned char *)&address))
+          &addressdiff=&logstart-&address
+          &dump "[-&(addressdiff)]B: &(address): &(value)"
+          &debugbytesremaining=&debugbytesremaining-1
+          &address=&address+1
+        )
+      )
+      IF &address!=&logstart
+      (
+        print "Address not equal to logstart at the end of words-before-log?? Possible bug in this cmm script" 
+      )
+    )
+
+    &address=&logstart
+    IF &DEBUG_DUMP_THIS_MANY_BYTES==0
+    (
+      &debugbytesremaining=&localMsgLength+4  ;add the Size back into the length
+    )
+    ELSE
+    (
+      &debugbytesremaining=&DEBUG_DUMP_THIS_MANY_BYTES   ;user requested a specific number of bytes to be dumped
+    )
+    WHILE &debugbytesremaining>0
+    (
+      IF &debugbytesremaining>=4&&&format!=&ULOG_SUBTYPE_REALTIME_STRINGDATA&&&format!=&ULOG_SUBTYPE_REALTIME_BYTEDATA
+      (
+        &value=V.VALUE(*((uint32 *)&address))
+        &addressdiff=&address-&logstart
+        &dump "[&(addressdiff)]W: &(address): &(value)"
+        &debugbytesremaining=&debugbytesremaining-4
+        &address=&address+4
+      )
+      ELSE 
+      (
+        ;this isn't the cleanest way to deal with byte data, but MOST of the time we really want the word data. 
+        &value=V.VALUE(*((unsigned char *)&address))
+        &addressdiff=&address-&logstart
+        &dump "[&(addressdiff)]B: &(address): &(value)"
+        &debugbytesremaining=&debugbytesremaining-1
+        &address=&address+1
+      )
+    )
+  )    
+      
+  &dump "------------------------------------------------------------------------"
+  RETURN
+
+
+
+DebugFindNextMessage:
+    PRINT "Will try to find a follow up message that looks valid"
+    &attempted_bytes_forwards=0
+    while &attempted_bytes_forwards<0x50
+    (
+        &read=&read+4
+        &attempted_bytes_forwards=&attempted_bytes_forwards+4
+
+        IF &read>=&write
+        (
+            return   ;if advancing the read pointer catches up to the write, we can't continue
+        )
+        ; Read the potential format
+        &possible_msgFmt=V.VALUE(*((uint16 *)(&buffer + (&read & &mask))))
+
+        ; Advance past the message format value.
+        &read=&read+2
+
+        ; Read the potential message size
+        &possible_msgLength=V.VALUE(*((uint16 *)(&buffer + (&read & &mask))))
+
+        ; Back up to the format for later.
+        &read=&read-2
+
+        ;using some basic assumptions here to try to more accurately spot a legitimate start of log message.
+        ;technically speaking any format 0xf or less is valid and any length 1024(0x400) or less is valid,
+        ;but mostly values 7 or lower are used and 7 (Multipart Messages) are complicated, rare, and not what we'll
+        ;start our recovery effort on. 
+        IF ((&possible_msgFmt<7)&&(&possible_msgLength<0x38)&&(&possible_msgLength>4))
+        (
+            ;Looks like we've found a good message! 
+            &addressOfPossibleMsg=V.VALUE((&buffer + (&read & &mask)))
+            PRINT ">>Advanced forwards &(attempted_bytes_forwards) bytes to &(addressOfPossibleMsg) and found reasonable looking data.  Will continue dumping messages there"
+            &dump ">>Advanced forwards &(attempted_bytes_forwards) bytes to &(addressOfPossibleMsg) and found reasonable looking data.  Will continue dumping messages there"
+            RETURN
+        )
+    )
+    &dump ">>Could not find a valid looking message in the next &(attempted_bytes_forwards) bytes"
+    PRINT ">>Could not find a valid looking message in the next &(attempted_bytes_forwards) bytes"
+    PRINT "-------------------------------------------------------------------------------------------------------"                
+    &read=&write
+    ;No luck finding a reasonable next message. Set read=write so we stop trying to read this log further.
+    RETURN             

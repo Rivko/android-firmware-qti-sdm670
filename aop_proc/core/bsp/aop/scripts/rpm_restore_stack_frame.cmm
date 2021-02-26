@@ -1,0 +1,149 @@
+entry &stack_addr
+
+&return_address=v.value(*(unsigned*)&stack_addr)
+
+&instr=""
+if (&return_address&1)==0
+(
+    &instr=disassemble.address(d:(&return_address-2))
+    if string.scan("&instr","b",0)!=0
+    (
+        &instr=disassemble.address(d:(&return_address-4))
+        if string.scan("&instr","b",0)!=0
+            &instr=""
+    )
+)
+else
+(
+    &instr=disassemble.address(d:(&return_address-3))
+    if string.scan("&instr","b",0)!=0
+    (
+        &instr=disassemble.address(d:(&return_address-5))
+        if string.scan("&instr","b",0)!=0
+            &instr=""
+    )
+)
+
+print "stack address : &stack_addr"
+print "return address: &return_address"
+print "&instr"
+if "&instr"!=""
+(
+    if string.scan("&instr","0x",0)>=0
+    (
+        &bl_addr=string.cut("&instr", string.scan("&instr","0x",0))
+        &bl_addr_instr=disassemble.address(d:&bl_addr)
+        if string.scan("&bl_addr_instr","push",0)>=0
+        (
+            gosub get_pushed_register_count "&bl_addr_instr"
+            entry &pushed_regs
+
+            if &pushed_regs<4
+                r.s pc &bl_addr+2
+            else
+                r.s pc &bl_addr+4
+
+            r.s r14 &return_address
+            r.s r13 &stack_addr-(&pushed_regs*4)
+            gosub restore_gp_registers "&bl_addr_instr" &stack_addr
+        )
+        else
+        (
+            r.s pc &bl_addr
+            r.s r14 &return_address
+            r.s r13 &stack_addr+4
+        )
+        enddo
+    )
+)
+print "invalid return address"
+enddo
+
+
+get_pushed_register_count:
+    entry &inst
+    &inst=string.cut(&inst,string.scan(&inst,"r",0))
+    &inst=string.mid("&inst",0,string.scan("&inst",",r14}",0))
+
+    &count=0
+    while "&inst"!=""
+    (
+        &min=""
+        &max=""
+        &offset=0
+        while string.scan("&inst",",",&offset)>=0
+        (
+            &offset=string.scan("&inst",",",&offset)+1
+        )
+
+        if string.scan("&inst","-",&offset)>=0
+        (
+            &s=string.mid("&inst",&offset+1,string.scan("&inst","-",&offset)-1-&offset)+"."
+            &min=&s
+            &s=string.cut("&inst",string.scan("&inst","-",&offset)+2)+"."
+            &max=&s
+        )
+        else
+        (
+            &s=string.cut("&inst",&offset+1)+"."
+            &min=&s
+            &max=&s
+        )
+
+        &count=&max-&min+1
+
+        if &offset>0
+            &offset=&offset-1
+
+        &inst=string.mid("&inst",0,&offset)
+    )
+
+    return &count
+
+
+restore_gp_registers:
+    entry &inst &stack_ptr
+    &inst=string.cut(&inst,string.scan(&inst,"r",0))
+    &inst=string.mid("&inst",0,string.scan("&inst",",r14}",0))
+
+    while "&inst"!=""
+    (
+        &min=""
+        &max=""
+        &offset=0
+        while string.scan("&inst",",",&offset)>=0
+        (
+            &offset=string.scan("&inst",",",&offset)+1
+        )
+
+        if string.scan("&inst","-",&offset)>=0
+        (
+            &s=string.mid("&inst",&offset+1,string.scan("&inst","-",&offset)-1-&offset)+"."
+            &min=&s
+            &s=string.cut("&inst",string.scan("&inst","-",&offset)+2)+"."
+            &max=&s
+        )
+        else
+        (
+            &s=string.cut("&inst",&offset+1)+"."
+            &min=&s
+            &max=&s
+        )
+
+        while &max>=&min
+        (
+            &stack_ptr=&stack_ptr-4
+            &reg=string.cut("r&max",-1)
+            &val=v.value(*(unsigned*)&stack_ptr)
+            r.s &reg &val
+            &max=&max-1
+        )
+
+        if &offset>0
+            &offset=&offset-1
+
+        &inst=string.mid("&inst",0,&offset)
+    )
+
+    return
+

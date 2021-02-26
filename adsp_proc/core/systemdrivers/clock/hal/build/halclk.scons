@@ -1,0 +1,81 @@
+#===============================================================================
+#
+# HAL CLK LIBRARY
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2011-2016 Qualcomm Technologies Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1/systemdrivers/clock/hal/build/halclk.scons#1 $
+#  $DateTime: 2017/07/21 22:10:47 $
+#  $Author: pwbldsvc $
+#  $Change: 13907704 $
+#
+#===============================================================================
+
+import os
+Import('env')
+env = env.Clone()
+
+#-----------------------------------------------------------------------------
+# Define paths
+#-----------------------------------------------------------------------------
+
+SRCPATH = "../"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+#-------------------------------------------------------------------------------
+# Convert warnings to errors - do not remove this flag!
+#-------------------------------------------------------------------------------
+
+env.Append(CFLAGS = "-Werror ")
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+CBSP_API = [
+   'HAL',
+   'DAL',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+HAL_CLK_BUILD_ROOT = os.getcwd();
+
+#TODO: why do these not seem to take affect? works when defining in clock.scons
+env.PublishPrivateApi("SYSTEMDRIVERS_HAL_CLK_COMMON", [
+  HAL_CLK_BUILD_ROOT + "/../inc",
+  HAL_CLK_BUILD_ROOT + "/../src",
+  HAL_CLK_BUILD_ROOT + "/../hw/v1",
+])
+
+#-------------------------------------------------------------------------------
+# Sources: HALClock Library Creation
+#-------------------------------------------------------------------------------
+
+env.AddLibrary(
+   ['CORE_Q6_ROOT'],
+   '${BUILDPATH}/HALclk', 
+   [ '${BUILDPATH}/src/HALclk.c' ])
+
+env.AddLibrary(
+   ['CORE_Q6_ROOT'],
+   '${BUILDPATH}/HALclk_hw_v1', 
+   [
+     '${BUILDPATH}/hw/v1/HALclkAgeraPLL.c',
+     '${BUILDPATH}/hw/v1/HALclkFabiaPLL.c',
+     '${BUILDPATH}/hw/v1/HALclkGeneric.c',
+     '${BUILDPATH}/hw/v1/HALclkRenovoPLL.c',
+     '${BUILDPATH}/hw/v1/HALclkCustomMSSAtlas.c',
+     '${BUILDPATH}/hw/v1/HALclkTrionPLL.c',
+   ]
+)

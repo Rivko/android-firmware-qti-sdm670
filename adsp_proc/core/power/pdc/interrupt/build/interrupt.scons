@@ -1,0 +1,187 @@
+#===============================================================================
+#
+# PDC interrupt & GPIO driver
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+#   Copyright (c) 2016-2017 Qualcomm Technologies, Inc. (QTI).
+#   All Rights Reserved.
+#   Qualcomm Confidential and Proprietary.
+#   Export of this technology or software is regulated by the U.S. Government.
+#   Diversion contrary to U.S. law prohibited.
+#-------------------------------------------------------------------------------
+#  $Header: //components/rel/core.qdsp6/2.1/power/pdc/interrupt/build/interrupt.scons#2 $
+#  $DateTime: 2017/09/13 08:52:52 $
+#===============================================================================
+import os
+import stat
+import fnmatch
+import itertools
+import subprocess
+import pdb
+from pprint import pprint
+from os.path import join, basename, exists
+
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Target Build Options
+#-------------------------------------------------------------------------------
+#Start with an empty list of target specific definitions
+PDC_DEFINES = []
+
+#Debug scons if necessary
+##  pdb.set_trace()
+
+#Turn off optimizations for easier debug
+#env.Append(CCFLAGS = ' -O0')
+
+if 'USES_MULTI_PD' in env or 'USES_MPSS_MULTI_PD' in env:
+  PDC_DEFINES += ['PDC_MULTI_PD']
+  
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+COMMON_SRCPATH = os.path.join('..', 'src')
+env.VariantDir('${BUILDPATH}', COMMON_SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'HAL',
+   'DEBUGTOOLS',
+   'POWER',
+   'POWER_PDC',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'KERNEL'
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+env.PublishPrivateApi('PDC_INT', [
+  '${INC_ROOT}/core/power/pdc/interrupt/src',
+  '${INC_ROOT}/core/power/pdc/interrupt/src/hal',
+  '${INC_ROOT}/core/power/pdc/interrupt/src/client_user',
+  '${INC_ROOT}/core/power/pdc/interrupt/src/config/' + env['PDC_MSM'] + '/' + env['POWER_SUBSYSTEM'].lower(),
+])
+
+#-------------------------------------------------------------------------------
+# Source directory roots
+#-------------------------------------------------------------------------------
+# Common PDC driver source directories
+PDC_COMMON_SRC_DIR = [
+  'client_root',
+  'hal',
+  'os',
+  'map',
+]
+
+PDC_TARGET_SRC_DIR = [
+  'config'
+]
+
+PDC_COMMON_USER_SRC_DIR = [
+  'client_user',
+]
+
+#-------------------------------------------------------------------------------
+# Add target specific defines to build options
+#-------------------------------------------------------------------------------
+env.Append(CPPDEFINES = PDC_DEFINES)
+
+#-------------------------------------------------------------------------------
+# Global source settings
+#-------------------------------------------------------------------------------
+MAIN_IMG_TAG = ['CORE_Q6_ROOT']
+USER_IMG_TAG = ['CORE_ADSP_USER', 'CORE_SLPI_USER']
+
+source_patterns = ['*.c']
+user_source_pattern = ['*_user.c']
+
+sources = []
+user_sources = []
+
+#-------------------------------------------------------------------------------
+# PDC source files
+#-------------------------------------------------------------------------------
+# Add common root files
+for src_path_root in PDC_COMMON_SRC_DIR:
+  for root, dirnames, filenames in os.walk(os.path.join(COMMON_SRCPATH, src_path_root)):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in source_patterns])
+    files = [os.path.join(root, filename) for filename in matches ]
+    files = [matched_path.replace(COMMON_SRCPATH, '${BUILDPATH}',1) for matched_path in files]
+    sources.extend(files)
+
+# Add target specific config files
+# Directory layout will always be '/chip/target' from each base directory
+# For example '/baseDir/845/MSS'
+for src_path_root in PDC_TARGET_SRC_DIR:
+  for root, dirnames, filenames in os.walk(os.path.join(COMMON_SRCPATH, src_path_root, env['PDC_MSM'], env['POWER_SUBSYSTEM'].lower())):
+    matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in source_patterns])
+    files = [os.path.join(root, filename) for filename in matches ]
+    files = [matched_path.replace(COMMON_SRCPATH, '${BUILDPATH}',1) for matched_path in files]
+    sources.extend(files)
+
+
+# if building for multi PD, add in user specific files and required root files
+if 'USES_MULTI_PD' in env or 'USES_MPSS_MULTI_PD' in env:
+  for src_path_root in PDC_COMMON_USER_SRC_DIR:
+    for root, dirnames, filenames in os.walk(os.path.join(COMMON_SRCPATH, src_path_root)):
+      matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in source_patterns])
+
+      user_matches = itertools.chain(*[fnmatch.filter(filenames, pattern) for pattern in user_source_pattern])
+      user_matches = [matched_path.replace(COMMON_SRCPATH,'${BUILDPATH}',1) for matched_path in user_matches]
+
+      files = [os.path.join(root, filename) for filename in matches ]
+      files = [matched_path.replace(COMMON_SRCPATH,'${BUILDPATH}',1) for matched_path in files]
+      user_files = [os.path.join(root, filename) for filename in user_matches]
+      user_files = [matched_path.replace(COMMON_SRCPATH,'${BUILDPATH}',1) for matched_path in user_files]
+
+      #Remove any non-user specific files from main file list
+      for f in user_files:
+        files.remove(f)
+
+      sources.extend(files)
+      user_sources.extend(user_files)
+
+#-------------------------------------------------------------------------------
+# Create and add Libraries to image
+#-------------------------------------------------------------------------------
+pdc_lib = env.AddLibrary(MAIN_IMG_TAG, 
+                         os.path.join('${BUILDPATH}', 'pdcInt'),
+                         sources)
+
+if 'USES_MULTI_PD' in env or 'USES_MPSS_MULTI_PD' in env:
+  pdc_user_lib = env.AddLibrary(USER_IMG_TAG, 
+                                os.path.join('${BUILDPATH}', 'pdcInt_user'),
+                                user_sources)
+
+#-------------------------------------------------------------------------------
+# Add vmpm_init function to RCINIT
+#-------------------------------------------------------------------------------
+# PDC driver properties
+RCINIT_PROPS = {
+  'sequence_group'             : 'RCINIT_GROUP_0',
+  'init_name'                  : 'PDCInt',
+  'init_function'              : 'pdcOS_initialize',
+  'dependencies'               : ['PDCHWIO', 'PDCLog'],
+}
+
+RCINIT_USER_PROPS = {
+  'sequence_group'             : 'RCINIT_GROUP_0',
+  'init_name'                  : 'PDCInt_user',
+  'init_function'              : 'pdc_clientQdiInit',
+  'dependencies'               : ['PDCInt'],
+}
+
+if 'USES_RCINIT' in env:
+  env.AddRCInitFunc(MAIN_IMG_TAG, RCINIT_PROPS)
+
+  if 'USES_MULTI_PD' in env or 'USES_MPSS_MULTI_PD' in env:
+    env.AddRCInitFunc(USER_IMG_TAG, RCINIT_USER_PROPS)

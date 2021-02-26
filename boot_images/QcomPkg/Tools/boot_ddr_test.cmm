@@ -1,0 +1,602 @@
+;*******************************************************************************
+;**  ddr_test.cmm
+;**
+;**  This script performs DDR test.
+;**
+;**  Copyright 2015, 2017 by Qualcomm Technologies, Incorporated. 
+;**  All Rights Reserved.
+;**
+;*******************************************************************************
+;**
+;**                        EDIT HISTORY FOR MODULE
+;**
+;**
+;**  when       who     what, where, why
+;**  --------   ---     ------------------------------------------------------
+;**  09/12/17   mrr     Added clock switch test framework
+;**  03/04/15   tw     Initial Version
+;*******************************************************************************
+
+
+;*******************************************************************************
+;  CMM script variables
+;*******************************************************************************
+LOCAL &ddr_test_entry       ; Entry point of DDR test
+LOCAL &ddr_test_exit        ; Exit point of DDR test
+LOCAL &ddr_test_suite       ; DDR test suite
+LOCAL &ddr_test_level       ; DDR test level
+LOCAL &ddr_is_dcache_on     ; To test DDR with data cache on or not
+LOCAL &ddr_is_test_all      ; To test DDR at each or one specific interface/CS
+LOCAL &ddr_interface        ; Interface where DDR is located
+LOCAL &ddr_chip_select      ; Chip select where DDR is located
+LOCAL &ddr_test_iterations  ; DDR test iterations
+LOCAL &ddr_test_log         ; DDR test log
+LOCAL &ddr_test_message     ; DDR test message
+LOCAL &ddr_test_error_type  ; DDR test error type
+LOCAL &ddr_status           ; DDR status
+LOCAL &is_cmd_line          ; run script in command line mode, for automated tests.
+
+LOCAL &ddr_custom_test
+LOCAL &ddr_custom_test_addr
+LOCAL &ddr_custom_test_size
+
+;============================================================================
+; Get the arguments passed in.
+;============================================================================
+ENTRY &choice &boot_path &build_id &test_level &is_dcache_on &location &test_iterations &log_file &custom_test_addr &custom_test_size
+
+
+;*******************************************************************************
+; Initialize variables
+;*******************************************************************************
+&ddr_test_entry="boot_ddr_test"
+&ddr_test_exit="ddr_test_exit"
+&ddr_test_suite="&ddr_test_entry\test_suite"
+&ddr_test_level="&ddr_test_entry\test_level"
+&ddr_is_dcache_on="&ddr_test_entry\is_dcache_on"
+&ddr_is_test_all="&ddr_test_entry\is_test_all"
+&ddr_interface="&ddr_test_entry\interface"
+&ddr_chip_select="&ddr_test_entry\chip_select"
+&ddr_test_iterations="&ddr_test_entry\test_iterations"
+&ddr_test_log="test_log"
+&ddr_test_message="&ddr_test_log.message"
+&ddr_test_error_type="&ddr_test_log.error_type"
+&ddr_status="ddr_status"
+
+&ddr_custom_test="&ddr_test_entry\custom_test"
+&ddr_custom_test_addr="&ddr_test_entry\custom_test_addr"
+&ddr_custom_test_size="&ddr_test_entry\custom_test_size"
+
+;*******************************************************************************
+; Main routine of DDR Test
+;*******************************************************************************
+LaunchDDRTest:
+  PRINT
+  PRINT "Launching DDR Test Framework..."
+  go &ddr_test_entry
+  WAIT !run() 15.s  
+  if Register(pc)!=Address.offset(&ddr_test_entry)
+  (
+   print "DDR Test Framework could not be launched. Aborted."
+   goto EndOfScript
+  )
+  
+MainMenu:
+  IF "&choice"==""
+  (
+    PRINT
+    PRINT "------------------------------------------------------"
+    PRINT "|                                                    |"
+    PRINT "|              DDR Test Framework                    |"
+    PRINT "|     Copyright (c) 2015, 2017 by QUALCOMM, Inc.     |"
+    PRINT "|                                                    |"
+    PRINT "------------------------------------------------------"
+EnterChoice:
+    PRINT
+    PRINT " 0: Exit (Boot Normally)"
+    PRINT " 1: Test DDR Read/Write"
+    PRINT " 2: Test DDR Self Refresh"
+    PRINT " 3: Test DDR Deep Power Down"
+    PRINT " 4: Test DDR Clock switching"
+    PRINT " 6: Show DDR Status"
+    PRINT
+    PRINT "Please make a choice: "
+    ENTER &choice
+  )
+
+  IF "&choice"=="0"
+  (
+    PRINT
+    PRINT "DDR Test Framework exited."
+    go
+    GOTO EndOfScript
+  )
+
+  IF "&choice"=="6"
+  (
+    v.v %o &ddr_status
+
+    IF "&log_file"!=""
+    (
+      open #1 &log_file /append
+      write #1 "Read DDR Status:"
+      write #1 ""
+      &status=v.string(&ddr_status.sdram0_cs0)
+      write #1 "&ddr_status.sdram0_cs0" " - " "&status"
+      &status=v.string(&ddr_status.sdram0_cs1)
+      write #1 "&ddr_status.sdram0_cs1" " - " "&status"
+      &status=v.string(&ddr_status.sdram1_cs0)
+      write #1 "&ddr_status.sdram1_cs0" " - " "&status"
+      &status=v.string(&ddr_status.sdram1_cs1)
+      write #1 "&ddr_status.sdram1_cs1" " - " "&status"
+      close #1
+    )
+
+    IF "&is_cmd_line"=="0"
+    (
+      &choice=""
+      &test_level=""
+      &is_dcache_on=""
+      &location=""
+      &test_iterations=""
+      PRINT
+      PRINT "Please press ENTER to restart DDR Test Framework: "
+      ENTER
+      GOTO LaunchDDRTest
+    )
+    ELSE
+    (
+      GOTO EndOfScript
+    )
+  )
+
+  IF "&choice"!="1"&&"&choice"!="2"&&"&choice"!="3"&&"&choice"!="4"&&"&choice"!="5"
+  (
+    GOTO EnterChoice
+  )
+
+  v.set &ddr_test_suite=&choice
+
+  IF "&choice"=="1"
+  (
+    PRINT "Test DDR Read/Write"
+    IF "&log_file"!=""
+    (
+      open #1 &log_file /append
+      write #1 "Test DDR Read/Write"
+      close #1
+    )
+
+    IF "&test_level"==""
+    (
+      PRINT
+      PRINT "------------------------------------------------"
+EnterDDRTestLevel:
+      PRINT
+      PRINT " 1: Level 1: own-address algorithm"
+      PRINT " 2: Level 2: walking-ones algorithm"
+      PRINT
+      PRINT "Please enter test level: "
+      ENTER &test_level
+    )
+
+    IF "&test_level"!="1"&&"&test_level"!="2"
+    (
+      GOTO EnterDDRTestLevel
+    )
+
+    v.set &ddr_test_level=&test_level
+
+    IF "&test_level"=="0"
+    (
+      PRINT "Level 0: data lines + address lines"
+      IF "&log_file"!=""
+      (
+        open #1 &log_file /append
+        write #1 "Level 0: data lines + address lines"
+        close #1
+      )
+    )
+    ELSE IF "&test_level"=="1"
+    (
+      PRINT "Level 1: own-address algorithm"
+      IF "&log_file"!=""
+      (
+        open #1 &log_file /append
+        write #1 "Level 1: own-address algorithm"
+        close #1
+      )
+    )
+    ELSE IF "&test_level"=="2"
+    (
+      PRINT "Level 2: walking-ones algorithm"
+      IF "&log_file"!=""
+      (
+        open #1 &log_file /append
+        write #1 "Level 2: walking-ones algorithm"
+        close #1
+      )
+    )
+  )
+  ELSE IF "&choice"=="2"
+  (
+    PRINT "Test DDR Self Refresh"
+    IF "&log_file"!=""
+    (
+      open #1 &log_file /append
+      write #1 "Test DDR Self Refresh"
+      close #1
+    )
+
+    IF "&test_level"==""
+    (
+      PRINT
+      PRINT "Please enter the number of iterations to enter/exit self refresh: "
+      ENTER &test_level
+    )
+
+    v.set &ddr_test_level=&test_level
+
+    PRINT "&test_level iteration(s) to enter/exit self refresh"
+    IF "&log_file"!=""
+    (
+      open #1 &log_file /append
+      write #1 "&test_level iteration(s) to enter/exit self refresh"
+      close #1
+    )
+  )
+  ELSE IF "&choice"=="3"
+  (
+    PRINT "Test DDR Deep Power Down"
+    IF "&log_file"!=""
+    (
+      open #1 &log_file /append
+      write #1 "Test DDR Deep Power Down"
+      close #1
+    )
+
+    IF "&test_level"==""
+    (
+      PRINT
+      PRINT "Please enter the number of iterations to enter/exit deep power down: "
+      ENTER &test_level
+    )
+
+    v.set &ddr_test_level=&test_level
+
+    PRINT "&test_level iteration(s) to enter/exit deep power down"
+    IF "&log_file"!=""
+    (
+      open #1 &log_file /append
+      write #1 "&test_level iteration(s) to enter/exit deep power down"
+      close #1
+    )
+  )
+
+  ELSE IF "&choice"=="4"
+  (
+   PRINT "Test DDR Clock Switching"
+   IF "&log_file"!=""
+    (
+      open #1 &log_file /append
+      write #1 "Test DDR Clock Switching"
+      close #1
+    )
+  )
+  ELSE IF "&choice"=="5"
+  (
+    v.set &ddr_custom_test=1
+    PRINT "Test DDR Read/Write"
+    IF "&log_file"!=""
+    (
+      open #1 &log_file /append
+      write #1 "Test DDR Read/Write"
+      close #1
+    )
+
+    IF "&test_level"==""
+    (
+      PRINT
+      PRINT "------------------------------------------------"
+EnterDDRTestLevel:
+      PRINT
+      PRINT " 1: Level 1: own-address algorithm"
+      PRINT " 2: Level 2: walking-ones algorithm"
+      PRINT
+      PRINT "Please enter test level: "
+      ENTER &test_level
+    )
+
+    IF "&test_level"!="1"&&"&test_level"!="2"
+    (
+      GOTO EnterDDRTestLevel
+    )
+
+    v.set &ddr_test_level=&test_level
+
+    IF "&custom_test_addr"==""
+    (
+      PRINT "Please enter DDR Start address to test: "
+      ENTER &custom_test_addr
+    )
+    v.set &ddr_custom_test_addr=&custom_test_addr
+
+    IF "&custom_test_size"==""
+    (
+      PRINT "Please enter DDR Size to test: "
+      ENTER &custom_test_size
+    )
+    v.set &ddr_custom_test_size=&custom_test_size
+
+    IF "&test_level"=="0"
+    (
+      PRINT "Level 0: data lines + address lines"
+      IF "&log_file"!=""
+      (
+        open #1 &log_file /append
+        write #1 "Level 0: data lines + address lines"
+        close #1
+      )
+    )
+    ELSE IF "&test_level"=="1"
+    (
+      PRINT "Level 1: own-address algorithm"
+      IF "&log_file"!=""
+      (
+        open #1 &log_file /append
+        write #1 "Level 1: own-address algorithm"
+        close #1
+      )
+    )
+    ELSE IF "&test_level"=="2"
+    (
+      PRINT "Level 2: walking-ones algorithm"
+      IF "&log_file"!=""
+      (
+        open #1 &log_file /append
+        write #1 "Level 2: walking-ones algorithm"
+        close #1
+      )
+    )
+  )
+  
+  IF "&is_dcache_on"==""
+  (
+    PRINT
+    PRINT "------------------------------------------------"
+EnterIsDcacheOn:
+    PRINT
+    PRINT " 0: Data cache OFF"
+    PRINT " 1: Data cache ON"
+    PRINT
+    PRINT "Please choose data cache OFF/ON: "
+    ENTER &is_dcache_on
+  )
+
+  IF "&is_dcache_on"!="0"&&"&is_dcache_on"!="1"
+  (
+    GOTO EnterIsDcacheOn
+  )
+
+  v.set &ddr_is_dcache_on=&is_dcache_on
+
+  IF "&ddr_is_dcache_on"=="0"
+  (
+    PRINT "Data cache OFF"
+    IF "&log_file"!=""
+    (
+      open #1 &log_file /append
+      write #1 "Data cache OFF"
+      close #1
+    )
+  )
+  ELSE IF "&ddr_is_dcache_on"=="1"
+  (
+    PRINT "Data cache ON"
+    IF "&log_file"!=""
+    (
+      open #1 &log_file /append
+      write #1 "Data cache ON"
+      close #1
+    )
+  )
+
+  IF "&location"==""
+  (
+    PRINT
+    PRINT "------------------------------------------------"
+EnterDDRLocation:
+    PRINT
+    PRINT " 0: DDR CS0"
+    PRINT " 1: DDR CS1"
+    PRINT " 2: Test All"
+    PRINT
+    PRINT "Please enter the location of DDR to be tested: "
+    ENTER &location
+  )
+
+  IF "&location"=="0"
+  (
+    v.set &ddr_is_test_all=0
+    v.set &ddr_interface=1
+    v.set &ddr_chip_select=1
+
+    PRINT "To test DDR CS0"
+    IF "&log_file"!=""
+    (
+      open #1 &log_file /append
+      write #1 "To test DDR CS0"
+      close #1
+    )
+  )
+  ELSE IF "&location"=="1"
+  (
+    v.set &ddr_is_test_all=0
+    v.set &ddr_interface=1
+    v.set &ddr_chip_select=2
+
+    PRINT "To test DDR CS1"
+    IF "&log_file"!=""
+    (
+      open #1 &log_file /append
+      write #1 "To test DDR CS1"
+      close #1
+    )
+  )
+  ELSE IF "&location"=="2"
+  (
+    v.set &ddr_is_test_all=1
+
+    PRINT "To test DDR CS0/CS1"
+    IF "&log_file"!=""
+    (
+      open #1 &log_file /append
+      write #1 "To test DDR CS0/CS1"
+      close #1
+    )
+  )
+  ELSE
+  (
+    GOTO EnterDDRLocation
+  )
+
+  IF "&test_iterations"==""
+  (
+    PRINT
+    PRINT "------------------------------------------------"
+    PRINT
+    PRINT "Please enter the number of iterations to test DDR: "
+    ENTER &test_iterations
+  )
+  v.set &ddr_test_iterations=&test_iterations
+
+  PRINT "&test_iterations iteration(s) to test DDR"
+  IF "&log_file"!=""
+  (
+    open #1 &log_file /append
+    write #1 "&test_iterations iteration(s) to test DDR"
+    close #1
+  )
+
+  PRINT
+  PRINT "------------------------------------------------"
+  PRINT
+  PRINT "DDR test in progress..."
+  b.set &ddr_test_exit
+  go
+  GOSUB ShowProgress 120.*&test_iterations. &ddr_test_exit
+  IF run()||register(pc)!=address.offset(&ddr_test_exit)
+  (
+    PRINT
+    PRINT "DDR test time out."
+
+    IF "&log_file"!=""
+    (
+      open #1 &log_file /append
+      write #1 ""
+      write #1 "Test Results: DDR test time out."
+      close #1
+    )
+  )
+  ELSE
+  (
+    v.v %o %s &ddr_test_log
+
+    v.if &ddr_test_error_type<=1
+    (
+      PRINT
+      PRINT "DDR test passed (Note: DDR might be unattached)."
+
+      IF "&log_file"!=""
+      (
+        open #1 &log_file /append
+        write #1 ""
+        write #1 "Test Results: DDR test passed (Note: DDR might be unattached)."
+        &message=v.string(test_log.message)
+        write #1 "test_log.message" " - " "&message"
+        &error_type=v.string(test_log.error_type)
+        write #1 "test_log.error_type" " - " "&error_type"
+        &error_addr=v.string(test_log.error_addr)
+        write #1 "test_log.error_addr" " - " "&error_addr"
+        &error_data=v.string(test_log.error_data)
+        write #1 "test_log.error_data" " - " "&error_data"
+        close #1
+      )
+    )
+    else
+    (
+      PRINT
+      PRINT "DDR test failed."
+
+      IF "&log_file"!=""
+      (
+        open #1 &log_file /append
+        write #1 ""
+        write #1 "Test Results: DDR test failed."
+        close #1
+      )
+    )
+  )
+
+  IF "&is_cmd_line"=="0"
+  (
+    &choice=""
+    &test_level=""
+    &is_dcache_on=""
+    &location=""
+    &test_iterations=""
+
+    PRINT
+    PRINT "Please press ENTER to restart DDR Test Framework: "
+    ENTER
+    GOTO LaunchDDRTest
+  )
+  ELSE
+  (
+    GOTO EndOfScript
+  )
+
+;*******************************************************************************
+; Function to show test progress
+;*******************************************************************************
+ShowProgress:
+  ENTRY &timeout &exit
+  LOCAL &count
+
+  WHILE &timeout>0.
+  (
+    PRINT
+    &count=60.
+    WHILE &count>0.
+    (
+      IF !run()
+      (
+        IF register(pc)==address.offset(&exit)
+        (
+          RETURN
+        )
+        ELSE
+        (
+          step
+          LOCAL &start &end
+          &start=string.scan(v.string(&ddr_test_message), "Testing", 0.)
+          &end=string.scan(v.string(&ddr_test_message), ".", &start)
+          PRINT string.mid(v.string(&ddr_test_message), &start, &end-&start+1.)
+          PRINT
+          go
+        )
+      )
+      WAIT !run() 1s
+      PRINT %CONT "."
+      &count=&count-1.
+    )
+    &timeout=&timeout-1.
+  )
+RETURN ; ShowProgress
+
+
+;*******************************************************************************
+; End of Script
+;*******************************************************************************
+EndOfScript:
+  ENDDO

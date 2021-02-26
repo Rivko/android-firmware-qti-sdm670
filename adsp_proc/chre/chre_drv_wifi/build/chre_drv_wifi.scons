@@ -1,0 +1,125 @@
+#===============================================================================
+#
+# CHRE Location driver dynamic builder scons
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2017 by QUALCOMM Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+
+Import('env')
+import os
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+LIB_ROOT = "${BUILD_ROOT}/chre/chre_drv_wifi"
+SRCPATH = LIB_ROOT + '/src'
+LIBNAME = 'chre_drv_wifi'
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+target_so = '${BUILDPATH}/'+LIBNAME+'.so'
+hexagon_root = env.get('HEXAGON_ROOT')
+hexgaon_rtos_release = env.get('HEXAGON_RTOS_RELEASE')
+hexagon_version = env.get('Q6VERSION')
+HEXAGON_LIB_PATH = "{0}/{1}/Tools/target/hexagon/lib/{2}/G0/pic".format(hexagon_root,hexgaon_rtos_release,hexagon_version)
+#-------------------------------------------------------------------------------
+# Setup env Flags
+#-------------------------------------------------------------------------------
+env.Replace(ASM_DFLAGS = '-D__V_DYNAMIC__')
+env.Replace(CC_DFLAGS = '-D__V_DYNAMIC__')
+env.Replace(HEXAGONCC_OPT = ' -O0 ')
+env.Replace(HEXAGONCC_WARN = '-Wall -Wno-cast-align -Wpointer-arith -Wno-missing-braces -Wno-strict-aliasing -Wstrict-prototypes -Wnested-externs')
+
+env.Replace(HEXAGON_UNDEF = ' ')
+env.Replace(HEXAGON_LANIND = '-fno-exceptions -fno-strict-aliasing -fno-zero-initialized-in-bss -fdata-sections')    
+env.Replace(CFLAGS = ' -G0 ')
+env.Append(SHLINKFLAGS = '-G0 --wrap=malloc --wrap=calloc --wrap=free --wrap=realloc --wrap=memalign --wrap=__stack_chk_fail -call_shared ')
+env.Append(SHLINKFLAGS = ' -L{} '.format(HEXAGON_LIB_PATH))
+
+env['SKEL_DEP'] = ' ${BUILD_ROOT}/chre/chre_pal/build/${BUILDPATH}/chre_pal.so ' \
+                      ' ${BUILD_ROOT}/chre/lowi_client/build/${BUILDPATH}/lowi_client.so ' \
+
+env.Replace(QDSP6OBJS1= '${QDSP6_RELEASE_DIR}/Tools/target/hexagon/lib/${Q6VERSION}/G0/pic/initS.o')
+env.Replace(QDSP6OBJS3= '${QDSP6_RELEASE_DIR}/Tools/target/hexagon/lib/${Q6VERSION}/G0/pic/libgcc.a')
+env.Replace(QDSP6OBJS4= '${QDSP6_RELEASE_DIR}/Tools/target/hexagon/lib/${Q6VERSION}/G0/pic/finiS.o')
+
+env['SHLINKGRP'] = ' -shared -fPIC -Bsymbolic --start-group $QDSP6OBJS1 $QDSP6OBJS3 $SOURCES.posix $QDSP6OBJS4 $SKEL_DEP --end-group ${HEXAGONLD_MAP_CMD} ${TARGET.posix}.map'
+
+env.Replace(SHLINKCOM="${TEMPFILE('$SHLINK $SHLINKFLAGS $HEXAGON_OUTPUT_CMD $TARGET.posix $SHLINKGRP')}")
+
+env.Depends(target_so, '${BUILD_ROOT}/chre/chre_pal/build/${BUILDPATH}/chre_pal.so')
+env.Depends(target_so, '${BUILD_ROOT}/chre/lowi_client/build/${BUILDPATH}/lowi_client.so')
+#-------------------------------------------------------------------------------
+# Get the required Include directories
+#-------------------------------------------------------------------------------
+core_public_apis = [
+       'SERVICES',
+       'DEBUGTOOLS',
+       'ADSPPM',
+       'POWER',
+       'MPROC',
+       'SYSTEMDRIVERS',
+       'DEBUGTRACE',
+       'DAL',
+       'DIAG',
+       'BUSES',
+]
+
+platform_public_apis = [
+       'PLATFORM_LIBS',
+       'MOD_TABLE',
+       'QAIC',
+       'STDDEF',
+       'REMOTE',
+       'HAPSDK',
+]
+
+env.PublishPrivateApi('CHRE_DRV_WIFI',[
+         "${BUILD_ROOT}/chre/chre_drv_wifi/inc",
+         "${BUILD_ROOT}/chre/chre_drv_wifi/src",
+         "${BUILD_ROOT}/chre/chre/src/system/chre/chre_api/include",
+         "${BUILD_ROOT}/chre/chre/src/system/chre/chre_api/include/chre_api",
+         "${BUILD_ROOT}/chre/chre/src/system/chre/pal/include",
+         "${BUILD_ROOT}/chre/lowi_client/inc",
+])
+
+env.RequirePublicApi(platform_public_apis, area='platform')
+env.RequirePublicApi(core_public_apis, area='core')
+env.RequirePublicApi(['KERNEL'], area='CORE')
+env.RequirePrivateApi('CHRE_DRV_WIFI')
+env.RequireRestrictedApi(['LOWI_CLIENT'])
+#-------------------------------------------------------------------------------
+# Add CHRE WIFI specific Define
+#-------------------------------------------------------------------------------
+CHRE_DRV_WIFI_DEFINES = ['CHRE_MESSAGE_TO_HOST_MAX_SIZE=4000']
+
+env.Append(CPPDEFINES = CHRE_DRV_WIFI_DEFINES)
+
+#-------------------------------------------------------------------------------
+# Setup source files
+#-------------------------------------------------------------------------------
+chre_drv_wifi_src = [
+                        "${BUILDPATH}/chre_drv_wifi.cpp",
+                        "${BUILDPATH}/qc_wifi.c",                
+                       ]
+
+#-------------------------------------------------------------------------------
+# Call the build command
+#-------------------------------------------------------------------------------
+env.AddBinarySharedLibrary(['ADSP_SHARED_LIBS'], '${BUILDPATH}/'+LIBNAME, chre_drv_wifi_src)
+
+# Clean / pack rules
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*.cmd'], LIB_ROOT))
+CLEAN_LIST.extend(env.FindFiles(['*.h', '*.c', '*.map','*.os'], '${BUILDPATH}'))
+CLEAN_LIST.extend(env.FindFiles(['*'], LIB_ROOT + '/inc'))
+CLEAN_LIST.extend(env.FindFiles(['*'], LIB_ROOT + '/src'))
+CLEAN_LIST.extend(env.FindFiles(['*'], LIB_ROOT + '/test'))
+
+env.CleanPack(['ADSP_SHARED_LIBS'], CLEAN_LIST) 
+	

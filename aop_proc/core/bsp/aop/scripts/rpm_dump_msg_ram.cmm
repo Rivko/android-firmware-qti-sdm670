@@ -1,0 +1,526 @@
+ENTRY &family &master_id
+
+&indent="    "
+
+;&win_name="A000"
+;AREA.CREATE &win_name 500. 500.
+AREA.VIEW A000
+AREA.SELECT A000
+
+&master_name=d.string(d:v.value(ee_client_lut[&master_id].name))
+print
+print %attr 2 "================================================================================"
+print %attr 2 "              &master_name  (TX: RPM-->&master_name, RX: &master_name-->RPM)"
+print %attr 2 "================================================================================"
+
+if "&family"=="Badger"||"&family"=="Bear"
+(
+    GOSUB ParseSmd &master_id
+)
+else if "&family"=="Honeybadger"
+(
+    GOSUB ParseGlink &master_id
+)
+print
+
+ENDDO
+
+
+;================================================================================
+ParseGlink:
+    ENTRY &id
+    &is_rx=0.
+
+    &tx_info=v.value(xport_rpm_ctx[&id].tx_desc)
+    print
+    print "[TX Info @ &tx_info]"
+    gosub GlinkPrintInfo &tx_info
+
+    &tx_fifo=v.value(xport_rpm_ctx[&id].tx_fifo)
+    &fifo_size=v.value(xport_rpm_ctx[&id].tx_fifo_size)
+    print
+    print "[TX FIFO @ &tx_fifo (SIZE: &fifo_size)]"
+    gosub ParseFifo &tx_info &tx_fifo &fifo_size
+
+    &is_rx=1.
+    &rx_info=v.value(xport_rpm_ctx[&id].rx_desc)
+    print
+    print "[RX Info @ &rx_info]"
+    gosub GlinkPrintInfo &rx_info
+
+    &rx_fifo=v.value(xport_rpm_ctx[&id].rx_fifo)
+    &fifo_size=v.value(xport_rpm_ctx[&id].rx_fifo_size)
+    print
+    print "[RX FIFO @ &rx_fifo (SIZE: &fifo_size)]"
+    gosub ParseFifo &rx_info &rx_fifo &fifo_size
+
+    return
+
+;================================================================================
+GlinkPrintInfo:
+    entry &desc_addr
+    &idx=v.value(((xport_rpm_ind_type*)&desc_addr)->read_ind)
+    print "&indent"+"READ_INDEX  : &idx ("+format.decimal(0,&idx)+")"
+
+    &idx=v.value(((xport_rpm_ind_type*)&desc_addr)->write_ind)
+    print "&indent"+"WRITE_INDEX : &idx ("+format.decimal(0,&idx)+")"
+
+    return
+
+;================================================================================
+ParseSmd:
+    ENTRY &id
+    LOCAL &tx_info &rx_info &tx_fifo &rx_fifo &fifo_sz &read_index &write_index &val &i
+
+    ;&handler=v.value((Handler*)rpm->ees[&id].handler)
+    &handler=v.value((Handler*)(((SystemData*)rpm_core_dump.rpmserver_state)->ees[&id].handler))
+
+    &tx_info=V.VALUE((*((((Handler*)&handler)->smdlPort_))).tx_shared_info_ptr_algn)
+    &rx_info=V.VALUE((*((((Handler*)&handler)->smdlPort_))).rx_shared_info_ptr_algn)
+    &tx_fifo=V.VALUE((*((((Handler*)&handler)->smdlPort_))).tx_shared_fifo)
+    &rx_fifo=V.VALUE((*((((Handler*)&handler)->smdlPort_))).rx_shared_fifo)
+    &fifo_size=V.VALUE((*((((Handler*)&handler)->smdlPort_))).fifo_sz)
+
+    &is_rx=0.
+    print "[TX Shared Info]"
+    GOSUB PrintInfo &tx_info &tx_fifo &fifo_size
+    print "[TX Shared FIFO]"
+    GOSUB ParseFifo &tx_info &tx_fifo &fifo_size
+
+    &is_rx=1.
+    print "[RX Shared Info]"
+    GOSUB PrintInfo &rx_info &rx_fifo &fifo_size
+    print "[RX Shared FIFO]"
+    GOSUB ParseFifo &rx_info &rx_fifo &fifo_size
+    RETURN
+
+;================================================================================
+PrintInfo:
+    ENTRY &info &fifo &fifo_size
+    LOCAL &val
+    &val=V.VALUE(((smd_shared_stream_info_algn_type*)&info)->stream_state)
+
+    if &val==0.
+        print "&indent"+"STREAM_STATE: &(val) (SMD_SS_CLOSED)"
+    else if &val==1.
+        print "&indent"+"STREAM_STATE: &(val) (SMD_SS_OPENING)"
+    else if &val==2.
+        print "&indent"+"STREAM_STATE: &(val) (SMD_SS_OPENED)"
+    else if &val==3.
+        print "&indent"+"STREAM_STATE: &(val) (SMD_SS_FLUSHING)"
+    else if &val==4.
+        print "&indent"+"STREAM_STATE: &(val) (SMD_SS_CLOSING)"
+    else if &val==5.
+        print "&indent"+"STREAM_STATE: &(val) (SMD_SS_RESET)"
+    else if &val==6.
+        print "&indent"+"STREAM_STATE: &(val) (SMD_SS_RESET_OPENING)"
+
+    &i=0
+    &vals="["
+    while &i<8.
+    (
+        &val=FORMAT.DECIMAL(0,V.VALUE(((smd_shared_stream_info_algn_type*)&info)->if_sigs[&i]))
+        if &i==0
+            &vals="&vals"+"DSR_SIG/DTR_SIG=&val"
+        else if &i==1
+            &vals="&vals"+"CTS_SIG/RTS_SIG=&val"
+        else if &i==2
+            &vals="&vals"+"CD_SIG=&val"
+        else if &i==3
+            &vals="&vals"+"RI_SIG=&val"
+        else if &i==4
+            &vals="&vals"+"DATA_WRITTEN=&val"
+        else if &i==5
+            &vals="&vals"+"DATA_READ=&val"
+        else if &i==6
+            &vals="&vals"+"STATE_UPDATED=&val"
+        else
+            &vals="&vals"+"&val"
+
+        &i=&i+1.
+        if &i<8.
+        (
+            &vals="&vals"+", "
+        )
+        else
+        (
+            &vals="&vals"+"]"
+        )
+    )
+    print "&indent"+"IF_SIGS     : &(vals)"
+    &read_index=V.VALUE(((smd_shared_stream_info_algn_type*)&info)->read_index)
+    print "&indent"+"READ_INDEX  : &(read_index)"
+    &write_index=V.VALUE(((smd_shared_stream_info_algn_type*)&info)->write_index)
+    print "&indent"+"WRITE_INDEX : &(write_index)"
+    print "&indent"+"FIFO ADDR   : &(fifo)"
+    print "&indent"+"FIFO SIZE   : &(fifo_size)"
+    print ""
+    RETURN
+
+
+;================================================================================
+ParseFifo:
+    ENTRY &info &fifo &fifo_size
+    LOCAL &i &write_index &read_index
+
+    if "&family"=="Badger"||"&family"=="Bear"
+    (
+        &read_index=V.VALUE(((smd_shared_stream_info_algn_type*)&info)->read_index)
+        &write_index=V.VALUE(((smd_shared_stream_info_algn_type*)&info)->write_index)
+    )
+    else if "&family"=="Honeybadger"
+    (
+        &read_index=v.value(((xport_rpm_ind_type*)&info)->read_ind)
+        &write_index=v.value(((xport_rpm_ind_type*)&info)->write_ind)
+    )
+
+    &msg_version=""
+
+    &i=0
+    while &i<&fifo_size
+    (
+        if DATA.LONG.LE(D:(&fifo+&write_index))==0x716572
+        (
+            GOSUB ParseRequest &fifo &fifo_size
+        )
+        else if DATA.LONG.LE(D:(&fifo+&write_index))==0x646d63
+        (
+            GOSUB ParseCommand &fifo &fifo_size
+        )
+        else if (v.value(((RPMRequestHeaderV1*)(&fifo+&write_index))->version)==1)&&(v.value(((RPMRequestHeaderV1*)(&fifo+&write_index))->type)==0)
+        (
+            gosub ParseRequestV1 &fifo &fifo_size
+        )
+        else if (v.value(((RPMRequestHeaderV1*)(&fifo+&write_index))->version)==1)&&(v.value(((RPMRequestHeaderV1*)(&fifo+&write_index))->type)==3||v.value(((RPMRequestHeaderV1*)(&fifo+&write_index))->type)==4)
+        (
+            gosub ParseAckV1 &fifo &fifo_size
+        )
+        else
+        (
+            GOSUB IncrementIndex 4. &fifo_size
+        )
+    )
+
+    if "&msg_version"=="v0"
+    (
+        if &is_rx==1
+        (
+            print "+-"+format.string("",19.,'-')+"-+-"+format.string("",8,'-')+"-+-"+format.string("",8,'-')+"-+-"+format.string("",25.,'-')+"-+-"+format.string("",15.,'-')+"-+-"+format.string("",10.,'-')+"-+-"+format.string("",9,'-')+"-+-"+format.string("",60.,'-')+"-+"
+        )
+        else
+        (
+            print "+-"+format.string("",19.,'-')+"-+-"+format.string("",8,'-')+"-+-"+format.string("",8,'-')+"-+-"+format.string("",60.,'-')+"-+"
+        )
+    )
+    else if "&msg_version"=="v1"
+    (
+        if &is_rx==1
+        (
+            print "+-"+format.string("",19.,'-')+"-+-"+format.string("",11.,'-')+"-+-"+format.string("",8,'-')+"-+-"+format.string("",25.,'-')+"-+-"+format.string("",15.,'-')+"-+-"+format.string("",10.,'-')+"-+-"+format.string("",9,'-')+"-+-"+format.string("",60.,'-')+"-+"
+        )
+        else
+        (
+            print "+-"+format.string("",19.,'-')+"-+-"+format.string("",11.,'-')+"-+-"+format.string("",8,'-')+"-+-"+format.string("",25.,'-')+"-+-"+format.string("",25.,'-')+"-+"
+        )
+    )
+
+    print ""
+    RETURN
+
+
+;================================================================================
+ParseRequestV1:
+    ENTRY &fifo &fifo_size
+    local &rsrc_type &set
+
+    if "&msg_version"==""
+    (
+        &msg_version="v1"
+
+        print "+-"+format.string("",19.,'-')+"-+-"+format.string("",11.,'-')+"-+-"+format.string("",8,'-')+"-+-"+format.string("",25.,'-')+"-+-"+format.string("",15.,'-')+"-+-"+format.string("",10.,'-')+"-+-"+format.string("",9,'-')+"-+-"+format.string("",60.,'-')+"-+"
+        print "| "+format.string("LOCATION",19.,' ')+" | "+format.string("MSG TYPE",11.,' ')+" | "+format.string("MSG SIZE",8,' ')+" | "+format.string("MSG_ID",25.,' ')+" | "+format.string("SET",15.,' ')+" | "+format.string("RESOURCE",10.,' ')+" | "+format.string("DATA SIZE",9,' ')+" | "+format.string("KVPs",60.,' ')+" |"
+        print "+-"+format.string("",19.,'-')+"-+-"+format.string("",11.,'-')+"-+-"+format.string("",8,'-')+"-+-"+format.string("",25.,'-')+"-+-"+format.string("",15.,'-')+"-+-"+format.string("",10.,'-')+"-+-"+format.string("",9,'-')+"-+-"+format.string("",60.,'-')+"-+"
+    )
+
+    &type=v.value(((RPMRequestHeaderV1*)(&fifo+&write_index))->type)
+
+    print "| "+format.string("0x"+format.hex(8,&fifo)+" + 0x"+format.hex(4,&write_index),19.,' ')+" | "
+
+    &typestr=v.string((rpm_v1_service_type)&type)
+    &typestr=string.replace("&typestr","RPM_","",0)
+    &typestr=string.replace("&typestr","_SERVICE","",0)
+    print %cont format.string("&typestr",11.,' ')+" | "+format.decimal(8,v.value(((RPMRequestHeaderV1*)(&fifo+&write_index))->size))+" | "
+    GOSUB IncrementIndex 4. &fifo_size
+
+    &msg_id=v.value(*(unsigned*)(&fifo+&write_index))
+    print %cont format.string("0x"+format.hex(8,&msg_id)+" ("+format.decimal(10.,&msg_id)+")",25.,' ')+" | "
+    GOSUB IncrementIndex 4. &fifo_size
+
+    &rsrc_type=v.value(*(unsigned*)(&fifo+&write_index))
+    GOSUB IntToString &rsrc_type
+    entry &rsrc_type
+    GOSUB IncrementIndex 4. &fifo_size
+
+    &set=v.value(((RPMRequestDetailsV1*)(&fifo+&write_index))->set)
+    &data_size=v.value(((RPMRequestDetailsV1*)(&fifo+&write_index))->data_len)
+    &rsrc_id=v.value(((RPMRequestDetailsV1*)(&fifo+&write_index))->resource_id)
+    &attr=""
+    if &set==0
+        &attr="%attr 0x28"
+    else if &set==1
+        &attr="%attr 0x24"
+    else if &set==2
+        &attr="%attr 0x20"
+
+    print %cont &attr format.string(string.cut(v.string((rpm_set_type)&set),4),15.,' ')+" | "
+    print %cont %attr 0x44 format.string(format.string(&rsrc_type,4,' ')+","+FORMAT.DECIMAL(3,&rsrc_id),10.,' ')+" | "
+    print %cont FORMAT.DECIMAL(9,&data_size)+" | "
+    GOSUB IncrementIndex 4. &fifo_size
+
+    &offset_str="| "+format.string("",19.,' ')+" | "+format.string("",11.,' ')+" | "+format.string("",8,' ')+" | "+format.string("",25.,' ')+" | "+format.string("",15.,' ')+" | "+format.string("",10.,' ')+" | "+format.string("",9,' ')+" | "
+    GOSUB ParseKVPs &fifo &fifo_size &data_size "&offset_str"
+    return
+
+;================================================================================
+ParseAckV1:
+    ENTRY &fifo &fifo_size
+    LOCAL &msg_id
+
+    if "&msg_version"==""
+    (
+        &msg_version="v1"
+
+        print "+-"+format.string("",19.,'-')+"-+-"+format.string("",11.,'-')+"-+-"+format.string("",8,'-')+"-+-"+format.string("",25.,'-')+"-+-"+format.string("",25.,'-')+"-+"
+        print "| "+format.string("LOCATION",19.,' ')+" | "+format.string("MSG TYPE",11.,' ')+" | "+format.string("MSG SIZE",8,' ')+" | "+format.string("MSG ID",25.,' ')+" | "+format.string("MSG ERR",25.,' ')+" |"
+        print "+-"+format.string("",19.,'-')+"-+-"+format.string("",11.,'-')+"-+-"+format.string("",8,'-')+"-+-"+format.string("",25.,'-')+"-+-"+format.string("",25.,'-')+"-+"
+    )
+
+    &type=v.value(((RPMRequestHeaderV1*)(&fifo+&write_index))->type)
+
+    &attr=""
+    if &type==4
+    (
+        &attr="%attr 0x46"
+    )
+
+    print &attr "| "+format.string("0x"+format.hex(8,&fifo)+" + 0x"+format.hex(4,&write_index),19.,' ')+" | "
+
+    &typestr=v.string((rpm_v1_service_type)&type)
+    &typestr=string.replace("&typestr","RPM_","",0)
+    &typestr=string.replace("&typestr","_SERVICE","",0)
+    print %cont &attr format.string("&typestr",11.,' ')+" | "+format.decimal(8,v.value(((RPMRequestHeaderV1*)(&fifo+&write_index))->size))+" | "
+    GOSUB IncrementIndex 4. &fifo_size
+
+    &msg_id=v.value(*(unsigned*)(&fifo+&write_index))
+    print %cont &attr format.string("0x"+format.hex(8,&msg_id)+" ("+format.decimal(10.,&msg_id)+")",25.,' ')+" | "
+    GOSUB IncrementIndex 4. &fifo_size
+
+    &errstr=""
+    if &type==4
+    (
+        &errstr=v.string(*(rpm_message_error_type*)(&fifo+&write_index))
+        &errstr=string.replace("&errstr","RPM_MESSAGE_ERROR_","",0)
+        GOSUB IncrementIndex 4. &fifo_size
+    )
+
+    print %cont &attr format.string("&errstr",25.,' ')+" |"
+    return
+
+;================================================================================
+ParseRequest:
+    ENTRY &fifo &fifo_size
+    LOCAL &msg_type &msg_size &msg_id &set &rsrc_type &rsrc_id &data_size &str &addr
+
+    if "&msg_version"==""
+    (
+        &msg_version="v0"
+
+        if &is_rx==1
+        (
+            print "+-"+format.string("",19.,'-')+"-+-"+format.string("",8,'-')+"-+-"+format.string("",8,'-')+"-+-"+format.string("",25.,'-')+"-+-"+format.string("",15.,'-')+"-+-"+format.string("",10.,'-')+"-+-"+format.string("",9,'-')+"-+-"+format.string("",60.,'-')+"-+"
+            print "| "+format.string("LOCATION",19.,' ')+" | "+format.string("MSG TYPE",8,' ')+" | "+format.string("MSG SIZE",8,' ')+" | "+format.string("MSG_ID",25.,' ')+" | "+format.string("SET",15.,' ')+" | "+format.string("RESOURCE",10.,' ')+" | "+format.string("DATA SIZE",9,' ')+" | "+format.string("KVPs",60.,' ')+" |"
+            print "+-"+format.string("",19.,'-')+"-+-"+format.string("",8,'-')+"-+-"+format.string("",8,'-')+"-+-"+format.string("",25.,'-')+"-+-"+format.string("",15.,'-')+"-+-"+format.string("",10.,'-')+"-+-"+format.string("",9,'-')+"-+-"+format.string("",60.,'-')+"-+"
+        )
+        else
+        (
+            print "+-"+format.string("",19.,'-')+"-+-"+format.string("",8,'-')+"-+-"+format.string("",8,'-')+"-+-"+format.string("",60.,'-')+"-+"
+            print "| "+format.string("LOCATION",19.,' ')+" | "+format.string("MSG TYPE",8,' ')+" | "+format.string("MSG SIZE",8,' ')+" | "+format.string("KVPs",60.,' ')+" |"
+            print "+-"+format.string("",19.,'-')+"-+-"+format.string("",8,'-')+"-+-"+format.string("",8,'-')+"-+-"+format.string("",60.,'-')+"-+"
+        )
+    )
+
+    &addr="0x"+FORMAT.HEX(8,&fifo)+" + 0x"+FORMAT.HEX(4,&write_index)
+    print "| "+format.string("&addr",19.,' ')+" | "
+
+    &msg_type=DATA.LONG.LE(D:(&fifo+&write_index))
+    GOSUB IncrementIndex 4. &fifo_size
+    GOSUB IntToString &msg_type
+    print %cont format.string("&str",8,' ')+" | "
+
+    &msg_size=DATA.LONG.LE(D:(&fifo+&write_index))
+    GOSUB IncrementIndex 4. &fifo_size
+    print %cont FORMAT.DECIMAL(8,&msg_size)+" | "
+
+    if &is_rx==1.
+    (
+        &msg_id=DATA.LONG.LE(D:(&fifo+&write_index))
+        GOSUB IncrementIndex 4. &fifo_size
+        print %cont format.string("0x"+format.hex(8,&msg_id)+" ("+format.decimal(10.,&msg_id)+")",25.,' ')+" | "
+
+        &set=DATA.LONG.LE(D:(&fifo+&write_index))
+        GOSUB IncrementIndex 4. &fifo_size
+        &attr=""
+        if &set==0
+            &attr="%attr 0x28"
+        else if &set==1
+            &attr="%attr 0x24"
+        else
+            &attr="%attr 0x20"
+        print %cont &attr format.string(string.cut(v.string((rpm_set_type)&set),4),15.,' ')+" | "
+
+        &rsrc_type=DATA.LONG.LE(D:(&fifo+&write_index))
+        GOSUB IncrementIndex 4. &fifo_size
+        GOSUB IntToString &rsrc_type
+        entry &rsrc_type
+
+        &rsrc_id=DATA.LONG.LE(D:(&fifo+&write_index))
+        GOSUB IncrementIndex 4. &fifo_size
+        print %cont %attr 0x44 format.string(format.string(&rsrc_type,4,' ')+","+FORMAT.DECIMAL(3,&rsrc_id),10.,' ')+" | "
+
+        &data_size=DATA.LONG.LE(D:(&fifo+&write_index))
+        GOSUB IncrementIndex 4. &fifo_size
+        print %cont FORMAT.DECIMAL(9,&data_size)+" | "
+
+        &offset_str="| "+format.string("",19.,' ')+" | "+format.string("",8.,' ')+" | "+format.string("",8,' ')+" | "+format.string("",25.,' ')+" | "+format.string("",15.,' ')+" | "+format.string("",10.,' ')+" | "+format.string("",9,' ')+" | "
+        GOSUB ParseKVPs &fifo &fifo_size &data_size "&offset_str"
+    )
+    else
+    (
+        GOSUB ParseKVPs &fifo &fifo_size &msg_size ""
+    )
+    RETURN
+
+;================================================================================
+IncrementIndex:
+    ENTRY &inc_size &max
+    &write_index=&write_index+&inc_size
+    if &write_index>=&max
+        &write_index=&write_index-&max
+    &i=&i+&inc_size
+    RETURN
+
+;================================================================================
+ParseCommand:
+    ENTRY &fifo &fifo_size
+    LOCAL &msg_type &msg_size &str
+
+    print "&indent"+"----------------------------------------------------------------------------"
+
+    &msg_type=DATA.LONG.LE(D:(&fifo+&write_index))
+    GOSUB IncrementIndex 4. &fifo_size
+    GOSUB IntToString &msg_type
+    print "&indent"+"MSG_TYPE  : &str"
+
+    &msg_size=DATA.LONG.LE(D:(&fifo+&write_index))
+    GOSUB IncrementIndex 4. &fifo_size
+    print "&indent"+"MSG_SIZE  : "+FORMAT.DECIMAL(0,&msg_size)+" bytes"
+
+    GOSUB ParseKVPs &fifo &fifo_size &msg_size ""
+
+    RETURN
+
+;================================================================================
+IntToString:
+    ENTRY &int
+    LOCAL &i
+    &i=0
+    &str=""
+
+    while &i<4.
+    (
+        &str="&str"+CONV.CHAR(0xff&(&int>>(&i*8.)))
+        &i=&i+1.
+    )
+    RETURN "&str"
+
+;================================================================================
+ParseKVPs:
+    ENTRY &fifo &fifo_size &kvp_size &offset_str
+    LOCAL &size
+
+    ;print "&indent"+"KVPs      :"
+    &size=0.
+    while &size<&kvp_size
+    (
+        GOSUB ParseKVP &fifo &fifo_size &kvp_size
+        if &size<&kvp_size
+        (
+            print &offset_str
+        )
+    )
+    RETURN
+
+;================================================================================
+ParseKVP:
+    ENTRY &fifo &fifo_size &kvp_size
+    LOCAL &key &val_size &val &str &vals &idx &msg
+
+    &key=DATA.LONG.LE(D:(&fifo+&write_index))
+    GOSUB IncrementIndex 4. &fifo_size
+    GOSUB IntToString &key
+
+    &val_size=DATA.LONG.LE(D:(&fifo+&write_index))
+
+    if &size+8.+&val_size>&kvp_size
+    (
+        print %cont %attr 0x85 "&indent"+"Found invalid message format"
+        &size=&size+8.+&val_size
+        RETURN
+    )
+
+    GOSUB IncrementIndex 4. &fifo_size
+
+    &vals=""
+
+    &idx=&val_size
+
+    &msg=format.string("&str",4,' ')+", "+FORMAT.DECIMAL(2,&val_size)
+
+    if &val_size%4!=0.
+        &val_size=&val_size+(4.-&val_size%4.)
+
+    &print_mode=""
+    if &key==0x00727265 ;err
+    (
+        while &idx>0.
+        (
+            &val=DATA.LONG.LE(D:(&fifo+&write_index))
+            GOSUB IncrementIndex 4. &fifo_size
+            &idx=&idx-4.
+            &str=""
+            GOSUB IntToString &val
+            &vals="&vals&str"
+        )
+        &print_mode="%error"
+    )
+    else
+    (
+        while &idx>0.
+        (
+            &val=DATA.LONG.LE(D:(&fifo+&write_index))
+            GOSUB IncrementIndex 4. &fifo_size
+            &idx=&idx-4.
+            &vals="&vals 0x"+format.hex(8,&val)+" ("+FORMAT.DECIMAL(10.,&val)+")"
+        )
+    )
+
+    print %cont &print_mode format.string("&msg, &vals",60.,' ')+" |"
+    &size=&size+8.+&val_size
+    RETURN
+
+on error jumpto HandleError
+
+HandleError:
+    print %error "Caught error ..."
+    enddo
+

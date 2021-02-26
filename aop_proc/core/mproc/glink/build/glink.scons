@@ -1,0 +1,82 @@
+#===============================================================================
+#                    Copyright 2016-2017 by Qualcomm Technologies, Inc.
+#                           All Rights Reserved.
+#                         QUALCOMM Proprietary/GTDR
+#===============================================================================
+# Time Services Driver
+#-------------------------------------------------------------------------------
+
+Import('env')
+env = env.Clone()
+#SDM640_CHANGES
+if env['CHIPSET'] in ['sdm640']:
+   env['CHIPSET'] = 'sdm670'
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+if env['MPROC_PROC_NAME'] == 'sdc':
+    SRCPATH = "${CORESDC_ROOT}/mproc/glink"
+else:
+    SRCPATH = "${INC_ROOT}/core/mproc/glink"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+#  Publish Private APIs
+#-------------------------------------------------------------------------------
+
+env.PublishPrivateApi('MPROC_GLINK',[
+   "${INC_ROOT}/core/mproc/glink/inc",
+   "${CORESDC_ROOT}/mproc/glink/inc"
+])
+
+#-------------------------------------------------------------------------------
+# Internal depends  within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DEBUGTOOLS',
+   'MPROC',
+   'MEMORY',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'KERNEL',
+   'POWER',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequirePublicApi('PRODUCTS')
+env.RequireRestrictedApi(CBSP_API)
+env.RequireProtectedApi(['MPROC_GLINK'])
+
+#------------------------------------------------------------------------------
+# Target specific values
+#-------------------------------------------------------------------------------
+if env['MPROC_PROC_NAME'] == 'sdc':
+    env.Append(CPPDEFINES=['GLINK_NUM_REMOTE_HOSTS=1'])
+elif env['MPROC_PROC_NAME'] == 'aop':
+    if env['CHIPSET'] == 'sdm845' or env['CHIPSET'] == 'sdm855' or env['CHIPSET'] == 'sdm1000':
+        env.Append(CPPDEFINES=['GLINK_NUM_REMOTE_HOSTS=5'])
+    elif env['CHIPSET'] == 'sdm670':
+        env.Append(CPPDEFINES=['GLINK_NUM_REMOTE_HOSTS=4'])
+    elif env['CHIPSET'] == 'sdx24':
+        env.Append(CPPDEFINES=['GLINK_NUM_REMOTE_HOSTS=2'])
+
+# Debug
+env.Append(CPPDEFINES=['XPORT_QMP_DEBUG_ENABLE'])
+env.Append(CPPDEFINES=['XPORT_QMP_DEBUG_MAX_CNTR=8'])
+
+#------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+GLINK_SOURCES =  [
+    '${BUILDPATH}/src/glink_api.c',
+    '${BUILDPATH}/src/glink_os_rex.c',
+    '${BUILDPATH}/src/xport_qmp.c',
+]
+
+GLINK_CONFIG_SOURCES =  [
+    "${BUILDPATH}/config/${CHIPSET}/xport_qmp_config_%s.c" % env['MPROC_PROC_NAME']
+]
+
+env.AddObject(['CORE_AOP', 'CORE_SLPI_SDC'], GLINK_SOURCES + GLINK_CONFIG_SOURCES)

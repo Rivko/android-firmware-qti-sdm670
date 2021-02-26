@@ -1,0 +1,71 @@
+#===============================================================================
+#
+# Interrupt sensor
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2017 by Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Id: //components/rel/ssc.slpi/3.2/sensors/interrupt/build/sns_interrupt.scons#2 $
+#  $DateTime: 2018/06/01 07:55:33 $
+#  $Change: 16303774 $
+#
+#===============================================================================
+Import('env')
+import inspect
+
+if 'SSC_TARGET_HEXAGON_CORE_SLPI_1_0' in env['CPPDEFINES']:
+  interrupt_flavor = ["hexagon", "hexagon_core_slpi_1.0"]
+elif 'SSC_TARGET_HEXAGON_CORE_QDSP6_2_0' in env['CPPDEFINES']:
+  interrupt_flavor = ["hexagon", "hexagon_core_qdsp6_2.0"]
+elif 'SSC_TARGET_HEXAGON_MDSP' in env['CPPDEFINES']:
+  Return()
+elif 'SSC_TARGET_X86' in env['CPPDEFINES']:
+  Return()
+
+#-------------------------------------------------------------------------------
+# External dependencies
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'SYSTEMDRIVERS',
+   'SERVICES',
+   'DEBUGTOOLS',
+   'KERNEL',
+]
+if 'SENSORS_DD_DEV_FLAG' in env:
+  binlib=True
+  sns_intrrpt_cleanpck = ['*.c','*.h']
+else:
+  binlib=False
+  sns_intrrpt_cleanpck= ['*.pb.c']
+#-------------------------------------------------------------------------------
+# Adds self
+#-------------------------------------------------------------------------------
+if 'USES_SSC_STATIC_LIB_BUILDER' in env:
+  env.AddSSCSU(inspect.getfile(inspect.currentframe()),
+             core_public_api = CBSP_API,
+             flavor = interrupt_flavor,
+             ssc_protected_api = ['SNS_INTERNAL_INCLUDES'],
+             clean_pack_list = sns_intrrpt_cleanpck,
+             binary_lib = binlib,
+             register_func_name = "sns_register_interrupt",
+             island_sections = ['.text.sns', '.data.sns', '.rodata.sns'])
+
+if 'USES_QDSS_SWE' in env:
+  QDSS_IMG = ['QDSS_EN_IMG']
+  events = [
+            ['SNS_INTERRUPT_CALLBACK_START', '', 'F'],
+            ['SNS_INTERRUPT_SET_SIGNAL', 'Interrupt 0x%x recieved, Signalling with flag 0x%x', 'F'],
+            ['SNS_INTERRUPT_CALLBACK_END', '', 'F'],
+            ['SNS_INTERRUPT_GENERATE_EVENT_START', '', 'F'],
+            ['SNS_INTERRUPT_GENERATE_EVENT_END', '', 'F'],
+            ['SNS_DDF_SIGNAL_POST','D|%d|sns_ddf_signal_post|gpio=%u, ts=%u', 'F'],
+           ]
+  env.AddSWEInfo(QDSS_IMG, events)
+

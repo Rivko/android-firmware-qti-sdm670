@@ -1,0 +1,89 @@
+#==============================================================================
+#
+#                             Edit History
+# $Header: //components/rel/core.tz/2.0.2/kernel/smmu/build/smmu500.sconscript#1 $
+#
+# when         who     what, where, why
+# ----------   ---     --------------------------------------------------------
+# 2014/03/06   sc      Create initial version
+#
+#==============================================================================
+# Copyright (c) 2014, 2017
+# Qualcomm Incorporated.
+# All Rights Reserved.
+# Qualcomm Confidential and Proprietary
+#==============================================================================
+import os
+
+#------------------------------------------------------------------------------
+# SMMU Lib
+#------------------------------------------------------------------------------
+Import('env')
+env = env.Clone()
+
+#------------------------------------------------------------------------------
+# Source PATH
+#------------------------------------------------------------------------------
+SRCPATH = "../smmu500"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+#------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#------------------------------------------------------------------------------
+CBSP_APIS = [
+   'QSEE_INCLUDE',
+   'BUSES',
+   'DAL',
+   'HAL',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_APIS, area = 'core')
+env.RequireRestrictedApi(CBSP_APIS)
+
+
+SSG_API = [
+    'AC',
+    'SECUREMSM',
+    'MINK',
+    'SSGPLATFORM',
+    'TZCHIPSET',
+]
+env.RequirePublicApi(SSG_API, area = 'ssg')
+
+#------------------------------------------------------------------------------
+# Internal depends within subunit
+#------------------------------------------------------------------------------
+
+env.PublishPrivateApi('SMMU_500', [
+   '${INC_ROOT}/core/kernel/smmu/smmu500/src',
+   '${INC_ROOT}/core/kernel/smmu/smmu500/${SMMU_MSM_ID}/tz',
+   '${INC_ROOT}/core/kernel/smmu/smmu500/inc', 
+])
+
+#------------------------------------------------------------------------------
+# Compiler options
+#------------------------------------------------------------------------------
+#env.Append(CCFLAGS = "--gnu")
+
+#------------------------------------------------------------------------------
+# Sources, libraries
+#------------------------------------------------------------------------------
+
+SMMU_SOURCES = [
+   '${BUILDPATH}/src/SMMUInit.c',
+   '${BUILDPATH}/src/HALSMMU.c',
+   '${BUILDPATH}/src/SMMUTranslation.c',
+   '${BUILDPATH}/${SMMU_MSM_ID}/tz/SMMUConfig.c',
+   '${BUILDPATH}/${SMMU_MSM_ID}/tz/SMMUTrustZone.c',
+   '${BUILDPATH}/${SMMU_MSM_ID}/tz/SMMUClock.c',
+   '${BUILDPATH}/${SMMU_MSM_ID}/tz/SMMUSafeEcoUtils.c',
+]
+
+env.AddBinaryLibrary(['TZOS_IMAGE'], '${BUILDPATH}/SMMUTzos', SMMU_SOURCES)
+
+ALL_SRC = env.FindFiles(['*.c'], "${BUILD_ROOT}/core/kernel/smmu/")
+CLEAN_SOURCES = list(set(ALL_SRC) - set(SMMU_SOURCES))
+env.CleanPack(['TZOS_IMAGE'], CLEAN_SOURCES)

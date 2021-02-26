@@ -1,0 +1,158 @@
+#===============================================================================
+#    Title: Sconscript
+#
+#    License: License
+#    Copyright 2014 Qualcomm Technologies Inc
+#
+#    Description: 
+#    Sconscript for CoreBSP Products CMM scripts
+#
+#    Team: 
+#    CoreBSP Products team
+#
+#
+#      $Author: pwbldsvc $
+#
+#    Location: Perforce Revision
+#  $Header: //components/rel/core.qdsp6/2.1/products/cti/build/cti.scons#1 $
+#
+#
+# edits
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 10/21/2016 jbilling  Updated for common DSP
+#       jbilling    : Add CTI interrupt handler, add cmmbuilder calls
+#    amcheriy    : First cut for Badger MPSS 2.0            : 11/11/11
+#===============================================================================
+import os
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Convert warnings to errors
+#-------------------------------------------------------------------------------
+if not os.environ.get('COMPILER','gcc').startswith('llvm'):
+    env.Append(CFLAGS = "-Werror ")
+
+
+
+SRCPATH = "${BUILD_ROOT}/core/products/cti/src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'DEBUGTOOLS',
+   'MPROC',
+   'POWER',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'CHIPINFO',
+   'KERNEL', #needs to be last
+]
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+
+##For CTI_TOP defines
+env.PublishPrivateApi( 'PRODUCTS', [ '${BUILD_ROOT}/core/products/cti/inc' ] )
+
+if "ADSP_PROC" in env:
+  env.PublishPrivateApi( 'PRODUCTS', [ '${BUILD_ROOT}/core/products/cti/inc/adsp' ] )
+elif "SLPI_PROC" in env:
+  env.PublishPrivateApi( 'PRODUCTS', [ '${BUILD_ROOT}/core/products/cti/inc/slpi' ] )
+elif "CDSP_PROC" in env:
+  env.PublishPrivateApi( 'PRODUCTS', [ '${BUILD_ROOT}/core/products/cti/inc/cdsp' ] )
+elif "MODEM_PROC" in env:
+  env.PublishPrivateApi( 'PRODUCTS', [ '${BUILD_ROOT}/core/products/cti/inc/mpss' ] )    
+    
+    
+    
+
+        
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+PRODUCTS_COMMON_SOURCES = [
+        '${BUILDPATH}/cti_irq.c'
+        ]
+        
+PRODUCTS_ISLAND_SOURCES = [
+        '${BUILDPATH}/cti_irq_island.c'
+        ]
+        
+#PRODUCTS_ISLAND_SECTIONS = [
+#        '.data.ctiwake',
+#        '.text.ctiwake'
+#]
+
+libnode=env.AddLibrary(
+   #['CORE_MODEM','CORE_QDSP6_SW', 'CBSP_QDSP_SW_IMAGE', 'QDSP6_SW_IMAGE','CORE_Q6_ROOT'],
+   ['CORE_MPSS_ROOT','CORE_MODEM_ROOT','CORE_Q6_ROOT','MODEM_PROC_IMG'],
+   '${BUILDPATH}/cti',
+   PRODUCTS_COMMON_SOURCES)
+   
+islandlibnode=env.AddLibrary(
+   ['CORE_MPSS_ROOT','CORE_MODEM_ROOT','CORE_Q6_ROOT'],
+   '${BUILDPATH}/cti_island',
+   PRODUCTS_ISLAND_SOURCES)
+   
+if 'USES_ISLAND' in env:
+    env.AddIslandLibrary(
+        ['CORE_MPSS_ROOT','CORE_MODEM_ROOT','CORE_Q6_ROOT'],
+        islandlibnode,   
+    )
+
+
+    
+if 'MODEM_PROC' in env:
+    if 'USES_RCINIT' in env:
+        RCINIT_IMG = ['CORE_MODEM','CORE_QDSP6_SW', 'CBSP_QDSP_SW_IMAGE', 'QDSP6_SW_IMAGE','MODEM_PROC_IMG']
+        env.AddRCInitFunc(              
+        RCINIT_IMG,                       
+        {
+              'sequence_group' : 'RCINIT_GROUP_2',                       # required
+              'init_name'      : 'cti',                        # required
+              'init_function'  : 'cti_irq_init',                        # required
+              'priority_amss_order'        : '2',                       # right above sleep
+              'dependencies'   : ['err_init'],
+              'policy_optin'  : ['default', 'ftm', ]
+         })
+    if 'RCINIT_DYN_PRIO_GROUP' not in env:
+      rcinit_dyn_prio_group = 'RCINIT_GROUP_7'
+    else:
+      rcinit_dyn_prio_group = env['RCINIT_DYN_PRIO_GROUP']
+    
+       # Register dynamic thread
+    env.AddRCInitTask(
+        RCINIT_IMG,
+        {
+         'sequence_group'             : rcinit_dyn_prio_group,
+         'thread_name'                : 'cti_workloop',
+         'thread_entry'               : 'RCINIT_NULL',
+         'stack_size_bytes'           : '4096',
+         'priority_amss_order'        : 'CTI_WORKLOOP_PRI_ORDER',
+         'thread_type'                : 'RCINIT_TASK_QURTTASK',
+        })
+
+    
+else:
+
+    if 'USES_RCINIT' in env:
+        RCINIT_IMG = ['CORE_MODEM','CORE_QDSP6_SW', 'CBSP_QDSP_SW_IMAGE', 'QDSP6_SW_IMAGE']
+        env.AddRCInitFunc(              
+        RCINIT_IMG,                       
+        {
+              'sequence_group' : 'RCINIT_GROUP_2',                       # required
+              'init_name'      : 'cti',                        # required
+              'init_function'  : 'cti_irq_init',                        # required
+              'priority_amss_order'        : '2',                       # right above sleep
+              'dependencies'   : ['err_init']
+         })
+

@@ -1,0 +1,323 @@
+;============================================================================
+;  Name:
+;    GPIO INTERRUPTCONTROLLER.CMM
+;
+;  Description:
+;    This script lets the user enter the processor platform. By doing this
+;    it lets the user route to the specific GPIO interrupt controller platform 
+;    script.
+;
+; Copyright (c) 2012 QUALCOMM Technologies Incorporated.  
+; All Rights Reserved.
+; Qualcomm Confidential and Proprietary
+;----------------------------------------------------------------------------
+;============================================================================
+;
+;                        EDIT HISTORY FOR MODULE
+;
+; when       who     what, where, why
+; -------    ---     --------------------------------------------------------
+; 10/2/2011  an      Created for querying GPIO InterruptController data.
+;============================================================================;
+
+
+
+;============================================================================
+; Set up some defaults for some variables
+;============================================================================
+GLOBAL &GICDBASE &nIdx &PlatformSet &PlatformNum
+GLOBAL &GICCBASE &L2VICBASE &Presult &nPrintRes &GPIOIntBase &GPIOIntDirNum &GPIOIntSumID &GPIOIntTargID &PinCfg &InOut
+GLOBAL &DirCon0 &DirCon1 &DirCon2 &DirCon3 &DirCon4 &DirCon5 &DirCon6 &DirCon7 &MaxIRQ &DirCfgAddr &StatusAddr &SumCfgAddr
+GLOBAL &DirCfgAddr_wtile &DirCfgAddr_ntile &DirCfgAddr_stile &istilebased &tile_ntile &tile_stile &tile_wtile
+&MaxIRQ=0xC8
+;============================================================================
+; Get the arguments passed in.
+;============================================================================
+ENTRY
+
+&Presult=0
+AREA.RESet
+WINPOS 0. 0. 100% 100%
+AREA.Create INTRMENU
+AREA.view INTRMENU
+
+
+on error gosub
+(
+  print "An Error has Occured"
+  enddo (1==0)
+)
+
+DISPLAYMENU_1:
+AREA.view INTRMENU
+AREA.Select INTRMENU
+;============================================================================
+; don't proceed without user confirmation
+;============================================================================
+      
+print "      "
+print "************************************************************************"
+print " "     
+print "  T H E     G P I O     I N T E R R U P T C O N T R O L L E R     S C R I P T     "
+print " "      
+print "************************************************************************"      
+
+if &Presult!=0
+(
+print " "
+  GOSUB ERRORHNDLRMAIN &PlatformNum
+print " "
+print "************************************************************************" 
+)
+else if &Presult==0
+(
+)
+&Presult=0
+print " "
+print " "
+print " "
+print "PLEASE CHOOSE FROM THE FOLLOWING OPTIONS TO SET THE GPIO INTERRUPT CONTROLLER" 
+print "PLATFORM."
+print " "
+print " "
+print "0. Exit the GPIO InterruptController script."
+print "1. 8974, 9x25 APPS"
+print "2. 8974, 9x25 QDSP6 Modem"
+print "3. 8974, 9x25 QDSP6 LPASS"
+print "4. 8974, 8626,8x10 Pronto"
+print "5. 8996, LPASS"
+print "6: SDM670, LPASS"
+print " "
+print " "
+print "************************************************************************"    
+print
+print
+print
+print
+&t32_cmm_stopped=1
+enter &Platform
+&t32_cmm_stopped=0
+print
+print
+&PlatformNum=&Platform.
+if &PlatformNum>0x6
+(
+  &Presult=1
+  &PlatformSet=0
+  &PlatformNum=0
+  GOTO DISPLAYMENU_1
+)
+if (&PlatformNum==0)
+(
+  AREA.CLEAR INTRMENU
+  GOTO INTCTLEND
+  &Presult=0
+  &nPrintRes=0
+  &PlatformSet=0
+)
+;============================================================================
+; Platform 8974 APPS 9x25 Sparrow
+;============================================================================
+if &PlatformNum==0x1
+(
+  &Presult=1
+  &PlatformSet=1
+  AREA.CLEAR INTRMENU
+  &GICDBASE=0xF9000000
+  &GICCBASE=0xF9002000
+  &GPIOIntBase=0xFD500000 
+  &GPIOIntDirNum=0x8
+  &GPIOIntSumID=0xF0
+  &DirCon0=0xF8
+  &DirCon1=0xF7
+  &DirCon2=0xF6
+  &DirCon3=0xF5
+  &DirCon4=0xF4
+  &DirCon5=0xF3
+  &DirCon6=0xF2
+  &DirCon7=0xF1
+  &MaxIRQ=0x92
+  &DirCfgAddr=0xFD512800
+  &SumCfgAddr=0xFD511008
+  &StatusAddr=0xFD51100C
+  &PinCfg=0xFD511000
+  &istilebased=0
+  &InOut=0xFD511004
+  do GPIOIntQGIC.cmm
+)
+;============================================================================
+; Platform 8974 Modem
+;============================================================================
+if &PlatformNum==0x2
+(
+  &Presult=1
+  &PlatformSet=1
+  AREA.CLEAR INTRMENU
+  &L2VICBASE=0xFC910000
+  &PlatformSet=1
+  &GPIOIntBase=0xFD500000 
+  &GPIOIntDirNum=2 
+  &GPIOIntSumID=0xEF
+  &DirCon0=0x47
+  &DirCon1=0x48
+  &MaxIRQ=0x92
+  &DirCfgAddr=0xFD512A00
+  &SumCfgAddr=0xFD511008
+  &StatusAddr=0xFD51100C
+  &PinCfg=0xFD511000
+  &InOut=0xFD511004
+  &istilebased=0
+  do GPIOIntL2VIC.cmm
+)
+;============================================================================
+; Platform 8974 LPASS
+;============================================================================
+if &PlatformNum==0x3
+(
+  &Presult=1
+  &PlatformSet=1
+  AREA.CLEAR INTRMENU
+  &L2VICBASE=0xFE290000
+  &PlatformSet=1
+  &GPIOIntBase=0x01000000
+  &GPIOIntDirNum=0x6 
+  &GPIOIntSumID=0x26
+  &DirCon0=0x18
+  &DirCon1=0x19
+  &DirCon2=0x1A
+  &DirCon3=0x1B
+  &DirCon4=0x1C
+  &DirCon5=0x1D
+  &MaxIRQ=0x92
+  &DirCfgAddr=0x1512500
+  &SumCfgAddr=0x1511008
+  &StatusAddr=0x151100C
+  &PinCfg=0x1511000
+  &InOut=0x1511004
+  &istilebased=0
+  do GPIOIntL2VIC.cmm
+
+)
+
+;============================================================================
+; Platform 8996 LPASS
+;============================================================================
+if &PlatformNum==0x5
+(
+  &Presult=1
+  &PlatformSet=1
+  AREA.CLEAR INTRMENU
+  &L2VICBASE=0xEE390000
+  &PlatformSet=1
+  &GPIOIntBase=0x01000000
+  &GPIOIntDirNum=0x6 
+  &GPIOIntSumID=0x26
+  &DirCon0=0x18
+  &DirCon1=0x19
+  &DirCon2=0x1A
+  &DirCon3=0x1B
+  &DirCon4=0x1C
+  &DirCon5=0x1D
+  &MaxIRQ=0x92
+  &DirCfgAddr=0x1132000
+  &SumCfgAddr=0x1010008
+  &StatusAddr=0x101100C
+  &PinCfg=0x1010000
+  &InOut=0x1010004
+  &istilebased=0
+  do GPIOIntL2VIC.cmm
+
+)
+
+;============================================================================
+; Platform 8974 Pronto
+;============================================================================
+if &PlatformNum==0x4
+(
+  &Presult=1
+  &PlatformSet=1
+  AREA.CLEAR INTRMENU
+  &GICDBASE=0x10008000
+  &GICCBASE=0x1000A000
+  &PlatformSet=1
+  &GPIOIntBase=0xFD500000 
+  &GPIOIntDirNum=0x2
+  &GPIOIntSumID=0x34
+  &DirCon0=0x35
+  &DirCon1=0xA8
+  &MaxIRQ=0x92
+  &DirCfgAddr=0xFD512100
+  &SumCfgAddr=0xFD511008
+  &StatusAddr=0xFD51100C
+  &PinCfg=0xFD511000
+  &InOut=0xFD511004
+  &istilebased=0
+  do GPIOIntQGIC.cmm
+)
+
+;============================================================================
+; Platform SDM670 LPASS
+;============================================================================
+if &PlatformNum==0x6
+(
+  &Presult=1
+  &PlatformSet=1
+  AREA.CLEAR INTRMENU
+  &num_gpio=0x96
+  &TLMM_BASE=0x03400000
+  &tile_wtile=0x00100000
+  &tile_ntile=0x00500000
+  &tile_stile=0x00900000
+  &tile_offset=0x0
+  &istilebased=1
+  &L2VICBASE=0x62490000
+  &PlatformSet=1
+  &GPIOIntBase=0x01000000
+  &GPIOIntDirNum=0x2
+  &GPIOIntSumID=0x26
+  &DirCon0=70
+  &DirCon1=71
+  &MaxIRQ=0x92
+  &DirCfgAddr_wtile=0x35A1000
+  &DirCfgAddr=&DirCfgAddr_wtile
+  &DirCfgAddr_ntile=0x39A0000
+  &DirCfgAddr_stile=0x3DA3000
+  &SumCfgAddr=0x1010008
+  &StatusAddr=0x101100C
+  &PinCfg=0x1010000
+  &InOut=0x1010004
+  do GPIOIntL2VIC.cmm
+
+)
+
+INTCTLEND:
+AREA.CLEAR INTRMENU
+AREA.RESET
+WINCLEAR
+term.close 
+enddo (0==0)
+
+ERRORHNDLRMAIN: 
+  ENTRY &MenuEntry
+  if &MenuEntry==0
+  (
+    print "  !! DATA ENTRY ERROR !!"
+    print "  INVALID PLATFORM CONFIGURATION ENTERED"
+  )
+  if &MenuEntry==0x1
+  (
+    print " You chose QGIC platform for Applications Processor."
+  )
+  if &MenuEntry==0x2
+  (
+    print " You chose L2VIC platform for QDSP6 Modem."
+  )
+  if &MenuEntry==0x3
+  (
+    print " You chose L2VIC platform for QDSP6 LPASS."
+  )
+  if &MenuEntry==0x4
+  (
+    print " You chose QGIC platform for WLAN subsystem Pronto."
+  )
+RETURN

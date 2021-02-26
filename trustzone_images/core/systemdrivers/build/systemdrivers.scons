@@ -1,0 +1,68 @@
+#===============================================================================
+#
+# System Drivers Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2011 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.tz/2.0.2/systemdrivers/build/systemdrivers.scons#1 $
+#  $DateTime: 2018/02/06 02:57:17 $
+#  $Author: pwbldsvc $
+#  $Change: 15399902 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Internal common depends within CoreBSP
+#-------------------------------------------------------------------------------
+env.RequirePublicApi(['KERNEL'])
+#-------------------------------------------------------------------------------
+# Convert warnings to errors in all system drivers components
+#-------------------------------------------------------------------------------
+#env.Append(CFLAGS = "--diag_error=warning ")
+
+#-------------------------------------------------------------------------------
+# Enable Werror
+#-------------------------------------------------------------------------------
+env.Append(CFLAGS = " -Werror ")
+
+#-------------------------------------------------------------------------------
+# Suppress non-critical warnings in all system drivers components
+#-------------------------------------------------------------------------------
+#2523-D: use of inline assembler is deprecated
+#env.Append(CFLAGS = "--diag_suppress=2523 ")
+
+#C9931W: Your license for Compiler (feature compiler_pro) will expire in 30 days
+#env.Append(CFLAGS = "--diag_suppress=9931 ")
+
+#-------------------------------------------------------------------------------
+# Load sub scripts
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+# Deploy additional debug scripts
+debug_scripts = [
+    env.Glob('${BUILD_ROOT}/core/systemdrivers/hwio/scripts/${CHIPSET}/*.cmm'),
+]
+
+if "USES_DEPLOY_BUILDER" in env:
+   env.Deploy('systemdrivers.scons')
+   env.DeployInternal(debug_scripts)
+
+env.Alias("deploy", debug_scripts)

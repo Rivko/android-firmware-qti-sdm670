@@ -1,0 +1,102 @@
+#===============================================================================
+#
+# GENERAL DESCRIPTION
+#    Build script for QDSS ctrl library
+#
+# Copyright (c) 2016 Qualcomm Technologies Incorporated.
+# All rights reserved.
+# Qualcomm Technologies Confidential and Proprietary
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1.c4/debugtrace/ctrl/build/ctrl.scons#1 $
+#
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 09/07/17   rs      Warlock specific changes
+#===============================================================================
+
+Import('env')
+import qdss
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "../src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+env.RequirePublicApi([
+   'DEBUGTRACE',
+   'DAL',
+   'SERVICES',
+   'KERNEL',
+   'POWER',
+   'SYSTEMDRIVERS',
+   'KERNEL'
+])
+env.RequireRestrictedApi(['DEBUGTRACE'])
+env.RequireProtectedApi(['DEBUGTRACE'])
+
+# Configuring replicator for core PD only in ADSP
+if 'USES_SENSOR_IMG' in env or 'USES_AUDIO_IMG' in env or 'USES_CDSP_IMG' in env:
+  print("sensor_nothing")
+else:
+  env.Append(CPPDEFINES=['ENABLE_LPA_REPLICATOR_QDSS'])
+  
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+QDSS_CTRL_SRC = [
+   '${BUILDPATH}/qdss_ctrl_diag.c',
+   '${BUILDPATH}/qdss_ctrl.c',
+   '${BUILDPATH}/qdss_ctrl_${IMAGE}.c',
+   '${BUILDPATH}/qdss_ctrl_test.c',
+   '${BUILDPATH}/qdss_parse_util.c',
+]
+
+# Refer Tracer_Diag.h file for command codes for various subsystems
+if env.IsTargetEnable(qdss.BuildTags(['modem'])):
+   env.Append(CCFLAGS = " -DQDSS_CTRL_DIAG_PROC_ID=0x0200")
+   QDSS_CTRL_SRC += ['${BUILDPATH}/qdss_ctrl_etm_qurt.c']
+elif env.IsTargetEnable(qdss.BuildTags(['adsp'])):
+   env.Append(CCFLAGS = " -DQDSS_CTRL_DIAG_PROC_ID=0x0500")
+   QDSS_CTRL_SRC += ['${BUILDPATH}/qdss_ctrl_etm_qurt.c']
+elif env.IsTargetEnable(qdss.BuildTags(['wcn'])):
+   env.Append(CCFLAGS = " -DQDSS_CTRL_DIAG_PROC_ID=0x0300")
+   QDSS_CTRL_SRC += ['${BUILDPATH}/qdss_ctrl_etm_arm.c']
+elif env.IsTargetEnable(qdss.BuildTags(['sensor'])):
+   env.Append(CCFLAGS = " -DQDSS_CTRL_DIAG_PROC_ID=0x0800")
+   QDSS_CTRL_SRC += ['${BUILDPATH}/qdss_ctrl_etm_qurt.c']
+elif env.IsTargetEnable(qdss.BuildTags(['sensor2'])):
+   env.Append(CCFLAGS = " -DQDSS_CTRL_DIAG_PROC_ID=0x0C00")
+   QDSS_CTRL_SRC += ['${BUILDPATH}/qdss_ctrl_etm_stub.c']
+elif env.IsTargetEnable(qdss.BuildTags(['cdsp'])):
+   env.Append(CCFLAGS = " -DQDSS_CTRL_DIAG_PROC_ID=0x0D00")
+   QDSS_CTRL_SRC += ['${BUILDPATH}/qdss_ctrl_etm_qurt.c']
+elif env.IsTargetEnable(qdss.BuildTags(['audio'])):
+   env.Append(CCFLAGS = " -DQDSS_CTRL_DIAG_PROC_ID=0x0900")    
+   QDSS_CTRL_SRC += ['${BUILDPATH}/qdss_ctrl_etm_stub.c']       
+else:
+   env.Append(CCFLAGS = " -DQDSS_CTRL_DIAG_PROC_ID=0xFF00")
+   QDSS_CTRL_SRC += ['${BUILDPATH}/qdss_ctrl_etm_stub.c']
+
+
+env.AddLibrary(qdss.BuildTags(['adsp', 'audio', 'sensor2', 'cdsp']),
+   '${BUILDPATH}/qdss_ctrl',QDSS_CTRL_SRC)
+
+if 'USES_RCINIT' in env:
+   env.AddRCInitFunc(
+      qdss.BuildTags(['adsp', 'audio', 'sensor2', 'cdsp']),
+      {
+         'sequence_group'          : 'RCINIT_GROUP_1',
+         'init_name'               : 'qdss_ctrl',
+         'init_function'           : 'qdss_ctrl_init',
+         'dependencies'            : ['dalsys','diag','npa']
+      })
+

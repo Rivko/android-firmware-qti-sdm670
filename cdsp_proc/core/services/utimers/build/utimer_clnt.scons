@@ -1,0 +1,170 @@
+#===============================================================================
+#
+# UTimer Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009-2017 by QUALCOMM Technologies Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1.c4/services/utimers/build/utimer_clnt.scons#1 $
+#  $DateTime: 2018/07/30 01:21:36 $
+#  $Author: pwbldsvc $
+#  $Change: 16759227 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Build options
+#-------------------------------------------------------------------------------
+#Required for island build
+env.Append(CCFLAGS = "-G0")
+#We don't support island functions with '-fstack-protector'
+if "-fstack-protector" in env['HEXAGON_STKPRO']:
+    env.Replace(HEXAGON_STKPRO = "")
+	
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/services/utimers/src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# External depends within CoreBSP
+#-------------------------------------------------------------------------------
+env.RequireExternalApi([
+   'CS',
+   'DSM',
+   'MODEM_1X',
+   'ONEX',
+   'MODEM_DATA',
+   'MODEM_FTM',
+   'MODEM_HDR',
+   'MODEM_PMIC',
+   'MODEM_RF',
+   'MODEM_SERVICES',    
+
+])
+
+MODEM_API = [
+   'HDR',
+   'ONEX',
+]
+env.RequirePublicApi(MODEM_API, 'modem')
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'BOOT',
+   'DAL',
+   'DEBUGTOOLS',
+   'HWENGINES',
+   'MPROC',
+   'POWER',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'WIREDCONNECTIVITY',
+   'STORAGE',
+
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Feature Definitions
+#-------------------------------------------------------------------------------
+# FEATURE_TIMER_CLIENT_WORKER_THREAD needs to be defined for every USER PD
+if 'USES_SENSOR_IMG' in env:
+   env.Append(CPPDEFINES=["FEATURE_TIMER_CLIENT_WORKER_THREAD"])
+if 'USES_AUDIO_IMG' in env:
+   env.Append(CPPDEFINES=["FEATURE_TIMER_CLIENT_WORKER_THREAD"])
+ 	
+#env.Append(CPPDEFINES=["FEATURE_UTIMER_CLIENT_TEST"])
+#env.Append(CPPDEFINES=["FEATURE_UTIMER_CLIENT_DEBUG"])
+env.Append(CPPDEFINES=["FEATURE_UTIMER_DEFER_SUPPORT"])
+
+#-------------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+UTIMER_CLNT_QDSP6_SOURCES = [
+   '${BUILDPATH}/utimer_client.c', 
+   '${BUILDPATH}/utimer_client_test.c', #need to enable FEATURE_UTIMER_CLIENT_TEST for testing
+]
+
+UTIMER_CLNT_DDR_QDSP6_SOURCES = [
+   '${BUILDPATH}/utimer_client_ddr.c', 
+]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+utimer_clnt_qdsp6 = env.AddLibrary(['QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE'], '${BUILDPATH}/utimer_clnt_qdsp6', UTIMER_CLNT_QDSP6_SOURCES)
+utimer_clnt_ddr_qdsp6 = env.AddLibrary(['QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE'], '${BUILDPATH}/utimer_clnt_ddr_qdsp6', UTIMER_CLNT_DDR_QDSP6_SOURCES)
+
+if 'USES_ISLAND' in env:
+   env.AddIslandLibrary(['CORE_QDSP6_SW'], utimer_clnt_qdsp6)
+   
+if 'USES_SENSOR_IMG' in env:
+   utimer_clnt_qdsp6 = env.AddLibrary(['CORE_QDSP6_SENSOR_SW'], '${BUILDPATH}/utimer_clnt_qdsp6', UTIMER_CLNT_QDSP6_SOURCES)
+   utimer_clnt_ddr_qdsp6 = env.AddLibrary(['CORE_QDSP6_SENSOR_SW'], '${BUILDPATH}/utimer_clnt_ddr_qdsp6', UTIMER_CLNT_DDR_QDSP6_SOURCES)
+   if 'USES_ISLAND' in env:
+      env.AddIslandLibrary(['CORE_QDSP6_SENSOR_SW'], utimer_clnt_qdsp6)
+   
+if 'USES_AUDIO_IMG' in env:
+   utimer_clnt_qdsp6 = env.AddLibrary(['CORE_QDSP6_AUDIO_SW'], '${BUILDPATH}/utimer_clnt_qdsp6', UTIMER_CLNT_QDSP6_SOURCES)
+   utimer_clnt_ddr_qdsp6 = env.AddLibrary(['CORE_QDSP6_AUDIO_SW'], '${BUILDPATH}/utimer_clnt_ddr_qdsp6', UTIMER_CLNT_DDR_QDSP6_SOURCES)
+   if 'USES_ISLAND' in env:
+      env.AddIslandLibrary(['CORE_QDSP6_AUDIO_SW'], utimer_clnt_qdsp6)
+
+#-------------------------------------------------------------------------------
+
+RCINIT_INIT_COREPD_INIT = {
+   'sequence_group'             : 'RCINIT_GROUP_0',          # required
+   'init_name'                  : 'utimer_client',            # required
+   'init_function'              : 'utimer_client_init',       # required
+   'dependencies'               : ['utimer_qdi']
+}
+
+if 'USES_RCINIT' in env:
+   env.AddRCInitFunc( ['QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE'], RCINIT_INIT_COREPD_INIT )
+
+if 'USES_SENSOR_IMG' in env:
+   RCINIT_INIT_SENSORPD_INIT = {
+     'sequence_group'             : 'RCINIT_GROUP_0',          # required
+     'init_name'                  : 'utimer_client',           # required
+     'init_function'              : 'utimer_client_init',      # required
+   }
+
+   if 'USES_RCINIT' in env:
+      env.AddRCInitFunc( 'CORE_QDSP6_SENSOR_SW', RCINIT_INIT_SENSORPD_INIT )
+   
+if 'USES_AUDIO_IMG' in env:
+   RCINIT_INIT_AUDIOPD_INIT = {
+     'sequence_group'             : 'RCINIT_GROUP_0',          # required
+     'init_name'                  : 'utimer_client',           # required
+     'init_function'              : 'utimer_client_init',      # required
+   }
+
+   if 'USES_RCINIT' in env:
+      env.AddRCInitFunc( 'CORE_QDSP6_AUDIO_SW', RCINIT_INIT_AUDIOPD_INIT )

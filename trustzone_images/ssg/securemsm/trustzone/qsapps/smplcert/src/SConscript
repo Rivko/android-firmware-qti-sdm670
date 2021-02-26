@@ -1,0 +1,66 @@
+#===========================================================================
+#  Copyright (c) 2011-2014, 2017 QUALCOMM Technologies Incorporated.
+#  All Rights Reserved.
+#  Qualcomm Confidential and Proprietary
+#===========================================================================
+#
+# App Core
+#
+# GENERAL DESCRIPTION
+#    build script
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains schedulerents describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+
+#===============================================================================
+Import('env')
+env = env.Clone()
+#-------------------------------------------------------------------------------
+# Compiler, object, and linker definitions
+#-------------------------------------------------------------------------------
+includes = [
+  "${BUILD_ROOT}/core/api/kernel/libstd/stringl",
+  "${BUILD_ROOT}/ssg/securemsm/trustzone/qsapps/smplcert/src",
+]
+
+#------------------------------------------------------------------------------
+# We need to specify "neon" to generate SIMD instructions in 32-bit mode
+#------------------------------------------------------------------------------
+if env['PROC'] == 'scorpion':
+  env.Append(CCFLAGS = " -mfpu=neon ")
+
+#----------------------------------------------------------------------------
+# App core Objects
+#----------------------------------------------------------------------------
+sources = [
+  'app_main.c',
+  'CCertValidate.c',
+]
+#-------------------------------------------------------------------------------
+# Add metadata to image
+#-------------------------------------------------------------------------------
+md = {
+  'appName':    'smplcert',
+  'privileges': ['default'],
+  'services':   ['CertValidate'],
+  'acceptBufSize': 8192,
+}
+
+smplcert_units = env.SecureAppBuilder(
+  sources = sources,
+  includes = includes,
+  metadata = md,
+  image = 'smplcert',
+  deploy_variants = env.GetDefaultPublicVariants(),
+  deploy_sources = [ sources,
+                    'SConscript', 
+                    'CCertValidate_open.h',
+                   ]
+)
+
+for image in env['IMAGE_ALIASES']:
+  op = env.Alias(image, smplcert_units)

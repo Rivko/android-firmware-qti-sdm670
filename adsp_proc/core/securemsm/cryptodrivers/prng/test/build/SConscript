@@ -1,0 +1,116 @@
+#===============================================================================
+#
+# Crypto Driver Test Library
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2012 by QUALCOMM, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header:$
+#  $DateTime:$
+#  $Author:$
+#  $Change:$
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 07/31/12    nk     Boot version
+# 07/04/12    nk     Initial version
+#
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+#comment below to include test module
+Return()
+
+#-------------------------------------------------------------------------------
+# Publish Private APIs
+#-------------------------------------------------------------------------------
+env.PublishPrivateApi('PrngCL', [
+   '${INC_ROOT}/core/securemsm/cryptodrivers/prng/chipset/inc',
+   '${INC_ROOT}/core/securemsm/cryptodrivers/prng/environment/env/adsp/inc', 
+   '${INC_ROOT}/core/securemsm/cryptodrivers/prng/environment/inc', 
+   '${INC_ROOT}/core/securemsm/cryptodrivers/prng/environment/src',
+])
+
+env.PublishPrivateApi('PrngML', [
+   '${INC_ROOT}/core/securemsm/cryptodrivers/prng/shared/inc',
+])
+
+env.PublishPrivateApi('PrngTL', [
+   '${INC_ROOT}/core/securemsm/cryptodrivers/prng/test/inc',
+ ])
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/securemsm/cryptodrivers/prng/test"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# External depends outside CoreBSP
+#-------------------------------------------------------------------------------
+env.RequireExternalApi([
+   'BREW',
+   'CS',
+   'DSM',
+])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'DEBUGTOOLS',
+   'HAL',
+   'MPROC',
+   'SECUREMSM',
+   'SERVICES',
+   'STORAGE',
+   'SYSTEMDRIVERS',
+   'WIREDCONNECTIVITY',
+   'BOOT',
+   'PrngTL',
+  
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Compiler, object, and linker definitions
+#-------------------------------------------------------------------------------
+env.Append(ARMCC_CODE = " ${ARM_SPLIT_SECTIONS}")
+env.Replace(ARMLD_NOREMOVE_CMD = "")
+
+env.Append(CPPDEFINES = ['_ARM_', '__arm', 'ARM', 'ARM_BREW_BUILD'])
+env.Append(ARMCC_OPT = ' --loose_implicit_cast ')
+env.Append(ARMCPP_OPT = ' --loose_implicit_cast ')
+if env.has_key('BUILD_BOOT_CHAIN'):
+   env.Append(CPPDEFINES = ['FEATURE_LIBRARY_ONLY'])
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+PrngTL_LIB_SOURCES = [
+         '${BUILDPATH}/src/PrngTL.c',
+]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+#ADSP library
+env.AddBinaryLibrary(['CORE_QDSP6_SW'], '${BUILDPATH}/PrngTL', PrngTL_LIB_SOURCES)

@@ -1,0 +1,317 @@
+# vi: tw=128 ts=3 sw=3 et
+# @file servreg.scons
+# @brief This file contains the API details for the Service Registry Services, API 2.0
+#===============================================================================
+# NOTE: The @brief description above does not appear in the PDF.
+# The tms_mainpage.dox file contains the group/module descriptions that
+# are displayed in the output PDF generated using Doxygen and LaTeX. To
+# edit or update any of the group/module text in the PDF, edit the
+# tms_mainpage.dox file or contact Tech Pubs.
+#===============================================================================
+#===============================================================================
+# Copyright (c) 2015-2017 Qualcomm Technologies Incorporated.
+# All Rights Reserved.
+# Qualcomm Confidential and Proprietary.
+#===============================================================================
+#===============================================================================
+# Edit History
+# $Header: //components/rel/core.qdsp6/2.1/debugtools/servreg/build/servreg.scons#1 $
+# $DateTime: 2017/07/21 22:10:47 $
+# $Change: 13907704 $
+# $Author: pwbldsvc $
+#===============================================================================
+
+Import('env')
+
+env.Append(CPPDEFINES = ["SERVREG_TRACE_ENABLE"])
+
+BUILD_TAGS_ROOT = [
+
+   'CORE_APPS',                  # Domain(REX + TN)
+   'CORE_EOS',                   # Domain(REX + EOS)
+   'CORE_GSS',                   # Domain(REX + GSS)
+   'CORE_IMC',                   # Domain(??? + IMC)
+   'CORE_MODEM',                 # Domain(Root + Modem)
+   'CORE_RPM',                   # Domain(REX + RPM)
+   'CORE_VPU',                   # Domain(REX + VPU)
+   'CORE_WCN',                   # Domain(REX + WCN)
+   'CORE_ROOT_PD',               # Domain(Qurt Root, Generic)
+   'CORE_ARMV8_ROOT_PD',         # Domain(Qurt Root, Generic, ARMV8)
+   'CORE_QDSP6_ROOT_PD',         # Domain(Qurt Root, Generic, QDSP6)
+   'CORE_QDSP6_SW',              # Domain(Qurt Root + Audio)
+   'MODEM_MODEM',                # Domain(Qurt Root + Modem)
+   'CNSS_IMAGE',                 # Domain(REX + EOS)
+]
+
+BUILD_TAGS_USER = [
+
+   'CORE_USER_PD',               # Domain(Qurt User, Generic)
+   'CORE_ARMV8_USER_PD',         # Domain(Qurt User, Generic, ARMV8)
+   'CORE_QDSP6_USER_PD',         # Domain(Qurt User, Generic, QDSP6)
+   'CORE_ARMV8_IMC_SW',          # Domain(Qurt User, IMC)
+   'CORE_QDSP6_AUDIO_SW',        # Domain(Qurt User, Audio)
+   'CORE_QDSP6_MODEM_SW',        # Domain(Qurt User, Modem)
+   'CORE_QDSP6_SENSOR_SW',       # Domain(Qurt User, Sensors)
+   'CORE_QDSP6_WCN_SW',          # Domain(Qurt User, Wireless)
+]
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+
+env.VariantDir('${BUILDPATH}', '../src', duplicate=0)
+
+#-------------------------------------------------------------------------------
+# External Dependency
+#-------------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
+# Internal Dependency
+#-------------------------------------------------------------------------------
+
+env.RequirePublicApi([
+   'BOOT',
+   'DAL',
+   'TMS',
+   'DEBUGTOOLS',
+   'DEBUGTRACE',
+   'HWENGINES',
+   'HAL',
+   'MPROC',
+   'POWER',
+   'SERVICES',
+   'STORAGE',
+   'SYSTEMDRIVERS',
+   'WIREDCONNECTIVITY',
+   'COMMON',
+   'SERVREG_LOC',
+   'SERVREG_NOTIF',
+   'KERNEL', # needs to be last (also contains wrong comdef.h)
+])
+
+env.RequireRestrictedApi([
+   'TMS_RESTRICTED',
+   'DEBUGTOOLS', # alias to TMS
+   'MPROC',
+])
+
+if env.IsTargetEnable(['CORE_APPS']):
+   env.RequirePublicApi(['SERVREG_LOC','SERVREG_NOTIF'], area='API')
+else:
+   env.RequirePublicApi(['SERVREG_LOC', 'SERVREG_NOTIF'], area='QMIMSGS')
+
+#-------------------------------------------------------------------------------
+# Sources
+#-------------------------------------------------------------------------------
+
+# NHLOS API DETECTION
+
+if not 'USES_QURT' in env:
+   env.Append(CPPDEFINES = ["SERVREG_EXCLUDE_KERNEL_QURT"])
+
+if not 'USES_REX' in env:
+   env.Append(CPPDEFINES = ["SERVREG_EXCLUDE_KERNEL_REX"])
+
+# TN APPS - can choose not to have the monitor and the notifier feature
+if not env.IsTargetEnable(['CORE_APPS']):
+   env.Append(CPPDEFINES = ["SERVREG_INCLUDE_NOTIFIER"])
+
+# TN APPS - does not have support for QDI framework
+if not env.IsTargetEnable(['CORE_APPS']):
+   env.Append(CPPDEFINES = ["SERVREG_INCLUDE_QDI"])
+
+# Locator server will be hosted only on TN APPS
+if not env.IsTargetEnable(['CORE_APPS']):
+   env.Append(CPPDEFINES = ["SERVREG_EXCLUDE_LOCATOR"])
+
+# Service list is updated by each subsystem on in MDM targets which has TN -APPS
+if not env.get('CHIPSET').startswith('mdm'):
+   env.Append(CPPDEFINES = ["SERVREG_EXCLUDE_UPDATE_SERVICE_LIST"])
+
+if env.has_key('MODEM_PROC'):
+   SERVREG_ROOT = [
+      '${BUILDPATH}/servreg_internal.c',
+      '${BUILDPATH}/servreg_localdb.c',
+      '${BUILDPATH}/servreg_locator.c',
+      '${BUILDPATH}/servreg_monitor.c',
+      '${BUILDPATH}/servreg_qdi_notifier_root.c',
+      '${BUILDPATH}/servreg_qdi.c',
+      '${BUILDPATH}/servreg_qmi_notifier_client.c',
+      '${BUILDPATH}/servreg_qmi_notifier_server.c',
+      '${BUILDPATH}/servreg_qmi_server_rex.c',
+      '${BUILDPATH}/servreg_wrapper_domain_service.c',
+      #'${BUILDPATH}/servreg_test.c',
+   ]
+elif env.IsTargetEnable(['CORE_APPS']):
+   SERVREG_ROOT = [
+      '${BUILDPATH}/servreg_internal.c',
+      '${BUILDPATH}/servreg_localdb.c',
+      '${BUILDPATH}/servreg_locator_server_rex.c',
+      '${BUILDPATH}/servreg_locator.c',
+      #'${BUILDPATH}/servreg_monitor.c',
+      #'${BUILDPATH}/servreg_qmi_notifier_client.c',
+      #'${BUILDPATH}/servreg_qmi_notifier_server.c',
+      #'${BUILDPATH}/servreg_qmi_server_rex.c',
+      #'${BUILDPATH}/servreg_test.c',
+   ]
+else: #ADSP and SLPI
+   SERVREG_ROOT = [
+      '${BUILDPATH}/servreg_internal.c',
+      '${BUILDPATH}/servreg_localdb.c',
+      '${BUILDPATH}/servreg_locator.c',
+      '${BUILDPATH}/servreg_monitor.c',
+      '${BUILDPATH}/servreg_qdi_notifier_root.c',
+      '${BUILDPATH}/servreg_qdi.c',
+      '${BUILDPATH}/servreg_qmi_notifier_client.c',
+      '${BUILDPATH}/servreg_qmi_notifier_server.c',
+      '${BUILDPATH}/servreg_qmi_server_qurt.c',
+      '${BUILDPATH}/servreg_wrapper_domain_service.c',
+      #'${BUILDPATH}/servreg_test.c',
+   ]
+
+if env.has_key('CORE_QDSP6_WLAN_PD'):
+   SERVREG_USER = [
+      '${BUILDPATH}/servreg_internal.c',
+      '${BUILDPATH}/servreg_localdb_user.c',
+      '${BUILDPATH}/servreg_locator.c',
+      '${BUILDPATH}/servreg_monitor.c',
+      '${BUILDPATH}/servreg_qdi_notifier_user.c',
+      '${BUILDPATH}/servreg_qdi_client.c',
+      #'${BUILDPATH}/servreg_test_user.c',
+   ]
+else:
+   SERVREG_USER = [
+   '${BUILDPATH}/servreg_internal.c',
+   '${BUILDPATH}/servreg_localdb.c',
+   '${BUILDPATH}/servreg_locator.c',
+   '${BUILDPATH}/servreg_monitor.c',
+   '${BUILDPATH}/servreg_qdi_notifier_user.c',
+   '${BUILDPATH}/servreg_qdi_client.c',
+   #'${BUILDPATH}/servreg_test_user.c',
+   ]
+
+if 'USES_SERVICE_REGISTRY' in env:
+
+#-------------------------------------------------------------------------------
+# Libraries
+#-------------------------------------------------------------------------------
+
+   env.AddLibrary(BUILD_TAGS_ROOT, '${BUILDPATH}/servreg_root', SERVREG_ROOT)
+
+   env.AddLibrary(BUILD_TAGS_USER, '${BUILDPATH}/servreg_user', SERVREG_USER)
+
+#-------------------------------------------------------------------------------
+# Registering Services with Service Registry framework
+#-------------------------------------------------------------------------------
+
+   env.AddServRegService(
+      BUILD_TAGS_ROOT,
+      {
+         'provider'              : 'tms',
+         'service'               : 'servreg',
+      })
+
+   env.AddServRegService(
+      BUILD_TAGS_USER,
+      {
+         'provider'              : 'tms',
+         'service'               : 'servreg',
+      })
+
+#-------------------------------------------------------------------------------
+# Task Provisioning Information
+#-------------------------------------------------------------------------------
+
+   if 'USES_RCINIT' in env:
+
+      env.AddRCInitFunc(
+         BUILD_TAGS_ROOT,
+         {
+            'sequence_group'             : 'RCINIT_GROUP_0',
+            'init_name'                  : 'servreg',
+            'init_function'              : 'servreg_locator_init',
+            'dependencies'               : [ 'dalsys', 'timer_client', 'qmi_fw', 'gencbctxtinit', 'tms_timetick'],
+         })
+
+      env.AddRCInitFunc(
+         BUILD_TAGS_USER,
+         {
+            'sequence_group'             : 'RCINIT_GROUP_0',
+            'init_name'                  : 'servreg',
+            'init_function'              : 'servreg_locator_init',
+            'dependencies'               : [ 'dalsys', 'timer_client', 'qmi_fw_user', 'gencbctxtinit', 'tms_timetick'],
+         })
+
+      env.AddRCInitTask(
+         BUILD_TAGS_ROOT,
+         {
+            'sequence_group'             : 'RCINIT_GROUP_0',
+            'thread_name'                : 'sr_remote_req',
+            'thread_entry'               : 'sr_remote_req_task',
+            'thread_type'                : 'RCINIT_TASK_QURTTASK',
+            'stack_size_bytes'           : '4096',
+            'priority_amss_order'        : 'SHARED_DRIVER_PRI_ORDER',
+         })
+
+#-------------------------------------------------------------------------------
+# Test Task. Enable only for Debugging.
+#-------------------------------------------------------------------------------
+
+#if 'USES_SERVICE_REGISTRY' in env:
+#
+#   env.AddServRegService(
+#      BUILD_TAGS_ROOT,
+#      {
+#         'provider'              : 'tms',
+#         'service'               : 'servreg_test',
+#      })
+#
+#   env.AddServRegService(
+#      BUILD_TAGS_USER,
+#      {
+#         'provider'              : 'tms',
+#         'service'               : 'servreg_test',
+#      })
+#
+#   if not 'USES_REX' in env:
+#      if 'USES_RCINIT' in env:
+#         env.AddRCInitTask(
+#            BUILD_TAGS_ROOT,
+#            {
+#               'sequence_group'             : 'RCINIT_GROUP_0',
+#               'thread_name'                : 'servreg_test',
+#               'thread_entry'               : 'servreg_test_task',
+#               'thread_type'                : 'RCINIT_TASK_QURTTASK',
+#               'stack_size_bytes'           : '4096',
+#               'priority_amss_order'        : 'SHARED_DRIVER_PRI_ORDER',
+#               'cpu_affinity'               : 'REX_ANY_CPU_AFFINITY_MASK',
+#            })
+#   else:
+#      if 'USES_RCINIT' in env:
+#         env.AddRCInitTask(
+#            BUILD_TAGS_ROOT,
+#            {
+#               'sequence_group'             : 'RCINIT_GROUP_0',
+#               'thread_name'                : 'servreg_test',
+#               'thread_entry'               : 'servreg_test_task',
+#               'thread_type'                : 'RCINIT_TASK_REXTASK',
+#               'stack_size_bytes'           : '4096',
+#               'priority_amss_order'        : 'SHARED_DRIVER_PRI_ORDER',
+#               'cpu_affinity'               : 'REX_ANY_CPU_AFFINITY_MASK',
+#            })
+#
+#   if 'USES_RCINIT' in env:
+#      env.AddRCInitTask(
+#         BUILD_TAGS_USER,
+#         {
+#            'sequence_group'             : 'RCINIT_GROUP_0',
+#            'thread_name'                : 'servreg_test',
+#            'thread_entry'               : 'servreg_test_task',
+#            'thread_type'                : 'RCINIT_TASK_QURTTASK',
+#            'stack_size_bytes'           : '4096',
+#            'priority_amss_order'        : 'SHARED_DRIVER_PRI_ORDER',
+#            'cpu_affinity'               : 'REX_ANY_CPU_AFFINITY_MASK',
+#         })
+
+
+

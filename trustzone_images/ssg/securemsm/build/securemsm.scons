@@ -1,0 +1,107 @@
+#===============================================================================
+#
+# SecureMSM Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2011, 2017 by QUALCOMM Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/ssg.tz/1.0.2/securemsm/build/securemsm.scons#1 $
+#  $DateTime: 2018/02/06 03:00:17 $
+#  $Author: pwbldsvc $
+#  $Change: 15399933 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 11/20/17   pd	     Added werror in scons 
+# 01/17/17   sm      Move to 'ssg' component.
+# 04/18/11   jct     Added option of different build flavors, i.e. w/ PIL, w/ SecBoot
+# 01/21/11   sp      Added changes for ipsec CLF directory structure.
+# 10/11/10   nk      Removed BUILDPATH + BUILD_ID replacement
+# 10/01/10   nk      Added compiler variant support for RVCT4.0 and RVCT4.1
+# 06/17/10   nk      Added environment variables for HLOS, Compiler, Release, Library variants
+# 09/15/10   qxu     Added changes for cryptoutil and new sfs directory stucture
+# 09/15/10   ejt     Added changes for new crypto directory stucture
+# 08/10/10   ChM     Removed addition of BUILD ID to path. This is now done in the top level Sconsscript.
+# 08/10/10   ChM     CHDLR was miss-spelled as "CHLDR" for DRMMS.
+#===============================================================================
+import os
+Import('env')
+
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Add werror in top level scons
+#-------------------------------------------------------------------------------
+env.Append(CFLAGS = ' -Werror ')
+#-------------------------------------------------------------------------------
+# Library Variant
+#-------------------------------------------------------------------------------
+if 'tzbsp_with_test_svc' in env and env['tzbsp_with_test_svc'] == 1:
+  # Qsee_with_test doesn't seem to have a CPPDEFINE to distinguish the test
+  # version, so adding the test define here
+  # This is to be able to use the test fuses
+  env.Append(CPPDEFINES = ["SECHWIO_TEST"])
+
+#-------------------------------------------------------------
+# Protected APIs: These are accessable only within SecureMSM
+#-------------------------------------------------------------
+
+
+env.PublishProtectedApi('CRYPTODRIVERS', [
+   "${BUILD_ROOT}/ssg/securemsm/cryptodrivers/ce/shared/inc",
+   "${BUILD_ROOT}/ssg/securemsm/cryptodrivers/ce/stub/inc",
+])
+
+
+env.PublishProtectedApi('SECBOOT_AUTH', [
+   "${BUILD_ROOT}/ssg/securemsm/secboot/auth/inc",
+   "${BUILD_ROOT}/ssg/securemsm/secboot/auth/src",
+])
+
+if env['CHIPSET'] in ['sdm845', 'sdm670' , 'qcs6200', 'sdm640']:
+ if env.get('IMAGE_ALIASES')[0] == 'xbl_sec':
+  env.PublishProtectedApi('SECBOOT', [
+   "${BUILD_ROOT}/ssg/securemsm/secboot/inc/v2",
+  ])
+ else:
+  env.PublishProtectedApi('SECBOOT', [
+   "${BUILD_ROOT}/ssg/securemsm/secboot/inc",
+  ])
+else:
+ env.PublishProtectedApi('SECBOOT', [
+   "${BUILD_ROOT}/ssg/securemsm/secboot/inc",
+])
+env.PublishProtectedApi('SECBOOT', [
+   "${BUILD_ROOT}/ssg/securemsm/secboot/inc/common",
+   "${BUILD_ROOT}/ssg/securemsm/secboot/auth/inc",
+   "${BUILD_ROOT}/ssg/securemsm/secboot/env/tz",
+   "${BUILD_ROOT}/ssg/securemsm/secboot/chipset/${CHIPSET}",
+])
+
+env.PublishProtectedApi('SECMATH', [
+   "${BUILD_ROOT}/ssg/securemsm/secmath/env/inc",
+   "${BUILD_ROOT}/ssg/securemsm/secmath/shared/inc",
+   "${BUILD_ROOT}/ssg/securemsm/secmath/shared/src",
+])
+
+env.PublishProtectedApi('SECRSA', [
+   "${BUILD_ROOT}/ssg/securemsm/secrsa/shared/inc",
+   "${BUILD_ROOT}/ssg/securemsm/secrsa/shared/src",
+])
+
+
+#-------------------------------------------------------------------------------
+# Load sub scripts
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+env.Deploy(env.Glob('../accesscontrol/api/*.h'))

@@ -1,0 +1,200 @@
+#===============================================================================
+#
+# Image SConscript Build Rules
+#
+# GENERAL DESCRIPTION
+#    Image SConscript to compile and link the a User Process for CDSP.
+#
+# Copyright (c) 2018 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/dspbuild.adsp/5.0.c3/bsp/face_cdsp_user/build/face_cdsp_user.scons#4 $
+#  $DateTime: 2018/09/18 21:55:28 $
+#  $Change: 17160139 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 2018/01/22 sm      Initial revision.
+#
+#===============================================================================
+Import('env')
+import os
+
+#------------------------------------------------------------------------------
+# Init aliases array.
+# first alias (0th element in array) is always unique name, there should 
+# never be two images with the same unique name
+#------------------------------------------------------------------------------
+aliases = ['face_cdsp_user','sdm845_CDSP','sdm855_CDSP','sdm670_CDSP']
+ 
+build_tools = [
+   '${BUILD_ROOT}/core/kernel/qurt/qurt_builders.py',
+   ]
+# Define the SCons image build tags.
+build_tags = ['CORE_CDSP_USER','CORE_FACE_CDSP_USER','USER_PD']
+
+#------------------------------------------------------------------------------
+# Init environment variables
+#------------------------------------------------------------------------------
+env.InitImageVars(
+   alias_list=aliases,
+   proc='qdsp6',
+   config='cdsp',
+   plat='qurt',
+   build_tags = build_tags,
+   tools = build_tools
+   )
+
+# Append a 'Q' to the Build ID accordingly.
+env.Replace(BUILD_ID=env.subst('${BUILD_ID}Q'))
+env.Replace(CUST_H=env.subst('CUST${BUILD_ID}.H').lower())
+
+# Define an 'IMAGE' environment variable, for developers to use
+# ${IMAGE} for.
+env.Append(IMAGE = 'cdsp')
+
+# In addition, provide additional environment variables, so the qurt-srm-build.py
+# can be located.
+env.Append(QURT_BUILD_CONFIG = 'computev65_SRM')
+env.Append(ROOT_IMAGE = 'cdsp_root')
+
+#------------------------------------------------------------------------------
+# Check if we need to load this script or just bail-out.
+#------------------------------------------------------------------------------
+if not env.CheckAlias():
+   Return()
+
+#---------------------------------------------------------------------------
+# Now that we know we need to build something, the first thing we need
+# to do is add our image to BuildProducts.txt, so that tools can verify
+# when our build is successful.  Make sure we append, so that we don't
+# overwrite other images that have written to this file.
+#---------------------------------------------------------------------------
+prod_files = []
+
+#---------------------------------------------------------------------------
+# Define USES_FLAGS and include paths.
+#---------------------------------------------------------------------------
+env.LoadToolScript('build_utils', toolpath = ['${BUILD_ROOT}/build/scripts'])
+env.InitTargetVariation()
+env.InitBuildConfig()
+
+if 'USES_FACEAUTH' not in env:
+   Return()
+
+if 'USES_MULTI_PD' in env:
+   env.AddUsesFlags('USES_MPD')
+   env.AddUsesFlags('USES_QURTOS_IMG')
+   env.Append(CPPDEFINES=["MULTI_PD_BUILD"])
+
+# Remove DAL from the environment.
+env.AddUsesFlags('USES_DAL',add=False)
+
+# compile coremain.c at qdsp6\main\task
+env.AddUsesFlags('USES_TASK_MAIN')
+
+#---------------------------------------------------------------------------
+# Configure toolchain.
+#---------------------------------------------------------------------------
+env.LoadToolScript('hexagon', toolpath = ['${BUILD_ROOT}/tools/build/scons/scripts'])
+
+env.Append(LINKFLAGS = "--wrap malloc --wrap calloc --wrap free --wrap realloc --wrap memalign")
+
+# Change the image entry point.
+env.Replace(HEXAGON_IMAGE_ENTRY='0xB4000000')
+
+#---------------------------------------------------------------------------
+# Traverse through source tree.
+#---------------------------------------------------------------------------
+# Declare empty list objects.
+image_libs = []
+image_objs = []
+
+# Load the build rules in cdsp_proc/core area.
+core_items = env.LoadAreaSoftwareUnits('core',[
+   'kernel/qurt',
+   'services/utils',
+   ])
+image_libs.extend(core_items['LIBS'])
+image_objs.extend(core_items['OBJS'])
+
+# Load the build rules in cdsp_proc/qdsp6 area.
+qdsp6_items = env.LoadAreaSoftwareUnits('qdsp6')
+image_libs.extend(qdsp6_items['LIBS'])
+image_objs.extend(qdsp6_items['OBJS'])
+
+# Load the build rules in cdsp_proc/performance area.
+performance_items = env.LoadAreaSoftwareUnits('performance')
+image_libs.extend(performance_items['LIBS'])
+image_objs.extend(performance_items['OBJS'])
+
+# Load the build rules in cdsp_proc/vap area.
+vap_items = env.LoadAreaSoftwareUnits('vap')
+image_libs.extend(vap_items['LIBS'])
+image_objs.extend(vap_items['OBJS'])
+
+# Load hap area for OEM_ROOT example integration
+if os.environ.get('OEM_ROOT')!=None:
+   hap_items = env.LoadAreaSoftwareUnits('hap')
+   image_libs.extend(hap_items['LIBS'])
+   image_objs.extend(hap_items['OBJS'])
+
+# Define as required nodes.
+image_units = [
+   image_objs, 
+   image_libs
+   ]
+
+if 'IMAGE_BUILD_LINK' in env:
+   prod_files.append(env.BuildProductsFile ("${SHORT_BUILDPATH}/BuildProducts.txt", "${SHORT_BUILDPATH}/${TARGET_NAME}.elf"))
+   
+   # Due to a requirement that the .MAP file must be formatted with relative paths, to be compatible with the GenerateIslandList formatting.  We are saving a list of library files and object files into the SCons image root, to be used at link time.
+   image_lf = env.ListFileBuilder("${SHORT_BUILDPATH}/${TARGET_NAME}.lf", [image_libs, image_objs],
+      add_header=False, relative_path="${BUILD_ROOT}/build/ms", posix=True)
+   image_units += [image_lf]
+   
+   # Reference to the file.
+   face_cdsp_user_lf = env.RealPath('${BUILD_ROOT}/build/bsp/face_cdsp_user/build/${SHORT_BUILDPATH}/FACE_CDSP_USER_${BUILD_ID}.lf')
+   listfile =[face_cdsp_user_lf]
+   
+   # These are dummy placeholders for now.  The complete implementation will only use listing files, and this will be removed.
+   image_libs_dummy = []
+   image_objs_dummy = []
+
+   # Link the ELF.
+   image_elf = env.AddProgram("${SHORT_BUILDPATH}/${TARGET_NAME}", image_objs_dummy, LIBS=image_libs_dummy, LISTFILES=listfile)
+
+   # Define the .map file as a side effect.
+   image_map = '${SHORT_BUILDPATH}/${TARGET_NAME}.elf.map'
+   env.SideEffect(image_map, image_elf)
+   
+   image_units += [
+      image_elf
+      ]
+
+if 'IMAGE_BUILD_POST_LINK' in env:
+   # Install the *.ELF in .\build\ms for the next step.
+   BUILD_ELF_EXTN = 'FACE'
+   install_target_elf = env.InstallAs(
+         "${BUILD_MS_ROOT}/${TARGET_NAME}_%s.elf"%BUILD_ELF_EXTN, image_elf)
+
+   image_units += [
+      install_target_elf
+      ]
+
+#-------------------------------------------------------------------------
+# Finish up...
+#-------------------------------------------------------------------------
+image_units += [
+   prod_files
+   ]
+
+env.BindAliasesToTargets(image_units)
+

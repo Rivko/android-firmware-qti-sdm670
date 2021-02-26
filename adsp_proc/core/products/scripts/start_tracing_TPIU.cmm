@@ -1,0 +1,116 @@
+//============================================================================
+//  Name:                                                                     
+//    start_tracing_TPIU.cmm 
+//
+//  Description:                                                              
+//    Sets up GPIO's, wakes ADSP processor and begins TPIU tracing
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who     		what, where, why
+// --------   ---     		---------------------------------------------------------
+// 05/23/2014 jbilling		update to use std_cti_adsp
+// 05/09/2014 jbilling      Initial creation
+//
+//  Usage:
+//      do start_tracing_TPIU
+//	Note - meant to be run from T32 menu. This will select default TPIU port
+//
+	///////////////////Set Defaults///////////////
+	LOCAL &image 
+	&image="adsp"
+	
+	//from GETDEBUGDEFAULTS
+	LOCAL &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &usescti &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option
+	
+	//Trace Variables//
+	LOCAL &tracesource &tracesink &tpiusink &cycleaccurate &traceconfiguration &portsize &cycleaccuratecommand &portsizecommand 
+	
+	        
+	///////////get target specific debug defaults////////////////
+	do std_debug_&CHIPSET GETDEBUGDEFAULTS NONE &image &lpm_option &cti_enable &multi_elf_option
+		ENTRY &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &usescti &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option
+
+	
+	////////////get target specific trace defaults////////////////
+	&tracesource="&targetprocessor"
+	&tracescript="std_trace"+"_"+"&image"+"_"+"&CHIPSET"
+	
+	do &tracescript GETTRACEDEFAULTS &tracesource &tracesink &tpiusink &cycleaccurate &traceconfiguration &portsize 
+		ENTRY &tracesource &tracesink &tpiusink &portsize &cycleaccuratecommand &traceconfiguration &portsizecommand 
+
+
+			
+
+	GOSUB MAKE_SURE_BOOT_PROCESSOR_ATTACHED
+	
+	intercom.execute &bootprocessorport do std_trace SETUPGPIOS NULL &tpiusink
+	intercom.wait &bootprocessorport
+
+	do std_cti_adsp WAKEPROCESSOR
+	do &tracescript STARTTRACING NULL &tracesource &tpiusink &cycleaccuratecommand hotattach &portsizecommand
+
+
+ENDDO
+
+    
+////////////////////////////////////////
+//
+//			MAKE_SURE_BOOT_PROCESSOR_ATTACHED
+//			
+//			Makes sure boot processor is attached
+//          Otherwise attaching on subsystem processor not possible
+//
+///////////////////////////////////////// 
+MAKE_SURE_BOOT_PROCESSOR_ATTACHED:
+
+
+
+    LOCAL &Rvalue
+    do std_intercom_init CHECKSESSION 1 &bootprocessorport
+        ENTRY &Rvalue
+    IF (&Rvalue!=1.)
+    (
+        PRINT %ERROR "&bootprocessor T32 window not open. Please open and try again"
+        GOTO FATALEXIT
+    )
+    
+    //if boot processor t32 not attached, attach.
+    INTERCOM.EVALUATE &bootprocessorport SYSTEM.MODE()
+        &BOOT_PROCESSOR_STATE=EVAL()
+    IF ("&BOOT_PROCESSOR_STATE"!="0x0B")
+    (
+        INTERCOM.EXECUTE &bootprocessorport sys.m.a
+    )
+    INTERCOM.EVALUATE &bootprocessorport SYSTEM.MODE()
+        &BOOT_PROCESSOR_STATE=EVAL()
+    IF ("&BOOT_PROCESSOR_STATE"!="0x0B")
+    (
+            winclear
+            WINPOS 0. 0. 60. 15. 0. 0. 
+            area.reset
+            area
+            print %error " std_cti_&image - &bootprocessor not able to attach"
+            print %error " Please ensure the following:"    
+            print %error "     JTAG is physically attached"
+            print %error "     T32 installation is up to date."
+            print %error "     Device is booted."
+            print %error " "
+            
+            ENDDO &FAILURE
+    )
+    
+    RETURN
+
+EXIT:
+	ENDDO
+	
+FATALEXIT:
+	END

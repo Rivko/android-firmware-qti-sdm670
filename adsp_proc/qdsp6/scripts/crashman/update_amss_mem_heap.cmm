@@ -1,0 +1,161 @@
+entry &Target_Name &ramdumpfile &OutputPath_temp
+
+ON ERROR JUMPTO amss_end
+&_rtld_debug=" "
+&_rtld_debug_size=" "
+if ("&Target_Name"=="8952")
+(
+    &_rtld_debug="\\M8952AAAAAAAAQ1234\Global\amss_mem_heap.sections[1].start_addr"
+    &_rtld_debug_size="\\M8952AAAAAAAAQ1234\Global\amss_mem_heap.sections[1].size"
+)
+else if ("&Target_Name"=="8953")
+(
+    &_rtld_debug="\\M8953AAAAAAAAQ1234\Global\amss_mem_heap.sections[1].start_addr"
+    &_rtld_debug_size="\\M8953AAAAAAAAQ1234\Global\amss_mem_heap.sections[1].size"
+)
+else if ("&Target_Name"=="8937")
+(
+    &_rtld_debug="\\M8937AAAAAAAAQ1234\Global\amss_mem_heap.sections[1].start_addr"
+    &_rtld_debug_size="\\M8937AAAAAAAAQ1234\Global\amss_mem_heap.sections[1].size"
+)
+else if ("&Target_Name"=="8976")
+(
+    &_rtld_debug="\\M8976AAAAAAAAQ1234\Global\amss_mem_heap.sections[1].start_addr"
+    &_rtld_debug_size="\\M8976AAAAAAAAQ1234\Global\amss_mem_heap.sections[1].size"
+)
+
+if ("&Target_Name"=="660")
+(
+    &elf="\\ROOT_660\Global\amss_mem_heap"
+    gosub LoadSections &elf
+    &elf="\\AUDIO_660\Global\amss_mem_heap"
+    gosub LoadSections &elf
+    &elf="\\SENSOR_660\Global\amss_mem_heap"
+    gosub LoadSections &elf
+)
+else
+(
+    if ("&_rtld_debug"==" ")
+    (
+        enddo
+    )    
+    if ("&_rtld_debug_size"==" ")
+    (
+        enddo
+    )    
+
+    &start_addr_value=V.VALUE((((&_rtld_debug))))
+    &size=V.VALUE((((&_rtld_debug_size))))
+    &load_cmm="&ramdumpfile"
+    if (&start_addr_value!=0)
+    (
+        &load_cmm=string.replace("&load_cmm","DDRCS0.BIN","load.cmm",0)
+        &load_cmm=string.replace("&load_cmm","DDRCS1.BIN","load.cmm",0)
+        &load_cmm=string.replace("&load_cmm","DDRCS0.bin","load.cmm",0)
+        &load_cmm=string.replace("&load_cmm","DDRCS1.bin","load.cmm",0)
+        &load_cmm=string.replace("&load_cmm","Adsp_Dump.bin","load.cmm",0)
+        &load_cmm=string.replace("&load_cmm","slpi_Dump.bin","load.cmm",0)
+        if OS.FILE(&load_cmm)
+        (
+            &ddrcs0=" "
+            &ddrcs1=" "
+            OPEN #1 "&load_cmm" /READ
+            RePeaT 
+            (
+                READ #1 %line &headerline
+                IF EOF()
+                GOTO endloop
+                &frpc_name=string.mid("&headerline", 0x10, 0xA)
+                if "&frpc_name"=="DDRCS0.BIN"
+                (
+                    &ddrcs0="&headerline"
+                )    
+                if "&frpc_name"=="DDRCS1.BIN"
+                (
+                    &ddrcs1="&headerline"
+                )    
+            )
+endloop: CLOSE #1
+            if ("&ddrcs0"==" ")
+            (
+                enddo
+            )    
+            if ("&ddrcs1"==" ")
+            (
+                enddo
+            )    
+            &ddrcs0_addr=string.mid("&ddrcs0", 0x1B, 0xA)
+            &ddrcs1_addr=string.mid("&ddrcs1", 0x1B, 0xA)
+            &temp_addr_0=&ddrcs0_addr-&start_addr_value
+            &temp_addr_1=&ddrcs1_addr-&start_addr_value
+            if (&temp_addr_0<&temp_addr_1)
+            (
+                &load_cmm_0=string.replace("&load_cmm","load.cmm","DDRCS0.BIN",0)
+                &dspaddr_temp=(&start_addr_value-&ddrcs0_addr)&0x7FFFFFFF
+                if OS.FILE(&load_cmm_0)
+                (
+                    print "d.load.binary &load_cmm_0 a:&start_addr_value++&size /SKIP &dspaddr_temp /noclear"
+                    d.load.binary &load_cmm_0 a:&start_addr_value++&size /SKIP &dspaddr_temp /noclear
+                )   
+            )
+            else
+            (
+                &load_cmm_1=string.replace("&load_cmm","load.cmm","DDRCS1.BIN",0)
+                &dspaddr_temp=(&start_addr_value-&ddrcs1_addr)&0x7FFFFFFF
+                if OS.FILE(&load_cmm_1)
+                (
+                    print "d.load.binary &load_cmm_1 a:&start_addr_value++&size /SKIP &dspaddr_temp /noclear"
+                    d.load.binary &load_cmm_1 a:&start_addr_value++&size /SKIP &dspaddr_temp /noclear
+                )   
+            )
+        )
+    )   
+)
+enddo
+
+LoadSections:
+    ENTRY &elfname
+    &last_dump_name=STRing.SPLIT("&ramdumpfile","\",-1)
+    &load_binary_path=STRing.SPLIT("&ramdumpfile","&last_dump_name",0)
+    &no_of_sections=0xf
+    &counter=1
+    &start_addr=0
+    &start_addr_size=0
+    while (&counter<=&no_of_sections)
+    (
+        &_start_addr="&elfname.sections[&counter].start_addr"
+        &_start_addr_size="&elfname.sections[&counter].size"
+        &start_addr=V.VALUE((((&_start_addr))))
+        &start_addr_size=V.VALUE((((&_start_addr_size))))
+        if (&start_addr!=0x0)
+        (
+            if OS.FILE(&OutputPath_temp\ExtractAddress.txt)
+            (
+                OPEN #1 "&OutputPath_temp\ExtractAddress.txt" /READ
+                RePeaT 
+                (
+                    READ #1 %line &headerline
+                    IF EOF()
+                    GOTO end_ext
+                    &start=STRing.SPLIT("&headerline"," ",0)
+                    &end=STRing.SPLIT("&headerline"," ",1)
+                    &dump_name=STRing.SPLIT("&headerline"," ",4)
+                    &phy=ADDRESS.OFFSET(TRANS.PHYSICAL(vm:&start_addr))
+                    if (&phy>=&start)&&(&phy<&end)
+                    (
+                        &dspaddr_temp=(&phy-&start)&0x7FFFFFFF
+                        print "d.load.binary &load_binary_path&dump_name a:&phy++&start_addr_size /SKIP &dspaddr_temp /noclear"
+                        d.load.binary &load_binary_path&dump_name a:&phy++&start_addr_size /SKIP &dspaddr_temp /noclear
+                        GOTO end_ext
+                    )
+                )    
+end_ext: CLOSE #1
+            )
+        )
+        &counter=&counter+1
+    ) 
+RETURN
+
+amss_end:
+do &CurrentDirectory\cmm_error.cmm "update_amss_mem_heap.cmm"
+enddo

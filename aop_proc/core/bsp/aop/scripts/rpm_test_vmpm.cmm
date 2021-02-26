@@ -1,0 +1,186 @@
+entry &master_id &wakeup_time &vmpm_enables &vmpm_detect_lowers &vmpm_detect_highers &vmpm_polaritys
+
+area.view A000
+area.select A000
+
+&msg_ram_base_addr=v.value(smem_ext_heap_info.base_virt)
+&vmpm_ptr=v.value(&(((message_ram_s*)&msg_ram_base_addr)->master[&master_id].vmpm))
+
+gosub read_vmpm &master_id &vmpm_ptr
+
+if "&wakeup_time"!=""&&"&vmpm_enables"!=""&&"&vmpm_detect_lowers"!=""&&"&vmpm_detect_highers"!=""&&"&vmpm_polaritys"!=""
+(
+    gosub write_vmpm &vmpm_ptr &wakeup_time &vmpm_enables &vmpm_detect_lowers &vmpm_detect_highers &vmpm_polaritys
+)
+
+enddo
+
+;-------------------------------------------------------------------------------
+write_vmpm:
+    entry &vmpm_ptr &wakeup_time &vmpm_enables &vmpm_detect_lowers &vmpm_detect_highers &vmpm_polaritys
+
+    print
+    print "================================================================================"
+    print "Writing VMPM ..."
+    print "v ((vmpm_data_t*)&vmpm_ptr)->wakeup_time=&wakeup_time"
+    v ((vmpm_data_t*)&vmpm_ptr)->wakeup_time=&wakeup_time
+
+    gosub write_vmpm_fields &vmpm_ptr vmpm_enable &vmpm_enables
+    gosub write_vmpm_fields &vmpm_ptr vmpm_detect_lower &vmpm_detect_lowers
+    gosub write_vmpm_fields &vmpm_ptr vmpm_detect_higher &vmpm_detect_highers
+    gosub write_vmpm_fields &vmpm_ptr vmpm_polarity &vmpm_polaritys
+
+    print "Done"
+
+    gosub send_irq &master_id
+    return
+
+;-------------------------------------------------------------------------------
+write_vmpm_fields:
+    entry &vmpm_ptr &field_name &field_values
+    &i=0
+    &size=v.sizeof(((vmpm_data_t*)&vmpm_ptr)->&field_name)/v.sizeof(((vmpm_data_t*)&vmpm_ptr)->&field_name[0])
+
+    while &i<&size
+    (
+        &idx=string.scan("&field_values",",",0)
+        &value=0
+        if &idx>=0
+        (
+            &value=string.mid("&field_values",0,&idx)
+            &field_values=string.cut("&field_values",&idx+1)
+        )
+        else
+        (
+            &value=&field_values
+        )
+
+        print
+        print "v ((vmpm_data_t*)&vmpm_ptr)->&field_name[&i]=&value"
+        v ((vmpm_data_t*)&vmpm_ptr)->&field_name[&i]=&value
+
+        &i=&i+1
+    )
+
+    return
+
+;-------------------------------------------------------------------------------
+send_irq:
+    entry &ee_id
+    &irq_num=v.value(vmpm_masters_info[&master_id].vmpm_interrupt)
+    print
+    print "firing IRQ "+format.decimal(2,&irq_num)+" ..."
+
+    &mask=(1.<<(&irq_num%32.))
+    &idx=&irq_num/32.
+    &NVIC_Set=0xE000E200+(0x4*&idx)
+
+    print "d.s d:0x"+format.hex(8,&NVIC_Set)+" %Long %LE 0x"+format.hex(8,&mask)
+    d.s d:&NVIC_Set %Long %LE &mask
+
+    print "Done"
+    return
+
+;-------------------------------------------------------------------------------
+read_vmpm:
+    entry &master_id &vmpm_ptr
+    local &val
+
+    print
+    print "================================================================================"
+    print "Reading VMPM ..."
+    print format.string("Master ID",17.,' ')+" : &master_id"
+    print format.string("VMPM address",17.,' ')+" : &vmpm_ptr"
+
+    print
+    &val=v.value(((vmpm_data_t*)&vmpm_ptr)->wakeup_time)
+    print format.string("wakeup_time",17.,' ')+" : &val"
+
+    gosub read_vmpm_fields &vmpm_ptr vmpm_enable
+    gosub read_vmpm_fields &vmpm_ptr vmpm_detect_lower
+    gosub read_vmpm_fields &vmpm_ptr vmpm_detect_higher
+    gosub read_vmpm_fields &vmpm_ptr vmpm_polarity
+    gosub read_vmpm_fields &vmpm_ptr vmpm_status
+
+    print
+    print "vmpm_masters_cache:"
+    gosub read_vmpm_cache_fields &master_id vmpm_enable
+    gosub read_vmpm_cache_fields &master_id vmpm_detect_ctl_lower
+    gosub read_vmpm_cache_fields &master_id vmpm_detect_ctl_higher
+    gosub read_vmpm_cache_fields &master_id vmpm_polarity
+    print "Done"
+    print
+    print "Reading registers..."
+    gosub read_mpm_registers nEnableReg MPM2_MPM_INT_EN_
+    gosub read_mpm_registers nDetectReg MPM2_MPM_DETECT_CTL_
+    gosub read_mpm_registers nPolarityReg MPM2_MPM_INT_POLARITY_
+    gosub read_mpm_registers nStatusReg MPM2_MPM_INT_STATUS_
+    gosub read_mpm_registers nEnableRegPad TLMM_MPM_WAKEUP_INT_EN_
+
+    print "Done"
+    return
+
+;-------------------------------------------------------------------------------
+read_vmpm_fields:
+    entry &vmpm_ptr &field_name
+    local &i
+    &i=0
+    &size=v.sizeof(((vmpm_data_t*)&vmpm_ptr)->&field_name)/v.sizeof(((vmpm_data_t*)&vmpm_ptr)->&field_name[0])
+
+    print format.string("&field_name",17.,' ')+" :"
+
+    print %cont " ("
+    while &i<&size
+    (
+        &val=v.value(((vmpm_data_t*)&vmpm_ptr)->&field_name[&i])
+        print %cont " 0x"+format.hex(8,&val)
+        &i=&i+1
+        if &i<&size
+            print %cont ","
+    )
+    print %cont " )"
+
+    return
+
+;-------------------------------------------------------------------------------
+read_vmpm_cache_fields:
+    entry &master_id &field_name
+    local &i
+    &i=0
+    &size=v.sizeof(vmpm_masters_cache.master[&master_id].&field_name)/v.sizeof(vmpm_masters_cache.master[&master_id].&field_name[0])
+
+    print format.string("&field_name",17.,' ')+" :"
+
+    print %cont " ("
+    while &i<&size
+    (
+        &val=v.value(vmpm_masters_cache.master[&master_id].&field_name[&i])
+        print %cont " 0x"+format.hex(8,&val)
+        &i=&i+1
+        if &i<&size
+            print %cont ","
+    )
+    print %cont " )"
+
+    return
+
+;-------------------------------------------------------------------------------
+read_mpm_registers:
+    entry &field_name &register_name
+    local &i
+    local &val
+    local &addr
+    &i=0
+    &size=v.sizeof(registerLayout.&field_name)/v.sizeof(registerLayout.&field_name[0])
+
+    while &i<&size
+    (
+        &addr=v.value(registerLayout.&field_name[&i])
+        print format.string("&register_name"+format.decimal(0,&i+1),24.,' ')+" : 0x"+format.hex(8,&addr)
+
+        &val=v.value(*(uint32*)&addr)
+        print %cont " = 0x"+format.hex(8,&val)
+        &i=&i+1
+    )
+    return
+

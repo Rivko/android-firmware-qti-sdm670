@@ -1,0 +1,74 @@
+#===============================================================================
+# RC Init Settings
+#
+# GENERAL DESCRIPTION
+#    build script
+#===============================================================================
+#===============================================================================
+# Copyright (c) 2017 Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#===============================================================================
+#===============================================================================
+# Edit History
+# $Header: //components/rel/core.qdsp6/2.1/settings/debugtools/rcinit/build/rcinit.scons#1 $
+# $DateTime: 2017/07/21 22:10:47 $
+# $Change: 13907704 $
+# $Author: pwbldsvc $
+#===============================================================================
+
+import os
+import fnmatch
+Import('env')
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+
+env.VariantDir('${BUILDPATH}', '../config', duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Device Configuration File Registrations
+#-------------------------------------------------------------------------------
+
+# IMAGE OWNER will deliver the configuration file; an example is available, but
+# the configuration used for production will be under IMAGE OWNER control.
+
+if 'USES_DEVCFG' in env:
+
+   if 'USES_RMTS_ON_SPI_NOR' in env:
+      RCINIT_XML_CONFIG_FILE = 'rcinit_dalcfg_spinor.xml'
+   else:
+      RCINIT_XML_CONFIG_FILE = 'rcinit_dalcfg.xml'
+
+   if env.PathExists('${BUILD_ROOT}/build/scripts/build_utils.py'):
+
+      env.LoadToolScript('build_utils', toolpath = ['${BUILD_ROOT}/build/scripts'])
+
+      # MPSS
+      fileXMLConfig = env.FindConfigFiles(RCINIT_XML_CONFIG_FILE)
+      if fileXMLConfig is not None and len(fileXMLConfig) != 0:
+         env.AddDevCfgInfo([ 'DAL_DEVCFG_IMG' ],
+            {
+               'soc_xml' : [ fileXMLConfig[0] ] # MPSS
+            })
+
+   else:
+
+      # LPASS, ADSP, CNSS, ...
+      def getFileLocation(env, path, fileToFind):
+         for root, dirs, files in os.walk(path):
+            for filename in fnmatch.filter(files, fileToFind):
+               return os.path.join(root, filename)
+         return None
+
+      fileXMLConfig = None
+      if env.has_key('IMAGE_ROOT'):
+         fileXMLConfig = getFileLocation(env, env.get('IMAGE_ROOT'), RCINIT_XML_CONFIG_FILE)
+
+      if fileXMLConfig is not None:
+         env.AddDevCfgInfo(DEVCFG_IMG,
+            {
+               #'devcfg_xml' : fileXMLConfig # APPS_TN
+               'soc_xml' : [ fileXMLConfig ] # ADSP2, MPSS
+            })

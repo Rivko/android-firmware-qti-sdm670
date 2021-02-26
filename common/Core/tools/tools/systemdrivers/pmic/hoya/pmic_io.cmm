@@ -1,0 +1,539 @@
+; ============================================================================
+;
+;  pmic_io.cmm
+;
+;  Script to Read/Write PMIC register.
+;
+;  Execution:
+;    pmic_io.cmm [ read/write ] [ owner ] [ access ] [ slave_id ] [ register ] [ data ]
+;
+;    Usage:
+;    do pmic_io.cmm read 3 ezaxi 0 0x104
+;    do pmic_io.cmm write 3 ezaxi 1 0x1445 0x80
+;
+;  ====================================================================
+;
+;  Copyright (c) 2013-2017 Qualcomm Technologies Incorporated.  All Rights Reserved.
+;  QUALCOMM Proprietary and Confidential.
+;
+;  ====================================================================
+;
+;  $Header: //components/rel/core.glue/1.2/tools/tools/systemdrivers/pmic/hoya/pmic_io.cmm#7 $
+;  $DateTime: 2017/12/06 11:10:22 $
+;  $Author: pwbldsvc $
+;
+; ============================================================================
+;
+
+entry &rw &owner &access &sid &reg &data &dbg
+
+local &io_debug_flag
+&io_debug_flag=FALSE()
+
+if "&dbg"!=""
+(
+ &io_debug_flag=&dbg
+)
+
+;-----------------------------------------------------------------------------
+; SPMI variables
+;-----------------------------------------------------------------------------
+local &AOSS_BASE_ADDR &PMIC_ARB_BASE_ADDR &MAX_SPMI_CHANNELS
+local &PMIC_ARB_CHNLn_CMD &PMIC_ARB_CHNLn_STATUS
+local &PMIC_ARB_CHNLn_WDATA0 &PMIC_ARB_CHNLn_RDATA0
+local &PMIC_ARB_OBSq_CHNLn_CMD &PMIC_ARB_OBSq_CHNLn_STATUS 
+local &PMIC_ARB_OBSq_CHNLn_RDATA0
+local &PMIC_ARB_REG_ADDRn &PMIC_ARB_PERIPHn_OWNER_ADDR
+local &MAX_SPMI_CHANNELS &SPMI_PROTOCOL_IRQ_STATUS
+local &CHNLn_OFFSET &MAX_REGISTER_ADDRESS
+
+&AOSS_BASE_ADDR=0xB000000
+&PMIC_ARB_BASE_ADDR=&AOSS_BASE_ADDR+0x1400000
+&MAX_SPMI_CHANNELS=512.
+&CHNLn_OFFSET=0x10000
+&OBSq_CHNLn_OFFSET=0x80
+&OBSq_OWNER_OFFSET=0x10000
+&MAX_REGISTER_ADDRESS=0xFFFF
+
+local &AOP_VIEW_BASE_ADDR &QDSS_SOC_DEBUG_BASE_ADDR &QDSS_PMIC_ARB_BASE_ADDR
+local &PMIC_ARB_DEBUG_SPMI_CHNL_CMD0 &PMIC_ARB_DEBUG_SPMI_CHNL_CMD1
+local &PMIC_ARB_DEBUG_SPMI_CHNL_CMD2 &PMIC_ARB_DEBUG_SPMI_CHNL_CMD3
+local &PMIC_ARB_DEBUG_SPMI_CHNL_CONFIG &PMIC_ARB_DEBUG_SPMI_CHNL_STATUS
+local &PMIC_ARB_DEBUG_SPMI_CHNL_WDATA0 &PMIC_ARB_DEBUG_SPMI_CHNL_RDATA0
+
+&AOP_VIEW_BASE_ADDR=0x60000000
+&QDSS_SOC_DEBUG_BASE_ADDR=0x6000000
+&QDSS_PMIC_ARB_BASE_ADDR=&QDSS_SOC_DEBUG_BASE_ADDR+0xb22000
+
+;-----------------------------------------------------------------------------
+; Default bus access mode and owner
+;-----------------------------------------------------------------------------
+
+local &SPMI_OWNER_CHANNEL
+&SPMI_OWNER_CHANNEL=3  ; LPASS Channel by default
+
+local &bus_access_mode
+&bus_access_mode="EZAXI"
+
+local &current_dir &spmi_cfg_script &spmi_cfg_target &spmi_cfg_status
+
+local &g_break_flag
+&g_break_flag=0.
+
+local &protocol_irq_status
+&protocol_irq_status=0.
+
+local &SPMI_NOT_INITIALIZED
+&SPMI_NOT_INITIALIZED=0xFF
+
+local &TCSR_SOC_HW_VER_ADDR
+&TCSR_SOC_HW_VER_ADDR=0x1FC8000
+
+local &soc_hw_ver
+&soc_hw_ver=0.
+
+;-----------------------------------------------------------------------------
+; Main
+;-----------------------------------------------------------------------------
+
+&main_status="true"
+
+if ("&rw"!="")
+(
+  &rw=string.lower("&rw")
+)
+if (("&owner"!="")&&("&rw"!="config"))
+(
+  &SPMI_OWNER_CHANNEL=&owner
+)
+if ("&access"!="")
+(
+  &bus_access_mode="&access"
+)
+if ("&reg"!="")
+(
+  if (&reg>&MAX_REGISTER_ADDRESS)||(&reg<0)
+  (
+    print "Invalid register address!"	  
+    goto MAIN_RETURN
+  )
+)
+
+; Get PMIC Arbiter base address and last spmi channel
+if (STATE.RUN()&&(SYSTEM.MODE()>0x5)&&("&bus_access_mode"=="A"))
+(
+  &g_break_flag=1
+  b
+  WAIT 1.ms
+)
+
+if (string.lower("&bus_access_mode")=="a")
+(
+  ; use debug channel for access mode A since no privelege to configure channel
+  &io_debug_flag=TRUE()
+)
+
+if (string.lower("&bus_access_mode")=="a")&&(&SPMI_OWNER_CHANNEL==0x4)
+(
+  &PMIC_ARB_BASE_ADDR=&PMIC_ARB_BASE_ADDR-&AOSS_BASE_ADDR
+  &QDSS_PMIC_ARB_BASE_ADDR=&QDSS_PMIC_ARB_BASE_ADDR+&AOP_VIEW_BASE_ADDR
+  &TCSR_SOC_HW_VER_ADDR=&TCSR_SOC_HW_VER_ADDR+&AOP_VIEW_BASE_ADDR
+)
+
+
+if ("&dbg"=="")
+(
+  &soc_hw_ver=DATA.LONG(&bus_access_mode:&TCSR_SOC_HW_VER_ADDR)
+
+  ; this check is needed only for napali versions <= v2.0 to default to debug channel
+  if ((&soc_hw_ver&0xFFFF0000)==0x60000000)
+  (
+    if ((&soc_hw_ver&0xFFFF)<=0x200)
+    (
+      &io_debug_flag=TRUE()
+    )
+  )
+)
+
+if !(&io_debug_flag)
+(
+  &soc_hw_ver=DATA.LONG(&bus_access_mode:&TCSR_SOC_HW_VER_ADDR)
+
+  ; this check is needed for chiron to change last channel number
+  if ((&soc_hw_ver&0xFFFF0000)==0x60020000)
+  (
+    &MAX_SPMI_CHANNELS=256.
+  )
+
+  &SPMI_PROTOCOL_IRQ_STATUS=&PMIC_ARB_BASE_ADDR+0x10000
+  &protocol_irq_status=DATA.LONG(&bus_access_mode:&SPMI_PROTOCOL_IRQ_STATUS)
+  if ((&protocol_irq_status&0x400)!=0x400)
+  (
+    print "SPMI not initialized!"
+    if ("&rw"=="read")
+    (
+      if (&g_break_flag==1)
+      (
+        g
+      )
+      enddo &SPMI_NOT_INITIALIZED 0
+    )
+    else if ("&rw"=="write")
+    (
+      if (&g_break_flag==1)
+      (
+        g
+      )
+      enddo &SPMI_NOT_INITIALIZED
+    )
+  )
+)
+
+if (&g_break_flag==1)
+(
+  g
+)
+
+&PMIC_ARB_DEBUG_SPMI_CHNL_CMD0=&QDSS_PMIC_ARB_BASE_ADDR+0x0
+&PMIC_ARB_DEBUG_SPMI_CHNL_CMD1=&QDSS_PMIC_ARB_BASE_ADDR+0x4
+&PMIC_ARB_DEBUG_SPMI_CHNL_CMD2=&QDSS_PMIC_ARB_BASE_ADDR+0x8
+&PMIC_ARB_DEBUG_SPMI_CHNL_CMD3=&QDSS_PMIC_ARB_BASE_ADDR+0xc
+&PMIC_ARB_DEBUG_SPMI_CHNL_CONFIG=&QDSS_PMIC_ARB_BASE_ADDR+0x10
+&PMIC_ARB_DEBUG_SPMI_CHNL_STATUS=&QDSS_PMIC_ARB_BASE_ADDR+0x14
+&PMIC_ARB_DEBUG_SPMI_CHNL_WDATA0=&QDSS_PMIC_ARB_BASE_ADDR+0x18
+&PMIC_ARB_DEBUG_SPMI_CHNL_RDATA0=&QDSS_PMIC_ARB_BASE_ADDR+0x38
+
+&PMIC_ARB_CHNLn_CMD=&PMIC_ARB_BASE_ADDR+0x200000
+&PMIC_ARB_CHNLn_STATUS=&PMIC_ARB_BASE_ADDR+0x200008
+&PMIC_ARB_CHNLn_WDATA0=&PMIC_ARB_BASE_ADDR+0x200010
+&PMIC_ARB_CHNLn_RDATA0=&PMIC_ARB_BASE_ADDR+0x200018
+&PMIC_ARB_OBSq_CHNLn_CMD=&PMIC_ARB_BASE_ADDR+0x2200000
+&PMIC_ARB_OBSq_CHNLn_STATUS=&PMIC_ARB_BASE_ADDR+0x2200008
+&PMIC_ARB_OBSq_CHNLn_RDATA0=&PMIC_ARB_BASE_ADDR+0x2200018
+&PMIC_ARB_REG_ADDRn=&PMIC_ARB_BASE_ADDR+0x40900
+&PMIC_ARB_PERIPHn_OWNER_ADDR=&PMIC_ARB_BASE_ADDR+0xa700
+
+if ("&rw"=="read") 
+(
+  if &io_debug_flag
+  (
+    gosub SPMIDebugRead &sid &reg 
+  )
+  else
+  (
+    gosub SPMIRead &sid &reg
+  )
+  entry &rd_status &rd_data
+  if (&rd_status==1)
+  (
+    ;print "SPMI &rw: Slave=0x" &sid " Address=0x" &reg " Value=0x" &rd_data
+  )
+  else
+  (
+    ;print "SPMI error: Slave=0x" &sid " Address=0x" &reg " Value=0x" &rd_data " Status=0x" &rd_status
+  )
+  enddo &rd_status &rd_data	  
+  goto MAIN_RETURN
+)
+else if ("&rw"=="write")
+(
+  if &io_debug_flag
+  (
+    gosub SPMIDebugWrite &sid &reg &data
+  )
+  else
+  (
+    gosub SPMIWrite &sid &reg &data
+  )
+  entry &wr_status
+  if (&wr_status==1)
+  (
+    ;print "SPMI &rw: Slave=0x" &sid " Address=0x" &reg " Value=0x" &data
+  )
+  else
+  (
+    ;print "SPMI error: Slave=0x" &sid " Address=0x" &reg " Value=0x" &data " Status=0x" &wr_status
+  )
+  enddo &wr_status  
+  goto MAIN_RETURN
+)
+else if ("&rw"=="config")
+(
+  &current_dir=OS.PWD()
+  &spmi_cfg_script="&current_dir"+"\spmi\spmiCoreCfg.cmm"
+  &spmi_cfg_target="&owner"
+  &spmi_cfg_status=0
+
+  if (file.exist(&spmi_cfg_script))
+  (
+    if ("&spmi_cfg_target"!="")
+    (
+      cd.do &spmi_cfg_script &spmi_cfg_target false
+      entry &spmi_cfg_status
+      cd &current_dir
+      if ("&spmi_cfg_status"!="SUCCESS")
+      (
+        print "SPMI initialization failed!"
+        &spmi_cfg_status=0
+      )
+      else
+      (
+        &spmi_cfg_status=1
+      )
+    )
+    else
+    (
+      print "Enter valid target (e.g 845 and so on ) for SPMI initialization!"
+    )
+  )
+  else
+  (
+    print "&spmi_cfg_script not found!"
+  )
+  enddo &spmi_cfg_status
+)
+else
+(
+  &main_status="false"
+  goto MAIN_RETURN
+)
+
+MAIN_RETURN:
+if ("&main_status"=="false")
+(
+   gosub Usage
+)
+enddo
+
+;=============================================================================
+; SUB: Usage
+;=============================================================================
+Usage:
+  print "*************************************"
+  print "Error: SPMI command invalid!"
+  print "Usage examples"
+  print "do pmic_io.cmm read 3 ezaxi 0 0x104"
+  print "do pmic_io.cmm write 3 ezaxi 1 0x1445 0x80"
+  print "*************************************"
+  return
+  
+;=============================================================================
+; SUB: SPMIRead
+;=============================================================================
+
+SPMIRead:
+
+  local &slave_id &register_address
+  entry &slave_id &register_address
+
+  local &register_offset &register_base &register_owner &spmi_channel
+  local &spmi_cmd &break_flag &count_index &max_count &read_status &read_data
+  &register_offset=(&register_address)&0xFF
+  &register_base=((&register_address)&0xFF00)|(&slave_id<<0x10)
+  &register_owner=&SPMI_OWNER_CHANNEL
+  &spmi_channel=&MAX_SPMI_CHANNELS-1.
+  &spmi_cmd=0.
+  &break_flag=0
+  &count_index=0.
+  &max_count=10.
+
+  if (STATE.RUN()&&(SYSTEM.MODE()>0x5)&&("&bus_access_mode"=="A"))
+  (
+    &break_flag=1
+    b
+    WAIT 1.ms
+  )
+
+  DATA.SET &bus_access_mode:&PMIC_ARB_REG_ADDRn+(4*&spmi_channel) %LONG &register_base
+
+  DATA.SET &bus_access_mode:&PMIC_ARB_PERIPHn_OWNER_ADDR+(4*&spmi_channel) %LONG &register_owner
+
+  &spmi_cmd=(0x1<<0x1B)|(&register_offset<<0x4)
+
+  DATA.SET &bus_access_mode:&PMIC_ARB_OBSq_CHNLn_CMD+&OBSq_CHNLn_OFFSET*&spmi_channel+&OBSq_OWNER_OFFSET*&register_owner %LONG &spmi_cmd
+
+  &read_status=0
+  &read_data=0
+  WHILE (&read_status==0)&&(&count_index<&max_count)
+  (
+    WAIT 1.ms
+    &read_status=DATA.LONG(&bus_access_mode:&PMIC_ARB_OBSq_CHNLn_STATUS+&OBSq_CHNLn_OFFSET*&spmi_channel+&OBSq_OWNER_OFFSET*&register_owner)
+    &count_index=&count_index+1.
+  )
+
+  &read_data=DATA.LONG(&bus_access_mode:&PMIC_ARB_OBSq_CHNLn_RDATA0+&OBSq_CHNLn_OFFSET*&spmi_channel+&OBSq_OWNER_OFFSET*&register_owner)
+
+  if (&break_flag==1)
+  (
+    g
+  )
+
+  return &read_status &read_data
+
+
+;=============================================================================
+; SUB: SPMIWrite
+;=============================================================================
+
+SPMIWrite:
+  local &slave_id &register_address &write_data
+  entry &slave_id &register_address &write_data
+
+  local &register_offset &register_base &register_owner &spmi_channel
+  local &spmi_cmd &break_flag &count_index &max_count &write_status
+  &register_offset=(&register_address)&0xFF
+  &register_base=((&register_address)&0xFF00)|(&slave_id<<0x10)
+  &register_owner=&SPMI_OWNER_CHANNEL
+  &spmi_channel=&MAX_SPMI_CHANNELS-1.
+  &spmi_cmd=0.
+  &break_flag=0
+  &count_index=0.
+  &max_count=10.
+
+  if (STATE.RUN()&&(SYSTEM.MODE()>0x5)&&("&bus_access_mode"=="A"))
+  (
+    &break_flag=1
+    b
+    WAIT 1.ms
+  )
+
+  DATA.SET &bus_access_mode:&PMIC_ARB_REG_ADDRn+(4*&spmi_channel) %LONG &register_base
+
+  DATA.SET &bus_access_mode:&PMIC_ARB_PERIPHn_OWNER_ADDR+(4*&spmi_channel) %LONG &register_owner
+
+  DATA.SET &bus_access_mode:&PMIC_ARB_CHNLn_WDATA0+&CHNLn_OFFSET*&spmi_channel %LONG (&write_data&0xFF)
+
+  &spmi_cmd=(0x0<<0x1B)|(&register_offset<<0x4)
+
+  DATA.SET &bus_access_mode:&PMIC_ARB_CHNLn_CMD+&CHNLn_OFFSET*&spmi_channel %LONG &spmi_cmd
+
+  if (&register_address==0x864)
+  (
+    enddo
+  )
+
+  &write_status=0
+  WHILE (&write_status==0)&&(&count_index<&max_count)
+  (
+    WAIT 1.ms
+    &write_status=DATA.LONG(&bus_access_mode:&PMIC_ARB_CHNLn_STATUS+&CHNLn_OFFSET*&spmi_channel)
+    &count_index=&count_index+1.
+  )
+
+  if (&break_flag==1)
+  (
+    g
+  )
+
+  return &write_status
+  
+;=============================================================================
+; SUB: SPMIDebugRead
+;=============================================================================
+
+SPMIDebugRead:
+
+  local &slave_id &register_address
+  entry &slave_id &register_address
+
+  local &register_offset &register_ppid
+  local &spmi_cmd &break_flag &count_index &max_count &read_status &read_data
+  &register_offset=(&register_address)&0xFF
+  &register_ppid=(&register_address>>0x8)&0xFF
+  &spmi_cmd=0.
+  &break_flag=0
+  &count_index=0.
+  &max_count=10.
+
+  if (STATE.RUN()&&(SYSTEM.MODE()>0x5)&&("&bus_access_mode"=="A"))
+  (
+    &break_flag=1
+    b
+    WAIT 1.ms
+  )
+
+  DATA.SET &bus_access_mode:&PMIC_ARB_DEBUG_SPMI_CHNL_CMD1 %LONG &slave_id
+
+  DATA.SET &bus_access_mode:&PMIC_ARB_DEBUG_SPMI_CHNL_CMD2 %LONG &register_ppid
+
+  DATA.SET &bus_access_mode:&PMIC_ARB_DEBUG_SPMI_CHNL_CMD3 %LONG &register_offset
+
+  &spmi_cmd=0x2
+
+  DATA.SET &bus_access_mode:&PMIC_ARB_DEBUG_SPMI_CHNL_CMD0 %LONG &spmi_cmd
+
+  &read_status=0
+  &read_data=0
+  WHILE (&read_status==0)&&(&count_index<&max_count)
+  (
+    WAIT 1.ms
+    &read_status=DATA.LONG(&bus_access_mode:&PMIC_ARB_DEBUG_SPMI_CHNL_STATUS)
+    &count_index=&count_index+1.
+  )
+
+  &read_data=DATA.LONG(&bus_access_mode:&PMIC_ARB_DEBUG_SPMI_CHNL_RDATA0)
+
+  if (&break_flag==1)
+  (
+    g
+  )
+
+  return &read_status &read_data
+
+
+;=============================================================================
+; SUB: SPMIDebugWrite
+;=============================================================================
+
+SPMIDebugWrite:
+  local &slave_id &register_address &write_data
+  entry &slave_id &register_address &write_data
+
+  local &register_offset &register_ppid
+  local &spmi_cmd &break_flag &count_index &max_count &write_status
+  &register_offset=(&register_address)&0xFF
+  &register_ppid=(&register_address>>0x8)&0xFF
+  &spmi_cmd=0.
+  &break_flag=0
+  &count_index=0.
+  &max_count=10.
+
+  if (STATE.RUN()&&(SYSTEM.MODE()>0x5)&&("&bus_access_mode"=="A"))
+  (
+    &break_flag=1
+    b
+    WAIT 1.ms
+  )
+
+  DATA.SET &bus_access_mode:&PMIC_ARB_DEBUG_SPMI_CHNL_CMD1 %LONG &slave_id
+
+  DATA.SET &bus_access_mode:&PMIC_ARB_DEBUG_SPMI_CHNL_CMD2 %LONG &register_ppid
+
+  DATA.SET &bus_access_mode:&PMIC_ARB_DEBUG_SPMI_CHNL_CMD3 %LONG &register_offset
+
+  DATA.SET &bus_access_mode:&PMIC_ARB_DEBUG_SPMI_CHNL_WDATA0 %LONG (&write_data&0xFF)
+
+  &spmi_cmd=0x0
+
+  DATA.SET &bus_access_mode:&PMIC_ARB_DEBUG_SPMI_CHNL_CMD0 %LONG &spmi_cmd
+
+  if (&register_address==0x864)
+  (
+    enddo
+  )
+
+  &write_status=0
+  WHILE (&write_status==0)&&(&count_index<&max_count)
+  (
+    WAIT 1.ms
+    &write_status=DATA.LONG(&bus_access_mode:&PMIC_ARB_DEBUG_SPMI_CHNL_STATUS)
+    &count_index=&count_index+1.
+  )
+
+  if (&break_flag==1)
+  (
+    g
+  )
+
+  return &write_status
+

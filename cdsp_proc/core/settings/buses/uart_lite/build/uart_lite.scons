@@ -1,0 +1,86 @@
+#===============================================================================
+#
+# UART Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2013-2017 Qualcomm Technologies, Inc.
+#         All Rights Reserved.
+# Qualcomm Technologies, Inc. Confidential and Proprietary.
+#
+#-------------------------------------------------------------------------------
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 05/19/17   RC      Added the support for the SDM670 config and image changes.
+# 09/25/13   VV      Initial revision.
+#===============================================================================
+import os.path
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Load sub scripts
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+#-------------------------------------------------------------------------------
+#  Publish protected APIs
+#-------------------------------------------------------------------------------
+
+#  There are none.
+
+#-------------------------------------------------------------------------------
+#  Figure out UART_ROOT dynamically.  Look at the usual suspects.
+#-------------------------------------------------------------------------------
+
+SRCPATH = "${BUILD_ROOT}/core/settings/buses/uart_lite"
+
+env.Replace( UART_ROOT = SRCPATH )
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_APIS = [
+   'BUSES',
+   'HAL',
+   'KERNEL',
+   'DAL',
+   'SERVICES',
+   'POWER',
+   'SYSTEMDRIVERS',
+   'DEBUGTRACE',
+   'DEBUGTOOLS',
+]
+env.RequirePublicApi(CBSP_APIS)
+env.RequireRestrictedApi(CBSP_APIS)
+
+env.Append(CPPPATH = [
+    "${BUILD_ROOT}/core/buses/uart_lite/inc",
+])
+
+if env['MSM_ID'] in  ['845']:
+   UART_SOURCES = [
+       '${BUILDPATH}/config/sdm845/${IMAGE}/uart_config.c',
+   ]
+if env['MSM_ID'] in ['670']:
+   UART_SOURCES = [
+       '${BUILDPATH}/config/sdm670/uart_config.c', 
+   ]   
+else:
+   UART_SOURCES = [
+       '${BUILDPATH}/config/stubs/uart_config.c', 
+   ]
+      
+IMAGES = ['CORE_SLPI_ROOT', 'CORE_ADSP_ROOT', 'CORE_SLPI_ADSP_ROOT']
+driver_uimg_libs = env.AddLibrary(IMAGES, '${BUILDPATH}/UART_LITE_DEVCFG', UART_SOURCES)
+
+if 'USES_ISLAND' in env:
+    env.AddIslandLibrary(['CORE_SLPI_ADSP_ROOT'], driver_uimg_libs)

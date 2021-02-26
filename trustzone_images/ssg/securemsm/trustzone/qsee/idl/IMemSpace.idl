@@ -1,0 +1,52 @@
+include "IMemRegion.idl"
+
+/**
+ * A memory space determines the mapping from virtual addresses to physical
+ * addresses *and* the types of access allowed at each virtual addresses.
+ */
+
+interface IMemSpace {
+
+  /*
+   * The memory cannot be mapped as specified because the provided memory
+   * region object did not confer the required memory access permissions.
+   */
+  error ERROR_PERM;
+
+  /*
+   * The provided object was not a memory region.
+   */
+  error ERROR_INVALID_REGION;
+
+  /**
+   * Make a memory region visible in the address space as a contiguous range
+   * of virtual addresses.
+   *
+   * On success, virtual addresses from `addr` to `addr+size-1` are
+   * accessible with (at least) the specified permissions, and will remain
+   * accessible until the memmap object is released.
+   *
+   * If the region has already been mapped with the requested permissions,
+   * the operation will succeed, returning the same addresses and a new
+   * memmap object.
+   */
+  method map(
+             // Identifies the memory to be made visible.
+             in IMemRegion region,
+
+             // Access permissions required for the mapping, as defined in
+             // IMemRegion::PERM_... constants.  If these permissions cannot
+             // be satisfied, the operation will fail.
+             in uint32 perms,
+
+             // The virtual address of the mapped region.
+             out uint64 addr,
+
+             // The size of the mapped region.
+             out uint64 size,
+
+             // An object that acts as a reference count on the mapping.
+             // When deleted, the map will be removed from the address
+             // space.
+             out interface memmap);
+};

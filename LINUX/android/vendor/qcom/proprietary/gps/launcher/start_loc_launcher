@@ -1,0 +1,77 @@
+#!/bin/sh
+#
+#Copyright (c) 2013 Qualcomm Technologies, Inc.  All Rights Reserved.
+#Qualcomm Technologies Proprietary and Confidential.
+
+# Location launcher service  init.d script to create the required directories
+# and set the permissions.
+
+set -e
+wait_for_data_dir_mount() {
+    while ! [ -d /data ]
+    do
+        echo "waiting for /data to mount"
+    done
+}
+wait_for_dev_dir_mount() {
+    while ! [ -d /dev/socket ]
+    do
+        echo "waiting for /dev to mount"
+    done
+}
+
+case "$1" in
+  start)
+        # create required directories for location services
+        echo
+        echo "Creating directories required for Location Launcher Services:"
+        wait_for_data_dir_mount
+        if [ ! -d /data/vendor/location/mq ]
+        then
+            mkdir -p /data/vendor/location/mq
+        fi
+        if [ ! -d /data/vendor/location/xtwifi ]
+        then
+            mkdir -p /data/vendor/location/xtwifi
+        fi
+        if [ ! -d /data/vendor/location/xtra ]
+        then
+            mkdir -p /data/vendor/location/xtra
+        fi
+        wait_for_dev_dir_mount
+        if [ ! -d /dev/socket/location/mq ]
+        then
+            mkdir -p /dev/socket/location/mq
+        fi
+        if [ ! -d /dev/socket/location/xtra ]
+        then
+            mkdir -p /dev/socket/location/xtra
+        fi
+        if [ ! -d /data/vendor/location-partner/ppe ]
+        then
+            mkdir -p /data/vendor/location-partner/ppe
+        fi
+        if [ ! -d /data/vendor/location-partner/dre ]
+        then
+            mkdir -p /data/vendor/location-partner/dre
+        fi
+        # change the ownership of directory to gps user/group.
+        chown -R gps:gps /dev/socket/location
+        chown -R gps:gps /data/vendor/location
+        chown -R gps:gps /data/vendor/location-partner
+        echo "Done creating folders for location services"
+        ;;
+  stop)
+        echo "Stop invoked for start_loc_launcher"
+        ;;
+  restart)
+        $0 stop
+        $0 start
+        ;;
+  *)
+        echo "Usage loc_launcher { start | stop | restart }" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

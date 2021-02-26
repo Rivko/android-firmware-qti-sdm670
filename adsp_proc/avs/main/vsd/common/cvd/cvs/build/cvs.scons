@@ -1,0 +1,67 @@
+#===============================================================================
+#
+# AVS AU
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2009, 2016 - 2017 Qualcomm Technologies, Inc.
+# All rights reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: $
+#  $DateTime: $
+#  $Author:  $
+#  $Change:  $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+
+env.Append(CFLAGS = '-DMSG_BT_SSID_DFLT=MSG_SSID_AVS')
+
+core_public_apis = [
+   'DEBUGTOOLS',
+   'KERNEL',
+   'POWER',
+   'SERVICES',
+   ]
+
+env.PublishPrivateApi('AVS',[
+   '../inc',
+   '../../../../../elite/module_interfaces/shared_lib_api/inc/capi',
+   ])
+
+env.RequireRestrictedApi('AVS')
+env.RequireProtectedApi('AVS')
+env.RequireRestrictedApi('ELITE_UTILS')
+env.RequireRestrictedApi('SHARED_LIBRARY_INC_PATHS')
+env.RequirePublicApi(core_public_apis, area='core')
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = ".."
+LIBNAME = 'cvs'
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+avs_reg_sources = env.GlobSourceFiles(['/src/*.cpp', '/src/*.c'], SRCPATH,posix=True)
+ 
+# Generate stub source file list
+avs_stub_sources = []
+
+# Genate proprietary source file list
+avs_prop_sources = []
+
+if 'USES_AVS_LIBRARY_BUILDER' in env:
+   env.AddAvsLibrary(['AVS_ADSP','AVS_ADSP_USER'], '${BUILDPATH}/'+LIBNAME,
+      [avs_reg_sources, avs_stub_sources, avs_prop_sources], PACK_SRC = True)

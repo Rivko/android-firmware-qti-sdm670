@@ -1,0 +1,403 @@
+//============================================================================
+//  Name:                                                                     
+//    std_cti_msm8998.cmm
+//
+//  Description:                                                              
+//    Script for CTI configurations specific to target
+//
+//  Usage
+//  do std_cti_msm8998 <Subroutine>
+//
+//  where <Subroutine> is one of the following:
+//      GETAPPSCORELIST - returns a string of all apps cores to be used in std_cti
+//      SETCTIGPIOS - Configures TLMM to map GPIO's to CTI's for this target
+//      HELP/help - prints help window
+//     
+//
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when         who         what, where, why
+// --------     ---        --------------------------------------------------------
+// 09/14/2015 JBILLING      Changes made for automation
+// 02/02/2015   JBILLING    removed testclock since using EDAP
+// 08/11/2014   JBILLING    Added TESTCLOCK API, commented for FC
+// 05/21/2014   JBilling    Added subroutines appropriately
+// 10/29/2013   JBILLING    Created
+
+//###################Arguments passed #####################
+
+LOCAL &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+LOCAL &ArgumentLine
+LOCAL &SUBROUTINE
+
+ENTRY %LINE &ArgumentLine
+ENTRY &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+
+
+//#####################Select Subroutine###################
+// Name of the utility we are calling
+LOCAL &SUBROUTINE
+// Any subroutine specific options
+// Default exists for each subroutine
+LOCAL &OPTION
+
+
+//#####################Select Subroutine###################
+// Name of the utility we are calling
+LOCAL &SUBROUTINE
+// Any subroutine specific options
+// Default exists for each subroutine
+LOCAL &OPTION
+
+// Input Argument 0 is the name of the utility
+&SUBROUTINE="&UTILITY"
+IF !(("&SUBROUTINE"=="GETAPPSCORELIST")||("&SUBROUTINE"=="GETCORETYPE")||("&SUBROUTINE"=="SETCTIGPIOS")||("&SUBROUTINE"=="GETALLCORELIST")||("&SUBROUTINE"=="SETUPCLOCKS")||("&SUBROUTINE"=="CLEARSENTINELS")||("&SUBROUTINE"=="HELP")||("&SUBROUTINE"=="help"))
+(
+    &SUBROUTINE="HELP"
+    PRINT %ERROR "std_cti_&CHIPSET: Subroutine not found! Printing Help Window"
+)
+
+    // This should be created by some top level script. The setupenv for each proc would
+    // set this up
+    AREA.SELECT
+    // Call the required utility
+    GOSUB &SUBROUTINE &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+
+    //Remove error handler if it was set
+    ON ERROR
+    
+    GOSUB EXIT &rvalue
+    
+    
+////////////////////////////////////////
+//
+//            GETAPPSCORELIST
+//            
+//            Returns a list of apps processors for this target
+//
+///////////////////////////////////////// 
+GETAPPSCORELIST:
+
+        RETURN "apps0,apps1,apps2,apps3"
+
+    
+////////////////////////////////////////
+//
+//            GETAPPSCORELIST
+//            
+//            Returns the full list of processors for this target
+//
+///////////////////////////////////////// 
+GETALLCORELIST:
+    
+        RETURN "apps0,apps1,apps2,apps3,mpss,adsp,slpi,aop"
+
+        
+////////////////////////////////////////
+//
+//            SETUPCLOCKS
+//            
+//            For SLPI - turns on necessary SLPI QDSS clocks to access CTI
+//
+///////////////////////////////////////// 
+SETUPCLOCKS:
+
+        LOCAL &ArgumentLine &rvalue
+        ENTRY %LINE &ArgumentLine
+        &ArgumentLine=STR.UPR("&ArgumentLine")
+        RETURN SUCCESS
+        IF ((STRING.SCAN("&ArgumentLine","SLPI",0)!=-1)||(STRING.SCAN("&ArgumentLine","SENSOR",0)!=-1)||(STRING.SCAN("&ArgumentLine","SSC",0)!=-1))
+        (
+            
+            //Check if SLPI clocks have been run yet. 
+            //This variable cleared at end of std_cti
+            IF (STRING.SCAN("&SLPI_island_clocks_on","SLPI_island",0)!=-1)
+            (
+                GLOBAL &SLPI_island_clocks_on
+                &SLPI_island_clocks_on=1.
+            )
+            ELSE IF (&SLPI_island_clocks_on==1.)
+            (
+                RETURN SUCCESS
+            )
+            &SLPI_island_clocks_on=1.
+            do hwio
+            
+            
+            ///SKIP PMIC enablement logic//////
+            GOTO SKIP_PMIC
+            //Write SSC CX set voltage
+            //write low range (not ultra low range)
+            do PMICPeek.cmm  0x15940  0x0 0x1
+            do PMICPeek.cmm  0x15941  0x0 0x22
+            
+            //Write SSC MX set voltage
+            //write low range (not ultra low range)
+            do PMICPeek.cmm  0x15e40 0x0 0x1
+            do PMICPeek.cmm  0x15e41 0x0 0x26
+            //Write SSC CX set on
+            do PMICPeek.cmm  0x15946 0x0 0x80
+            //Write SSC MX set on
+            do PMICPeek.cmm  0x15e46 0x0 0x80
+                
+
+
+            
+
+                
+                //DO std_utils HWIO_OUT GCC_SSC_RESET 0x0 AN
+                //DO std_utils HWIO_OUT GCC_SSC_RESET 0x0
+                
+                //DO std_utils HWIO_OUTF GCC_GCC_IM_SLEEP_CBCR CLK_ENABLE 0x1 AN
+                DO std_utils HWIO_OUTF GCC_GCC_IM_SLEEP_CBCR CLK_ENABLE 0x1 
+                
+                DO std_utils ENABLE_CBCR_AND_SPIN GCC_SSC_XO_CBCR  //GCC_SSC_XO_CBCR
+                DO std_utils ENABLE_CBCR_AND_SPIN GCC_SSC_CNOC_AHBS_CBCR
+                DO std_utils ENABLE_CBCR_AND_SPIN GCC_SSC_SNOC_AHBM_CBCR
+                DO std_utils ENABLE_CBCR_AND_SPIN GCC_SYS_NOC_SSC_Q6_AXI_CBCR
+                DO std_utils ENABLE_CBCR_AND_SPIN SSC_SCC_SCC_Q6_AHBM_CBCR
+                DO std_utils ENABLE_CBCR_AND_SPIN SSC_SCC_SCC_Q6_AHBS_CBCR
+                
+                DO std_utils ENABLE_CBCR_AND_SPIN SSC_SCC_SCC_Q6_SPM_CBCR
+                
+                DO std_utils HWIO_OUTF SSC_QDSP6SS_XO_CBCR CLKEN 0x1
+               
+
+                
+                wait.200ms
+                
+                //do std_utils HWIO_OUTF SSC_QDSP6SS_DBG_CFG DBG_SW_REG 0x20   
+                
+SKIP_PMIC:
+            do std_utils HWIO_OUTF SSC_SCC_SCC_AT_CBCR CLK_ENABLE 0x1
+                        ENTRY %LINE &rvalue
+                        IF "&rvalue"!="SUCCESS"
+                        (
+                            RETURN &rvalue    
+                        )
+            do std_utils HWIO_OUTF SSC_SCC_SCC_DBG_TSCTR_CBCR CLK_ENABLE 0x1
+                        ENTRY %LINE &rvalue
+                        IF "&rvalue"!="SUCCESS"
+                        (
+                            RETURN &rvalue    
+                        )
+            do std_utils HWIO_OUTF SSC_SCC_SCC_PCLKDBG_CBCR CLK_ENABLE 0x1
+                        ENTRY %LINE &rvalue
+                        IF "&rvalue"!="SUCCESS"
+                        (
+                            RETURN &rvalue    
+                        )
+            do std_utils HWIO_OUTF SSC_SCC_SCC_Q6_ATBM_CBCR CLK_ENABLE 0x1
+                        ENTRY %LINE &rvalue
+                        IF "&rvalue"!="SUCCESS"
+                        (
+                            RETURN &rvalue    
+                        )
+        )
+        
+
+    
+RETURN SUCCESS
+
+
+////////////////////////////////////////
+//
+//            CLEARSENTINELS
+//            
+//            For SLPI - to keep track of what's been turned on
+//
+///////////////////////////////////////// 
+CLEARSENTINELS:
+    &SLPI_island_clocks_on=0.
+RETURN SUCCESS
+
+
+////////////////////////////////////////
+//
+//            GETCORETYPE
+//            
+//            Returns type of apps core for this target
+//
+/////////////////////////////////////////
+GETCORETYPE:
+    LOCAL &IARG0
+    ENTRY &IARG0
+    IF (STRING.SCAN(STR.LWR("&IARG0"),"apps",0)!=-1)
+    (
+     
+         RETURN HYDRA
+
+        
+    )
+    RETURN NULL
+    
+    
+    
+
+////////////////////////////////////////
+//
+//            SETCTIGPIOS
+//            
+//            For trigout/trigin through GPIO functionality
+//
+/////////////////////////////////////////
+SETCTIGPIOS:
+entry &CTI_Functionality
+
+    //This is configuration for 8998
+    //IF ("&CTI_Functionality"=="GPIO")
+    //(
+        //trigoutb: GPIO4 fxn 5
+        //triginb: GPIO5 fxn 5
+        //trigouta: GPIO25 fxn 8
+        //trigina: GPIO24 fxn 5
+        //trigoutc: GPIO 41 fxn 5
+        //triginc: GPIO 42 fxn 5
+        //trigoutd: GPIO 100 fxn 2 ->use trigoutD
+        //trigind: GPIO 101 fxn 2  ->use trigoutD
+        
+        //GPIO settings
+        &TLMM_GPIO_number=4.
+        &TLMM_GPIO_setting=0x5 //func 2
+        
+        &Trigout_for_GPIO=0x2
+        
+        &CTI_Block="QDSS_CTI6"
+
+        do hwio.cmm
+
+        do std_utils HWIO_OUTI TLMM_GPIO_CFG  &TLMM_GPIO_number   0x1FF&(0x7<<6)|((&TLMM_GPIO_setting)<<2)|(0)
+        PRINT "CTI->GPIO configuration: &CTI_Block TRIGOUT-&Trigout_for_GPIO goes to GPIO number &TLMM_GPIO_number, setting &TLMM_GPIO_setting"
+        
+        
+        
+        RETURN &CTI_Block &Trigout_for_GPIO
+    //)
+    
+    //RETURN SUCCESS
+
+////////////////////////////////////////
+//
+//            MAKE_SURE_BOOT_PROCESSOR_ATTACHED
+//            
+//            Makes sure boot processor is attached
+//          Otherwise attaching on subsystem processor not possible
+//
+///////////////////////////////////////// 
+MAKE_SURE_BOOT_PROCESSOR_ATTACHED:
+
+    LOCAL &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+        &image="aop"
+    do std_debug_&CHIPSET GETDEBUGDEFAULTS NONE &image &lpm_option &cti_enable &alternateelf &extraoption
+        ENTRY &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+
+
+    LOCAL &Rvalue
+    do std_intercom_init CHECKSESSION 1 &bootprocessor
+        ENTRY &Rvalue
+    //Special case for apps window - can have apps0 or cluster
+    IF (&Rvalue!=1.)&&("&bootprocessor"=="&APPS0_PORT")
+    (
+        do std_intercom_init CHECKSESSION 1 APPSC0
+        ENTRY &Rvalue
+    )
+    IF (&Rvalue!=1.)
+    (
+        PRINT %ERROR "&bootprocessor T32 window not open. Please open and try again"
+        do std_fatalexit USER "&bootprocessor T32 window not open. Please open and try again"
+    )
+    
+    
+    //Run HWIO if needed
+    LOCAL &hwio_ran
+    INTERCOM.EVALUATE &bootprocessorport Y.EXIST(HWIO_LPASS_QDSP6SS_CGC_OVERRIDE_ADDR)
+        &hwio_ran=EVAL()
+    IF (&hwio_ran==0x0)
+    (
+
+            do std_intercom_do &bootprocessorport hwio
+        
+    )
+    
+    //if boot processor t32 not attached, attach.
+    INTERCOM.EVALUATE &bootprocessorport SYSTEM.MODE()
+        &BOOT_PROCESSOR_STATE=EVAL()
+    IF ("&BOOT_PROCESSOR_STATE"!="0x0B")
+    (
+        INTERCOM.EXECUTE &bootprocessorport sys.m.a
+    )
+    INTERCOM.EVALUATE &bootprocessorport SYSTEM.MODE()
+        &BOOT_PROCESSOR_STATE=EVAL()
+    IF ("&BOOT_PROCESSOR_STATE"!="0x0B")
+    (
+            winclear
+            WINPOS 0. 0. 60. 15. 0. 0. 
+            area.reset
+            area
+            PRINT %ERROR " std_cti_&image - &bootprocessor not able to attach"
+            PRINT %ERROR " Please ensure the following:"    
+            PRINT %ERROR "     JTAG is physically attached"
+            PRINT %ERROR "     T32 installation is up to date."
+            PRINT %ERROR "     Device is booted."
+            PRINT %ERROR " "
+            
+            GOSUB EXIT "FAILURE - std_cti - not able to attach to boot processor &bootprocessor"
+    )
+    
+    RETURN SUCCESS
+    
+    
+help:
+HELP:
+    AREA.RESET
+    AREA.CREATE std_cti_target_help 125. 23.
+    AREA.SELECT std_cti_target_help
+    WINPOS 5. 39. 125. 23.
+    AREA.VIEW std_cti_target_help
+
+    PRINT " Description:                                       "                       
+    PRINT "   Script for CTI configurations specific to target"
+    PRINT " "
+    PRINT " Usage"
+    PRINT " do std_cti_msm8994 <Subroutine>"
+    PRINT " "
+    PRINT " where <Subroutine> is one of the following:"
+    PRINT "     GETAPPSCORELIST - returns a string of all apps cores to be used in std_cti"
+    PRINT "     SETCTIGPIOS - Configures TLMM to map GPIO's to CTI's for this target"
+    PRINT "     HELP/help - prints help window"
+
+enddo
+
+EXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    ENDDO &rvalue
+    
+
+//Should never get here. 
+FATALEXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    IF STRING.SCAN("&FAILUREKEYWORD","FAILUREKEYWORD",0)==-1
+    (
+        GOSUB EXIT &FAILUREKEYWORD - &rvalue
+    )
+    ELSE
+    (
+        GOSUB EXIT &rvalue
+    )
+    
+//Should never get here
+    END
+
+
+    
+    

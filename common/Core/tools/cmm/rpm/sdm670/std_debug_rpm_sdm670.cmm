@@ -1,0 +1,1183 @@
+//============================================================================
+//  Name:                                                                     
+//    std_debug_rpm_sdm670.cmm 
+//
+//  Description:                                                              
+//    RPM debug script
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who           what, where, why
+// --------   ---           ---------------------------------------------------------
+// 02/27/2017 JBILLING      Created for SDM845
+
+
+
+//####################Declarations#######################
+
+LOCAL &ArgumentLine
+LOCAL &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+LOCAL &targetprocessor &string_length
+
+//###################Arguments passed #####################
+ENTRY %LINE &ArgumentLine
+ENTRY &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+
+//##################Defaults##########################
+GLOBAL &AOP_BUILDROOT
+IF ("&AOP_BUILDROOT"=="")&&(OS.DIR("&aop_BUILDROOT"))
+(
+    &AOP_BUILDROOT="&aop_BUILDROOT"
+)
+&targetprocessor="rpm"
+GLOBAL &DBGPWRSTATUS
+LOCAL &user_defined_bkpts
+&user_defined_bkpts=""
+GLOBAL &Default_CTI_RPMh_Halt_Option
+&Default_CTI_RPMh_Halt_Option="TRUE"
+
+LOCAL &DUMP_ARC_SCRIPT_LOCATION1 &DUMP_ARC_SCRIPT_LOCATION2
+&DUMP_ARC_SCRIPT_LOCATION1="aop_proc\core\power\arc\scripts\arc_dump.cmm"
+&DUMP_ARC_SCRIPT_LOCATION2="&METASCRIPTSDIR/../tools/power/&CHIPSET/arc_dump.cmm"
+
+LOCAL &STOP_RPMH_SCRIPT_LOCATION
+&STOP_RPMH_SCRIPT_LOCATION="&METASCRIPTSDIR/../tools\sve\RPMh\rpmh_halt.cmm"
+
+LOCAL &DUMP_VRM_SCRIPT_LOCATION
+&DUMP_VRM_SCRIPT_LOCATION="&METASCRIPTSDIR/../tools\systemdrivers\pmic\hoya\vrm_dump.cmm"
+
+LOCAL &DUMP_AOSSETB_SCRIPT_LOCATION
+&DUMP_AOSSETB_SCRIPT_LOCATION="&METASCRIPTSDIR/../tools\sve\RPMh\detb_rpmh.cmm"
+//#####################Select Subroutine###################
+// Name of the utility we are calling
+LOCAL &SUBROUTINE
+// Any subroutine specific options
+// Default exists for each subroutine
+LOCAL &OPTION
+
+    // Input Argument 0 is the name of the utility
+    &SUBROUTINE="&UTILITY"
+    IF !(("&SUBROUTINE"=="AOP_POWER_OPTIONS")||("&SUBROUTINE"=="PRINT_PWROPT_INFO")||("&SUBROUTINE"=="PRINT_RPMH_TRACE_INFO")||("&SUBROUTINE"=="AOPCTIHALT")||("&SUBROUTINE"=="ASSERTGLOBALONOPTIONS"))
+    (
+        &SUBROUTINE="MAIN"
+    )
+
+    // This should be created by some top level script. The setupenv for each proc would
+    // set this up
+    AREA.SELECT
+    // Call the required utility
+    GOSUB &SUBROUTINE &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+    ENTRY %LINE &Rvalue
+
+    GOSUB EXIT &Rvalue
+
+    
+
+////////////////////////////////////////
+///
+///   @brief GUI menu for AOP power options.
+///
+/////////////////////////////////////////
+AOP_POWER_OPTIONS:
+LOCAL &argline
+ENTRY %LINE &argline
+
+    WINPOS 0. 0. 60. 27.,,
+    
+    DIALOG
+    (&
+        HEADER "AOP Debug / Power options"
+        
+        ///////////////////////////////////////////
+        /////////  AOP Debug Options   ////////////
+        /////////////////////////////////////////// 
+        POS 1. 1. 55. 9.
+        BOX "AOP Debug Options"
+            POS 3. 2. 30. 1.
+            TEXT "Breakpoint List. Comma separated, max to two."
+            POS 3. 3. 37. 1.
+            BREAKPOINTEDIT: EDIT "&user_defined_bkpts" "GOSUB SETUSERBREAKPOINTS"
+            POS 28. 4. 12. 1. 
+            HELPBUTTON: DEFBUTTON "Help: Breakpoints"
+            (
+                DIALOG.OK "The CortexM3 allows two onchip breakpoints, which can be set while the core is running. Setting soft breakpoints requires halting the core."
+            )
+            POS 42. 3. 12. 2.
+            ELFBUTTON: DEFBUTTON "Load Elf" "do std_loadsyms_rpm &AOP_BUILDROOT"
+        
+            POS 3. 5. 17. 2.
+            ATTOPT.AOPATTACH: DEFBUTTON "Wake and Attach to AOP" "GOSUB WAKEANDATTACHAOP"
+            POS 3. 7. 17. 1.
+            ATTOPT.AOPBREAK: DEFBUTTON "Break AOP from WFI" "GOSUB AOPCTIHALT"
+            POS 23. 6. 17. 1.
+            ATTOPT.DISATTACH: DEFBUTTON "Detach from AOP." "GOSUB AOP_POWER_MODE_SELECT nopwrupreq"
+            POS 24. 7. 17. 1. 
+            TEXT  "(Allows AOSS Retention)"
+            POS 42. 8. 12. 1.
+            ATTACHHELPBUTTON: DEFBUTTON "Help: Attach Info"
+            (
+                do std_debug_rpm_sdm670 PRINT_ATTACH_INFO
+            )
+        
+        ///////////////////////////////////////////
+        /////////Power collapse Options////////////
+        /////////////////////////////////////////// 
+        POS 1. 11. 54. 6.
+        BOX "Power collapse options. Click 'Help' for information"
+            POS 3. 12. 15. 1.
+            PWROPT.NOPWRUPREQ: CHOOSEBOX "NO PWRUPREQ " "GOSUB AOP_POWER_MODE_SELECT nopwrupreq"
+            POS 19. 12. 21. 1.
+            TEXT "-- Allow chip to full sleep"
+            POS 3. 13. 15. 1.
+            PWROPT.DBGPWRUPREQ: CHOOSEBOX "DBGPWRUPREQ " "GOSUB AOP_POWER_MODE_SELECT dbgpwrupreq"
+            POS 19. 13. 21. 1.
+            TEXT "-- Only keeps AO debug bus up"
+            POS 3. 14. 15. 1.
+            PWROPT.AOSSPWRUPREQ: CHOOSEBOX "AOSSPWRUPREQ " "GOSUB AOP_POWER_MODE_SELECT aosspwrupreq"
+            POS 19. 14. 21. 1.
+            TEXT "-- Keeps AOP up for debug"
+            POS 3. 15. 15. 1.
+            PWROPT.SYSPWRUPREQ: CHOOSEBOX "SYSPWRUPREQ " "GOSUB AOP_POWER_MODE_SELECT syspwrupreq"
+            POS 19. 15. 21. 1.
+            TEXT "-- Keep CX up for  debug"
+            
+            POS 42. 14. 12. 2.
+            PWROPTHELPBUTTON: DEFBUTTON "Help - power options"
+            (
+                do std_debug_rpm_sdm670 PRINT_PWROPT_INFO
+            )
+            
+
+        ///////////////////////////////////////////
+        /////////    Trace Options     ////////////
+        ///////////////////////////////////////////     
+        POS 1. 17. 34. 10.
+        BOX "RPMh Trace Options"
+            POS 2. 18. 17. 1. 
+            DEBUGOPT.ENABLESTOPRPMH: DEFBUTTON "Enable Stop RPMh Button" "GOSUB ENABLE_STOP_RPMH"
+            POS 2. 19. 17. 2.
+            DEBUGOPT.STOPRPMH:    DEFBUTTON "Stop RPMh" "GOSUB STOP_RPMH"
+            POS 20. 19.25 12. 1.
+            TEXT  "<--- (Warning! System  "
+            POS 19. 20. 15. 1.
+            TEXT  "     unrecoverable after stop!)"
+            POS 2. 21. 30. 1.
+            CTIOPT.HALTWHENSTOPRPMH: CHECKBOX "Global Halt Processors when Stopping RPMh" ""
+            POS 2. 22. 15. 1. 
+            DEBUGOPT.DUMPARC: DEFBUTTON "Dump ARC" "GOSUB DUMP_ARC"
+            POS 17. 22. 15. 1. 
+            DEBUGOPT.DUMPVRM: DEFBUTTON "Dump VRM" "GOSUB DUMP_VRM"
+            POS 2. 23. 15. 1.
+            DEBUGOPT.DUMPAOSSETB: DEFBUTTON "Dump AOSS ETB" "GOSUB DUMPAOSSETB"
+            POS 2. 25. 13. 1.
+            DEBUGOPT.TRACEAOP:    DEFBUTTON "AOP ETM" ""
+            
+            
+            POS 19. 25. 13. 1.
+            TRACEHELPBUTTON: DEFBUTTON "Help: RPMh Trace"
+            (
+                do std_debug_rpm_sdm670 PRINT_RPMH_TRACE_INFO
+            )    
+        ///////////////////////////////////////////
+        /////////      CTI Options     ////////////
+        ///////////////////////////////////////////     
+        POS 36. 18. 20. 7.
+        BOX "Global Halt (CTI) Options"
+            POS 37. 19. 17. 2.
+            CTIOPT.HALTALL: DEFBUTTON "Halt All Processors" "GOSUB HALTALLCORES"
+            POS 37. 21. 17. 1.
+            CTIOPT.RESUMEALL: DEFBUTTON "Resume All Processors" "GOSUB RESUMEALLCORES"
+            
+            POS 44. 23. 10. 1. 
+            CTIHELP: DEFBUTTON "Help: CTI Halt" ""
+            
+        ///////////////////////////////////////////
+        /////////      Reset GUI       ////////////
+        ///////////////////////////////////////////     
+        POS 36. 24. 20. 3.
+        BOX ""
+            POS 37. 25. 17. 1.
+            RESETGUI: DEFBUTTON "Reset GUI" "GOSUB INIT_RPMH_GUI"
+        
+    )
+    
+    GOSUB INIT_RPMH_GUI
+    
+    STOP
+    RETURN SUCCESS
+////////////////////////////////
+///
+///  AOPCTIHALT
+///  @brief Issues CTI halt to AOP since when AOP is in WFI, JTAG cannot break it.
+///  @author JBILLING
+///
+///////////////////////////////////
+AOPCTIHALT:
+
+ON ERROR GOTO AOPCTIHALT_continue
+    LOCAL &attachstate 
+    &attachstate=SYS.MODE()
+    IF (&attachstate==0)
+    (
+        SYS.OPTION.DAPSYSPWRUPREQ OFF
+        SYS.M.A
+    )
+    
+AOPCTIHALT_continue:
+    ON ERROR DEFAULT
+    GOSUB ASSERTGLOBALONOPTIONS
+    
+    
+    //do hwio
+    
+    IF !Y.EXIST(HWIO_AOP_CTICONTROL_ADDR)
+    (
+        y.create.l HWIO_AOP_CTICONTROL_ADDR a:0x6b21000
+        y.create.done
+    )
+    //d.s edap:HWIO_AOP_LAR_ADDR  %LONG %LE 0xc5acce55
+    d.s edap:(HWIO_AOP_CTICONTROL_ADDR+0xfb0) %LONG %LE 0xc5acce55
+    
+    d.s edap:HWIO_AOP_CTICONTROL_ADDR  %LONG %LE 0x1
+    d.s edap:HWIO_AOP_CTICONTROL_ADDR  %LONG %LE 0x1
+    
+    //d.s edap:HWIO_AOP_CTIOUTEN0_ADDR   %LONG %LE 0x1
+    d.s edap:(HWIO_AOP_CTICONTROL_ADDR+0x0a0) %LONG %LE 0x1
+    //d.s edap:HWIO_AOP_CTIAPPULSE_ADDR  %LONG %LE 0x1
+    d.s edap:(HWIO_AOP_CTICONTROL_ADDR+0x01c) %LONG %LE 0x1
+    //d.s edap:HWIO_AOP_CTIINTACK_ADDR  %LONG %LE 0xF
+    d.s edap:(HWIO_AOP_CTICONTROL_ADDR+0x010) %LONG %LE 0x1
+    
+    ON ERROR CONTINUE
+    IF SYSTEM.MODE()==0xB
+    (
+        IF STATE.RUN()
+        (
+            BREAK
+        )
+    )
+    ON ERROR DEFAULT
+    RETURN
+    
+////////////////////////////////
+///
+///  SETUSERBREAKPOINTS
+///  @brief Attempts to set breakpoints specified in dialog box.
+///  @author JBILLING
+///
+///////////////////////////////////
+SETUSERBREAKPOINTS:
+    LOCAL &bkpts
+    &bkpts=DIALOG.STRING(BREAKPOINTEDIT)
+    &bkpts=STRING.TRIM("&bkpts")
+    &bkpts=STRING.REPLACE("&bkpts"," ",",",0)
+    IF STRING.SCAN("&bkpts",",",0)>1
+    (
+        PRINT %ERROR "Error! Max of two comma separated breakpoints allowed"
+        DIALOG.SET BREAKPOINTEDIT ""
+        RETURN
+    )
+    
+    GOSUB ATTACH_AOP
+    do std_utils SETBREAKPOINTS onchip &bkpts
+    RETURN 
+////////////////////////////////
+///
+///  ASSERTGLOBALONOPTIONS
+///  @brief Issues CTI halt to AOP since when AOP is in WFI, JTAG cannot break it.
+///  @author JBILLING
+///
+///////////////////////////////////
+ASSERTGLOBALONOPTIONS:
+    
+    GLOBAL &AOP_ATTACH_DIR
+    &AOP_ATTACH_DIR=os.ppd()
+    GLOBALON SYSUP DO &AOP_ATTACH_DIR/aop_attach_actions.cmm    
+    GLOBALON SYSDOWN DO &AOP_ATTACH_DIR/aop_deattach_actions.cmm
+    
+    ON ERROR CONTINUE
+    IF SYSTEM.MODE()==0xB
+    (
+        do std_utils EXECUTESCRIPT EXIT &AOP_ATTACH_DIR/aop_attach_actions.cmm 
+    )
+    ON ERROR DEFAULT
+    
+    RETURN
+////////////////////////////////
+///
+///  HALTALLCORES
+///  @brief Uses CTI Apps to halt cores.
+///  @author JBILLING
+///
+///////////////////////////////////
+HALTALLCORES:
+    do std_cti_apps SENDCTIBREAKTOALLCORES
+    RETURN     
+////////////////////////////////
+///
+///  RESUMEALLCORES
+///  @brief Uses CTI Apps to resume cores.
+///  @author JBILLING
+///
+///////////////////////////////////
+RESUMEALLCORES:
+    do std_cti_apps SENDCTIBREAKTOALLCORES
+    RETURN
+////////////////////////////////
+///
+///  WAKEANDATTACHAOP
+///  @brief Helper function for ATTACH AOP button.
+///  @author JBILLING
+///
+///////////////////////////////////
+WAKEANDATTACHAOP:
+    GOSUB QUERY_BOOTPROC_ATTACH
+    LOCAL &bootproc_attachstate
+    ENTRY &bootproc_attachstate
+    LOCAL &rvalue &userbkpts
+    IF "&bootproc_attachstate"=="ATTACHED"
+    (
+        GOSUB AOP_POWER_MODE_SELECT syspwrupreq
+        ENTRY &rvalue
+    )
+    ELSE 
+    (
+        GOSUB AOP_POWER_MODE_SELECT aosspwrupreq
+        ENTRY &rvalue
+    )
+    RETURN
+    
+////////////////////////////////
+///
+///  DUMP_ARC
+///  @brief Runs Dump ARC script within AOP build
+///  @author JBILLING
+///
+///////////////////////////////////
+DUMP_ARC:
+    IF FILE.EXIST("&AOP_BUILDROOT/&DUMP_ARC_SCRIPT_LOCATION1")
+    (
+        cd.do "&AOP_BUILDROOT/&DUMP_ARC_SCRIPT_LOCATION1"
+    )
+    ELSE IF FILE.EXIST("&DUMP_ARC_SCRIPT_LOCATION2")
+    (
+        cd.do "&DUMP_ARC_SCRIPT_LOCATION2"
+    ) 
+    ELSE
+    (
+    
+        PRINT %ERROR "Error! Could not find dump ARC file at location &AOP_BUILDROOT/&DUMP_ARC_SCRIPT_LOCATION1"
+    )
+    RETURN
+    
+////////////////////////////////
+///
+///  STOP_RPMH
+///  @brief Runs Dump VRM script within AOP build
+///  @author JBILLING
+///
+///////////////////////////////////
+STOP_RPMH:
+    IF FILE.EXIST("&STOP_RPMH_SCRIPT_LOCATION")
+    (
+        IF (DIALOG.BOOLEAN(CTIOPT.HALTWHENSTOPRPMH)==TRUE())
+        (
+            GOSUB HALTALLCORES
+        )
+        do std_utils EXECUTESCRIPT ERRORHANDLE &STOP_RPMH_SCRIPT_LOCATION
+    )
+    ELSE
+    (
+        PRINT %ERROR "Error! Could not find Stop RPMh file at location &STOP_RPMH_SCRIPT_LOCATION"
+    )
+    RETURN
+
+////////////////////////////////
+///
+///  DUMP_VRM
+///  @brief Runs Dump VRM script within AOP build
+///  @author JBILLING
+///
+///////////////////////////////////
+DUMP_VRM:
+    IF FILE.EXIST("&DUMP_VRM_SCRIPT_LOCATION")
+    (
+        do std_utils EXECUTESCRIPT ERRORHANDLE &DUMP_VRM_SCRIPT_LOCATION 670
+    )
+    ELSE
+    (
+        PRINT %ERROR "Error! Could not find dump VRM file at location &DUMP_VRM_SCRIPT_LOCATION"
+    )
+    RETURN
+////////////////////////////////
+///
+///  DUMPAOSSETB
+///  @brief Runs Dump AOSS ETB script
+///  @author JBILLING
+///
+///////////////////////////////////
+DUMPAOSSETB:
+    IF FILE.EXIST("&DUMP_AOSSETB_SCRIPT_LOCATION")
+    (
+        do std_utils EXECUTESCRIPT ERRORHANDLE &DUMP_AOSSETB_SCRIPT_LOCATION
+    )
+    ELSE
+    (
+        PRINT %ERROR "Error! Could not find script file at location &DUMP_AOSSETB_SCRIPT_LOCATION"
+    )
+    RETURN
+
+////////////////////////////////
+///
+///  ENABLE_STOP_RPMH
+///  @brief Simply enables stop rpmh button. The button is guarded to prevent users from accidentally freezing their target.
+///  @author JBILLING
+///
+///////////////////////////////////
+ENABLE_STOP_RPMH:
+    PRINT %ERROR "Warning! system is unrecoverable after stopping RPMh!"
+    //wait.1s
+    DIALOG.ENABLE DEBUGOPT.STOPRPMH
+    RETURN
+////////////////////////////////
+///
+///  AOP_POWER_MODE_SELECT
+///  @brief Sets AOSS debug power options based on user inputs.
+///  @author JBILLING
+///
+///////////////////////////////////
+AOP_POWER_MODE_SELECT:
+    LOCAL &rvalue &action
+    &rvalue="SUCCESS"
+    ENTRY &action
+    &action=STR.LWR("&action")
+    IF "&action"=="nopwrupreq"
+    (
+        LOCAL &rvalue
+        GOSUB DEASSERT_DBGPWRUPREQ
+        ENTRY &rvalue
+        IF "&rvalue"!="SUCCESS"
+        (
+            GOSUB SET_DIALOG_TO_GLOBAL_PWRSTATUS
+            RETURN &rvalue
+        )
+        &DBGPWRSTATUS=0.
+        GOSUB SET_DIALOG_TO_GLOBAL_PWRSTATUS
+        RETURN &rvalue
+    )
+    ELSE IF "&action"=="dbgpwrupreq"
+    (
+        LOCAL &rvalue
+        GOSUB DEASSERT_AOSSPWRUPREQ
+        ENTRY &rvalue
+        IF "&rvalue"!="SUCCESS"
+        (
+            GOSUB SET_DIALOG_TO_GLOBAL_PWRSTATUS
+            RETURN &rvalue
+        )
+        &DBGPWRSTATUS=1.
+        GOSUB SET_DIALOG_TO_GLOBAL_PWRSTATUS
+        RETURN &rvalue
+        
+    )
+    ELSE IF "&action"=="aosspwrupreq"
+    (
+        LOCAL &rvalue
+        GOSUB DEASSERT_SYSPWRUREQ
+        ENTRY &rvalue
+        IF "&rvalue"!="SUCCESS"
+        (
+            GOSUB SET_DIALOG_TO_GLOBAL_PWRSTATUS
+            RETURN &rvalue
+        )
+        GOSUB ASSERT_AOSSPWRUPREQ
+        ENTRY &rvalue
+        IF "&rvalue"!="SUCCESS"
+        (
+            GOSUB SET_DIALOG_TO_GLOBAL_PWRSTATUS
+            RETURN &rvalue
+        )
+        &DBGPWRSTATUS=2.
+        GOSUB SET_DIALOG_TO_GLOBAL_PWRSTATUS
+        RETURN &rvalue
+    )
+    ELSE IF "&action"=="syspwrupreq"
+    (
+        LOCAL &result
+        GOSUB ASSERT_AOSSPWRUPREQ
+        ENTRY &result
+        IF "&result"!="SUCCESS"
+        (
+            GOSUB SET_DIALOG_TO_GLOBAL_PWRSTATUS
+            RETURN
+        )
+        &DBGPWRSTATUS=2.
+        
+        GOSUB ASSERT_SYSPWRUREQ
+        ENTRY &result
+        IF "&result"!="SUCCESS"
+        (
+            GOSUB SET_DIALOG_TO_GLOBAL_PWRSTATUS
+            RETURN
+        )
+        &DBGPWRSTATUS=3.
+        GOSUB SET_DIALOG_TO_GLOBAL_PWRSTATUS
+    )
+    ELSE
+    (
+        PRINT "Error! AOP_ATTACH_ACTION: Unknown attach action given. Available arguments: NOPWRUPREQ, DBGPWRUPREQ, AOSSPWRUPREQ, SYSPWRUPREQ"
+        RETURN FAILURE
+    )
+    
+    RETURN &rvalue
+    
+    
+////////////////////////////////
+///
+///  QUERY_BOOTPROC_ATTACH
+///  @brief Helper function to determine if bootprocessor alive and attached
+///  @author JBILLING
+///  @return ATTACHED - Boot processor is attached.
+///          PREPARED - Boot processor is in sys.m.prepare mode.
+///          FALSE    - Boot processor window is alive but not attached
+///          CLOSED   - Boot processor window not alive (could not intercom.ping it)
+///         
+///////////////////////////////////
+QUERY_BOOTPROC_ATTACH:
+
+    LOCAL &bootprocattached
+    
+    
+        IF (INTERCOM.PING(&BOOTPROCESSORPORT))
+        (
+            INTERCOM.EVALUATE &BOOTPROCESSORPORT SYSTEM.MODE()
+            LOCAL &bootproc_attachstate
+            &bootproc_attachstate=EVAL()
+            IF (&bootproc_attachstate==0x0B)
+            (
+                RETURN ATTACHED
+            )
+            ELSE IF (&bootproc_attachstate>=0x4)
+            (
+                RETURN PREPARED
+            )
+            ELSE
+            (
+                RETURN FALSE
+            )
+        )
+        ELSE
+        (
+            RETURN CLOSED
+        )
+        
+////////////////////////////////
+///
+///  INIT_RPMH_GUI
+///  @brief Helper function to initialize AOSS debug GUI.
+///  @author JBILLING
+///
+///////////////////////////////////
+INIT_RPMH_GUI:
+    //Set defaults
+    
+    IF "&Default_CTI_RPMh_Halt_Option"=="TRUE"
+    (
+        DIALOG.SET CTIOPT.HALTWHENSTOPRPMH
+    )
+    
+    DIALOG.ENABLE ATTOPT.AOPATTACH
+    
+    DIALOG.DISABLE DEBUGOPT.STOPRPMH
+    
+    DIALOG.ENABLE DEBUGOPT.DUMPAOSSETB
+    DIALOG.ENABLE DEBUGOPT.TRACEAOP
+    
+    DIALOG.ENABLE CTIOPT.HALTALL
+    DIALOG.ENABLE CTIOPT.RESUMEALL
+    
+    GOSUB SET_DIALOG_TO_GLOBAL_PWRSTATUS
+    
+    //Set dialog based on attachstate
+    &user_defined_bkpts=""
+    DIALOG.SET BREAKPOINTEDIT "&user_defined_bkpts"
+    LOCAL &T32_attachstate
+    &T32_attachstate=SYSTEM.MODE()
+    GOSUB QUERY_BOOTPROC_ATTACH
+    LOCAL &bootproc_attachstate
+    ENTRY &bootproc_attachstate
+    
+    //Enable these once implemented.
+    DIALOG.DISABLE DEBUGOPT.TRACEAOP
+    DIALOG.DISABLE TRACEHELPBUTTON
+    
+    IF ("&bootproc_attachstate"=="ATTACHED")
+    (
+        &DBGPWRSTATUS=3.
+        DIALOG.SET PWROPT.SYSPWRUPREQ
+        SYS.OPTION.DAPSYSPWRUPREQ ON 
+        INTERCOM.EXECUTE &BOOTPROCESSORPORT SYS.OPTION.DAPSYSPWRUPREQ ON 
+        GOSUB SET_DIALOG_TO_GLOBAL_PWRSTATUS
+        RETURN
+    )
+    
+    //If apps proc is prepared, at least set to DBGPWRUPREQ.
+    IF ("&bootproc_attachstate"=="PREPARED")
+    (
+        GOSUB ASSERT_DBGPWRUPREQ
+        &DBGPWRSTATUS=1.
+        DIALOG.SET PWROPT.DBGPWRUPREQ
+        DIALOG.ENABLE ATTOPT.DISATTACH
+    )
+    
+    IF ("&T32_attachstate"=="0x0B")
+    (
+        GOSUB ASSERT_AOSSPWRUPREQ
+        &DBGPWRSTATUS=2.
+        DIALOG.SET PWROPT.AOSSPWRUPREQ
+        DIALOG.ENABLE ATTOPT.DISATTACH
+        DIALOG.DISABLE ATTOPT.AOPATTACH
+    )
+    ELSE IF ("&T32_attachstate"=="0x04")
+    (
+        GOSUB ASSERT_DBGPWRUPREQ
+        &DBGPWRSTATUS=1.
+        DIALOG.SET PWROPT.DBGPWRUPREQ
+        DIALOG.ENABLE ATTOPT.DISATTACH
+    )
+    //Skip last step if we already handled apps proc is prepared case.
+    ELSE IF ("&bootproc_attachstate"!="PREPARED")
+    (
+        &DBGPWRSTATUS=0.
+        DIALOG.SET PWROPT.NOPWRUPREQ
+        DIALOG.ENABLE ATTOPT.AOPATTACH
+    )
+    
+    GOSUB SET_DIALOG_TO_GLOBAL_PWRSTATUS
+    
+    RETURN
+    
+////////////////////////////////
+///
+///  SET_DIALOG_TO_GLOBAL_PWRSTATUS
+///  @brief Helper function to align GUI with power status
+///  @author JBILLING
+///
+///////////////////////////////////
+
+SET_DIALOG_TO_GLOBAL_PWRSTATUS:
+
+    GLOBAL &DBGPWRSTATUS
+    IF "&DBGPWRSTATUS"==""
+    (
+        LOCAL &T32_attachstate
+        &T32_attachstate=SYSTEM.MODE()
+        IF ("&T32_attachstate"=="0x0B") //If already attached
+        (
+            GOSUB ASSERT_AOSSPWRUPREQ
+            DIALOG.SET PWROPT.AOSSPWRUPREQ
+        )
+        ELSE
+        (
+            DIALOG.SET PWROPT.NOPWRUPREQ
+        )
+    )
+    ELSE IF &DBGPWRSTATUS==0.
+    (
+        DIALOG.SET PWROPT.NOPWRUPREQ
+        DIALOG.ENABLE ATTOPT.AOPATTACH
+    )
+    ELSE IF &DBGPWRSTATUS==1. 
+    (
+        DIALOG.SET PWROPT.DBGPWRUPREQ
+        DIALOG.ENABLE ATTOPT.AOPATTACH
+    )
+    ELSE IF &DBGPWRSTATUS==2.
+    (
+        DIALOG.SET PWROPT.AOSSPWRUPREQ
+        DIALOG.ENABLE ATTOPT.DISATTACH
+    )
+    ELSE IF &DBGPWRSTATUS==3.
+    (
+        DIALOG.SET PWROPT.SYSPWRUPREQ
+        DIALOG.ENABLE ATTOPT.DISATTACH
+    )
+    ELSE 
+    (
+        PRINT "System  error! debug power status at unknown state"
+        plist
+        pstep
+    )
+    
+    RETURN
+
+////////////////////////////////
+///
+///  ATTACH_AOP
+///  @brief Attempts a clean attach to AOP/AOSS, depending on argument
+///         Queries boot processor for attachstate.
+///  @author JBILLING
+///
+///////////////////////////////////
+ATTACH_AOP:
+    LOCAL &attacharg
+    ENTRY &attacharg
+    GOSUB QUERY_BOOTPROC_ATTACH
+    LOCAL &bootproc_attachstate
+    ENTRY &bootproc_attachstate
+    
+    GOSUB ASSERTGLOBALONOPTIONS
+    
+    IF "&bootproc_attachstate"=="CLOSED"
+    (
+        //PRINT %ERROR "Error! &BOOTPROCESSORNAME must be at least in SYS.M.PREPARE mode to attach to AOP/AOSS"
+        //RETURN FAILURE
+        SYS.OPTION.DAPSYSPWRUPREQ OFF
+        LOCAL &slave
+        &slave=SYS.CONFIG.SLAVE()
+        IF &slave==TRUE()
+        (
+            SYS.CONFIG SLAVE OFF
+        )
+        SYS.OPTION.DAPSYSPWRUPREQ OFF
+    )
+    
+    IF "&bootproc_attachstate"=="FALSE"
+    (
+        //INTERCOM.EXECUTE &BOOTPROCESSORPORT SYS.OPTION.ENRESET OFF
+        //INTERCOM.EXECUTE &BOOTPROCESSORPORT SYS.M.PREPARE
+        //WAIT.500ms
+        SYS.OPTION.DAPSYSPWRUPREQ OFF
+        LOCAL &slave
+        &slave=SYS.CONFIG.SLAVE()
+        IF &slave==TRUE()
+        (
+            SYS.CONFIG SLAVE OFF
+        )
+        SYS.OPTION.DAPSYSPWRUPREQ OFF
+    )
+    //GOSUB QUERY_BOOTPROC_ATTACH
+    //LOCAL &bootproc_attachstate
+    //ENTRY &bootproc_attachstate
+    //
+    //IF "&bootproc_attachstate"=="FALSE"
+    //(
+    //    PRINT %ERROR "Error! Some error ocurred when attempting to attach to &BOOTPROCESSORNAME. Please check connection"
+    //    RETURN  FAILURE
+    //)
+    
+    
+    
+    
+    IF "&attacharg"=="attach"
+    (
+        ON ERROR CONTINUE
+        IF SYSTEM.MODE()!=0xB
+        (
+            SYS.M.A
+        )
+        ON ERROR DEFAULT
+        
+        IF SYSTEM.MODE()!=0xB
+        (
+            //wait.2s
+            PRINT %ERROR "Error! Some error ocurred when attempting to attach to AOP."
+        )
+        ELSE
+        (
+            do aop_attach_actions
+            RETURN SUCCESS
+        )
+    )
+    
+    IF "&attacharg"=="prepare"
+    (
+        ON ERROR CONTINUE
+        SYS.OPTION.ENRESET OFF
+        SYS.M.PREPARE
+        ON ERROR DEFAULT
+        
+        IF SYSTEM.MODE()!=0x4
+        (
+            //wait.2s
+            PRINT %ERROR "Error! Some error ocurred when attempting to attach to AOSS bus (SYS.M.PREPARE)."
+        )
+        ELSE
+        (
+            RETURN SUCCESS
+        )
+    )
+    
+    //Should never get here
+    RETURN SUCCESS
+    
+    
+////////////////////////////////
+///
+///  ASSERT_SYSPWRUREQ
+///  @brief Sets system to SYSPWRUPREQ and asserts that register
+///         causing interrupt to be sent to AOP.
+///  @author JBILLING
+///
+///////////////////////////////////
+ASSERT_SYSPWRUREQ:
+    
+    ON ERROR GOTO ASSERT_SYSPWRUREQ_ATTACHERR
+    IF SYS.MODE()!=0xB
+    (
+        GOSUB ATTACH_AOP attach
+        ENTRY &result
+        IF  "&result"=="FAILURE"
+        (
+            RETURN
+        )
+    )
+    ON ERROR GOTO ASSERT_SYSPWRUREQ_ERR
+    SYS.OPTION.DAPSYSPWRUPREQ ON
+    LOCAL &bootproc_attachstate
+    GOSUB QUERY_BOOTPROC_ATTACH
+    ENTRY &bootproc_attachstate
+    IF "&bootproc_attachstate"!="CLOSED"
+    (
+        INTERCOM.EXECUTE &BOOTPROCESSORPORT SYS.OPTION.DAPSYSPWRUPREQ ON
+    )
+    PRINT "SYSPWRUPREQ asserted"
+    
+    //Turn ON slave mode if boot processor is attached.
+    GOSUB QUERY_BOOTPROC_ATTACH
+    LOCAL &bootproc_attachstate
+    ENTRY &bootproc_attachstate
+    IF "&bootproc_attachstate"!="CLOSED"
+    (
+        LOCAL &slave
+        &slave=SYS.CONFIG.SLAVE()
+        IF &slave==FALSE()
+        (
+            SYS.CONFIG.SLAVE ON
+        )
+    )
+    
+    ON ERROR DEFAULT
+    RETURN SUCCESS
+    
+ASSERT_SYSPWRUREQ_ERR:
+    PRINT "Error ocurred when attempting to assert SYSPWRUPREQ"
+    ON ERROR DEFAULT
+    RETURN FAILURE
+    
+ASSERT_SYSPWRUREQ_ATTACHERR:
+    PRINT "Error ocurred when attempting to attach during SYSPWRUPREQ operation. Is target connected?"
+    RETURN FAILURE
+
+////////////////////////////////
+///
+///  DEASSERT_SYSPWRUREQ
+///  @brief Deasserts SYSPWRUPREQ 
+///  @author JBILLING
+///
+///////////////////////////////////
+DEASSERT_SYSPWRUREQ:
+    LOCAL &bootproc_attachstate
+    GOSUB QUERY_BOOTPROC_ATTACH
+    ENTRY &bootproc_attachstate
+    IF "&bootproc_attachstate"=="ATTACHED"
+    (
+        PRINT "Error! Cannot remove SYSPWRUPREQ when &BOOTPROCESSORNAME is attached!"
+        &DBGPWRSTATUS=3.
+        GOSUB SET_DIALOG_TO_GLOBAL_PWRSTATUS
+        RETURN FAILURE
+    )
+    
+    ON ERROR GOTO DEASSERT_SYSPWRUREQ_ATTACHERR
+    IF SYS.MODE()!=0xB
+    (
+        GOSUB ATTACH_AOP attach
+        LOCAL &result
+        ENTRY &result
+        IF "&result"!="SUCCESS"
+        (
+            RETURN &result
+        )
+    )
+    ON ERROR GOTO DEASSERT_SYSPWRUREQ_ERR
+    SYS.OPTION.DAPSYSPWRUPREQ OFF
+    IF "&bootproc_attachstate"!="CLOSED"
+    (
+        INTERCOM.EXECUTE &BOOTPROCESSORPORT SYS.OPTION.DAPSYSPWRUPREQ OFF
+    )
+    PRINT "SYSPWRUPREQ de-asserted"
+    ON ERROR DEFAULT
+    RETURN SUCCESS
+    
+DEASSERT_SYSPWRUREQ_ERR:
+    PRINT "Error ocurred when attempting to deassert SYSPWRUPREQ"
+    ON ERROR DEFAULT
+    RETURN FAILURE
+    
+DEASSERT_SYSPWRUREQ_ATTACHERR:
+    PRINT "Error ocurred when attempting to attach during Deassert SYSPWRUPREQ operation. Is target connected?"
+    RETURN FAILURE
+    
+////////////////////////////////
+///
+///  ASSERT_AOSSPWRUPREQ
+///  @brief Sets system to AOSSPWRUPREQ and asserts that register
+///         causing interrupt to be sent to AOP.
+///  @author JBILLING
+///
+///////////////////////////////////
+ASSERT_AOSSPWRUPREQ:
+    IF (SYSTEM.MODE()!=0xB)
+    (
+        ON ERROR GOTO ASSERT_AOSSPWRUPREQ_ATTACHERR
+        IF (SYSTEM.MODE()<0X4)
+        (
+            GOSUB ATTACH_AOP prepare
+            LOCAL &result
+            ENTRY &result
+            IF "&result"!="SUCCESS"
+            (
+                RETURN &result
+            )
+        )
+        ON ERROR GOTO ASSERT_AOSSPWRUPREQ_ERR
+        do std_utils HWIO_OUT QDSS_SWAO_SWAOCSR_CS_SWAOCSR_LOCKACCESS 0xC5ACCE55 EDAP
+        do std_utils HWIO_OUT QDSS_SWAO_SWAOCSR_CS_SWAOCSR_AOSSPWRUPREQ 1 EDAP
+        //DATA.SET EDAP:HWIO_QDSS_SWAO_SWAOCSR_CS_SWAOCSR_AOSSPWRUPREQ_ADDR %LONG %LE 1
+        WAIT.200MS
+        SYS.M.A
+    )
+    ELSE
+    (
+        GOSUB ATTACH_AOP attach
+        LOCAL &result
+        ENTRY &result
+        IF "&result"!="SUCCESS"
+        (
+            RETURN &result
+        )
+        do std_utils HWIO_OUT QDSS_SWAO_SWAOCSR_CS_SWAOCSR_LOCKACCESS 0xC5ACCE55 EDAP
+        do std_utils HWIO_OUT QDSS_SWAO_SWAOCSR_CS_SWAOCSR_AOSSPWRUPREQ 1 EDAP
+        //DATA.SET EDAP:HWIO_QDSS_SWAO_SWAOCSR_CS_SWAOCSR_AOSSPWRUPREQ_ADDR %LONG %LE 1
+        WAIT.200MS
+    )
+    
+    ON  ERROR DEFAULT
+    RETURN SUCCESS
+    
+ASSERT_AOSSPWRUPREQ_ERR:
+    ON  ERROR DEFAULT
+    PRINT "Error ocurred when attempting to assert AOSSPWRUPREQ"
+    RETURN FAILURE
+ASSERT_AOSSPWRUPREQ_ATTACHERR:
+    ON  ERROR DEFAULT
+    PRINT "Error ocurred when attempting to attach to AOP/AOSS bus to assert AOSSPWRUPREQ"
+    RETURN FAILURE
+////////////////////////////////
+///
+///  DEASSERT_AOSSPWRUPREQ
+///  @brief Deasserts AOSSPWRUPREQ register and lowers DBGPWRSTATUS
+///         This causes interrupt to be sent to AOP to release resources.
+///  @author JBILLING
+///
+///////////////////////////////////
+DEASSERT_AOSSPWRUPREQ:
+    //set 
+    LOCAL &bootproc_attachstate
+    GOSUB QUERY_BOOTPROC_ATTACH
+    ENTRY &bootproc_attachstate
+    IF "&bootproc_attachstate"=="ATTACHED"
+    (
+        PRINT "Error! Cannot deassert AOSSPWRUPREQ if &BOOTPROCESSORNAME is attached"
+        &DBGPWRSTATUS=3.
+        GOSUB SET_DIALOG_TO_GLOBAL_PWRSTATUS
+        RETURN ERROR
+    )
+    
+    ON ERROR GOTO DEASSERT_AOSSPWRUPREQ_ATTACHERR
+    GOSUB ATTACH_AOP prepare
+    
+    ON ERROR GOTO DEASSERT_AOSSPWRUPREQ_ERR
+    do std_utils HWIO_OUT QDSS_SWAO_SWAOCSR_CS_SWAOCSR_LOCKACCESS 0xC5ACCE55 EDAP
+    do std_utils HWIO_OUT QDSS_SWAO_SWAOCSR_CS_SWAOCSR_AOSSPWRUPREQ 0 EDAP 
+    //DATA.SET EDAP:HWIO_QDSS_SWAO_SWAOCSR_CS_SWAOCSR_AOSSPWRUPREQ_ADDR %LONG %LE 0
+    WAIT.200MS
+    ON ERROR DEFAULT
+    RETURN SUCCESS
+    
+DEASSERT_AOSSPWRUPREQ_ATTACHERR:
+    ON ERROR DEFAULT
+    PRINT "Error during attach when trying to attach to AOSS bus for AOSSPWRUPREQ deassert. Is device disconnected  or in full sleep?"
+    RETURN ERROR
+DEASSERT_AOSSPWRUPREQ_ERR:
+    ON ERROR DEFAULT
+    PRINT "Error during attach when trying to deassert AOSSPWRUPREQ. Is device disconnected  or in full sleep?"
+    RETURN ERROR
+
+////////////////////////////////
+///
+///  ASSERT_DBGPWRUPREQ
+///  @brief Attaches to AOSS bus (sys.m.prepare) which should assert DBGPWRUPREQ.
+///         This causes some busses to be turned on within AOSS.
+///  @author JBILLING
+///
+///////////////////////////////////
+ASSERT_DBGPWRUPREQ:
+    LOCAL &result
+    
+    IF (SYSTEM.MODE()!=0xB)
+    (
+        ON ERROR GOTO ASSERT_DBGPWRUPREQ_ATTACHERR
+        GOSUB ATTACH_AOP prepare
+        ENTRY &result
+    )
+    
+    ON  ERROR DEFAULT
+    RETURN &result
+    
+ASSERT_DBGPWRUPREQ_ATTACHERR:
+    ON  ERROR DEFAULT
+    PRINT "Error ocurred when attempting to attach to AOSS bus to assert DBGPWRUPREQ"
+    RETURN FAILURE
+    
+////////////////////////////////
+///
+///  DEASSERT_DBGPWRUPREQ
+///  @brief Deasserts SYSPWRUPREQ and AOSSPWRUPREQ, and detaches from target, 
+///         which should allow target to go to full sleep
+///  @author JBILLING
+///
+///////////////////////////////////
+DEASSERT_DBGPWRUPREQ:
+LOCAL &bootproc_attachstate
+    GOSUB QUERY_BOOTPROC_ATTACH
+    ENTRY &bootproc_attachstate
+    IF "&bootproc_attachstate"=="ATTACHED"
+    (
+        PRINT "Error! Cannot deassert DBGPWRUPREQ if &BOOTPROCESSORNAME is attached."
+        &DBGPWRSTATUS=3.
+        GOSUB SET_DIALOG_TO_GLOBAL_PWRSTATUS
+        RETURN ERROR
+    )
+    IF "&bootproc_attachstate"=="PREPARED"
+    (
+        PRINT "Error! Cannot deassert DBGPWRUPREQ if &BOOTPROCESSORNAME is in SYS.PREPARE mode (attached to bus)."
+        RETURN ERROR
+    )
+    ON ERROR GOTO DEASSERT_DBGPWRUPREQ_ATTACHERR
+    SYS.M.NODEBUG
+    ON ERROR DEFAULT
+    RETURN SUCCESS
+    
+DEASSERT_DBGPWRUPREQ_ATTACHERR:
+    ON ERROR DEFAULT
+    PRINT "Error during attach when trying to attach to AOSS bus for AOSSPWRUPREQ deassert. Is device disconnected  or in full sleep?"
+    RETURN ERROR
+
+
+
+
+PRINT_RPMH_TRACE_INFO:
+    RETURN SUCCESS
+    
+PRINT_ATTACH_INFO:
+
+    AREA.CREATE PWROPT_INFO 60. 10.
+    AREA.SELECT PWROPT_INFO
+    WINPOS 70% 0. 60. 10.
+    AREA.VIEW PWROPT_INFO
+    
+    PRINT "////////////////AOP Attach/Detach detail////////////////////"                                                                   
+    PRINT " "
+    PRINT "In order to guarantee attach to AOP,                        "
+    PRINT "AOSSPWRUPREQ is asserted causing a wake interrupt,          "
+    PRINT "and memory is written to assure software wdog bite          "
+    PRINT "does not occur.                                             "
+    PRINT "                                                            "
+    PRINT "Upon 'Detach from AOP', AOSSPWRUPREQ is deasserted          "
+    PRINT "and power option is set to DBGPWRUPREQ. AOSS may go into    "
+    PRINT "retention but JTAG will still be able to attach to AOSS bus."
+    PRINT " "
+    AREA.VIEW A000
+    
+    RETURN 
+    
+PRINT_PWROPT_INFO:
+
+AREA.CREATE PWROPT_INFO 100. 70.
+AREA.SELECT PWROPT_INFO
+WINPOS 70% 0. 100. 65.
+AREA.VIEW PWROPT_INFO
+
+PRINT "There are four power options for &CHIPSET:                                                   "
+PRINT "                                                                                             "
+PRINT " - DBGPWRUPREQ  - This is the least power invasive option for debug.                         "
+PRINT "                  JTAG can make bus accesses within AOSS, but AOP may                        "
+PRINT "                  be inaccessible, and if chip is in sleep, CX domains will                  "
+PRINT "                  be inaccessible.                                                           "
+PRINT "                  ->Note that if chip is in sleep, many memory areas                         "
+PRINT "                    will be inaccessible, resulting in bus error.                            "
+PRINT "                                                                                             "
+PRINT "                  question: does AOSSPWRUPREQ imply DBGPWRUPREQ ?                            "
+PRINT "                  what does DEBUG_ACTIVE register imply?                                     "
+PRINT "                                                                                             "
+PRINT " - AOSSPWRUPREQ - This is a step above DBGPWRUPREQ, providing JTAG access to AOP processor.  "
+PRINT "                  Note that if chip is in sleep, CX memory areas will not be accessible,"
+PRINT "                  resulting in bus error."
+PRINT "                  ->This option is by  default on. Disable it with 'DBGPWRUPREQ' or 'NOPWRUPREQ'."
+PRINT "                                                                                             "
+PRINT " - SYSPWRUPREQ  - This is the most power invasive option for debug.                          "
+PRINT "                  Allows user  to debug CX power domains (votes on CX).                      "
+PRINT " - NO PWRUPREQ  - No power rails are requested for debug.                                    "
+PRINT "                  JTAG may be kicked off if full XO shutdown occurs.                         "
+PRINT "                  This should only be used by power teams                                    "
+PRINT "                  testing full power down and are ok  with JTAG                              "
+PRINT "                  being disconnected.                                                        "
+PRINT "                                                                                             "
+
+AREA.SELECT A000
+
+
+RETURN
+////////////////////////////////////////
+//
+//          MAIN
+//          Main std_debug_rpm logic
+//
+/////////////////////////////////////////
+MAIN:
+
+    LOCAL &image
+    PRINT "Not implemented"
+    RETURN FAILURE
+
+EXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    ENDDO &rvalue
+    
+
+//Should never get here. 
+FATALEXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    IF STRING.SCAN("&FAILUREKEYWORD","FAILUREKEYWORD",0)==-1
+    (
+        GOSUB EXIT &FAILUREKEYWORD - &rvalue
+    )
+    ELSE
+    (
+        GOSUB EXIT &rvalue
+    )
+    
+//Should never get here
+    END
+    
+

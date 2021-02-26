@@ -1,0 +1,127 @@
+#===============================================================================
+#
+# UART Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009-2009 by QUALCOMM, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1.c4/buses/uart/mdd/build/SConscript#1 $
+#  $DateTime: 2018/07/30 01:21:36 $
+#  $Author: pwbldsvc $
+#  $Change: 16759227 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+
+SRCPATH = "${BUILD_ROOT}/core/buses/uart/mdd/src"
+
+if not env.PathExists( SRCPATH ):
+   SRCPATH = "${BUILD_ROOT}/drivers/uart"
+
+if not env.PathExists( SRCPATH ):
+   SRCPATH = "${BUILD_ROOT}/drivers/sio"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+#  UART_SOURCES
+#-------------------------------------------------------------------------------
+
+UART_SOURCES = [
+    '${BUILDPATH}/uart_circ_buffer.c',
+    '${BUILDPATH}/uart_compat.c',
+    '${BUILDPATH}/uart_debug.c',
+    '${BUILDPATH}/uart_event_queue.c',
+    '${BUILDPATH}/uart_init.c',
+    '${BUILDPATH}/uart_log.c',
+    '${BUILDPATH}/siors232_mdd.c',
+    '${BUILDPATH}/siors232_mdd_data.c',
+    '${BUILDPATH}/siors232_mdd_ioctl.c',
+    '${BUILDPATH}/siors232test.c',
+]
+
+#-------------------------------------------------------------------------------
+# External depends outside CoreBSP
+#-------------------------------------------------------------------------------
+
+env.RequireExternalApi([
+    'DSM',
+    'CS',
+    'BREW',
+    'MODEM_API',
+    'MODEM_MMODE',
+    'MODEM_PMIC',
+    'MODEM_DATA',
+    'MODEM_HDR',
+    'MODEM_1X',
+    'MODEM_RF',
+    'MODEM_SERVICES',
+    'MODEM_NAS',
+    'MODEM_WCDMA',
+    'MODEM_UIM',
+    'MULTIMEDIA_AUDIO',
+    'WCONNECT',
+])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+CBSP_API = [
+    'BUSES',
+    'HAL',
+    'BOOT',
+    'DAL',
+    'DEBUGTOOLS',
+    'HWENGINES',
+    'MEMORY',
+    'MPROC',
+    'POWER',
+    'SERVICES',
+    'STORAGE',
+    'SYSTEMDRIVERS',
+    'KERNEL',
+    'BUSES_SIO',
+
+    # needs to be last also contains wrong comdef.h
+    'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+IMAGES = []
+
+if env['MSM_ID'] in ['6615','6695']:
+   IMAGES = ['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE']
+elif env['MSM_ID'] in ['7x30','8660','8x60']:
+   IMAGES = ['MODEM_IMAGE', 'CBSP_MODEM_IMAGE', 'APPS_IMAGE', 'CBSP_APPS_IMAGE']
+else:
+   #  Do this for all targets moving forward (8960,9x15,8974,etc.).  We don't want to add 
+   #  a line for each new target.
+   IMAGES = ['MODEM_IMAGE', 'CBSP_MODEM_IMAGE', 'APPS_IMAGE', 'CBSP_APPS_IMAGE', 'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'CORE_QDSP6_SW']
+
+env.AddLibrary( IMAGES, '${BUILDPATH}/uart',UART_SOURCES)
+

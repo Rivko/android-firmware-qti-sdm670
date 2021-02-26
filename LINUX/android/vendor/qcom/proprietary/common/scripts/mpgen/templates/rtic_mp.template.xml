@@ -1,0 +1,56 @@
+{# Copyright (c) 2017 Qualcomm Technologies, Inc.
+	All Rights Reserved.
+	Confidential and Proprietary - Qualcomm Technologies, Inc. #}
+
+<RTIC_MPGEN_INTERFACE_VERSION version="12"/> <!-- TODO: increment every time this template changes or new MPGen released -->
+<RTIC_MPGEN_VERSION version="{{VERSION}}"/>
+<RO_COUNT count="{{mpdb.get_rd_only_count()}}"/>
+<BANNER
+	contents="{{banner}}"
+	value="0x{{kernel.get_symbol('linux_banner').value}}"
+	size="0x{{kernel.get_symbol('linux_banner').size}}"
+/>
+<VECTORS value="0x{{kernel.get_symbol('vectors').value}}"/>
+
+<!-- TODO: uint8_t const created_tmstmp[8]; // 64bit time stamp */ 	-->
+<TIMESTAMP "{0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00}"/>
+<DATETIME datetime="{{datetime}}"/>
+<TIME datetime="{{time}}"/>
+<HEXTIME hex_string="{{'0x{:02x}'.format(time)}}"/>
+
+<!-- +++++++++ READ ONLY +++++++++ -->
+{% for mp in ro %}<MP_RD_ONLY name="{{mp.name}}" vaddr="0x{{mp.vaddr}}" size="0x{{mp.size}}" attrs="{{mp.attrs}}">
+	<SHA256 value="0x{{mp.sha256.replace(':', '')}}"/>
+</MP_RD_ONLY>
+{% endfor %}
+<!-- +++++++++ WRITE ONCE KNOWN +++++++++ -->
+{% for mp in wk %}<MP_WR_ONCE_KNOWN name="{{mp.name}}" vaddr="0x{{mp.vaddr}}" size="0x{{mp.size}}" attrs="{{mp.attrs}}">
+	<SHA256 value="0x{{mp.sha256.replace(':', '')}}"/>
+	<WRITER_LIST/>
+</MP_WR_ONCE_KNOWN>
+{% endfor %}
+<!-- +++++++++ WRITE ONCE UNKNOWN +++++++++ -->
+{% for mp in wu %}<MP_WR_ONCE_UNKNOWN name="{{mp.name}}" vaddr="0x{{mp.vaddr}}" size="0x{{mp.size}}" attrs="0x{{mp.attrs}}"/>
+<SHA256 value="NADA"/>
+	<WRITER_LIST/>
+</MP_WR_ONCE_UNKNOWN>
+{% endfor %}
+<!-- +++++++++ AUTHORIZED WRITER BLACKLIST +++++++++ -->
+{% for mp in aw %}<MP_WR_AUTH_WRITER name="{{mp.name}}" vaddr="0x{{mp.vaddr}}" size="0x{{mp.size}}" attrs="{{mp.attrs}}"/>
+	<SHA256 value="NADA"/>
+	{% for el in mp.writers %}
+<!-- "{{el.name}}" -->
+	<WRITER_LIST writer="{{el.value}}" size="{{el.size}}"/>
+	{% endfor %}
+</MP_WR_AUTH_WRITER>
+{% endfor %}
+<!-- +++++++++ AUTHORIZED VALUES BLACKLIST +++++++++ -->
+{% for mp in av %}<MP_WR_AUTH_VALUE name="{{mp.name}}" vaddr="0x{{mp.vaddr}}" size="0x{{mp.size}}" attrs="{{mp.attrs}}"/>
+<SHA256 value="NADA"/>
+	<WRITER_LIST/>
+</MP_WR_AUTH_VALUE>
+{% endfor %}
+<!-- +++++++++ KCONFIG +++++++++ -->
+{% for mp in kc %}<MP_KCONFIG name="{{mp.name}}" value="{{mp.value}}" attrs="{{mp.attrs}}"/>
+{% endfor %}
+

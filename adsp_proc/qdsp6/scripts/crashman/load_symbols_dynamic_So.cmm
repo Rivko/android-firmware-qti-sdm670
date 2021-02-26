@@ -1,0 +1,462 @@
+LOCAL &dynamic_so_count
+LOCAL &dynamic_so_string
+LOCAL &Linkedlist_l_next
+LOCAL &Linkedlist_l_addr1
+LOCAL &printstring
+LOCAL &Dynamic_obj_option
+LOCAL &dynamicobjpath
+LOCAL &Load_using_script
+ENTRY &HeapVar &OpDir
+
+&dynamic_so_count=0
+&dynamic_so_string=""
+&Linkedlist_l_next=0
+&Linkedlist_l_addr1=0
+&printstring=""
+&Dynamic_obj_option=1.0
+&Load_using_script=0
+
+Area.Create DSP 200. 1000.       ;create an AREA window              
+WINPOS 50% 0. 50% 103% 0. 0. DSP
+Area.Select DSP                  ;select the AREA window as PRACTICE 
+                                ;input/output window                
+Area DSP                         ;display the AREA window   
+
+
+print " DO YOU WISH LOAD FASTRPC/DYNAMIC SYMBOL OBJECT USING CMM ?"
+print " ENTER THE OPTION NUMBER:"
+print " "
+print " 1 - FastRPC shell"
+print " 2 - Dynamic SO's"
+print " 3 - Exit"
+print " "
+enter &Load_symbol
+
+if ("&Load_symbol"=="1")
+(
+    &OutputPath_Qurt="C:\Temp"
+    printer.file &OutputPath_Qurt\dsp_QT.txt
+    printer.filetype ascii
+    printer.size 0xfa,0xfa
+    wp.task.tasklist
+    printer.file.close
+
+    &string=" "
+    OPEN #1 "&OutputPath_Qurt\dsp_QT.txt" /READ
+    RePeaT 
+    (
+        READ #1 %line &headerline
+        IF EOF()
+        GOTO endloop
+        &frpc_name=string.mid("&headerline", 0x54, 6)
+        if "&frpc_name"=="/frpc/"
+        (
+            &string="&headerline"
+            GOTO endloop
+        )    
+    )
+endloop: CLOSE #1
+
+    if ("&string"==" ")
+    (
+        print " No FastRPC objects loaded"
+        enddo
+    )    
+
+    &string=string.mid("&string", 0x5A, 8)
+    &frpc_address="0x&string"
+
+    &Linkedlist_l_name_full=V.STRING(((*(((struct loaded_process*)&frpc_address))).name))
+    &Linkedlist_l_name=string.cut("&Linkedlist_l_name_full", 0xa)
+    &frpc_sring=string.mid("&Linkedlist_l_name", 5, 0xe)
+
+    &frpc_name=string.mid("&frpc_address", 2, 8)
+    &frpc_name="/frpc/&frpc_name"
+
+    &frpc_sring=CONV.TOLOWER("&frpc_sring")
+    &frpc_name=CONV.TOLOWER("&frpc_name")
+
+    if !("&frpc_sring"=="&frpc_name")
+    (
+       print %ERROR "/frpc/&frpc_address name is not present in the variable. Exiting the script."
+       enddo
+    )
+    &entrypoint=V.VALUE((*(((struct loaded_process*)&frpc_address))).entryPoint)
+    &entrypoint=&entrypoint&~(0x100000-1)
+
+    print " PLEASE SELECT THE PATH OF UNSTRIPPED FASTRPC OBJECT OBJECT INCLUDING THE FILE NAME FOR &dynamicobjpath" 
+    dialog.file *.unstripped
+    ENTRY &dynamicobjpath
+    if ("&dynamicobjpath"!="")
+    (
+      if (!os.file(&dynamicobjpath))
+      (
+           print %ERROR " Symbol file not properly chosen"
+           print " "
+           print " "
+      )
+      else
+      (
+            print " "
+            print " "
+            print " Loading Symbol file of &dynamicobjpath" 
+            print " d.load.elf &dynamicobjpath &entrypoint /nocode /noclear"
+            d.load.elf &dynamicobjpath &entrypoint /nocode /noclear
+            print %ERROR " SYMBOL FILE LOADED."
+            print " "
+            print " "
+            &cmd="python fastrpc_name.py &dynamicobjpath False"
+            Os.Hidden &cmd
+            &frpc_name=""
+            &temp="C:\Temp\fprc.txt"
+            if OS.FILE(&temp)
+            (
+                OPEN #1 "&temp" /READ
+                READ #1 %line &frpc_name 
+                CLOSE #1
+            )    
+            if "&frpc_name"!=""
+            (
+                &_rtld_debug="\\&frpc_name\Global\_rtld_debug"
+                if (!Y.EXIST("&_rtld_debug"))
+                (
+                   print %ERROR "&_rtld_debug variable is not found in the build. Exiting the script."
+                   enddo
+                )
+
+                &Linkedlist_l_next=V.VALUE((*((&_rtld_debug).r_map)).l_next)
+
+                if (&Linkedlist_l_next==0)
+                (
+                  print " No Dynamic objects loaded"
+                  enddo
+                )
+
+                print " ";
+                print " ";
+                print " DYNAMIC OBJECTS LOADED: ";
+                print " ";
+                while (&Linkedlist_l_next!=0)
+                (
+                    &dynamic_so_count=&dynamic_so_count+1
+                    &Linkedlist_l_addr=V.VALUE((*(((struct link_map *)&Linkedlist_l_next))).l_addr)
+                    &Linkedlist_l_name_full=V.STRING((*(((struct link_map *)&Linkedlist_l_next))).l_name)
+                    &Linkedlist_l_name=string.cut("&Linkedlist_l_name_full", 0xa)
+
+                    print " Start address: &Linkedlist_l_addr, Obj Name: &Linkedlist_l_name "  
+                    &Linkedlist_l_next=V.VALUE((*(((struct link_map *)&Linkedlist_l_next))).l_next)
+                )
+
+                &Linkedlist_l_next=V.VALUE((*((&_rtld_debug).r_map)).l_next)
+                &Linkedlist_l_addr=V.VALUE((*(((struct link_map *)&Linkedlist_l_next))).l_addr)
+                &Linkedlist_l_name_full=V.STRING((*(((struct link_map *)&Linkedlist_l_next))).l_name)
+                &Linkedlist_l_name=string.cut("&Linkedlist_l_name_full", 0xa)
+
+                print " "
+                print " "
+                Print " TO LOAD SYMBOLS OF DYNAMIC OBJECT USE BELOW COMMAND - "
+                print " d.load.elf  <unstripped .so file> <start address> /nocode /noclear "
+                print " Example:"
+                print " d.load.elf  <unstripped .so file of &Linkedlist_l_name> &Linkedlist_l_addr /nocode /noclear "  
+                print " "
+
+
+                ;------------------------------------------------------------------
+
+                print " "
+                print " "
+                print " YOU CAN EXIT AND MANUALLY LOAD DYNAMIC SYMBOL OBJECT USING ABOVE MENTIONED COMMANDS (OR)"
+start1:
+                print " DO YOU WISH TO CONTINUE LOADING DYNAMIC SYMBOL OBJECT USING CMM ?"
+                print " ENTER THE OPTION NUMBER:"
+                print " "
+                print " 1 - To continue"
+                print " 2 - Exit"
+                print " "
+                enter &Load_using_script 
+
+                if ("&Load_using_script"=="1")
+                (
+                    print " "
+                    print " "
+                    print " ENTER THE OPTION NUMBER FROM THE LIST OF DYNAMIC OBJECT SYMBOL FILES YOU WANT TO LOAD."
+                    print " "
+
+
+                    &Linkedlist_l_next=V.VALUE((*((&_rtld_debug).r_map)).l_next)
+                    &dynamic_so_count=0
+                    print " Option no." 
+                    while (&Linkedlist_l_next!=0)
+                    (
+
+                        &dynamic_so_count=&dynamic_so_count+1
+                        &Linkedlist_l_addr=V.VALUE((*(((struct link_map *)&Linkedlist_l_next))).l_addr)
+                        &Linkedlist_l_name_full=V.STRING((*(((struct link_map *)&Linkedlist_l_next))).l_name)
+                        &Linkedlist_l_name=string.cut("&Linkedlist_l_name_full", 0xa)
+                        
+                        print "     &dynamic_so_count .  &Linkedlist_l_name"  
+                        &Linkedlist_l_next=V.VALUE((*(((struct link_map *)&Linkedlist_l_next))).l_next)
+                    )
+                    print " "
+                    print " ENTER THE OPTION NUMBER (please note to enter in hex format):"
+                    print " "
+                    enter &Dynamic_obj_option 
+
+                    
+                    &Linkedlist_l_next=V.VALUE((*((&_rtld_debug).r_map)).l_next)
+                    &dynamic_so_count=0
+                    &Linkedlist_l_addr1=0
+                    while (&Linkedlist_l_next!=0)
+                    (
+
+                        &dynamic_so_count=&dynamic_so_count+1
+                        &Linkedlist_l_addr=V.VALUE((*(((struct link_map *)&Linkedlist_l_next))).l_addr)
+                        &Linkedlist_l_name_full=V.STRING((*(((struct link_map *)&Linkedlist_l_next))).l_name)
+                        if &dynamic_so_count==&Dynamic_obj_option
+                        (
+                            &Linkedlist_l_addr1=&Linkedlist_l_addr
+                            &Linkedlist_l_name=string.cut("&Linkedlist_l_name_full", 0xa)
+                        )
+                        &Linkedlist_l_next=V.VALUE((*(((struct link_map *)&Linkedlist_l_next))).l_next)
+                    )
+                    if (&Linkedlist_l_addr1!=0)
+                    (
+                        print " PLEASE SELECT THE PATH OF UNSTRIPPED DYNAMIC OBJECT INCLUDING THE FILE NAME FOR &Linkedlist_l_name" 
+                        dialog.file *.so
+                        ENTRY &dynamicobjpath
+                        if ("&dynamicobjpath"!="")
+                        (
+                          if (!os.file(&dynamicobjpath))
+                          (
+                               print %ERROR " Symbol file not properly chosen"
+                               print " "
+                               print " "
+                          )
+                          else
+                          (
+                            print " "
+                            print " "
+                            print " Loading Symbol file of &Linkedlist_l_name" 
+                            print " d.load.elf &dynamicobjpath &Linkedlist_l_addr1 /nocode /noclear"
+                            d.load.elf &dynamicobjpath &Linkedlist_l_addr1 /nocode /noclear
+                            print %ERROR " SYMBOL FILE LOADED."
+                            print " "
+                            print " "
+                          )
+                        )
+                        else
+                        (
+                          print %ERROR " SYMBOL FILE NOT CHOSEN"
+                          print " "
+                          print " "
+                        )
+                    )
+                    else
+                    (
+                        Print %ERROR " WRONG OPTION GIVEN"
+                        print " "
+                        print " "
+                    )
+                )
+                else
+                (
+                    Print  " "
+                    Print  "Exited"
+                    enddo
+                )
+                goto start1
+            )
+      )
+    )
+    else
+    (
+      print %ERROR " SYMBOL FILE NOT CHOSEN"
+      print " "
+      print " "
+    )
+)
+else if ("&Load_symbol"=="2")
+(
+    Var.NEWLOCAL char[12][128] \char_array
+    LOCAL &i
+    &rtld_debug=" "
+    Var.set \char_array[0]="_rtld_debug"
+    Var.set \char_array[1]="\\\\M8952AAAAAAAAQ1234\\Global\\_rtld_debug"
+    Var.set \char_array[2]="\\\\M8976AAAAAAAAQ1234\\Global\\_rtld_debug"
+    Var.set \char_array[3]="\\\\M8910AAAAAAAAQ1234\\Global\\_rtld_debug"
+    Var.set \char_array[4]="\\\\M8x10AAAAAAAAQ1234\\Global\\_rtld_debug"
+    Var.set \char_array[5]="\\\\M8996AAAAAAAAQ1234\\Global\\_rtld_debug"
+    Var.set \char_array[6]="\\\\M8996AAAAAAAAQ1234_AUDIO\\Global\\_rtld_debug"
+    Var.set \char_array[7]="\\\\M8937AAAAAAAAQ1234\\Global\\_rtld_debug"
+    Var.set \char_array[8]="\\\\M8937AAAAAAAAQ1234_AUDIO\\Global\\_rtld_debug"
+    Var.set \char_array[9]="\\\\M8953AAAAAAAAQ1234\\Global\\_rtld_debug"
+    Var.set \char_array[10]="\\\\M8953AAAAAAAAQ1234_AUDIO\\Global\\_rtld_debug"
+    &frpc_name="fastrpc_shell_0"
+    &temp="C:\Temp\fprc.txt"
+    if OS.FILE(&temp)
+    (
+        OPEN #1 "&temp" /READ
+        READ #1 %line &frpc_name 
+        CLOSE #1
+    )    
+    Var.set \char_array[11]="\\\\&frpc_name\\Global\\_rtld_debug"
+    print " ";
+    print " ";
+    print " DYNAMIC OBJECTS LOADED: ";
+    print " ";
+    &i=0
+    Var.WHILE &i<12
+    (
+        &rtld_debug=var.string(\char_array[&i])
+        if (Y.EXIST("&rtld_debug"))
+        (
+            &Linkedlist_l_next=V.VALUE((*((&rtld_debug).r_map)).l_next)
+            while (&Linkedlist_l_next!=0)
+            (
+
+                &dynamic_so_count=&dynamic_so_count+1
+                &Linkedlist_l_addr=V.VALUE((*(((struct link_map *)&Linkedlist_l_next))).l_addr)
+                &Linkedlist_l_name_full=V.STRING((*(((struct link_map *)&Linkedlist_l_next))).l_name)
+                &Linkedlist_l_name=string.cut("&Linkedlist_l_name_full", 0xa)
+                print " Start address: &rtld_debug, &Linkedlist_l_addr, Obj Name: &Linkedlist_l_name "  
+                &Linkedlist_l_next=V.VALUE((*(((struct link_map *)&Linkedlist_l_next))).l_next)
+            )
+        )
+        &i=&i+1
+    )
+    print " "
+    print " "
+    Print " TO LOAD SYMBOLS OF DYNAMIC OBJECT USE BELOW COMMAND - "
+    print " d.load.elf  <unstripped .so file> <start address> /nocode /noclear "
+    print " Example:"
+    print " d.load.elf  <unstripped .so file of &Linkedlist_l_name> &Linkedlist_l_addr /nocode /noclear "  
+    print " "
+
+
+    ;------------------------------------------------------------------
+
+    print " "
+    print " "
+    print " YOU CAN EXIT AND MANUALLY LOAD DYNAMIC SYMBOL OBJECT USING ABOVE MENTIONED COMMANDS (OR)"
+start:
+    print " DO YOU WISH TO CONTINUE LOADING DYNAMIC SYMBOL OBJECT USING CMM ?"
+    print " ENTER THE OPTION NUMBER:"
+    print " "
+    print " 1 - To continue"
+    print " 2 - Exit"
+    print " "
+    enter &Load_using_script 
+
+    if ("&Load_using_script"=="1")
+    (
+        print " "
+        print " "
+        print " ENTER THE OPTION NUMBER FROM THE LIST OF DYNAMIC OBJECT SYMBOL FILES YOU WANT TO LOAD."
+        print " "
+
+        &dynamic_so_count=0
+        print " Option no." 
+        &i=0
+        Var.WHILE &i<12
+        (
+            &rtld_debug=var.string(\char_array[&i])
+            if (Y.EXIST("&rtld_debug"))
+            (
+                &Linkedlist_l_next=V.VALUE((*((&rtld_debug).r_map)).l_next)
+                while (&Linkedlist_l_next!=0)
+                (
+                    &dynamic_so_count=&dynamic_so_count+1
+                    &Linkedlist_l_addr=V.VALUE((*(((struct link_map *)&Linkedlist_l_next))).l_addr)
+                    &Linkedlist_l_name_full=V.STRING((*(((struct link_map *)&Linkedlist_l_next))).l_name)
+                    &Linkedlist_l_name=string.cut("&Linkedlist_l_name_full", 0xa)
+                    print "     &dynamic_so_count .  &Linkedlist_l_name"  
+                    &Linkedlist_l_next=V.VALUE((*(((struct link_map *)&Linkedlist_l_next))).l_next)
+                )
+            )
+            &i=&i+1
+        )
+        print " "
+        print " ENTER THE OPTION NUMBER (please note to enter in hex format):"
+        print " "
+        enter &Dynamic_obj_option 
+
+        &dynamic_so_count=0
+        &Linkedlist_l_addr1=0
+        &i=0
+        Var.WHILE &i<12
+        (
+            &rtld_debug=var.string(\char_array[&i])
+            if (Y.EXIST("&rtld_debug"))
+            (
+                &Linkedlist_l_next=V.VALUE((*((&rtld_debug).r_map)).l_next)
+                while (&Linkedlist_l_next!=0)
+                (
+                    &dynamic_so_count=&dynamic_so_count+1
+                    &Linkedlist_l_addr=V.VALUE((*(((struct link_map *)&Linkedlist_l_next))).l_addr)
+                    &Linkedlist_l_name_full=V.STRING((*(((struct link_map *)&Linkedlist_l_next))).l_name)
+                    if &dynamic_so_count==&Dynamic_obj_option
+                    (
+                        &Linkedlist_l_addr1=&Linkedlist_l_addr
+                        &Linkedlist_l_name=string.cut("&Linkedlist_l_name_full", 0xa)
+                    )
+                    &Linkedlist_l_next=V.VALUE((*(((struct link_map *)&Linkedlist_l_next))).l_next)
+                )
+            )
+            &i=&i+1
+        )
+        if (&Linkedlist_l_addr1!=0)
+        (
+            print " PLEASE SELECT THE PATH OF UNSTRIPPED DYNAMIC OBJECT INCLUDING THE FILE NAME FOR &Linkedlist_l_name" 
+            dialog.file *.so
+            ENTRY &dynamicobjpath
+            if ("&dynamicobjpath"!="")
+            (
+              if (!os.file(&dynamicobjpath))
+              (
+                   print %ERROR " Symbol file not properly chosen"
+                   print " "
+                   print " "
+              )
+              else
+              (
+                    print " "
+                    print " "
+                    print " Loading Symbol file of &Linkedlist_l_name" 
+                    print " d.load.elf &dynamicobjpath &Linkedlist_l_addr1 /nocode /noclear"
+                    d.load.elf &dynamicobjpath &Linkedlist_l_addr1 /nocode /noclear
+                    print %ERROR " SYMBOL FILE LOADED."
+                    print " "
+                    print " "
+              )
+            )
+            else
+            (
+              print %ERROR " SYMBOL FILE NOT CHOSEN"
+              print " "
+              print " "
+            )
+        )
+        else
+        (
+            Print %ERROR " WRONG OPTION GIVEN"
+            print " "
+            print " "
+        )
+    )
+    else
+    (
+        Print  " "
+        Print  "Exited"
+        enddo
+    )
+    goto start
+)
+else
+(
+    Print  " "
+    Print  "Exited"
+    enddo
+)
+
+enddo
+

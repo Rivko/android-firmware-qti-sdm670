@@ -1,0 +1,76 @@
+#===============================================================================
+#
+# SMP2P Settings
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2017 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1/settings/mproc/smp2p/build/smp2p_config.scons#1 $
+#  $DateTime: 2017/09/14 03:40:04 $
+#  $Author: pwbldsvc $
+#  $Change: 14371357 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 02/25/17   vr      Initial version; moved settings to core/settings directory
+#
+#===============================================================================
+import os.path
+Import('env')
+env = env.Clone()
+
+#SDM855HACK,SDM1000HACK
+if env['CHIPSET'] in ['sdm855','sdm1000']:
+    env.Replace(CHIPSET = 'sdm845')
+    env.Replace(MSM_ID = '845')
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+env.VariantDir('${BUILDPATH}', '../config', duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Publish Private APIs
+#-------------------------------------------------------------------------------
+env.PublishPrivateApi('MPROC_SMP2P_SETTINGS', [
+   "${INC_ROOT}/core/settings/mproc/smp2p/interface",
+])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'MPROC',
+   'SYSTEMDRIVERS',
+   
+   'KERNEL'
+]
+
+env.RequirePublicApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Device configuration
+#-------------------------------------------------------------------------------
+if env.has_key('USES_DEVCFG'):
+  DEVCFG_IMG = ['DAL_DEVCFG_IMG']
+  DEVCFG_XML = '../config/smp2p_devcfg.xml'
+  
+  # DevCfg source file should be /config/%s/smp2p_devcfg_<PROC>.c
+  DEVCFG_SRC = '${BUILDPATH}/%s/smp2p_devcfg_%s.c'
+  
+  devcfg_cfg_dict = {}
+  devcfg_cfg_dict['soc_xml'] = [DEVCFG_XML, 
+                                DEVCFG_SRC % ('${MSM_ID}', env['MPROC_PROC_NAME'])]
+  
+  env.AddDevCfgInfo(DEVCFG_IMG, devcfg_cfg_dict)

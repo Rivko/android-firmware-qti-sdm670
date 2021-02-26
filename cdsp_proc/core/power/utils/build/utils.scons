@@ -1,0 +1,223 @@
+#==============================================================================
+# Core Utils Libs build script
+#
+# Copyright (c) 2009-2012 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+# $Header$
+#==============================================================================
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Helper routines
+#-------------------------------------------------------------------------------
+
+import os
+# Maps env tags to OS names
+def determine_os_name( env ):
+  os_name = 'unknown'
+  if 'USES_L4' in env or 'FEATURE_L4' in env:
+    os_name = 'l4'
+  # Order of QURT and Blast checks important. QURT builds define BLAST as well    
+  elif 'USES_QURT' in env or 'FEATURE_QURT' in env:
+    os_name = 'qurt'
+  elif 'USES_BLAST' in env or 'FEATURE_BLAST' in env:
+    os_name = 'blast'
+  elif 'USES_REX' in env or 'FEATURE_REX' in env:
+    os_name = 'rex'
+  elif 'USES_PTHREAD' in env or 'FEATURE_PTHREAD' in env:
+    os_name = 'pthread'
+  print "** INFO: UTILS scons thinks the OS is", os_name
+  return os_name
+
+
+def find_os_file( env, base, files ):
+  """
+  Find the os-sepcific file or list of files under the given base.
+  This looks for the os-specific file using the following search
+  path and order:
+ 
+  base/<os>/<file>
+  base/dal/<file>
+
+  This allows the build to selectively override individual files per OS,
+  but have a default version if there is no override.
+  """
+  os_files = []
+  found = []
+
+  # Find OS specific overrides or the default
+  search_path = [ os.path.join( base, determine_os_name( env ) ),
+                  os.path.join( base, 'dal' ) ]
+  
+  for file in files:
+    for path in search_path:
+      if os.path.isfile( os.path.join( SRCPATH, path, file ) ):
+        os_files.append( os.path.join( '${BUILDPATH}', path, file ) )
+        found.append( file )
+        break
+
+  if len(files) != len(found):
+    assert False, "** ERROR: UTILS Scons can't find required OS file(s) %s" % list(set(files)-set(found))
+
+  return os_files
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = ".."
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+QMP_MSG_CLIENT = SRCPATH + '/src/qmp_clients/${MSM_ID}'
+
+if os.path.exists(env.subst(QMP_MSG_CLIENT)):
+   if "ADSP_PROC" in env:
+      QMP_MSG_CLIENT_FILE = '${BUILDPATH}/src/qmp_clients/${MSM_ID}/ADSP/qmp_msg_client.c'
+   elif "SLPI_PROC" in env:
+      QMP_MSG_CLIENT_FILE = '${BUILDPATH}/src/qmp_clients/${MSM_ID}/SLPI/qmp_msg_client.c'
+   elif "CDSP_PROC" in env:
+      QMP_MSG_CLIENT_FILE = '${BUILDPATH}/src/qmp_clients/${MSM_ID}/CDSP/qmp_msg_client.c'   
+else:
+   QMP_MSG_CLIENT_FILE = '${BUILDPATH}/src/qmp_clients/generic_config/qmp_msg_client.c'
+
+
+#-------------------------------------------------------------------------------
+# Include dependencies
+#-------------------------------------------------------------------------------
+env.RequirePublicApi(['SERVICES','DEBUGTOOLS','POWER','STORAGE','KERNEL', 'SYSTEMDRIVERS', 'MPROC'])
+env.RequireRestrictedApi(['POWER','DAL','SERVICES','DEBUGTOOLS','KERNEL'])
+env.RequireProtectedApi(['POWER_UTILS'])
+
+#-----------------------------------------------------------------------------
+# Utility functions - these are not NPA-specific and could be made
+# more widely available
+# ----------------------------------------------------------------------------
+# Order important! We iterate through the dict in this order
+image_names = ['core_root', 'modem', 'pronto', 'apps', 'slpi_guest', 'adsp_guest', 
+               'cdsp_guest', 'slpi', 'adsp', 'cdsp', 'core_guest', 'core', 'devcfg']
+image_tags = {
+  'core_root'    : ['CORE_ROOT_PD'],
+  'modem'        : ['MODEM_IMAGE', 'CORE_MODEM'],
+  'pronto'       : ['WCN_IMAGE', 'CBSP_WCN_IMAGE', 'CORE_WCN'],
+  'apps'         : ['APPS_IMAGE', 'CBSP_APPS_IMAGE'],
+  'slpi_guest'   : ['CORE_SLPI_USER'],
+  'adsp_guest'   : ['CORE_ADSP_USER', 'CORE_QDSP6_SENSOR_SW', 'CORE_QDSP6_AUDIO_SW'],
+  'cdsp_guest'   : ['CORE_CDSP_USER'],
+  'slpi'         : ['CORE_SLPI_ROOT'],  
+  'adsp'         : ['CORE_ADSP_ROOT', 'ADSP_PROC'],
+  'cdsp'         : ['CORE_CDSP_ROOT'],
+  'core_guest'   : ['CORE_USER_PD'],
+  'core'         : ['CORE_QDSP6_SW'],
+  'devcfg'       : ['DAL_DEVCFG_IMG'],  
+}
+def determine_image_name( env ):
+  """
+  Determine the image being built
+  """
+  env_var_names = set(env.gvars().keys())
+  for i in image_names:
+    if env_var_names.intersection(set(image_tags[i])):
+      return i
+  return 'unknown'
+env.AddMethod( determine_image_name, "DetermineImageName" )
+image = env.DetermineImageName()
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+CORE_UTILS_SOURCES = [
+    '${BUILDPATH}/src/CoreCond.c',
+    '${BUILDPATH}/src/CoreEventNotification.c',
+    '${BUILDPATH}/src/CoreHeap.c',
+    '${BUILDPATH}/src/CoreMutex.c',
+    '${BUILDPATH}/src/CoreOpaqueHandle.c',
+    '${BUILDPATH}/src/CorePool.c',
+    '${BUILDPATH}/src/CorePRSMList.c',
+    '${BUILDPATH}/src/CoreReference.c',
+    '${BUILDPATH}/src/CoreTLSEmu.c',
+    '${BUILDPATH}/src/CoreWorkContainer.c',
+    '${BUILDPATH}/src/CoreWorkQueue.c',
+    '${BUILDPATH}/src/CoreErr.c',
+    '${BUILDPATH}/src/asic/8974/apps/CoreCpu.c',
+    QMP_MSG_CLIENT_FILE,
+    find_os_file( env, 'os', ['CoreMutexImpl.c', 'CoreCondImpl.c', 
+                              'CorePropertyImpl.c', 'CoreThreadImpl.c'])
+    ]
+
+if env['PROC'] in ['arm11', 'scorpion', 'arm9', 'qdsp6', 'sparrow']:
+   CORE_UTILS_SOURCES.append('${BUILDPATH}/src/CoreConfig.c')
+   
+   if (image in ['adsp']) and (image not in ['adsp_guest', 'slpi_guest', 'cdsp_guest']) :
+     CORE_UTILS_SOURCES.append('${BUILDPATH}/src/CoreIni.c')
+     CORE_UTILS_SOURCES.append('${BUILDPATH}/src/CoreFileLimited.c')
+   elif env['PROC'] in ['sparrow']:
+     CORE_UTILS_SOURCES.append('${BUILDPATH}/src/CoreIni.c')
+     CORE_UTILS_SOURCES.append('${BUILDPATH}/src/CoreFileLimited.c')
+   elif image not in ['adsp', 'slpi', 'cdsp', 'slpi_guest', 'adsp_guest', 'cdsp_guest']:
+     CORE_UTILS_SOURCES.append('${BUILDPATH}/src/CoreIni.c')
+     CORE_UTILS_SOURCES.append('${BUILDPATH}/src/CoreFile.c')
+
+if env['PROC'] in ['qdsp6']:
+   CORE_UTILS_SOURCES.append('${BUILDPATH}/src/CoreAtomicOps.c')
+if env['PROC'] in ['arm11', 'scorpion', 'sparrow']:
+   CORE_UTILS_SOURCES.append('${BUILDPATH}/src/CoreIntrinsicsARM.S')
+   CORE_UTILS_SOURCES.append('${BUILDPATH}/src/CoreAtomicOps.S')
+elif env['PROC'] in ['arm9']:
+   CORE_UTILS_SOURCES.append('${BUILDPATH}/src/CoreIntrinsicsARM.c')
+   CORE_UTILS_SOURCES.append('${BUILDPATH}/src/CoreAtomicOps.c')
+elif env['PROC'] in ['arm7']:
+   CORE_UTILS_SOURCES.append('${BUILDPATH}/src/CoreIntrinsicsARM.c')
+   CORE_UTILS_SOURCES.append('${BUILDPATH}/src/CoreAtomicOps.c')
+   env.Append(CPPDEFINES=['FEATURE_CORE_LOW_MEM',
+                          'FEATURE_NO_WORKLOOPS'])
+
+# Following files are added for kernel/root PD of RPMh/CMD_DB based targets 
+# only. The order MUST follow the one we have in image_names list above.
+# Also add an entry in to RCInit to have its structures initialized.
+rpmh_images = ['core_root', 'modem', 'apps', 'slpi', 'adsp', 'cdsp', 'core']
+if image in rpmh_images:
+   CORE_UTILS_SOURCES.extend(['${BUILDPATH}/src/pwr_utils_lvl.c'])
+
+   # Add RCinit entry for initialization function for level conversion.
+   if 'USES_RCINIT' in env:
+      env.AddRCInitFunc(
+         image_tags[image],
+         {
+           'sequence_group' : 'RCINIT_GROUP_0',       # required
+           'init_name'      : 'pwr_utils_lvl',        # required
+           'init_function'  : 'pwr_utils_lvl_init',   # required
+           'dependencies'   : ['cmd_db'],
+         })
+      env.AddRCInitFunc(
+         image_tags[image],
+         {
+           'sequence_group' : 'RCINIT_GROUP_0',       # required
+           'init_name'      : 'qmp_msg_client',        # required
+           'init_function'  : 'qmp_client_init',   # required
+           'dependencies'   : ['xport_qmp', 'glink', 'smem'],
+         })
+
+#-------------------------------------------------------------------------------
+# Compile and create library
+#-------------------------------------------------------------------------------
+image_tags = ['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE',
+              'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+              'APPS_IMAGE', 'CBSP_APPS_IMAGE',
+              'WCN_IMAGE', 'CBSP_WCN_IMAGE', 'CORE_WCN',
+              'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE',
+              'CORE_QDSP6_SENSOR_SW',
+              'RPM_IMAGE', 'CORE_SPS', 'CORE_USER_PD',
+              'CORE_ROOT_PD', 'CORE_QDSP6_SW','CORE_SLPI_ADSP_ROOT']
+
+try:
+  env.AddLibrary(image_tags, '${BUILDPATH}/utils', CORE_UTILS_SOURCES)
+except AttributeError:
+  core_utils_obj = env.Object(CORE_UTILS_SOURCES)
+  core_utils_lib = env.Library("${BUILDPATH}/utils", core_utils_obj)
+  env.AddLibsToImage(image_tags, core_utils_lib)

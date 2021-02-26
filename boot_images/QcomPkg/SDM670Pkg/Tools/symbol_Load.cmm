@@ -1,0 +1,79 @@
+;============================================================================
+;  Name:
+;    symbol_load.cmm
+;
+;  Description:
+;     Loads UEFI symbols, after halting target
+;
+; Copyright (c) 2012-2017 Qualcomm Technologies, Inc.  
+; All Rights Reserved.
+; Qualcomm Technologies Proprietary and Confidential. 
+;
+;----------------------------------------------------------------------------
+;============================================================================
+;
+;                        EDIT HISTORY FOR MODULE
+;
+;
+;
+; when         who     what, where, why
+; ----------   ---     ----------------------------------------------------------
+; 2017-09-12   vk      Remove PATH
+; 2016-07-21   bh      Support SDM845
+; 2013-03-12   vk      Initial version
+;============================================================================;
+area.clear
+area.reset
+area.create UEFI_Logs 1000. 8192.
+area.select UEFI_Logs
+
+global &UefiBase
+
+local &SecAddr
+local &CwDir
+local &LoadAllSym
+;
+;  No arguments expected, just run the script from APPS0 T32
+;
+
+ENTRY &OptArgs
+  &CwDir=os.ppd()
+  &TmpDir=os.ptd()
+  &CommonTools="&CwDir/../../Tools"
+
+  y.reset
+
+  ;will do sys.m.a except "NoAttach" parameter passed to script
+  if ((string.scan("&OptArgs", "NoAttach",0)==-1))
+  (
+  sys.m.a
+  
+  )
+  if run()
+  (
+    break
+  )
+
+  &LoadAllSym=0x1
+  
+  ;Setup windows
+  if (os.file("&TmpDir/win.cmm"))
+  (
+    do &TmpDir/win.cmm
+  )
+  else
+  (
+    do &CommonTools/win.cmm
+  )
+
+  &UefiBase=0x9FC00000
+
+  ;Load T32 UEFI awareness
+  do &CommonTools/cmm/t32_uefi_menu.cmm &CwDir
+
+  do &CommonTools/InitOffsets.cmm
+  do &CommonTools/load_sec_sym.cmm &UefiBase &UefiBase+&SecLoadAddrOffset
+  do &CommonTools/sym.cmm &UefiBase &LoadAllSym
+
+  cd &CwDir
+enddo

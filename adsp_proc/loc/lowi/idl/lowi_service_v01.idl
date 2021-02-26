@@ -1,0 +1,1192 @@
+/******************************************************************************
+  @FILE  lowi_service_v01.idl
+
+  @BRIEF Location WLAN Interface Service (QMI_LOWI)
+
+  @DESCRIPTION
+  This specification documents Major Version 1 of the Qualcomm Messaging
+  Interface for Location WLAN Interface Service (QMI_LOWI). QMI_LOWI service
+  provides an interface to the clients on APSS and MPSS to request for WLAN scans
+  and WLAN events. The QMI_LOWI service runs on ADSP and interfaces with QMI_WLS service
+  to request for WLAN scans and events. QMI_LOWI supports multiple clients.
+
+  @COPYRIGHT Copyright (c) 2014-2016 Qualcomm Technologies, Inc. All Rights Reserved.
+  Qualcomm Technologies Proprietary and Confidential.
+******************************************************************************/
+
+/*=====================================================================
+$Header:  $
+$DateTime: $ 
+======================================================================*/
+
+include "common_v01.idl";
+
+revision 6;
+
+//=============================================================================
+/** @COMMAND        QMI_LOWI_GEN_RESP
+    @CMD_VERSION    1.0
+    @BRIEF          Generic response definition. This message is used to tell
+                    clients whether their message was accepted for further
+                    processing or rejected.
+    @USAGE          Production
+    @SECURITY_LEVEL Low Risk
+    @REQUIRED_ACTION Default
+*/
+//=============================================================================
+
+//-----------------------------------------------------------------------------
+//! @MSG      QMI_LOWI_GEN_RESP
+//! @TYPE     Response
+//! @SENDER   Service
+//-----------------------------------------------------------------------------
+
+message {
+  //! Result Code
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  mandatory qmi_response_type resp;
+
+} QmiLOWIGenResp;
+
+/** @ERROR
+    -QMI_ERR_NONE               No error in the request
+    -QMI_ERR_INTERNAL           Unexpected error occurred during processing
+    -QMI_ERR_MALFORMED_MSG      Message was not formulated correctly by the
+                                control point or the message was corrupted
+                                during transmission
+    -QMI_ERR_NO_MEMORY          Device could not allocate memory to formulate
+                                a response
+    -QMI_ERR_INVALID_HANDLE     Invalid client handle was received
+*/
+
+/** @DESCRIPTION
+  This is a generic response message returned to the client in response to a
+  request message.  All response messages are identical in format.
+  Each response indicates whether the request message was accepted for
+  further processing or was rejected (typically due to some sort of message
+  format or invalid argument error). The actual results of the processing
+  that is triggered by a valid request are returned asynchronously via an
+  indicator message. The indicator message indicates successful completion
+  or failure to complete the command.
+*/
+
+//*****************************************************************************
+
+//=============================================================================
+/** @COMMAND        QMI_LOWI_DISCOVERY
+    @CMD_VERSION    1.0
+    @BRIEF          Used by clients to trigger a WLAN scan to discover
+                    nearby access points.
+    @USAGE          Production
+    @SECURITY_LEVEL Medium Risk
+    @REQUIRED_ACTION Default
+*/
+//=============================================================================
+
+const LOWI_MAX_STRING_LENGTH = 255;
+
+//-----------------------------------------------------------------------------
+//! @MSG      QMI_LOWI_DISCOVERY_REQ
+//! @TYPE     Request
+//! @SENDER   Client
+//-----------------------------------------------------------------------------
+
+const LOWI_MAX_FREQ_LIST_SIZE = 20;
+/**< Maximum frequency allowed in discovery scan */
+
+const LOWI_MAX_AP_SSID_LIST_SIZE = 20;
+/**< Maximum size for the list of APs to scan */
+
+const LOWI_MAX_SSID_LEN = 32;
+/**< Maximum SSID length */
+
+enum {
+    LOWI_PASSIVE_SCAN = 0,
+    /**< Passive scan. Waits for beacons on every channel for a specific time. */
+    LOWI_ACTIVE_SCAN
+    /**< Active scan. Sends a probe on the channel and waits to receive a probe 
+         response on the channel. Time spent on each channel is shorter compared 
+         to a passive scan. */
+} eQmiLowiDiscoveryScanType;
+
+mask {
+  LOWI_TWO_POINT_FOUR_GHZ = 0x00000001,
+  /**< 2.4 GHz only. */
+  LOWI_FIVE_GHZ = 0x00000002
+  /**< 5 GHz only. */
+} maskQmiLowiDiscoveryRequestBand;
+
+enum {
+  LOWI_FORCED_FRESH,
+  /**< Request to perform a fresh scan. The request triggers a request
+       that is sent to the Wi-Fi driver for a fresh scan. */
+
+  LOWI_FRESH_WITH_THROTTLING,
+  /**< Request to perform a fresh scan with throttling. If the last fresh
+       scan results are relatively fresh, this request is serviced
+       from cache. The criteria to determine the scan freshness is: \n
+       current time < last scan time + threshold (defined in the configuration file). */
+  LOWI_CACHE_FALLBACK,
+  /**< Request to perform a fresh scan, if the scan results can not be provided
+       from cache. Request provides a fall back tolerance to return the results
+       from cache. If the results is cache are older than the fall back tolerance,
+       then a fresh scan request is triggered. */
+   LOWI_CACHE
+  /**< Request to return results from cache */
+} eQmiLowiDiscoveryRequestMode;
+
+
+struct {
+  boolean isSsidValid;
+  /**< Indicates whether the SSID is valid. */
+  uint8 ssid<LOWI_MAX_SSID_LEN>;
+  /**< SSID value. */
+} sQmiLowiSsid;
+
+message {
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Request ID
+  mandatory uint64                requestId;
+  /**< Opaque request ID. Passed back in the response indication. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Scan Type
+  optional eQmiLowiDiscoveryScanType     scanType;
+  /**< Passive scan or active scan. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Request Mode
+  optional eQmiLowiDiscoveryRequestMode  requestMode;
+  /**< Request mode. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! RF Band to Scan
+  optional maskQmiLowiDiscoveryRequestBand  band;
+  /**< RF band to scan. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Measurement Age Filter
+  optional uint32                        measAgeFilterSec;
+  /**< Measurement age filter in seconds. For a cache request, at the time of 
+       generating the response for the request, all measurements that are 
+       older than the current time (the filter age) are filtered out from the response. 
+       Thus a '0' age filter could potentially return no measurements from the cache.
+       For a fresh scan request, at the time of generating the response for the request, 
+       all measurements that are older than the request time to the WLAN driver (the 
+       filter age) are filtered out from the response.
+   */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Fallback Tolerance
+  optional uint32                        fallbackToleranceSec;
+  /**< Fallback tolerance in seconds. Only valid when eRequestMode is CACHE_FALLBACK.
+       At the time of evaluating this request, all requested channels should have the last measurement
+       timestamp equal to or greater than the current time (fallback tolerance). If not, the fallback
+       triggers a fresh scan. The client can provide 0 if they want to trigger a fresh scan as well.
+   */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Request Timeout
+  optional int32                         requestTimeoutSec;
+  /**< Request timeout in seconds. On expiry of this timeout, the request is dropped
+       if it has not already been processed. The value should be 0 if the timeout is not valid.
+   */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Channel Frequency
+  optional uint32 channelFreq <LOWI_MAX_FREQ_LIST_SIZE>;
+  /**< Dynamic array containing the frequencies to be scanned. The number of 
+       entries in the vector should not be more than MAX_CHAN_INFO_SIZE, since 
+       that is the maximum LOWI currently supports.
+   */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! SSID List
+  optional sQmiLowiSsid ssidList <LOWI_MAX_AP_SSID_LIST_SIZE>;
+    /**< \n List of access points' SSIDs for which to scan. If not specified, the scan is not
+         restricted to a set of APs. */
+
+} QmiLowiDiscoveryRequest;
+
+//-----------------------------------------------------------------------------
+//! @MSG      QMI_LOWI_DISCOVERY_IND
+//! @TYPE     Indication
+//! @SENDER   Service
+//-----------------------------------------------------------------------------
+
+const LOWI_AP_802_11_MC = 0x01;
+/**< Mask for rtt3_supported field to indicate if AP supports the
+ 802.11 MC / 2 sided RTT */
+const LOWI_HT_INFO_BIT_0 = 0x02;
+/**< Mask for rtt3_supported field to provide AP information for HT support */
+const LOWI_HT_INFO_BIT_1 = 0x04;
+/**< Mask for rtt3_supported field to provide AP information for HT support */
+
+const LOWI_MAX_AP_ALLOWED = 25;
+/**< Maximum number of APs allowed to be returned in a scan */
+
+const LOWI_MAX_MEASUREMENTS = 1;
+/**< Maximum number of measurements per AP */
+
+const LOWI_MAX_COUNTRY_CODE_LENGTH = 5;
+/**< Maximum length of the country code */
+
+enum {
+  LOWI_SCAN_STATUS_UNKNOWN = 0,
+  LOWI_SCAN_STATUS_SUCCESS,
+  /**< Measurements were obtained successfully from the WLAN driver.
+       Note that SUCCESS does not guarantee that there is at least one
+       measurement in this packet. It is possible to have zero measurements
+       and a SUCCESS if there are no APs in the vicinity. */
+  LOWI_SCAN_STATUS_BUSY,
+  /**< Indicates that the number of pending clients has reached the maximum. */
+  LOWI_SCAN_STATUS_DRIVER_ERROR,
+  /**< Unable to initiate the request to the driver. */
+  LOWI_SCAN_STATUS_DRIVER_TIMEOUT,
+  /**< Unable to get a response from the driver. */
+  LOWI_SCAN_STATUS_INTERNAL_ERROR,
+  /**< There is an internal error condition that causes 
+       LOWI to be unable to provide any measurements. */
+  LOWI_SCAN_STATUS_INVALID_REQ,
+  /**< Invalid request. */
+  LOWI_SCAN_STATUS_NOT_SUPPORTED,
+  /**< Request is not supported. */
+  LOWI_SCAN_STATUS_NO_WIFI
+  /**< Wi-Fi is not enabled. */
+} eQmiLowiScanStatus;
+
+enum
+{
+  LOWI_WLAN_SCAN_TYPE_UNKNOWN = 0,
+  LOWI_WLAN_SCAN_TYPE_PASSIVE,
+  LOWI_WLAN_SCAN_TYPE_ACTIVE
+} eQmiLowiScanTypeResponse;
+
+enum {
+  LOWI_NODE_TYPE_UNKNOWN = 0,
+  LOWI_ACCESS_POINT,
+  LOWI_PEER_DEVICE
+} eQmiLowiNodeType;
+
+struct {
+  boolean valid;
+  /**< Indicates whether the Mobility Service Advertisement Protocol (MSAP)
+       information is valid. */
+  uint8 protocolVersion;
+  /**< Protocol version. */
+  uint32        venueHash;
+  /**< Venue hash. */
+  uint8 serverIdx;
+  /**< Server index. */
+}sQmiLowiMsapInfo;
+
+
+struct {
+  int32         meas_age;
+  /**< Measurement age in milliseconds. A value of -1 means information is not available.
+   */
+
+  int16         rssi;
+  /**< Signal strength in 0.5 dBm steps. A signal strength of -10 is -5 in 0.5 dBm steps. */
+
+} sLOWIDiscoveryMeasurementInfo;
+
+struct {
+    int32 lo24;
+    /**< Lower three bytes of the MAC address. */
+    int32 hi24;
+    /**< Upper three bytes of the MAC address. */
+} sQmiLowiMacAddress;
+
+struct {
+  sQmiLowiMacAddress    bssid;
+  /**< BSSID of the Wi-Fi node. */
+
+  uint32          frequency;
+  /**< Frequency in MHz at which the node is detected. */
+
+  boolean            isSecure;
+  /**< Indicates whether the access point is secure. */
+
+  eQmiLowiNodeType       type;
+  /**< Type of Wi-Fi node. */
+
+  sQmiLowiSsid        ssid;
+  /**< SSID. */
+
+  sQmiLowiMsapInfo   msapInfo;
+  /**< MSAP information. Valid if not NULL. */
+
+  int8            cellPowerLimitdBm;
+  /**< Cell power limit in dBm. Only valid for discovery scan results,
+       if available. For ranging scan results, this will always be 0. */
+
+  uint32          transmitRate;
+  /**< Transmit rate of the node. 0 indicates the node is not available. */
+
+  uint8           rtt3_supported;
+  /**< Provides the RTT capabilities of the AP
+  BIT0: LOWI_AP_802_11_MC - Indicates if 2 sided RTT is supported
+  BIT1 & 2: LOWI_HT_INFO_BIT_0, LOWI_HT_INFO_BIT_1 provide the HT information
+  as follows
+  BIT2 - 0, BIT1 - 0: (SCN) No secondary channel is present
+  BIT2 - 0, BIT1 - 1: (SCA) Secondary channel is above the primary channel
+  BIT2 - 1, BIT1 - 0: Reserved
+  BIT2 - 1, BIT1 - 1: (SCB) Secondary channel is below the primary channel
+  */
+
+  uint64           tsf;
+  /**< Timestamp at which the beacon from the AP was last received. */
+
+  uint32           band_center_freq_1;
+  /**< Band center frequency 1 in MHz. */
+
+  uint32           band_center_freq_2;
+  /**< Band center frequency 2 in MHz. */
+
+  uint32           phy_mode;
+  /**< Phy Mode. */
+
+  uint32           tsf_delta;
+  /**< Delta between the Local TSF and TSF reported by AP in microseconds*/
+
+  sLOWIDiscoveryMeasurementInfo measurementsInfo <LOWI_MAX_MEASUREMENTS>;
+  /**< Dynamic array containing measurement information per Wi-Fi node.
+       The discovery scan will only have one measurement whereas the
+       the vector can contain information from multiple measurements for a ranging scan.
+   */
+} sLowiDiscoveryScanMeasurement;
+
+message {
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Request ID
+  mandatory uint64                requestId;
+  /**< Opaque request ID. Passed back in the response indication. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Scan Type
+  optional eQmiLowiScanTypeResponse  scanType;
+  /**< Type of measurement. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Scan Status
+  optional eQmiLowiScanStatus        scanStatus;
+  /**< Scan status.*/
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.5
+  //! Scan Measurement
+  optional sLowiDiscoveryScanMeasurement scanMeasurements <LOWI_MAX_AP_ALLOWED>;
+  /**< \n Dynamic array containing the scan measurements for each AP. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Scanned Frequency List
+  optional uint32 scannedFreqList <LOWI_MAX_FREQ_LIST_SIZE>;
+  /**< Contains the scanned frequency list corresponding to the scan results. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Country Code
+  optional uint8 countryCode<LOWI_MAX_COUNTRY_CODE_LENGTH>;
+  /**< Country code of the access point. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Last Indication
+  optional boolean isLast;
+  /**< Indicates whether this is the last indication of the series. TRUE if it is the last,
+   FALSE if there is more to follow. */
+
+  //! @VERSION_INTRODUCED 1.6
+  //! @VERSION 1.6
+  //! Connected Node Information
+  optional sQmiLowiMacAddress connectedNodeInfo;
+  /**< Information regarding the node with which the device is associated.
+   Only available when connected to a Wi-Fi node. */
+
+} QmiLowiDiscoveryResponseInd;
+
+/** @ERROR
+    -QMI_ERR_NONE               No error in the request
+    -QMI_ERR_INTERNAL           Unexpected error occurred during processing
+    -QMI_ERR_MALFORMED_MSG      Message was not formulated correctly by the
+                                control point or the message was corrupted
+                                during transmission
+    -QMI_ERR_NO_MEMORY          Device could not allocate memory to formulate
+                                a response
+    -QMI_ERR_INVALID_HANDLE     Invalid client handle was received
+*/
+
+/** @DESCRIPTION
+   Upon receiving the request, the service responds with an ACK response
+   to the clients. It then sends the scan request to the WLAN driver.
+
+   The command sends an indication with the scan results to the clients once
+   the results are available from WLAN driver. There can be multiple indications
+  for the same request based on the number of discovered APs.
+*/
+
+//*****************************************************************************
+
+//=============================================================================
+/** @COMMAND        QMI_LOWI_CAPABILITIES
+    @CMD_VERSION    1.0
+    @BRIEF          Used by clients to query the QMI LOWI capabilities.
+    @USAGE          Production
+    @SECURITY_LEVEL Medium Risk
+    @REQUIRED_ACTION Default
+*/
+//=============================================================================
+
+//-----------------------------------------------------------------------------
+//! @MSG      QMI_LOWI_CAPABILITIES_REQ
+//! @TYPE     Request
+//! @SENDER   Client
+//-----------------------------------------------------------------------------
+message {
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Request ID
+  mandatory uint64               requestId;
+  /**< Opaque request ID. Passed back in the response indication. */
+
+} QmiLowiCapabilitiesRequest;
+
+//-----------------------------------------------------------------------------
+//! @MSG      QMI_LOWI_CAPABILITIES_IND
+//! @TYPE     Indication
+//! @SENDER   Service
+//-----------------------------------------------------------------------------
+const LOWI_MAX_WLAN_STRING_LEN = 31;
+
+message {
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Request ID
+  mandatory uint64               requestId;
+  /**< Opaque request ID. Passed back in the response indication. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! LOWI LP Version Number
+  optional string lowi_lp_version<LOWI_MAX_STRING_LENGTH>;
+  /**< LOWI Low Power (LP) version number. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Ranging Scan Supported
+  optional boolean rangingScanSupported;
+  /**< TRUE if ranging scan is supported. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Active Scan Supported
+  optional boolean activeScanSupported;
+  /**< TRUE if active scan is supported. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Passive Scan Supported
+  optional boolean truePassiveScanSupported;
+  /**< TRUE if passive scan is supported. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Snoop Scan Supported
+  optional boolean snoopScanSupported;
+  /**< TRUE if snoop scan is supported. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! WLAN Events Supported
+  optional boolean wlanEventsSupported;
+  /**< TRUE if WLAN events are supported. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Chip OEM
+  optional string chipOEM<LOWI_MAX_WLAN_STRING_LEN>;
+  /**< NULL-terminated string containing the chip manufacturer. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Chip Name
+  optional string chipName<LOWI_MAX_WLAN_STRING_LEN>;
+  /**< WLAN chipset name. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! WLAN Chipset ID
+  optional uint32 wlan_chip_id;
+  /**< WLAN chipset ID. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Wi-Fi Driver Version
+  optional string wifiDriverVersion<LOWI_MAX_WLAN_STRING_LEN>;
+  /**< NULL-terminated string containing the Wi-Fi driver host version. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! FW Version
+  optional string fwVersion<LOWI_MAX_WLAN_STRING_LEN>;
+  /**< NULL-terminated string containing the firmware version. */
+
+  //! @VERSION_INTRODUCED 1.1
+  //! @VERSION 1.1
+  //! Batching supported
+  optional boolean batchingSupported;
+  /**< TRUE if batching is supported. */
+
+  //! @VERSION_INTRODUCED 1.1
+  //! @VERSION 1.1
+  //! Batching Max buffer
+  optional uint32 maxNumAPBatching;
+  /**< Max num of APs buffered for batching. */
+
+  //! @VERSION_INTRODUCED 1.3
+  //! @VERSION 1.3
+  //! BGScan supported
+  optional boolean bgScanSupported;
+  /**< TRUE if BGScan is supported. */
+
+  //! @VERSION_INTRODUCED 1.3
+  //! @VERSION 1.3
+  //! BGScan Max buffer Size
+  optional uint32 maxBGScanBufferSize;
+  /**< Max BGScan buffer size in bytes. */
+
+  //! @VERSION_INTRODUCED 1.3
+  //! @VERSION 1.3
+  //! BGScan Max AP Cache per scan 
+  optional uint32 maxBGScanAPCachePerScan;
+  /**< Max number of APs that can be stored in BGScan buffer per scan. */
+
+  //! @VERSION_INTRODUCED 1.3
+  //! @VERSION 1.3
+  //! BGScan Max reporting threshold
+  optional uint32 maxBGScanReportingThreshold;
+  /**< Max possible BGScan buffer threshold. */
+
+
+} QmiLowiCapabilitiesResponseInd;
+
+/** @ERROR
+    -QMI_ERR_NONE               No error in the request
+    -QMI_ERR_INTERNAL           Unexpected error occurred during processing
+    -QMI_ERR_MALFORMED_MSG      Message was not formulated correctly by the
+                                control point or the message was corrupted
+                                during transmission
+    -QMI_ERR_NO_MEMORY          Device could not allocate memory to formulate
+                                a response
+    -QMI_ERR_INVALID_HANDLE     Invalid client handle was received
+*/
+
+/** @DESCRIPTION
+  Upon receiving the capability request, the service responds with an
+  ACK response to the clients. The response indicates which type of scans
+  are supported and provides some details about the underlying WLAN chipset.
+
+  The command sends an indication with the capabilities to the
+  clients.*/
+
+//*****************************************************************************
+//=============================================================================
+/** @COMMAND        QMI_LOWI_WLAN_INTERFACE_EVENTS
+    @CMD_VERSION    1.0
+    @BRIEF          Used by clients to subscribe for WLAN events, such as
+                    Connect, Disconnect, and Handover.
+    @USAGE          Production
+    @SECURITY_LEVEL Medium Risk
+    @REQUIRED_ACTION Default
+*/
+//=============================================================================
+
+enum /* enum of wlan device mode types */
+{
+    LOWI_DEV_STA,
+    /**< WLAN device is in Station mode. */
+    LOWI_DEV_P2P_CLI,
+    /**< WLAN device is in P2P Client mode. */
+    LOWI_WLAN_DEV_ANY
+    /**< WLAN device is in any mode (used for subscription purposes). */
+} eQmiLowiWlanInterface;
+
+//-----------------------------------------------------------------------------
+//! @MSG      QMI_LOWI_WLAN_INTERFACE_EVENTS_REQ
+//! @TYPE     Request
+//! @SENDER   Client
+//-----------------------------------------------------------------------------
+const LOWI_MAX_INTERFACE_LEN = 32;
+/**< Maximum interface length */
+
+message {
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Request ID
+  mandatory uint64               requestId;
+  /**< Opaque request ID. Passed back in the response indication. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Subscribe/Unsubscribe
+  mandatory boolean subscribe;
+  /**< 1 to subscribe, 0 to unsubscribe. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Interface
+  optional eQmiLowiWlanInterface interface;
+  /**< Interface for which the subscription is needed (P2P, Wi-Fi, etc.). */
+
+} QmiLowiWlanInterfaceEventsSubscriptionRequest;
+
+//-----------------------------------------------------------------------------
+//! @MSG      QMI_LOWI_WLAN_INTERFACE_EVENTS_IND
+//! @TYPE     Indication
+//! @SENDER   Service
+//-----------------------------------------------------------------------------
+
+mask {
+  LOWI_WLAN_ON_OFF_EVENT = 0x00000001,
+  LOWI_WLAN_CONNECTION_EVENT = 0x00000002,
+  LOWI_WLAN_HANDOFF_EVENT = 0x00000004
+} maskWlanInterfaceEventType;
+
+struct {
+
+  sQmiLowiMacAddress    bssid;
+  /**< BSSID of the Wi-Fi node. */
+
+  uint32          frequency;
+  /**< Frequency in MHz at which the node is detected. */
+
+  sQmiLowiSsid        ssid;
+  /**< SSID of the Wi-Fi node */
+
+  int16        rssi;
+  /**< Signal strength in 0.5 dBm steps, e.g., the signal strength of -10 dBm is -20 in 0.5 dBm steps. */
+
+} sLowiNodeInfo;
+
+
+message {
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Request ID
+  mandatory uint64               requestId;
+  /**< Opaque request ID. Passed back in the response indication. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Event Type
+  optional maskWlanInterfaceEventType event;
+  /**< Indicates the event type. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! WLAN On
+  optional boolean wlan_on;
+  /**< Status of WLAN. 0 indicates off and 1 indicates on. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! WLAN Connection Status
+  optional boolean connected;
+  /**< Status of the WLAN connection. 0 indicates disconnected and 1 indicates connected. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! WLAN Handoff Status
+  optional boolean handoff;
+  /**< Status of a WLAN handoff. 0 indicates no handoff and 1 indicates handoff. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Connected Node Information
+  optional sLowiNodeInfo connectedNodeInfo;
+  /**< Information regarding the node with which the device is associated.
+   Only available when connected to a Wi-Fi node. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Handoff Node Information
+  optional sLowiNodeInfo handoffNodeInfo;
+  /**< \n Information regarding the node to which the WLAN handoff happened.
+   Only available when handoff happened to a Wi-Fi node. */
+
+} QmiLowiWlanInterfaceEventsResponseInd;
+
+/** @ERROR
+    -QMI_ERR_NONE               No error in the request
+    -QMI_ERR_INTERNAL           Unexpected error occurred during processing
+    -QMI_ERR_MALFORMED_MSG      Message was not formulated correctly by the
+                                control point or the message was corrupted
+                                during transmission
+    -QMI_ERR_NO_MEMORY          Device could not allocate memory to formulate
+                                a response
+    -QMI_ERR_INVALID_HANDLE     Invalid client handle was received
+*/
+
+/** @DESCRIPTION
+  This command informs the service about the asynchronous events that the client
+  is interested in receiving. A client receives the events for which it
+  has registered through the indication messages (QMI_LOWI_WLAN_EVENT_*_IND).
+*/
+
+//*****************************************************************************
+//=============================================================================
+/** @COMMAND        QMI_LOWI_WLAN_INTERFACE_EVENT_TRIGGER
+    @CMD_VERSION    1.0
+    @BRIEF          Used by clients to query the current WLAN event state, e.g.,
+                    Connect, Disconnect, and Handover events.
+    @USAGE          Production
+    @SECURITY_LEVEL Low Risk
+    @REQUIRED_ACTION Default
+*/
+//=============================================================================
+
+//-----------------------------------------------------------------------------
+//! @MSG      QMI_LOWI_WLAN_INTERFACE_EVENT_TRIGGER_REQ
+//! @TYPE     Request
+//! @SENDER   Client
+//-----------------------------------------------------------------------------
+message {
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Base Request
+  mandatory uint64               requestId;
+  /**< Opaque request ID. Passed back in the response indication. */
+
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Interface
+  optional eQmiLowiWlanInterface interface;
+  /**< Interface for which the subscription is needed (P2P, Wi-Fi, etc.). */
+
+} QmiLowiWlanInterfaceEventTriggerRequest;
+
+/** @DESCRIPTION
+  This command informs the service about the asynchronous events that the client
+  is interested in receiving. A client receives the events for which it
+  has registered through the indication messages (QMI_LOWI_WLAN_EVENT_*_IND).
+*/
+
+//*****************************************************************************
+
+//=============================================================================
+/** @COMMAND        QMI_LOWI_SNOOP_SCAN_SUBSCRIPTION
+    @CMD_VERSION    1.0
+    @BRIEF          Allows clients to subscribe for async discovery scans.
+    @USAGE          Production
+    @SECURITY_LEVEL Low Risk
+    @REQUIRED_ACTION Default
+*/
+//=============================================================================
+
+//-----------------------------------------------------------------------------
+//! @MSG      QMI_LOWI_SNOOP_SCAN_SUBSCRIPTION_REQ
+//! @TYPE     Request
+//! @SENDER   Client
+//-----------------------------------------------------------------------------
+message {
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Base Request
+  mandatory uint64               requestId;
+  /**< Opaque request ID. Passed back in the response indication. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Subscribe/Unsubscribe
+  mandatory boolean subscribe;
+  /**< 1 to subscribe, 0 to unsubscribe. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Send Scans Not Sent to APSS.
+  mandatory boolean sendScansNotSentToApss;
+  /**< 1 to only send scans not sent to APSS, 0 to send all scans. */
+
+  //! @VERSION_INTRODUCED 1.0
+  //! @VERSION 1.0
+  //! Request Expiry Time
+  mandatory uint32 request_timer_sec;
+  /**< Request expires after the request timer runs out. */
+
+} QmiLowiSnoopScanSubscriptionRequest;
+
+/** @DESCRIPTION
+  This command informs the service about the asynchronous events that the client
+  is interested in receiving. This enables clients to listen to scan results for
+  scans triggered by either the firmware or by some other entity.
+
+  A client receives the events for which it
+  has registered through the indication messages (QMI_LOWI_SNOOP_*_IND).
+*/
+
+//*****************************************************************************
+
+//=============================================================================
+/** @COMMAND        QMI_LOWI_BATCHING_SUBSCRIPTION
+    @CMD_VERSION    1.1
+    @BRIEF          Allows clients to subscribe for Batching of APs.
+    @USAGE          Production
+    @SECURITY_LEVEL Low Risk
+    @REQUIRED_ACTION Default
+*/
+//=============================================================================
+
+//-----------------------------------------------------------------------------
+//! @MSG      QMI_LOWI_BATCHING_SUBSCRIPTION_REQ
+//! @TYPE     Request
+//! @SENDER   Client
+//-----------------------------------------------------------------------------
+message {
+  //! @VERSION_INTRODUCED 1.1
+  //! @VERSION 1.1
+  //! Base Request
+  mandatory uint64               requestId;
+  /**< Opaque request ID. Passed back in the response indication. */
+
+  //! @VERSION_INTRODUCED 1.1
+  //! @VERSION 1.1
+  //! Subscribe/Unsubscribe
+  mandatory boolean subscribe;
+  /**< 1 to subscribe, 0 to unsubscribe. */
+
+  //! @VERSION_INTRODUCED 1.1
+  //! @VERSION 1.1
+  //! Percentage buffer full threshold.
+  optional uint8 bufferFullThreshold;
+  /**< Percentage buffer full threshold which indicates to the service,
+   how much the buffer needs to be filled before sending the buffer full
+   indication. Valid values are 50 - 90 percent. If the threshold is not
+   provided in the request, threshold from last request is used, if available.
+   Otherwise uses default as 90 percent. */
+
+  //! @VERSION_INTRODUCED 1.3
+  //! @VERSION 1.3
+  //! Max APs per scan
+  optional uint32 maxApsPerScan;
+  /**< Max APs to be accumulated in the BGScan buffer for each scan.
+   Criteria for storage is highest RSSI. Only valid for BGScan request*/
+
+  //! @VERSION_INTRODUCED 1.4
+  //! @VERSION 1.4
+  //! Number of scans threshold.
+  optional uint32 numScanThreshold;
+  /**< Number of scans after which the client should receive a notification.
+   If the threshold is not provided in the request, client does not get any notification.
+   */
+
+
+} QmiLowiBatchingSubscriptionRequest;
+
+//-----------------------------------------------------------------------------
+//! @MSG      QMI_LOWI_BATCHING_SUBSCRIPTION_IND
+//! @TYPE     Indication
+//! @SENDER   Service
+//-----------------------------------------------------------------------------
+message {
+  //! @VERSION_INTRODUCED 1.1
+  //! @VERSION 1.1
+  //! Request ID
+  mandatory uint64                requestId;
+  /**< Opaque request ID. Passed back in the response indication. */
+
+  //! @VERSION_INTRODUCED 1.1
+  //! @VERSION 1.1
+  //! Buffer full
+  optional boolean bufferFull;
+  /**< Buffer full indication. Buffer is full to the threshold provided in request.
+  If the threshold was not provided, then this indication is sent when buffer is 90% full.*/
+
+  //! @VERSION_INTRODUCED 1.1
+  //! @VERSION 1.1
+  //! NUM of APs
+  optional uint32 numAPAvailable;
+  /**< Provides the number of available APs in the buffer.*/
+
+  //! @VERSION_INTRODUCED 1.4
+  //! @VERSION 1.4
+  //! Scan Threshold reached
+  optional boolean scanThresholdReached;
+  /**< Scan threshold reached indication. Number of scans requested are completed.
+  If the threshold was not provided, then this indication is never sent.*/
+
+  //! @VERSION_INTRODUCED 1.4
+  //! @VERSION 1.4
+  //! NUM of Scan cycles
+  optional uint32 numScanCyclesAvailable;
+  /**< Provides the number of scan cycles for which the data is available in BGScan buffer.*/
+
+} QmiLowiBatchingSubscriptionInd;
+
+/** @DESCRIPTION
+  This command informs the service that client is interested in batching of snoop
+  scan results. This will trigger the snooping, if not already on and start catching
+  the unique APs seen. Once the buffer is almost full, an indication will be sent to
+  clients to come and fetch the batch results.
+*/
+
+//*****************************************************************************
+
+//=============================================================================
+/** @COMMAND        QMI_LOWI_GET_BATCHING_RESULTS
+    @CMD_VERSION    1.1
+    @BRIEF          Allows clients to get the results of Batching.
+    @USAGE          Production
+    @SECURITY_LEVEL Low Risk
+    @REQUIRED_ACTION Default
+*/
+//=============================================================================
+
+//-----------------------------------------------------------------------------
+//! @MSG      QMI_LOWI_GET_BATCHING_RESULTS_REQ
+//! @TYPE     Request
+//! @SENDER   Client
+//-----------------------------------------------------------------------------
+const LOWI_MAX_BATCHED_AP_PER_IND = 500;
+/**< Maximum number of APs allowed to be returned in a scan */
+
+message {
+  //! @VERSION_INTRODUCED 1.1
+  //! @VERSION 1.1
+  //! Base Request
+  mandatory uint64               requestId;
+  /**< Opaque request ID. Passed back in the response indication. */
+
+  //! @VERSION_INTRODUCED 1.1
+  //! @VERSION 1.1
+  //! Flush buffer indication
+  optional boolean flushBuffer;
+  /**< Flag indicating whether to flush the results buffer after retrieving
+  the results. 1 to flush the buffer, 0 to let the buffer continue
+  overwriting. Default is 0 */
+
+  //! @VERSION_INTRODUCED 1.1
+  //! @VERSION 1.1
+  //! Max results to retrieve.
+  optional uint32 maxResultsToRetrieve;
+  /**< Maximum number of batched APs to retrieve*/
+
+} QmiLowiGetBatchingResultsRequest;
+
+//-----------------------------------------------------------------------------
+//! @MSG      QMI_LOWI_GET_BATCHING_RESULTS_IND
+//! @TYPE     Indication
+//! @SENDER   Service
+//-----------------------------------------------------------------------------
+message {
+  //! @VERSION_INTRODUCED 1.1
+  //! @VERSION 1.1
+  //! Request ID
+  mandatory uint64                requestId;
+  /**< Opaque request ID. Passed back in the response indication. */
+
+  //! @VERSION_INTRODUCED 1.1
+  //! @VERSION 1.1
+  //! Batched APs
+  optional sQmiLowiMacAddress batchedAPs <LOWI_MAX_BATCHED_AP_PER_IND>;
+  /**< \n Dynamic array containing the batched APs. */
+
+  //! @VERSION_INTRODUCED 1.1
+  //! @VERSION 1.1
+  //! Batched APs Age
+  optional uint32 batchedAPAge <LOWI_MAX_BATCHED_AP_PER_IND>;
+  /**< \n Dynamic array containing the batched APs age cooresponding to the APs
+  in the batched APs. */
+
+  //! @VERSION_INTRODUCED 1.1
+  //! @VERSION 1.1
+  //! Last Indication
+  optional boolean isLast;
+  /**< Indicates whether this is the last indication of the series. TRUE if it is the last,
+   FALSE if there is more to follow. */
+
+  //! @VERSION_INTRODUCED 1.6
+  //! @VERSION 1.6
+  //! Batched APs Age
+  optional sQmiLowiSsid batchedAPSSID <LOWI_MAX_BATCHED_AP_PER_IND>;
+  /**< \n Dynamic array containing the batched APs SSID cooresponding to the APs
+  in the batched APs. */
+
+} QmiLowiGetBatchingResultsInd;
+
+/** @DESCRIPTION
+  This command informs the service that client is interested in getting the batching
+  results. Service will provide the batched results to clients and flush the buffer
+  based on the request.*/
+//=============================================================================
+
+//*****************************************************************************
+//=============================================================================
+/** @COMMAND        QMI_LOWI_BGSCAN_BATCHING_SUBSCRIPTION
+    @CMD_VERSION    1.3
+    @BRIEF          Allows clients to subscribe for BGScan Batching of APs.
+    @USAGE          Production
+    @SECURITY_LEVEL Low Risk
+    @REQUIRED_ACTION Default
+*/
+//=============================================================================
+
+//*****************************************************************************
+
+//=============================================================================
+/** @COMMAND        QMI_LOWI_GET_BGSCAN_BATCHING_RESULTS
+    @CMD_VERSION    1.3
+    @BRIEF          Allows clients to get the results of BGScan Batching.
+    @USAGE          Production
+    @SECURITY_LEVEL Low Risk
+    @REQUIRED_ACTION Default
+*/
+//=============================================================================
+
+const LOWI_MAX_MEASUREMENTS_BGSCAN = 150;
+/**< Maximum number of measurements per AP */
+
+const LOWI_MAX_AP_ALLOWED_BGSCAN = 25;
+/**< Maximum number of APs allowed to be returned in a scan */
+
+
+struct {
+  int32         meas_age;
+  /**< Measurement age in milliseconds. A value of -1 means information is not available.
+   */
+
+  int16         rssi;
+  /**< Signal strength in 0.5 dBm steps. A signal strength of -10 is -5 in 0.5 dBm steps. */
+
+  int32         scan_id;
+  /**< Unique identifier to indicate the scan cycle in which this measurement was seen. */
+
+  int32         flags;
+  /**< A bitmask with additional information about the scan i.e. If the scan was interrupted */
+
+} sLowiBGScanMeasurementInfo;
+
+
+struct {
+  sQmiLowiMacAddress    bssid;
+  /**< BSSID of the Wi-Fi node. */
+
+  uint32          frequency;
+  /**< Frequency in MHz at which the node is detected. */
+
+  sQmiLowiSsid        ssid;
+  /**< SSID. */
+
+  sLowiBGScanMeasurementInfo measurementsInfo <LOWI_MAX_MEASUREMENTS_BGSCAN>;
+  /**< Dynamic array containing measurement information per Wi-Fi node.*/
+
+  boolean isLast;
+  /**< Indicates whether this is the last indication of the measurements for this AP.
+   TRUE if it is the last, FALSE if there are more to follow. */
+
+} sLowiBGScanMeasurement;
+
+//-----------------------------------------------------------------------------
+//! @MSG      QMI_LOWI_GET_BGSCAN_BATCHING_RESULTS_IND
+//! @TYPE     Indication
+//! @SENDER   Service
+//-----------------------------------------------------------------------------
+message {
+  //! @VERSION_INTRODUCED 1.3
+  //! @VERSION 1.3
+  //! Request ID
+  mandatory uint64                requestId;
+  /**< Opaque request ID. Passed back in the response indication. */
+
+  //! @VERSION_INTRODUCED 1.3
+  //! @VERSION 1.3
+  //! Scan Measurement for all APs
+  optional sLowiBGScanMeasurement scanMeasurements <LOWI_MAX_AP_ALLOWED_BGSCAN>;
+  /**< Dynamic array containing the scan measurements for each AP. */
+
+  //! @VERSION_INTRODUCED 1.3
+  //! @VERSION 1.3
+  //! Last Indication
+  optional boolean isLast;
+  /**< Indicates whether this is the last indication of the series. TRUE if it is the last,
+   FALSE if there is more to follow. */
+
+} QmiLowiGetBGScanBatchingResultsInd;
+
+/** @DESCRIPTION
+  This command informs the service that client is interested in getting the batching
+  results for BGScan. Service will provide the batched results to clients and flush the
+  buffer based on the request.*/
+//=============================================================================
+
+//=============================================================================
+// Service definition
+//=============================================================================
+service lowi
+{
+  //! @ID QMI_LOWI_DISCOVERY
+  QmiLowiDiscoveryRequest                      QMI_LOWI_DISCOVERY_REQ,
+  QmiLOWIGenResp                               QMI_LOWI_DISCOVERY_RESP,
+  QmiLowiDiscoveryResponseInd                  QMI_LOWI_DISCOVERY_IND = 0x20;
+
+  //! @ID QMI_LOWI_CAPABILITIES
+  QmiLowiCapabilitiesRequest                   QMI_LOWI_CAPABILITIES_REQ,
+  QmiLOWIGenResp                               QMI_LOWI_CAPABILITIES_RESP,
+  QmiLowiCapabilitiesResponseInd               QMI_LOWI_CAPABILITIES_IND;
+
+  //! @ID QMI_LOWI_WLAN_INTERFACE_EVENTS
+  QmiLowiWlanInterfaceEventsSubscriptionRequest QMI_LOWI_WLAN_INTERFACE_EVENTS_REQ,
+  QmiLOWIGenResp                               QMI_LOWI_WLAN_INTERFACE_EVENTS_RESP,
+  QmiLowiWlanInterfaceEventsResponseInd        QMI_LOWI_WLAN_INTERFACE_EVENTS_IND;
+
+  //! @ID QMI_LOWI_WLAN_INTERFACE_EVENT_TRIGGER
+  QmiLowiWlanInterfaceEventTriggerRequest      QMI_LOWI_WLAN_INTERFACE_EVENT_TRIGGER_REQ,
+  QmiLOWIGenResp                               QMI_LOWI_WLAN_INTERFACE_EVENT_TRIGGER_RESP,
+  QmiLowiWlanInterfaceEventsResponseInd        QMI_LOWI_WLAN_INTERFACE_EVENT_TRIGGER_IND;
+
+  //! @ID QMI_LOWI_SNOOP_SCAN_SUBSCRIPTION
+  QmiLowiSnoopScanSubscriptionRequest          QMI_LOWI_SNOOP_SCAN_SUBSCRIPTION_REQ,
+  QmiLOWIGenResp                               QMI_LOWI_SNOOP_SCAN_SUBSCRIPTION_RESP,
+  QmiLowiDiscoveryResponseInd                  QMI_LOWI_SNOOP_SCAN_SUBSCRIPTION_IND;
+
+  //! @ID QMI_LOWI_BATCHING_SUBSCRIPTION
+  QmiLowiBatchingSubscriptionRequest           QMI_LOWI_BATCHING_SUBSCRIPTION_REQ,
+  QmiLOWIGenResp                               QMI_LOWI_BATCHING_SUBSCRIPTION_RESP,
+  QmiLowiBatchingSubscriptionInd               QMI_LOWI_BATCHING_SUBSCRIPTION_IND;
+
+  //! @ID QMI_LOWI_GET_BATCHING_RESULTS
+  QmiLowiGetBatchingResultsRequest             QMI_LOWI_GET_BATCHING_RESULTS_REQ,
+  QmiLOWIGenResp                               QMI_LOWI_GET_BATCHING_RESULTS_RESP,
+  QmiLowiGetBatchingResultsInd                 QMI_LOWI_GET_BATCHING_RESULTS_IND;
+
+  //! @ID QMI_LOWI_BGSCAN_BATCHING_SUBSCRIPTION
+  QmiLowiBatchingSubscriptionRequest           QMI_LOWI_BGSCAN_BATCHING_SUBSCRIPTION_REQ,
+  QmiLOWIGenResp                               QMI_LOWI_BGSCAN_BATCHING_SUBSCRIPTION_RESP,
+  QmiLowiBatchingSubscriptionInd               QMI_LOWI_BGSCAN_BATCHING_SUBSCRIPTION_IND;
+
+  //! @ID QMI_LOWI_GET_BGSCAN_BATCHING_RESULTS
+  QmiLowiGetBatchingResultsRequest             QMI_LOWI_GET_BGSCAN_BATCHING_RESULTS_REQ,
+  QmiLOWIGenResp                               QMI_LOWI_GET_BGSCAN_BATCHING_RESULTS_RESP,
+  QmiLowiGetBGScanBatchingResultsInd            QMI_LOWI_GET_BGSCAN_BATCHING_RESULTS_IND;
+
+} = 0x38;
+
+//============================================================================
+// End of Module
+//============================================================================

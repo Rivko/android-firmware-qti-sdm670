@@ -1,0 +1,142 @@
+;****************************************************************************
+;**         setuphwio.cmm
+;**
+;**         This script sets-up the Trace32 environment variables to allow
+;**         invoking the HWIO scripts and menus.
+;**         It is intended to be executed from either mARM or aARM.
+;**
+;****************************************************************************
+;**
+;**                        EDIT HISTORY FOR MODULE
+;**
+;**  $Header: //components/rel/core.qdsp6/2.1/systemdrivers/hwio/scripts/setuphwio.cmm#1 $
+;**
+;** when       who     what, where, why
+;** --------   ---     ------------------------------------------------------
+;** 07/01/09   gfr     Support for having scripts all in one directory.
+;** 11/20/08   gfr     Support for core/systemdrivers/hw directory.
+;** 11/11/08   gfr     Support for 7627 and Roc 2.0.
+;** 08/21/08   gfr     Use a file dialog since directory does not work on
+;**                    network drives (T32 bug).
+;** 08/20/08   gfr     Added drivers/hw/t32 to the path.
+;** 07/08/08   gfr     Support for 8650
+;** 06/12/08   gfr     Support for multi-target HWIO.
+;** 02/06/08   jdt     Added HWIO menu
+;** 11/08/07   gfr     Created
+;****************************************************************************
+
+;****************************************************************************
+; Declare variables
+;****************************************************************************
+
+GLOBAL &hwio_phys_script
+GLOBAL &hwio_virt_script
+GLOBAL &hwio_menu
+LOCAL &HWIORoot
+LOCAL &HWIODir
+LOCAL &HWIOMSM
+LOCAL &scriptdir
+
+;****************************************************************************
+; Parameters: chipset id
+;****************************************************************************
+
+entry &HWIOMSM
+
+
+;****************************************************************************
+; Set script names
+;****************************************************************************
+
+&hwio_phys_script="hwio.cmm"
+&hwio_virt_script="hwiovirt.cmm"
+
+
+;****************************************************************************
+; Get the hw root directory
+;****************************************************************************
+
+&scriptdir=os.ppd();
+
+if os.file("&scriptdir/&hwio_phys_script")
+(
+  &HWIODir="&scriptdir"
+  goto FOUNDDIR
+)
+else if os.dir("../../core/systemdrivers/hwio/scripts")
+(
+  &HWIORoot="../../core/systemdrivers/hwio/scripts"
+)
+else
+(
+  print "Could not find HW base directory."
+  &HWIORoot=""
+)
+
+
+;****************************************************************************
+; Determine the MSM id
+;****************************************************************************
+
+
+;****************************************************************************
+; Set the root of the chipset HWIO
+;****************************************************************************
+
+&HWIODir="&HWIORoot/&HWIOMSM"
+
+
+;****************************************************************************
+; Query user for right path if necessary
+;****************************************************************************
+
+while !os.file("&HWIODir/&hwio_phys_script")
+(
+  print "Select HWIO script (&hwio_phys_script): "
+  dialog.file &HWIORoot/*.cmm
+  entry &HWIODir
+  &HWIODir=string.cut("&HWIODir", -(string.len("&hwio_phys_script")+1))
+
+  if ("&HWIODir"=="")
+  (
+    print "Script &hwio_phys_script not selected."
+    enddo
+  )
+
+  if !os.file("&HWIODir/&hwio_phys_script")
+  (
+    print "Script &hwio_phys_script not found"
+  )
+)
+
+FOUNDDIR:
+
+print "HWIO script root: &HWIODir"
+
+
+;****************************************************************************
+; Add HWIO paths
+;****************************************************************************
+
+PATH + "&HWIORoot/common/t32"
+PATH + &HWIODir
+
+
+;****************************************************************************
+; Load the HWIO menu if possible
+;****************************************************************************
+
+if os.file("&HWIODir/hwioregp.men")
+(
+  &hwio_menu="&HWIODir/hwioregp.men"
+)
+else if os.file("&HWIODir/hwioreg.men")
+(
+  &hwio_menu="&HWIODir/hwioreg.men"
+)
+else
+(
+  print "Could not find HWIO menu file, menu will not be loaded."
+)
+
+

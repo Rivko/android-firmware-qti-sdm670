@@ -1,0 +1,42 @@
+/************************************************
+ * File: START MAIN PATH BT HCI.DH
+ * QCA Bluetooth Firmware Logging Parser.  
+ * 
+ * Copyright (c) 2015, 2017 Qualcomm Atheros, Inc.
+ * All Rights Reserved. 
+ * Qualcomm Atheros Confidential and Proprietary.
+************************************************/
+
+/* Init a Traversal Variable */
+FIELD QCA_InitTraversalOverride  (Fixed 0) RETRIEVE (StoreInteger 0) (Hex) SUPPRESS_DETAIL Store sQca_PacketTraversal
+
+/* Retrieve HCI Packet Type */
+FIELD QCA_Retrieve_HciType       (Fixed 0) RETRIEVE (IntraframeField Hci) (Hex) SUPPRESS_DETAIL STORE sQca_HciType
+
+/* Prefetch data and Check for Binary Log Pattern */
+GROUP QCA_PrefetchHandle_BinaryLog if(FieldIs equalto 0x02 sQca_HciType)
+{
+	FIELD fQca_PrefetchHandle         (Fixed 2) (Hex) SUPPRESS_DETAIL  NO_MOVE
+	
+	/* Here check for the ACL packet first 2 bytes for 0x2edc and set the packet type as 0xf0 for further parsing */
+	GROUP gQca_OverrideDecode if(FieldIs equalto 0x2edc fQca_PrefetchHandle)
+	{
+		FIELD fQca_SetPackeType_BinaryLog (Fixed 0) RETRIEVE (StoreInteger 0xf0) also (StoreIntraframeField HCI) (Hex) SUPPRESS_DETAIL
+	}
+}
+
+/* Prefetch data and Check for Legacy Log Pattern */
+GROUP QCA_PrefetchHandle_LegacyLog if(FieldIs equalto 0x04 sQca_HciType)
+{
+	FIELD fQca_HCI_EventCode 		(Fixed 1) 	(Hex) 	SUPPRESS_DETAIL 	NO_MOVE
+	GROUP gQca_HCI_EventData 	if(FieldIs equalto 0xFF fQca_HCI_EventCode)
+	{
+		FIELD fQca_HCI_EventLogCode 	(Fixed 3) RETRIEVE (ShiftRight 16 )  	(Hex)  	SUPPRESS_DETAIL 	NO_MOVE
+		
+		GROUP gQca_HCI_EventLogData if(FieldIs equalto 0x01 fQca_HCI_EventLogCode)
+		{
+			FIELD fQca_SetPackeType_LegacyLog (Fixed 0) RETRIEVE (StoreInteger 0xf1) also (StoreIntraframeField HCI) (Hex) SUPPRESS_DETAIL
+		}
+	}
+}
+

@@ -1,0 +1,58 @@
+#===============================================================================
+#
+# PDC driver
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+#   Copyright (c) 2016-2017 Qualcomm Technologies, Inc. (QTI).
+#   All Rights Reserved.
+#   Qualcomm Confidential and Proprietary.
+#   Export of this technology or software is regulated by the U.S. Government.
+#   Diversion contrary to U.S. law prohibited.
+#-------------------------------------------------------------------------------
+#  $Header: //components/rel/core.qdsp6/2.1/power/pdc/build/pdc.api#2 $
+#  $DateTime: 2017/09/13 08:52:52 $
+#===============================================================================
+import os
+Import('env')
+
+# Target based defintions
+if env['POWER_SUBSYSTEM'].lower() == 'slpi':
+  env.Append(CPPDEFINES = ['PDC_IMAGE_SLPI'])
+
+elif env['POWER_SUBSYSTEM'].lower() == 'adsp':
+  env.Append(CPPDEFINES = ['PDC_IMAGE_ADSP'])
+
+elif env['POWER_SUBSYSTEM'].lower() == 'cdsp':
+  env.Append(CPPDEFINES = ['PDC_IMAGE_CDSP'])
+
+elif env['POWER_SUBSYSTEM'].lower() == 'mss':
+  env.Append(CPPDEFINES = ['PDC_IMAGE_MSS'])
+
+else:
+  env.PrintError("PDC unsupported subsystem")
+  exit (1)
+  
+#-------------------------------------------------------------------------------
+# Target Build Options
+#-------------------------------------------------------------------------------
+if os.path.exists(os.path.join(env['BUILD_ROOT'], 'core/power/pdc/hwio/inc', env['MSM_ID'])):
+    env.Replace(PDC_MSM = env['MSM_ID'])
+else:
+    env.Replace(PDC_MSM = env['PWR_TARGET_DFLT'])
+
+#-------------------------------------------------------------------------------
+# Global PDC include paths
+#-------------------------------------------------------------------------------
+pdc_restricted_apis = [
+  '${INC_ROOT}/core/power/pdc/hwio/inc',
+  '${INC_ROOT}/core/power/pdc/hwio/inc/' + env['PDC_MSM'],
+]
+
+env.PublishRestrictedApi('POWER_PDC', pdc_restricted_apis)
+
+#-------------------------------------------------------------------------------
+# Load API units
+#-------------------------------------------------------------------------------
+env.LoadAPIUnits()

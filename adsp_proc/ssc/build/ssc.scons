@@ -1,0 +1,390 @@
+#===============================================================================
+#
+# Sensors (SSC) AU
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2016-2020 by Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Id: //components/rel/ssc.slpi/3.2/build/ssc.scons#17 $
+#  $DateTime: 2020/12/15 21:50:02 $
+#  $Change: 27796238 $
+#
+#===============================================================================
+Import('env')
+import json
+import subprocess
+import os, inspect
+import platform
+
+#-------------------------------------------------------------------------------
+# Form list of .proto files for all Sensors
+#-------------------------------------------------------------------------------
+def AddSensorPB(self, env, file_list):
+  src_files = []
+  for file in file_list:
+    try:
+      me = inspect.getfile(inspect.currentframe())
+      my_root = os.path.dirname(os.path.dirname(me))
+      nanopb_path = os.path.join(my_root, "utils", "nanopb", "pb")
+      sns_sensors_path = os.path.join(my_root, "sensors", "pb")
+
+      if "Windows" in platform.system() or "CYGWIN" in platform.system():
+        protoc_path = os.path.join(my_root, "tools", "nanopb", "generator-win")
+        protoc = os.path.join(protoc_path, "protoc.exe")
+        protoc_nano = os.path.join(protoc_path, "protoc-gen-nanopb.exe")
+      else:
+        protoc_path = os.path.join(my_root, "tools", "nanopb", "generator")
+        protoc = os.path.join(protoc_path, "protoc")
+        protoc_nano = os.path.join(protoc_path, "protoc-gen-nanopb")
+
+      pbout_dir = os.path.join(my_root, "inc", "pb")
+      file_path, file_name = os.path.split(file)
+      print "Compiling " + file_name + " with protoc"
+
+      protoc_cmd = [protoc, "--plugin=" + protoc_nano, "--nanopb_out=" + pbout_dir,
+        "--proto_path=" + file_path, "--proto_path=" + nanopb_path,
+        "--proto_path=" + sns_sensors_path, file]
+
+      cmd = ' '.join(protoc_cmd)
+
+      print cmd
+
+      subprocess.check_output(protoc_cmd)
+
+      src_name = file_name.replace(".proto", ".pb.c")
+      src_files.append(os.path.join(pbout_dir, src_name))
+    except:
+      if 'SENSORS_DD_DEV_FLAG' not in env:
+        env.PrintError("NanoPB Compilation failed: " + file)
+        raise
+        #raise Exception()
+  return src_files
+
+#-------------------------------------------------------------------------------
+# Check if SSC has to be built
+#-------------------------------------------------------------------------------
+ssc_build_tags = [
+   # SSC as the USER PD on SLPI processor
+   'SSC_SLPI_USER',
+
+   #SSC as part of root PD on MDSP processor
+   'MODEM_MODEM',
+
+   # SSC as the USER PD on ADSP processor
+   'SSC_ADSP_USER',
+
+   # SSC simulation
+   'SSC_SIM',
+
+   # Add new targets here
+   # Note:
+   #   Compose Build Tag as follows: [Component]_[Image]_[PD Type]
+   #   [Component] - Name of Component Folder. Example: CORE, SSC
+   #   [Image] - Type of processor. Example: ADSP, SLPI, MPSS
+   #   [PD Type] - ROOT or USER
+   #   see http://qwiki.qualcomm.com/qct-osteam/CoreBSP/SLPI_Development_Information#How_Build_Tags_are_Composed
+ ]
+
+ssc_root = inspect.getfile(inspect.currentframe())
+ssc_root_dir = os.path.dirname(os.path.dirname(ssc_root))
+
+# Create an ${SSC_ROOT} variable.
+env.Replace(SSC_ROOT=ssc_root_dir)
+
+# Create an ${SSC_PB_INC} variable.
+ssc_pb_inc = os.path.join(ssc_root_dir, "inc", "pb")
+env.Replace(SSC_PB_INC=ssc_pb_inc)
+
+#Store the build tags
+env.Replace(SSC_BUILD_TAGS=ssc_build_tags)
+
+#-------------------------------------------------------------------------------
+#Publish protected APIs
+#-------------------------------------------------------------------------------
+
+env.PublishProtectedApi('SNS_FRAMEWORK', [
+  "${SSC_ROOT}/framework/inc",
+])
+
+env.PublishProtectedApi('SNS_INTERNAL_INCLUDES', [
+   "${SSC_ROOT}/inc/internal",
+])
+
+env.PublishProtectedApi('SNS_MATH_UTIL', [
+   "${SSC_ROOT}/utils/mathutls/inc",
+])
+
+#-------------------------------------------------------------------------------
+# Get dependent API header files
+#-------------------------------------------------------------------------------
+qdsp6_public_apis = [
+                     'QDSP6',
+                    ]
+core_public_apis = [
+                     'BUSES',
+                     'SERVICES',
+                     'DEBUGTRACE', # For QDSP6 profiling
+                   ]
+env.RequirePublicApi(qdsp6_public_apis, area='qdsp6')
+env.RequirePublicApi(core_public_apis, area='core')
+
+
+#-------------------------------------------------------------------------------
+# Set Global build rules
+#-------------------------------------------------------------------------------
+env.Append(CCFLAGS = ' -Os ')
+env.Append(CFLAGS = ' -std=c11')
+
+env.Append(CFLAGS = '-Werror')
+env.Append(CFLAGS = '-Wall')
+env.Append(CFLAGS = '-Wextra')
+#env.Append(CFLAGS = '-Wunreachable-code')
+#TODO: Remove these:
+env.Append(CFLAGS = '-Wno-sign-compare')
+env.Append(CFLAGS = '-Wno-unused-result')
+
+# Build SSC if there is a build tag that is supported
+if env.IsKeyEnable(ssc_build_tags) is True:
+  #-------------------------------------------------------------------------------
+  # Setup SEE variables and builders
+  #-------------------------------------------------------------------------------
+  env.Tool('ssc_static_lib_builder', toolpath = ['${SSC_ROOT}/build'])
+  env.Tool('ssc_library_builder', toolpath = ['${SSC_ROOT}/build'])
+  env.Tool('sharedlib_builder', toolpath = ['${SSC_ROOT}/build'])
+
+  exports_root = str(env.get('BUILD_ROOT', None)) + '/ssc/build'
+  env.DLExposeFile(exports_root + '/dl_ssc_symbols.lst')
+
+  #-------------------------------------------------------------------------------
+  # Configure the sensors build
+  #-------------------------------------------------------------------------------
+  if env['MSM_ID'] in ['8996','845','855','670','8909']:
+    env.Append(CPPDEFINES = ['SSC_TARGET_HEXAGON'])
+    env.Append(CFLAGS = '-mllvm -disable-shrink-wrap-common-args')
+    env.Replace(SSC_INCLUDE_LIBS=['all'])
+    env.Replace(SSC_EXCLUDE_LIBS=[''])
+    if env['MSM_ID'] in ['845','670']:
+      env.AddUsesFlags(['SNS_ISLAND_INCLUDE_AK0991X','SNS_ISLAND_INCLUDE_BMP285'])
+      env.AddUsesFlags(['SNS_ISLAND_INCLUDE_CM'])
+      env.AddUsesFlags(['SNS_ISLAND_INCLUDE_PSMD','SNS_ISLAND_INCLUDE_PEDOMETER'])
+      env.AddUsesFlags(['SNS_ISLAND_INCLUDE_AMD'])
+      env.AddUsesFlags(['SNS_ISLAND_INCLUDE_SMD','SNS_ISLAND_INCLUDE_DEVICE_ORIENT','SNS_ISLAND_INCLUDE_RMD'])
+      env.AddUsesFlags(['SNS_ISLAND_INCLUDE_GRM','SNS_ISLAND_INCLUDE_GRAVITY','SNS_ISLAND_INCLUDE_GAME_RV'])
+      env.AddUsesFlags(['SNS_ISLAND_INCLUDE_FACING','SNS_ISLAND_INCLUDE_BASIC_GESTURES','SNS_ISLAND_INCLUDE_BRING_TO_EAR', 'SNS_ISLAND_INCLUDE_MULTISHAKE'])
+      env.AddUsesFlags(['SNS_ISLAND_INCLUDE_CMC','SNS_ISLAND_INCLUDE_DISTANCE_BOUND'])
+      env.AddUsesFlags(['SNS_ISLAND_INCLUDE_MAG_CAL','SNS_ISLAND_INCLUDE_GEOMAG_RV','SNS_ISLAND_INCLUDE_FMV'])
+      env.AddUsesFlags(['SNS_ISLAND_INCLUDE_ROTV','SNS_DPC_ISLAND_INCLUDE'])
+      env.AddUsesFlags(['SNS_ISLAND_INCLUDE_GYRO_CAL'])
+      env.AddUsesFlags(['SNS_ISLAND_INCLUDE_TILT'])
+      env.AddUsesFlags(['SNS_ISLAND_INCLUDE_DA_TEST'])
+      env.AddUsesFlags(['SNS_ISLAND_INCLUDE_TILT_TO_WAKE'])
+      env.AddUsesFlags(['SNS_ISLAND_INCLUDE_AONT'])
+      env.AddUsesFlags(['SNS_ISLAND_INCLUDE_THRESHOLD'])
+      env.AddUsesFlags(['DISABLE_CM3526'])
+      if 'USES_CHRE' in env:
+        env.AddUsesFlags(['SNS_ISLAND_INCLUDE_MCMD'])
+      if 'USES_THANOS_CONFIG' in env:
+        env.AddUsesFlags(['SNS_ISLAND_INCLUDE_TMD2725'])
+      else:
+        env.AddUsesFlags(['SNS_ISLAND_INCLUDE_TMD4903'])
+		
+  if 'USES_CORE_MEMORY_OPT_CHRE' not in env:
+    env.Append(CPPDEFINES = ['SNS_ISLAND_INCLUDE_DIAG'])
+    
+
+  if 'SENSORS_DD_DEV_FLAG' in env:
+    env.Append(CPPDEFINES = ['SENSORS_DD_DEV_FLAG'])
+  if 'SENSORS_ADD_SHARED_OEM1' in env:
+    env.Append(CPPDEFINES = ['SENSORS_ADD_SHARED_OEM1'])
+  if 'SENSORS_ADD_SHARED_ACCEL_CAL' in env:
+    env.Append(CPPDEFINES = ['SENSORS_ADD_SHARED_ACCEL_CAL'])
+  if 'SENSORS_ALGO_DEV_FLAG' in env:
+    env.Append(CPPDEFINES = ['SENSORS_ALGO_DEV_FLAG'])
+
+  if env['MSM_ID'] in ['8996', '8998']:
+    env.Append(CPPDEFINES = ['SSC_TARGET_HEXAGON_CORE_SLPI_1_0'])
+  elif env['MSM_ID'] in ['845']:
+    env.Append(CPPDEFINES = ['SSC_TARGET_HEXAGON_CORE_QDSP6_2_0'])
+    env.Append(CPPDEFINES = ['SSC_TARGET_PRAM_AVAILABLE'])
+    # Option to disable sleep for Bring up or testing purpose.
+    if not 'SNS_SDC_DISABLED' in env:
+      env.Append(CPPDEFINES = ['SSC_TARGET_SDC_AVAILABLE'])
+    #PEND: Remove following line once CoreBSP resolves compiler warnings
+    env.Append(CPPDEFINES = ['SNS_USE_LOCAL_CLK_SRC'])
+    env.AddUsesFlags(['SNS_ISLAND_INCLUDE_LSM6DSM'])	
+    env.Replace(SSC_INCLUDE_LIBS=['all'])
+    if 'USES_THANOS_CONFIG' in env:
+      env.Replace(SSC_EXCLUDE_LIBS=['lsm6dso','sns_lsm6ds3','sns_bmi160','sns_tmd2725'])
+    elif ('SENSORS_DD_DEV_FLAG' in env):
+      env.AddUsesFlags(['SNS_ISLAND_INCLUDE_LSM6DS3'])
+      env.AddUsesFlags(['SNS_ISLAND_INCLUDE_LSM6DSO'])
+      env.Replace(SSC_EXCLUDE_LIBS=['sns_bmi160','sns_cm32181','sns_sx931x','sns_tmd2725','sns_icm4x6xx'])
+    else:
+      env.Replace(SSC_EXCLUDE_LIBS=['lsm6dso','sns_lsm6ds3','sns_bmi160','sns_cm32181','sns_sx931x','sns_tmd2725','sns_icm4x6xx'])
+
+  elif env['MSM_ID'] in ['855']:
+    env.Append(CPPDEFINES = ['SSC_TARGET_HEXAGON_CORE_QDSP6_2_0'])
+    env.Append(CPPDEFINES = ['SSC_TARGET_PRAM_AVAILABLE'])
+    # Option to disable sleep for Bring up or testing purpose.
+    if not 'SNS_SDC_DISABLED' in env:
+      env.Append(CPPDEFINES = ['SSC_TARGET_SDC_AVAILABLE'])
+    #PEND: Remove following line once CoreBSP resolves compiler warnings
+    env.Append(CPPDEFINES = ['SNS_USE_LOCAL_CLK_SRC'])
+    env.Replace(SSC_INCLUDE_LIBS=['all'])
+    env.Replace(SSC_EXCLUDE_LIBS=['lsm6dsm','sns_lsm6ds3','sns_bmi160','sns_bma2x2','sns_bmg160','sns_bmm150','sns_rpr0521rs','sns_icm4x6xx'])
+
+  elif env['MSM_ID'] in ['670']:
+    if 'USES_BUILD_IOT' in env:
+      env.Append(CPPDEFINES=['SNS_TARGET_HEXAGON_IOT_670'])
+      env.Replace(SSC_EXCLUDE_LIBS=['lsm6dsm', 'sns_lsm6ds3', 'sns_cm32181', 'sns_sx931x', 'sns_tmd2725', 'sns_bma2x2', 
+                                   'sns_bmg160', 'sns_bmm150', 'sns_rpr0521rs','sns_fmv', 'ext_svc', 'sns_geomag_rv', 
+                                   'sns_rotv', 'sns_gravity', 'sns_mag_cal', 'sns_game_rv', 'sns_distance_bound',
+                                   'sns_basic_gestures', 'sns_bring_to_ear', 'sns_pedometer', 'sns_rmd', 'sns_facing',
+                                   'sns_cmc', 'sns_gyro_rot_matrix', 'sns_mcmd', 'sns_multishake', 'smd', 'sns_dpc', 'sns_psmd'])
+    else:
+      env.Replace(SSC_EXCLUDE_LIBS=['lsm6dsm','sns_lsm6ds3','sns_cm32181','sns_sx931x','sns_tmd2725','sns_bma2x2','sns_bmg160','sns_bmm150'])
+    env.Append(CPPDEFINES = ['SSC_TARGET_HEXAGON_CORE_QDSP6_2_0'])
+    env.Append(CPPDEFINES = ['SSC_TARGET_PRAM_AVAILABLE'])
+    env.Append(CPPDEFINES = ['SSC_TARGET_SDC_AVAILABLE'])
+    #PEND: Remove following line once CoreBSP resolves compiler warnings
+    env.Append(CFLAGS = '-Wno-unused-parameter')
+    env.Append(CFLAGS = '-fno-jump-tables')
+    env.AddUsesFlags(['SNS_ISLAND_INCLUDE_LSM6DSO'])
+    env.Append(CFLAGS='-DSSC_BASE=LPASS_BASE')
+    env.AddUsesFlags('SNS_SIGNAL_TASK_HIGH_WAIT_TIME')
+    env.Replace(SSC_INCLUDE_LIBS=['all'])
+
+  elif env['MSM_ID'] in ['8909']:
+    #TODO: Avoid using -Wno-unused-parameter
+    env.Append(CFLAGS = '-Wno-unused-parameter')
+    env.Append(CPPDEFINES = ['SNS_USE_LOCAL_CLK_SRC'])
+    env.Append(CPPDEFINES = ['SSC_TARGET_HEXAGON_MDSP'])
+    env.AddUsesFlags(['DISABLE_CM3526'])
+    # Create a local version of tracer_event_ids.h
+    if 'USES_QDSS_SWE' in env:
+      env.RequirePublicApi('DEBUGTRACE', area='core')
+      env.SWEBuilder(['${BUILDPATH}/tracer_event_ids.h'],None)
+      env.Append(CPPPATH = ['${BUILD_ROOT}/ssc/build/$BUILDPATH'])
+
+  elif env['SIM_PLATFORM'] in ['x86']:
+     env.PrintInfo("Building for SSC_TARGET_X86 target")
+     env.Append(CPPDEFINES = ['SSC_TARGET_X86'])
+     env.Append(CFLAGS = '-g') # For debugging symbols in GDB; should turn-off in production
+     env.Append(CFLAGS = ' -D_POSIX_C_SOURCE=200809L')
+     env.Replace(SSC_INCLUDE_LIBS=['all'])
+     env.Replace(SSC_EXCLUDE_LIBS=[''])
+
+     # Detect undefined behavior at runtime and abort
+     #env.Append(CFLAGS = ' -fsanitize=undefined')
+     #env.Append(CFLAGS = ' -fno-sanitize-recover')
+
+     # Add a stack protector to detect buffer overflows
+     env.Append(CFLAGS = ' -fstack-protector-all')
+     # Check for overflowing the allocated stack
+     env.Append(CFLAGS = ' -fstack-check')
+
+     #Code coverage (The following must be removed for Valgrind/Helgrind use)
+     env.Append(CPPDEFINES = ['SNS_CODE_COVERAGE'])
+     env.Append(CFLAGS = ['-fprofile-arcs', '-ftest-coverage'])
+
+  #option to disable dependency on linker script
+  if 'SNS_NO_ISLAND_PTR_CHECKS' in env:
+     env.Append(CPPDEFINES = ['SNS_NO_ISLAND_PTR_CHECKS'])
+
+  #option to select higher sns signal task wait time to avoid crash on RUMI platform
+  if 'SNS_SIGNAL_TASK_HIGH_WAIT_TIME' in env:
+     env.Append(CPPDEFINES = ['SNS_SIGNAL_TASK_HIGH_WAIT_TIME'])
+
+  # option for disabling island mode
+  if 'SNS_DISABLE_ISLAND' in env:
+     env.Append(CPPDEFINES="SNS_DISABLE_ISLAND=true")
+  else:
+     env.Append(CPPDEFINES="SNS_DISABLE_ISLAND=false")
+
+  env.Append(CFLAGS = ' -DPB_MSGID')
+  env.Append(CFLAGS = ' -DPB_FIELD_16BIT')
+
+  #sns_config = json.loads(sns_config_file_data)
+  #env.Replace(SNS_CONFIG = sns_config)
+
+  # Option for increasing SDC PRAM buffer
+  if 'SNS_INCREASED_SDC_PRAM' in env:
+     env.Append(CPPDEFINES = ['SNS_INCREASED_SDC_PRAM'])
+
+  if 'USES_NANOPB' in env:
+    env.ProtoBufPrep()
+
+  env.AddUsesFlags('USES_NANOPB_COMPILER')
+  AddMethod(env, AddSensorPB)
+
+  try:
+    me = inspect.getfile(inspect.currentframe())
+    my_root = os.path.dirname(os.path.dirname(me))
+
+    print platform.system()
+    if "Windows" in platform.system() or "CYGWIN" in platform.system():
+      print "Compiling nanopb on Windows"
+    else:
+      print "Compiling nanopb on Linux"
+      protoc_path = os.path.join(my_root, "tools", "nanopb", "generator")
+      protoc = os.path.join(protoc_path, "protoc")
+      subprocess.call(["chmod", "755", protoc])
+      protoc_bin = os.path.join(protoc_path, "protoc.bin")
+      subprocess.call(["chmod", "755", protoc_bin])
+      protoc_gen_nanopb = os.path.join(protoc_path, "protoc-gen-nanopb")
+      subprocess.call(["chmod", "755", protoc_gen_nanopb])
+
+    pbout_dir = os.path.join(my_root, "inc", "pb")
+    if not os.path.exists(pbout_dir):
+      os.mkdir(pbout_dir);
+  except:
+    print "NanoPB setup error"
+    pass
+
+  #-------------------------------------------------------------------------------
+  # Remove source files for external builds
+  #-------------------------------------------------------------------------------
+  inc_utils_nanopb_dir = os.path.join(ssc_root_dir, "inc", "utils","nanopb")
+  chipset_8996_dir = os.path.join(ssc_root_dir, "chipset", "msm8996")
+  chipset_sdm1000_dir = os.path.join(ssc_root_dir, "chipset", "sdm1000")
+  chipset_sdm670_dir = os.path.join(ssc_root_dir, "chipset", "sdm670")
+  chipset_sdm845_dir = os.path.join(ssc_root_dir, "chipset", "sdm845")
+  chipset_sdm855_dir = os.path.join(ssc_root_dir, "chipset", "sdm855")
+  pbout_dir = os.path.join(ssc_root_dir, "inc", "pb")
+  REMOVE_FILES  =  env.FindFiles(['*.pb.c','*.pb.h'], pbout_dir)
+  REMOVE_FILES +=  env.FindFiles(['*.json'], ssc_root_dir)
+  if 'SENSORS_DD_DEV_FLAG' in env:
+    inc_int_dir = os.path.join(ssc_root_dir, "inc", "internal")
+    REMOVE_FILES +=  env.FindFiles(['*.*'], inc_int_dir)
+    inc_utils_dir = os.path.join(ssc_root_dir, "inc", "utils")
+    if 'SENSORS_ALGO_DEV_FLAG' not in env:
+      REMOVE_FILES += env.FindFiles([
+        'sns_buffer.h',
+        'sns_algo.h',
+        'sns_sensor_util_internal.h'],
+         inc_utils_dir)
+    REMOVE_FILES +=  env.FindFiles(['*.*'], chipset_sdm670_dir)
+    REMOVE_FILES +=  env.FindFiles(['*.*'], chipset_sdm845_dir)
+    REMOVE_FILES +=  env.FindFiles(['*.*'], chipset_sdm855_dir)
+  REMOVE_FILES +=  env.FindFiles(['pb.h','pb_common.h','pb_decode.h','pb_encode.h'], inc_utils_nanopb_dir)
+  REMOVE_FILES +=  env.FindFiles(['*.*'], chipset_8996_dir)
+  REMOVE_FILES +=  env.FindFiles(['*.*'], chipset_sdm1000_dir)
+  env.CleanPack(env['SSC_BUILD_TAGS'], REMOVE_FILES)
+
+#------------------------------------------------------------------------------
+# Scan subdirectories to find more /build folders
+#------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+#-------------------------------------------------------------------------------
+# Generates
+#-------------------------------------------------------------------------------
+if 'USES_STATIC_SENSORS_LIST_GEN' in env:
+  env.GenerateStaticSensorList(env['SSC_BUILD_TAGS'])
+

@@ -1,0 +1,335 @@
+#===============================================================================
+#
+# CPR build script
+#
+# GENERAL DESCRIPTION
+#    Builds the CPR libraries for all target.
+#
+#    Copyright (c) 2016-2017 Qualcomm Technologies, Inc. (QTI).
+#    All Rights Reserved.
+#    Qualcomm Confidential and Proprietary.
+#    Export of this technology or software is regulated by the U.S. Government.
+#    Diversion contrary to U.S. law prohibited.
+#-------------------------------------------------------------------------------
+#  $Header: //components/rel/core.qdsp6/2.1.c4/power/cpr/build/cpr.scons#1 $
+#  $DateTime: 2018/07/30 01:21:36 $
+#===============================================================================
+import os, sys, re
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Target Checks
+#-------------------------------------------------------------------------------
+# This check is used to build correct version of the new cpr driver depending
+# on targets. Once we have PW that has all targets which supports same cpr
+# implementation, this check can be skipped.
+supported_cpr_targets = ['845','670']
+if env['MSM_ID'] not in supported_cpr_targets:
+    env.PrintWarning('CPR driver not supported on this target')
+    Return()
+
+CPR_ROOT = "${BUILD_ROOT}/core/power/cpr"
+TARGET_DIR  = '../target/${MSM_ID}'
+GEN_DIR  = '${BUILDPATH}/target/${MSM_ID}'
+CFG_FILE = env.RealPath(TARGET_DIR + '/Voltage_Plan_${MSM_ID}.xlsx')
+env.VariantDir('${BUILDPATH}', CPR_ROOT, duplicate=0)
+
+def set_image_params(image, loglevel, enableFatalAssert=1, cflags=''):
+    env['CPR_LOG_LEVEL'] = loglevel
+    env['CPR_LOG_ENABLE_FATAL_ASSERT'] = str(enableFatalAssert)
+    env['CPR_IMAGE'] = image
+    env['CPR_CFLAGS'] = cflags
+
+
+if 'RPM_IMAGE' in env or env['TCFG_BID_IMAGE'] == 'RPM_PROC':
+    set_image_params('rpm', 'CPR_LOG_LEVEL_FATAL', cflags='--c99 ${ARM_OPT_SIZE} ${ARM_OPT_2}')
+elif 'MODEM_PROC' in env:
+    set_image_params('mpss', 'CPR_LOG_LEVEL_TRACE', cflags='-std=c99 ${ARM_OPT_SIZE} ${ARM_OPT_2}')
+elif 'CDSP_PROC' in env:
+    set_image_params('cdsp', 'CPR_LOG_LEVEL_TRACE', cflags='-std=c99 ${ARM_OPT_SIZE} ${ARM_OPT_2}')
+elif 'PROC' in env and env['PROC'] == 'imc':
+    set_image_params('imc', 'CPR_LOG_LEVEL_INFO')
+else:
+    env.PrintWarning('CPR driver not supported on this image')
+    ALL_FILES = env.FindFiles(['*'], CPR_ROOT + '/')
+    env.CleanPack(['CORE_Q6_ROOT'], ALL_FILES)        
+    Return()
+
+if env['MSM_ID'] in ['8997', '8998', '9x65', '660', '845', '670']:
+    env['CPR_HAL_VERSION'] = 'v4'
+else:
+    env['CPR_HAL_VERSION'] = 'v3'
+
+# Uses v4 stub functions in a v3 scenerio
+# In a v4 scenerio we use the v4 hal functions and skip over the v3 stub functions.
+if env['CPR_HAL_VERSION'] == 'v3':
+    env.Append(CPPDEFINES = ['-DV3_HAL_VERSION'])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'DEBUGTOOLS', # CoreVerify.h
+   'POWER',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'PMIC',
+   'DEBUGTRACE',
+   'MPROC',
+
+   # needs to be last as it may contain wrong comdef.h
+   'KERNEL',
+]
+
+#Turn off optimizations for easier debug
+#env.Append(CFLAGS = " -Wno-error=unused-function")
+#env.Append(CFLAGS = " -Wno-error=unused-variable")
+env.Append(CCFLAGS = ' -O0')
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+env.RequirePublicApi(['RFA'], 'pmic')
+
+env.PublishPrivateApi('CPR', [
+    GEN_DIR,
+    CPR_ROOT + '/common/hal/inc',
+    CPR_ROOT + '/common/hal/${CPR_HAL_VERSION}/inc',
+    CPR_ROOT + '/common/inc',
+    CPR_ROOT + '/target/${MSM_ID}',
+    CPR_ROOT + '/target/${MSM_ID}/hwio',
+    CPR_ROOT + '/image/${CPR_IMAGE}/inc',
+    CPR_ROOT + '/image/${CPR_IMAGE}/target/${MSM_ID}',
+    ])
+
+# Explicitly adding real path as scons was not able to include non-existent path for enablement.h
+env.Append(CPPPATH = env.RealPath(GEN_DIR))
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+def autogen(target, source, env):
+    from subprocess import check_call
+    args = ['python']
+    args.extend([File(s).abspath for s in source])
+    args.extend([File(s).abspath for s in target])
+    check_call(args)
+
+
+# Auto-generated files
+VP_SRC     = TARGET_DIR + '/cpr_voltage_plan_${MSM_ID}.c'
+GEN_VP_SRC = GEN_DIR    + '/cpr_voltage_plan_${MSM_ID}.c'
+
+#check if XL and config files exist or else use the c files generated (especially for packed builds)
+if os.path.isfile(CFG_FILE):
+    '''
+    # Add build command for auto-generated files
+    gen_files = env.Command([VP_SRC],
+                            '',
+                            'python {dir}/../tools/cpr_cfg.py {img} {target} {dir}/{out}'.format(
+                              img = env['CPR_IMAGE'],
+                              dir = env.RealPath('.'),
+                              target = env['MSM_ID'],
+                              out = TARGET_DIR)
+                            )
+    # Scons does not detect a change in config files.
+    # Build the files always to make sure a change in config file is reflected.
+    env.AlwaysBuild(gen_files)
+    '''
+    env.Execute( 'python {dir}/../tools/cpr_cfg.py {img} {target} {dir}/{out}'.format(
+                 img = env['CPR_IMAGE'],
+                 dir = env.RealPath('.'),
+                 target = env['MSM_ID'],
+                 out = TARGET_DIR)
+                 )
+    print "configuration files exist" 
+else:
+    print "configuration file does not exist, using c files"
+
+# Copy generated files to buildpath for the variant to avoid race condition
+env.Command(GEN_VP_SRC, VP_SRC, Copy("$TARGET", "$SOURCE"))
+
+CPR_C_SOURCES = [
+    GEN_VP_SRC,
+    '${BUILDPATH}/common/src/cpr.c',
+    '${BUILDPATH}/common/src/cpr_rail.c',
+    '${BUILDPATH}/common/src/cpr_measurements.c',
+    '${BUILDPATH}/common/src/cpr_isr.c',
+    '${BUILDPATH}/common/src/cpr_utils.c',
+#    '${BUILDPATH}/common/src/cpr_smem.c',
+    '${BUILDPATH}/common/hal/${CPR_HAL_VERSION}/src/cpr_hal.c'
+]
+
+no_clean_list = [VP_SRC]
+
+#
+# Support multi-config
+#
+if env['MSM_ID'] in ['8998'] and env['CPR_IMAGE'] == 'mpss':
+    CFG_FILE2   = env.RealPath(TARGET_DIR + '/Voltage_Plan_8997.xlsx')
+    VP_SRC2     = TARGET_DIR + '/cpr_voltage_plan_8997.c'
+    GEN_VP_SRC2 = GEN_DIR    + '/cpr_voltage_plan_8997.c'
+
+    #check if XL and config files exist or else use the c files generated (especially for packed builds)
+    if os.path.isfile(CFG_FILE2):
+        '''
+        gen_files2 = env.Command([VP_SRC2],
+                                '',
+                                'python {dir}/../tools/cpr_cfg.py {img} {target} {dir}/{out} {dir}/{out} {dir}/{out}'.format(
+                                  img = env['CPR_IMAGE'],
+                                  dir = env.RealPath('.'),
+                                  target = '8997',
+                                  out = TARGET_DIR,
+                                  )
+                                )
+        # Scons does not detect a change in config files.
+        # Build the files always to make sure a change in config file is reflected.
+        env.AlwaysBuild(gen_files2)
+        '''
+        env.Execute( 'python {dir}/../tools/cpr_cfg.py {img} {target} {dir}/{out} {dir}/{out} {dir}/{out}'.format(
+                 img = env['CPR_IMAGE'],
+                 dir = env.RealPath('.'),
+                 target = '8997',
+                 out = TARGET_DIR)
+                 )
+        print "configuration files exist" 
+    else:
+        print "configuration file does not exist, using c files"
+
+    # Copy generated files to buildpath for the variant to avoid race condition
+    env.Command(GEN_VP_SRC2, VP_SRC2, Copy("$TARGET", "$SOURCE"))
+
+    CPR_C_SOURCES.append(GEN_VP_SRC2)
+    no_clean_list.append(VP_SRC2)
+
+CPR_CPP_SOURCES = [
+]
+
+if env['MSM_ID'] in ['660'] and env['CPR_IMAGE'] == 'mpss':
+    CFG_FILE2   = env.RealPath(TARGET_DIR + '/Voltage_Plan_630.xlsx')
+    VP_SRC2     = TARGET_DIR + '/cpr_voltage_plan_630.c'
+    GEN_VP_SRC2 = GEN_DIR    + '/cpr_voltage_plan_630.c'
+
+    #check if XL and config files exist or else use the c files generated (especially for packed builds)
+    if os.path.isfile(CFG_FILE2):
+        '''
+        gen_files2 = env.Command([VP_SRC2],
+                                '',
+                                'python {dir}/../tools/cpr_cfg.py {img} {target} {dir}/{out} {dir}/{out} {dir}/{out}'.format(
+                                  img = env['CPR_IMAGE'],
+                                  dir = env.RealPath('.'),
+                                  target = '630',
+                                  out = TARGET_DIR,
+                                  )
+                                )
+        # Scons does not detect a change in config files.
+        # Build the files always to make sure a change in config file is reflected.
+        env.AlwaysBuild(gen_files2)
+        '''
+        env.Execute( 'python {dir}/../tools/cpr_cfg.py {img} {target} {dir}/{out} {dir}/{out} {dir}/{out}'.format(
+                 img = env['CPR_IMAGE'],
+                 dir = env.RealPath('.'),
+                 target = '630',
+                 out = TARGET_DIR)
+                 )
+        print "configuration files exist" 
+    else:
+        print "configuration file does not exist, using c files"
+
+    # Copy generated files to buildpath for the variant to avoid race condition
+    env.Command(GEN_VP_SRC2, VP_SRC2, Copy("$TARGET", "$SOURCE"))
+
+    CPR_C_SOURCES.append(GEN_VP_SRC2)
+    no_clean_list.append(VP_SRC2)
+
+CPR_CPP_SOURCES = [
+]
+
+if env['MSM_ID'] in ['8998', '660', '845','670'] and env['CPR_IMAGE'] == 'cdsp':
+    CPR_C_SOURCES.extend([
+        '${BUILDPATH}/image/${CPR_IMAGE}/src/cpr_image.c',
+        '${BUILDPATH}/image/${CPR_IMAGE}/src/cpr_image_logs.c',
+        '${BUILDPATH}/image/${CPR_IMAGE}/target/${MSM_ID}/cpr_image_target.c',
+    ])
+
+    #
+    # CR 1069681: Need to disable CPR on Modem for 8998 APQ.
+    #
+    if 'USES_NO_MODEM_RAIL' in env:
+        CPR_C_SOURCES.extend([
+            '${BUILDPATH}/image/${CPR_IMAGE}/target/${MSM_ID}/cpr_image_target_init_stub.c',
+        ])
+    else:
+        CPR_C_SOURCES.extend([
+            '${BUILDPATH}/image/${CPR_IMAGE}/target/${MSM_ID}/cpr_image_target_init.c',
+        ])
+else:
+    for path in ['/image/${CPR_IMAGE}/src', '/image/${CPR_IMAGE}/target/${MSM_ID}']:
+        CPR_C_SOURCES.extend(  (re.sub(r'\\','/',f).replace(env.subst(CPR_ROOT), '${BUILDPATH}') for f in env.FindFiles('*.c',   CPR_ROOT + path)))
+        CPR_CPP_SOURCES.extend((re.sub(r'\\','/',f).replace(env.subst(CPR_ROOT), '${BUILDPATH}') for f in env.FindFiles('*.cpp', CPR_ROOT + path)))
+
+
+#to prevent cpr_voltage_plan_${MSM_ID}.c from getting removed by clean build command
+env.NoClean(no_clean_list)
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+if env['CPR_IMAGE'] == 'cdsp':
+    IMAGES=['CORE_Q6_ROOT']
+else:
+    IMAGES=['CORE_RPM', 'IMC_IMAGE']
+
+env.Append(CCFLAGS = " -DCPR_LOG_COMPILE_LEVEL=" + env['CPR_LOG_LEVEL'])
+env.Append(CCFLAGS = " -DCPR_LOG_FATAL_ASSERT_ENABLED=" + env['CPR_LOG_ENABLE_FATAL_ASSERT'])
+
+cEnv = env.Clone()
+cEnv.Append(CCFLAGS = ' ' + env['CPR_CFLAGS'])
+
+env.AddLibrary(IMAGES,'${BUILDPATH}/cpr_cpp.lib', CPR_CPP_SOURCES)
+cEnv.AddLibrary(IMAGES,'${BUILDPATH}/cpr_c.lib', CPR_C_SOURCES)
+
+#-------------------------------------------------------------------------------
+# Add LPR to image
+#-------------------------------------------------------------------------------
+if env['MSM_ID'] in ['845','670'] and env['CPR_IMAGE'] == 'mpss':
+    if 'USES_CORESLEEP_TOOL' in env:
+        xml_file = env['BUILD_ROOT'] + '/core/power/cpr/lpr/'
+        env.AddCoreSleepLPR(IMAGES, {'sleep_lpr_xml' : [xml_file]})
+
+#-------------------------------------------------------------------------------
+# Pack out files
+#-------------------------------------------------------------------------------
+if env['CPR_IMAGE'] == 'cdsp':
+    ALL_TARGETS_FILES       = env.FindFiles(['*'], CPR_ROOT + '/target')
+    ALL_IMAGE_TARGETS_FILES = env.FindFiles(['*'], CPR_ROOT + '/image/mpss/target')
+    THIS_TARGET_FILES       = env.FindFiles(['*'], CPR_ROOT + '/target/${MSM_ID}')
+    THIS_IMAGE_TARGET_FILES = env.FindFiles(['*'], CPR_ROOT + '/image/mpss/target/${MSM_ID}')
+    THIS_TARGET_CFG_FILE    = env.FindFiles(['*.xlsx', '*.py'], CPR_ROOT + '/target/${MSM_ID}')
+    TOOL_FILES              = env.FindFiles(['*'], CPR_ROOT + '/tools')
+
+    # Pack out other target files
+    PACK_OUT_FILES          = list((set(ALL_TARGETS_FILES) | set(ALL_IMAGE_TARGETS_FILES)) - set(THIS_TARGET_FILES) - set(THIS_IMAGE_TARGET_FILES))
+    # Pack out Voltage Plan and tools
+    PACK_OUT_FILES.extend(list(THIS_TARGET_CFG_FILE))
+    PACK_OUT_FILES.extend(list(TOOL_FILES))
+
+    env.CleanPack(['CORE_Q6_ROOT'], PACK_OUT_FILES)
+
+#-----------------------------------------------------------------------------
+# Register with RCINIT framework so that it can call our init function.
+#-----------------------------------------------------------------------------
+if 'USES_RCINIT' in env:
+    if env['CPR_IMAGE'] == 'cdsp':
+        RCINIT_IMG = ['CORE_Q6_ROOT']
+        env.AddRCInitFunc(
+            RCINIT_IMG,
+            {
+                'sequence_group'             : 'RCINIT_GROUP_0',
+                'init_name'                  : 'CPR',
+                'init_function'              : 'cpr_init',
+                'dependencies'               : ['clk_regime_0','vcs_0','dalsys'],
+                'policy_optin'               : ['default', 'ftm', ],
+            })
+

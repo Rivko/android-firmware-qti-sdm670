@@ -1,0 +1,92 @@
+#===============================================================================
+#
+# VAP SRM Driver
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2017-2018 Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#===============================================================================
+
+Import('env')
+env = env.Clone()
+
+core_public_apis = [
+    'KERNEL',
+    'DEBUGTOOLS',
+    'POWER',
+    'MPROC',
+    'SYSTEMDRIVERS',
+    'DEBUGTRACE',
+    'DAL',
+    'DIAG',
+    'BUSES',
+    ]
+
+platform_public_apis = [
+    'PLATFORM_LIBS',
+    'MOD_TABLE',
+    'STDDEF',
+    'REMOTE',
+    ]
+    
+env.RequirePublicApi(platform_public_apis, area='platform')
+env.RequirePublicApi(core_public_apis, area='core')    
+
+env.PublishPrivateApi('VAP_HCP',[
+    '../inc',
+    '${BUILD_ROOT}/platform/inc/qlist',
+    '${BUILD_ROOT}/platform/inc/a1std',
+    '${BUILD_ROOT}/vap/vma/fw/platform/common/inc',
+    '${BUILD_ROOT}/vap/vma/fw/platform/qdsp6/guestos/inc',
+    '${BUILD_ROOT}/vap/vma/fw/core/inc',
+    '${BUILD_ROOT}/vap/vma/fw/core/dd',
+    '${BUILD_ROOT}/vap/vma/fw/core/hal',
+    '${BUILD_ROOT}/core/systemdrivers/hwio/hw/sdm845',
+    '${BUILD_ROOT}/core/api/systemdrivers/hwio/sdm845',
+])   
+
+env.RequirePrivateApi('VAP_HCP')
+#-------------------------------------------------------------------------------
+# Target Build Options
+#-------------------------------------------------------------------------------
+#env.Append(CCFLAGS = ' -O0')
+env.Append(CCFLAGS = ' -G0')
+env.Append(CFLAGS='-DDVP_OPT_HQV_FW_RUMI=1')
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/vap/common/srm"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Add
+# env.AddUsesFlags('USES_???')
+
+#-------------------------------------------------------------------------------
+
+  
+#-------------------------------------------------------------------------------
+#SRM
+#-------------------------------------------------------------------------------        
+env.Append(CFLAGS = '-Wno-error')
+
+SRM_SRC = [ '${BUILDPATH}/src/vap_srm.c',
+]
+
+#Configure HCP/VMA only in platforms below:
+if env['CHIPSET'] in ['sdm845','sdm855','sm8150']:
+    SRM_SRC.extend(['${BUILDPATH}/src/vap_srm_hcp.c']) 
+    env.Append(CFLAGS='-DSRM_HCP_EN=1')
+
+if 'USES_SRM' in env:
+    env.AddBinaryObject(['VAP_CDSP_SRM'],SRM_SRC)
+    env.Append(CFLAGS='-DSRM_EN=1')
+
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.h'], '${BUILD_ROOT}/vap/common/srm'))     
+env.CleanPack(['VAP_CDSP_SRM'], CLEAN_LIST)
+

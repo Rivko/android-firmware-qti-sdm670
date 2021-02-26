@@ -1,0 +1,307 @@
+/*=============================================================================
+   MMU Register spec for help during debug/analysis
+
+  Copyright (c) 2014 - 2016 Qualcomm Technologies, Inc. All rights reserved.
+
+                              EDIT HISTORY
+
+
+ when       who     what, where, why
+ --------   ---     -----------------------------------------------------------
+ 01/20/16   yg      Updated to ARMv8-64 
+ 11/30/15   ai      Updated to ARMv8-32 
+ 03/18/14   yg      Initial version
+=============================================================================*/
+
+ARM v8-32
+First :   TTBR0
+
+L1 Table:
+  [1-0]
+   0 0 : Invalid
+   0 1 : Page Table 
+   1 x : Section
+
+
+   0 1 : Page table
+    [31 - 10] : Base Addr :Pointer to the base address of a L2 page table
+    9         : 0
+    [ 8 -  5] : Domain
+    4         : SBZ
+    3         : NS
+    2         : PXN (Privileged XN)
+
+   1 x : Section or Super section (Bit 18 determines SS)
+    [31 - 20] : Base Addr : PA[31:20]
+    19        : NS (Non Secure)
+    18        : 0 => Section, 1 => Super Section
+    17        : nG (Not Global)
+    16        : S Shareable
+    15        : AP[2]       0 => RW  1 => RO
+    [14 - 12] : TEX[2:0]   Region attributes
+    [11 - 10] : AP[1:0]     00 => No Access, others look at AP[2]
+    9         : Imp
+    [8 - 5]   : Domain
+    4         : XN
+    3         : C  : Cacheable
+    2         : B  : Buffered
+    1         : 1 (Section or Super Section)
+    0         : PXN
+
+    Following values override for Super section:
+    [31 - 24] : Base Addr : PA[31:24]
+    [23 - 20] : Base Addr : PA[35:32]
+    [8 - 5]   : Base Addr : PA[39:36]
+
+
+
+L2 Table:
+   [1 0]
+    0 0 : Fault
+    0 1 : Large Page
+    1 x : Small Page
+
+
+    0 1 : Large Page:
+    [31 16] : = PA[31:16]
+    15      : PXN
+    [14:12] : TEX[2:0]
+    11      : nG
+    10      : S Shareable
+    9       : AP[2]
+    [8:6]   : SBZ
+    [5:4]   : AP[1:0]
+    3       : C
+    2       : B
+    [1:0]   : Descriptor type Large page
+
+    1 x : Small Page
+    [31 12] : = PA[31:12]
+    11      : nG
+    10      : S Shareable
+    9       : AP[2]
+    [8:6]   : TEX[2:0]
+    [5:4]   : AP[1:0]
+    3       : C
+    2       : B
+    1       : Descriptor type Small page
+    0       : XN
+
+------------------------------------------------
+
+Memory Region Attributes: (Cache policy)
+TEX[2:0]  C  B
+
+  0       0  0   Strongly ordered
+             1   Shareable device
+          1  0   Write through (no write allocate)
+             1   Write back (no write allocate)
+
+  1       0  0  Non cacheable
+          1  1  Write back (write allocate)
+
+  2       0  0  Non shareable device
+------------------------------------------------
+
+Access Permissions:
+AP[2] AP[1:0]
+PL0 => User or App level
+PL1 => OS Kernel or supervisor level
+PL2 => Hypervisor level
+
+AP[2 1 0]   PL1,PL2   PL0
+   0 0 0     NO        NO
+   0 0 1     RW        NO
+   0 1 0     RW        RO
+   0 1 1     RW        RW
+   1 0 0     RESERVED
+   1 0 1     RO        NO
+   1 1 0     RO        RO
+   1 1 1     RO        RO
+
+------------------------------------------------
+
+ARMV8-32 TT Sizes:
+SuperSection: 16MB
+Section: 1MB
+Large Page: 64KB
+Page: 4KB
+
+
+=============================================================================================================
+
+   ARM V8 - 64  MMU table definitions: 
+  ------------------------------------
+
+Some commong related register bit definitions:
+SCTLR_EL1 : System Control Register
+  [19]   : WXN    Write permission implies XN (ie if 1, all writeable regions are forced to XN)
+  [12]   : I      Instruction cache enable
+  [2]    : C      Cache enable
+  [1]    : A      Alignment check faule enable
+  [0]    : M      MMU Enable
+
+
+TCR_EL1 : Translation Control Register
+  [38]   : TBI1   Top Byte ignore for address match for TTBR1 region
+  [37]   : TBI0   Top Byte ignore for address match for TTBR0 region
+  [36]   : AS     ASID size, 0 : 8bit (upper 8 bits ignore), 1: 16 bits
+  [34:32]: IPS    Intermediate Physical Address Size
+                  (0: 32 bits, 1: 36 bits, 2: 40 bits, 3: 42 bits, 4: 44 bits, 5: 48 bits)
+  [31:30]: TG1    TTBR1_EL1 Granule size (01:16K, 10:4K, 11:64K)
+  [29:28]: SH1    Shareability for Translation walks using TTBR1_EL1 (00:Non shareable, 10:OuterShare, 11: Inner share)
+  [27:26]: ORGN1  Outer cacheability
+  [25:24]: ORGN1  Inner cacheability
+                  (Values for both above: O for Outer, I for Inner)
+                    00 : Normal memory, O/I Non Cacheable
+                    01 : Normal memory, O/I Write-Back Write-Allocate Cacheable
+                    10 : Normal memory, O/I Write-Through cacheable
+                    11 : Normal memory, O/I Write-Back no Write-Allocate Cacheable
+  [23]   : EPD1   Translation table walk on a TLB miss (0: Perform walk, 1: Generate Translation Fault)
+  [22]   : A1     Select whether TTBR0 or TTBR1 defines the ASID
+  [21:16]: T1SZ   The size offset of the memory region addressed by TTBR1. Region size = 2^(64-T1SZ)
+  [15:14]: TG0    Granule size for TTBR0 (00:4K, 01:64k, 10:16k)
+
+------------------------------------------------
+
+TTBR0: Resolve "Lower" 48 bits Addr range in 64 bit space
+TTBR1: Resolve "Higher" 48 bits Addr range in 64 bit space
+
+VA 48 bit address input => MMU translation => PA 48 bit address output
+
+ARM V8 VMSA has 4 levels of page tables, L0, L1, L2, L3
+
+Based on page size setting, and Page table granule setting the number of address bits resolved at each
+   level changes and this changes how many levels are required.
+
+For 4K page size granule 
+- 12 lower bits are implied after L3 translation(4k)
+- L3 tables have 512 entries (4k / 8 bytes), which resolve 9 bits (512), so each entry is 4K
+- L2 tables resolve 9 bits, could be block entry or Page table pointing to L3 table. So each entry is 2MB region
+- L1 tables resolve 9 bits, could be block entry or Page table pointing to L2 table. So each entry is 1GB region
+- L0 tables resolve rest of the bits. Only exist if the L1 table overflows 512 entries ie 512GB
+
+- TTBRx would point to L0 or L1 tables per above condition (ie addressable range is > 512GB)
+    - It could point to even lower levels (L2 based on the larger granule size)
+- TTBRx requires alignment better than 32bytes based on the input address range supported/configured
+
+------------------------------------------------
+Stage 1 descriptors definitions: 
+
+L3 Level descriptor:
+
+  [1-0]
+   x 0 : Invalid
+   0 1 : Invalid
+   1 1 : Page Descriptor
+
+   All other bit definitions are same as other level Page descriptor
+
+L0, L1, L2 levels descriptors: (TTBRx points to one of these)
+
+  [1-0]
+   x 0 : Invalid
+   0 1 : Block and Page descriptor entry
+   1 1 : Page Table entry
+
+   0 1 : Block and Page descriptor entry
+    [63 - 59] : Ignore
+    [58 - 55] : RSRV for SW
+    54        : UXN or XN (XN. Determines whether the region is executable)
+    53        : PXN (Privileged XN. Determines whether the region is executable at EL1)
+    52        : Contiguous (Hint that address is contiguous, a cached TLB can service next 16 entries for 4k etc) 
+    [51 - 48] : Ignore
+    [47 - 12] : Output Addr (12 for 4k granule L1, 21 for 4k L2, 25 for 16k L2, 29 for 64k L2)
+    11        : nG (Not Global, Indicates if the TLB entry applies to all ASID values or only to current)
+    10        : AF (Access Flag, indicates memory accessed since AF was set to 0)
+    [8 - 9]   : SH[1:0] (Shareability)
+    [7 - 6]   : AP[2:1] Data Access Permissions
+    5         : NS (Non secure, only applicable in secure state)
+    [4 - 2]   : AttrIndx[2:0] from MAIR
+
+   1 1 : Page Table entry
+    63        : NS Table (NS acess from secure state, ignore for NS state)
+    [62 - 61] : AP Table (Access Permissions for subsequent levels of lookup, refer below)
+    60        : XN Table (XN limit for subsequent levels of lookup, refer below)
+    59        : PXN Table (PXN limit for subsequent levels of lookup, refer below)
+    [58 - 52] : Ignore
+    [51 - 48] : SBZ
+    [47 - m]  : Next level Page table entry address (m=12 for 4k, m=14 for 16k and m=16 for 64k)
+    [m-1 - 2] : Ignore
+
+------------------------------------------------
+
+Access Permissions:
+AP[2:1]    Access from 
+          EL1       EL0
+ 00       RW        None
+ 01       RW        RW
+ 10       RO        None
+ 11       RO        RO
+
+------------------------------------------------
+
+Shareability:
+SH[1:0]   Normal memory
+  00      Non-shareable
+  01      UNPREDICTABLE
+  10      Outer Shareable
+  11      Inner Shareable
+
+
+------------------------------------------------
+
+APTable[1:0] Effect
+  00         No effect on permissions in subsequent levels of lookup.
+  01         Access at EL0 not permitted, regardless of permissions in subsequent levels of lookup.
+  10         Write access not permitted, at any Exception level, regardless of permissions in subsequent levels of lookup.
+  11         Regardless of permissions in subsequent levels of lookup:
+                  Write access not permitted, at any Exception level.
+                  Read access not permitted at EL0.
+
+------------------------------------------------
+
+UXNTable or XNTable restricts the XN control:
+  — When the value of the XNTable bit is 1, the XN bit is treated as 1 in all subsequent levels of lookup, regardless of its actual value.
+  — When the value of the UXNtable bit is 1, the UXN bit is treated as 1 in all subsequent levels of lookup, regardless of its actual value.
+  — When the value of a UXNtable or XNTable bit is 0 the bit has no effect.
+
+PXNTable restricts the PXN control:
+  — When PXNTable is set to 1, the PXN bit is treated as 1 in all subsequent levels of lookup, regardless of the actual value of the bit.
+  — When PXNTable is set to 0 it has no effect
+
+------------------------------------------------
+
+MAIR_EL1 Attributes:
+Attr[3:0]      Attr[7:4]
+                00RW      Normal memory (WT), Outer Write Through transient (Where RW != 00)
+                0100      Normal memory (UC), Outer Non-Cacheable
+                01RW      Normal memory (WB), Outer Write Back transient (Where RW != 00)
+                10RW      Normal memory (WT), Outer Write Through non-transient
+                11RW      Normal memory (WB), Outer Write Back non-transient
+
+                After this row iiii means iiii is non zero
+ 0000           0000      Device memory nGnRnE
+ 0000           iiii           Unpredictable
+ 
+ 00RW           0000           Unpredictable (RW != 00)
+ 00RW           iiii      Normal memory (WT), Inner Write Through transient (RW != 00)
+
+ 0100           0000      Device memory nGnRE
+ 0100           iiii      Normal memory (UC), Inner Non-Cacheable
+ 
+ 01RW           0000           Unpredictable (RW != 00)
+ 01RW           iiii      Normal memory (WB), Inner Write Back transient (RW != 00)
+ 
+ 1000           0000      Device memory nGRE
+ 1000           iiii      Normal memory (WT), Inner Write Through non-transient (RW=00)
+ 
+ 10RW           0000           Unpredictable (RW != 00)
+ 10RW           iiii      Normal memory (WT), Inner Write Through non-transient (RW != 00)
+ 
+ 1100           0000      Device memory GRE
+ 1100           iiii      Normal memory (WB), Inner Write Back non-transient (RW=00)
+ 
+ 11RW           0000           Unpredictable (RW != 00)
+ 11RW           iiii      Normal memory (WB), Inner Write Back non-transient
+

@@ -1,0 +1,113 @@
+#===============================================================================
+#
+#
+# GENERAL DESCRIPTION
+#
+# Copyright (c) 2011 - 2017 QUALCOMM Technologies Incorporated. All Rights Reserved
+#
+# Qualcomm Proprietary
+#
+# Export of this technology or software is regulated by the U.S. Government.
+# Diversion contrary to U.S. law prohibited.
+#
+# All ideas, data and information contained in or disclosed by
+# this document are confidential and proprietary information of
+# Qualcomm Technologies Incorporated and all rights therein are expressly reserved.
+# By accepting this material the recipient agrees that this material
+# and the information contained therein are held in confidence and in
+# trust and will not be used, copied, reproduced in whole or in part,
+# nor its contents revealed in any manner to others without the express
+# written permission of Qualcomm Technologies Incorporated.
+#
+#-------------------------------------------------------------------------------
+#
+# $Header: //components/rel/core.qdsp6/2.1/pmic/pm/build/pm.scons#1 $
+# $DateTime: 2017/07/21 22:10:47 $ 
+#
+#                      EDIT HISTORY FOR FILE
+#                      
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#  
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 01/10/17   akm     Added SLPI config, PRM and Clean up
+# 05/12/15   pb      Added support for PAM testing
+# 06/25/12   hs      Moved to core\systemdrivers.
+# 03/30/12   hs      Added support for VBATT APP.
+# 03/07/12   hs      Added support for BOOT builds.
+# 03/12/12   hs      Updated.
+# 03/07/12   hs      Added support for MPSS and RPM builds.
+# 01/24/12   hs      Created
+#===============================================================================
+
+import os
+Import('env')
+
+env.Replace(PMIC_ROOT = [
+    "${INC_ROOT}/core/pmic/pm",
+   ])
+
+if env.has_key('ADSP_PROC'):
+    env.Append(CPPDEFINES = 'PM_IMAGE_LPASS_PROC')
+elif env.has_key('SLPI_PROC'):
+   env.Append(CPPDEFINES = 'PM_IMAGE_SLPI_PROC')
+
+env.PublishPrivateApi( 'PMIC_FRAMEWORK', [
+    '${PMIC_ROOT}/framework/inc',
+    '${PMIC_ROOT}/framework/src',
+    ])
+
+env.PublishPrivateApi( 'PMIC_UTILS', [
+    '${PMIC_ROOT}/utils/src'
+    ])
+
+env.PublishPrivateApi( 'PMIC_RPMH', [ 
+    '${PMIC_ROOT}/rpmh/inc',
+    '${PMIC_ROOT}/rpmh/src',
+    ])
+
+env.PublishPrivateApi( 'PMIC_XO', [ 
+    '${PMIC_ROOT}/xo/src',
+    '${PMIC_ROOT}/xo/inc',
+    ])
+
+env.PublishPrivateApi( 'PMIC_PRM', [    
+    '${PMIC_ROOT}/prm/src',
+    '${PMIC_ROOT}/prm/inc',
+    '${PMIC_ROOT}/prm/inc/scalar',
+    ])
+
+if 'USES_QDSS_SWE' in env:
+   QDSS_IMG = ['QDSS_EN_IMG']
+   events = [['PMIC_EVENT_FIRST=512','PMIC first event placeholder'],
+             ['PMIC_EVENT_LAST=639','PMIC last event placeholder']
+            ]
+   env.AddSWEInfo(QDSS_IMG, events)
+
+
+#-------------------------------------------------------------------------------
+# Build Directives:  
+#-------------------------------------------------------------------------------
+
+LIB_NAME        = 'pmic'
+IMAGE_SOURCES   = ['CORE_Q6_ROOT']
+
+from glob import glob
+
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH:  
+#-------------------------------------------------------------------------------
+SRCPATH = ".."
+
+#BUILDPATH =  image_name / processor_name, eg modem_libs / arm11 = directory where built objects stored
+env.VariantDir('${BUILDPATH}', SRCPATH , duplicate=0)
+
+env.SConscript('${PMIC_ROOT}/framework/build/pmic_framework.scons', exports='env')
+env.SConscript('${PMIC_ROOT}/rpmh/build/pmic_rpmh.scons', exports='env')
+env.SConscript('${PMIC_ROOT}/xo/build/pmic_xo.scons', exports='env')
+env.SConscript('${PMIC_ROOT}/prm/build/pmic_prm.scons', exports='env')
+env.SConscript('${PMIC_ROOT}/utils/build/pmic_utils.scons', exports='env')
+

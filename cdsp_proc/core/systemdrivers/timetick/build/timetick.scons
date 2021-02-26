@@ -1,0 +1,109 @@
+#===============================================================================
+#
+# DAL Timetick Lib
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2010-2014 Qualcomm Technologies Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1.c4/systemdrivers/timetick/build/timetick.scons#1 $
+#  $DateTime: 2018/07/30 01:21:36 $
+#  $Author: pwbldsvc $
+#  $Change: 16759227 $
+#
+#===============================================================================
+
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+
+SRCPATH = "${BUILD_ROOT}/core/systemdrivers/timetick/src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+CBSP_API = [
+   'DAL',
+   'HAL',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   
+   # needs to be last also contains wrong comdef.h      
+   'KERNEL',   
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+env.PublishPrivateApi("SYSTEMDRIVERS_TIMETICK", [
+   "${BUILD_ROOT}/core/systemdrivers/timetick/src"
+])
+
+if env.has_key('HWIO_IMAGE'):
+
+  env.AddHWIOFile('HWIO', [
+    {
+      'filename': '${BUILDPATH}/TimetickHWIO.h',
+
+      # Filter to include only the QTMR symbol.
+      'filter-include': ['QTMR'],
+    }
+  ]
+)
+
+#-------------------------------------------------------------------------------
+# Source Code
+#-------------------------------------------------------------------------------
+
+DAL_TIMETICK_SOURCES =  [
+   '${BUILDPATH}/DalTimetickInfo.c',
+   '${BUILDPATH}/DalTimetick.c',
+   '${BUILDPATH}/DalTimetickFwk.c',
+   '${BUILDPATH}/timetickLegacy.c',
+]
+
+UTIMETICK_SOURCES =  [
+   '${BUILDPATH}/uTimetick.c',
+]
+#-------------------------------------------------------------------------------
+#  RC INIT
+#-------------------------------------------------------------------------------
+
+if 'USES_RCINIT' in env:
+  RCINIT_IMG = ['CORE_MODEM','CORE_QDSP6_SW','CORE_SLPI_ROOT','CORE_QDSP6_SENSOR_SW', 'CORE_QDSP6_AUDIO_SW']
+  env.AddRCInitFunc(       # Code Fragment in TMC: NO
+  RCINIT_IMG,              # define TMC_RCINIT_INIT_UTIMETICK_INIT
+  {
+    'sequence_group'             : 'RCINIT_GROUP_0',       # required
+    'init_name'                  : 'uTimetick',              # required
+    'init_function'              : 'uTimetick_Init',         # required
+    'dependencies'               : ['dalsys','busywait']
+  })
+	  
+#-------------------------------------------------------------------------------
+# Add libraries to image
+#-------------------------------------------------------------------------------
+
+uTimetick_lib = env.AddLibrary(['CORE_CDSP_ROOT', 'CORE_CDSP_USER', 'CORE_SLPI_ROOT','CORE_SLPI_USER','CORE_ADSP_USER','CORE_ADSP_ROOT','CORE_SLPI_ADSP_ROOT','CORE_SSC_ADSP_USER','CORE_AVS_ADSP_USER'],
+                                '${BUILDPATH}/uTimetick',
+                                UTIMETICK_SOURCES)
+
+if 'USES_ISLAND' in env:
+   env.AddIslandLibrary(['CORE_SLPI_ROOT','CORE_SLPI_USER','CORE_ADSP_USER','CORE_ADSP_ROOT','CORE_SLPI_ADSP_ROOT','CORE_SSC_ADSP_USER','CORE_AVS_ADSP_USER'], uTimetick_lib)
+
+env.AddLibrary(
+   ['CORE_CDSP_ROOT', 'CORE_ADSP_ROOT', 'CORE_SLPI_ROOT','CORE_SLPI_ADSP_ROOT'],
+   '${BUILDPATH}/DALTimetick',
+   DAL_TIMETICK_SOURCES)
+

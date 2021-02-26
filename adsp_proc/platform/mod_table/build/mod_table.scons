@@ -1,0 +1,59 @@
+#===============================================================================
+# Copyright (c) 2012 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+platform_root = '${BUILD_ROOT}/platform'
+env.Replace(ADSP_PLATFORM_ROOT = platform_root)
+
+env.RequirePublicApi([
+   'HAPSDK',
+   'DLW',
+   'PLATFORM_LIBS',
+   'STDDEF',
+   'UTILS',
+   'A1STD',
+   'REMOTE',
+   'MOD_TABLE',
+   'SBUF',
+   'RTLD',
+  ])
+
+core_public_apis = [
+   'KERNEL',
+   ]
+env.RequireRestrictedApi([
+   'FASTRPC_POWER',
+  ])
+
+env.RequirePublicApi(core_public_apis, area='core')
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${ADSP_PLATFORM_ROOT}/mod_table/src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+MOD_TABLE_SOURCES =  [
+ '${BUILDPATH}/mod_table.c',
+ '${BUILDPATH}/mod_table_cache.c',
+ ]
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+mod_table_lib = env.AddBinaryLibrary(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+    'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'FASTRPC_SHELL_IMG', 'AVS_ADSP_USER', 'CORE_QDSP6_SENSOR_SW', 'SSC_ADSP_USER'],'${BUILDPATH}/mod_table', MOD_TABLE_SOURCES)
+
+#-------------------------------------------------------------------------------
+# Load Subunits (sys)
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+#Clean and pack rules
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.cpp', '*.S', '*.h'], '${ADSP_PLATFORM_ROOT}/mod_table'))
+for x in env.FindFiles(['mod_table.h'], '${ADSP_PLATFORM_ROOT}/mod_table'):
+    CLEAN_LIST.remove(x)
+env.CleanPack(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE','QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'CORE_QDSP6_SENSOR_SW', 'FASTRPC_SHELL_IMG', 'AVS_ADSP_USER', 'SSC_ADSP_USER'], CLEAN_LIST)

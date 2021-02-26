@@ -1,0 +1,159 @@
+#===========================================================================
+#  Copyright (c) 2011-2016, 2017 QUALCOMM Technologies Incorporated.
+#  All Rights Reserved.
+#  Qualcomm Confidential and Proprietary
+#===========================================================================
+#
+#
+# GENERAL DESCRIPTION
+#    build script
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+import os
+
+Import('env')
+env = env.Clone()
+
+if env['PROC'] == 'scorpion':
+  env.Replace(LIB_OUT_DIR = '${BUILD_ROOT}/ssg/bsp/trustzone/qsapps/sampleapp/build/${SHORT_BUILDPATH}')
+else:
+  env.Replace(LIB_OUT_DIR = '${BUILD_ROOT}/ssg/bsp/trustzone/qsapps/smplap64/build/${SHORT_BUILDPATH}')
+
+#------------------------------------------------------------------------------
+# We need to specify "neon" to generate SIMD instructions in 32-bit mode
+#------------------------------------------------------------------------------
+if env['PROC'] == 'scorpion':
+  env.Append(CCFLAGS = " -mfpu=neon ")
+
+env.Append(CPPDEFINES = 'SAMPLE_APP=1')
+
+test_fuse_inc = ['#../../ssg/securemsm/trustzone/qsapps/sampleapp/inc/' + env['CHIPSET']]
+includes = [
+  '#../../ssg/securemsm/trustzone/qsapps/libs/sp_iris/inc',
+  '#../../core/api/boot/qfprom',
+  '#../../core/api/kernel/libstd/stringl',
+  '#../../core/kernel/smmu/ACv3.0/common/inc/',
+  '#../../ssg/api/securemsm/trustzone/gp',
+  '#../../ssg/securemsm/secmath/shared/inc',
+  '#../../ssg/securemsm/secrsa/shared/inc',
+  '#../../ssg/securemsm/sse/qsee/SecureTouch/drTs/include',
+  '#../../ssg/securemsm/sse/qsee/SecureUI/inc',
+  '#../../ssg/securemsm/sse/qsee/SecureUILib/include',
+  '#../../ssg/securemsm/trustzone/qsapps/common',
+  '#../../ssg/securemsm/trustzone/qsapps/libs/applib/qsee/src',
+  '#../../ssg/securemsm/trustzone/qsapps/libs/biometric/inc',
+  '#../../ssg/securemsm/trustzone/qsapps/sampleapp/inc',
+  '#../../ssg/securemsm/trustzone/qsapps/sampleapp/idl',
+  '#../../ssg/securemsm/trustzone/qsapps/smplserv/src',
+  '#../../ssg/securemsm/trustzone/qsapps/smplserv/idl',
+  '#../../ssg/securemsm/trustzone/qsee/mink/include',
+]
+includes.extend(test_fuse_inc)
+
+#----------------------------------------------------------------------------
+# App core Objects
+#----------------------------------------------------------------------------
+
+sources = [
+        'app_main.c',
+        'app_smci_test.c',
+        'app_smplserv_test.c',
+        'app_sandbox_test.c',
+        'app_smplcert_test.c',
+        'app_crypto.c',
+        'app_sfs.c',
+        'app_rsa.c',
+        'qsee_api_tests.c',
+        'app_cmnlib.c',
+        'app_message_passing.c',
+        'app_fuses.c',
+        'app_stor.c',
+        'app_iris.c',
+        'app_secure_ui.c',
+        'app_spcom_test.c',
+        'app_bio_lib.c',
+        'app_bulletin_board.c',
+        'app_hdcp.c',
+        'idl/CAppLegacyTest.c',
+]
+libs = [
+  env.SConscript('${BUILD_ROOT}/ssg/securemsm/trustzone/qsapps/libs/biometric/build/SConscript', exports='env'),
+  env.SConscript('${BUILD_ROOT}/ssg/securemsm/trustzone/qsapps/libs/sp_iris/build/SConscript', exports='env'),
+  env.SConscript('${BUILD_ROOT}/ssg/securemsm/sse/qsee/SecureUILib/lib/build/SConscript', exports='env'),
+  env.SConscript('${BUILD_ROOT}/ssg/securemsm/sse/qsee/SecureUI/build/SConscript', exports='env'),
+  env.SConscript('${BUILD_ROOT}/ssg/securemsm/sse/qsee/SecureTouch/drTs/lib/build/SConscript', exports='env'),
+  env.SConscript('${BUILD_ROOT}/ssg/securemsm/sse/qsee/SecureTouch/drTs/controller/build/SConscript', exports='env'),
+  env.SConscript('${BUILD_ROOT}/ssg/securemsm/sse/SecureTouch/controller/build/SConscript', exports='env'),
+  env.SConscript('${BUILD_ROOT}/ssg/securemsm/sse/log/build/SConscript', exports='env'),
+]
+
+
+deploy_sources = []
+deploy_sources.extend(sources)
+
+
+if env['PROC'] == 'scorpion':
+  target_name = 'smplap32'
+  app_name = 'SampleApp'
+  uuid_name = '53616D70-6C65-4170-7000-000000000032'
+else:
+  target_name = 'smplap64'
+  app_name = 'SampleApp64'
+  uuid_name = '53616D70-6C65-4170-7000-000000000064'
+
+#-------------------------------------------------------------------------------
+# Add metadata to image
+# For debugging purposes UUID is "SampleApp" in hex.
+#-------------------------------------------------------------------------------
+md = {
+   'appName':    app_name,
+   'UUID':       uuid_name,
+   'privileges': ['default',
+                  'I2C',
+                  'OEMUnwrapKeys',
+                  'TestSandbox',
+                  'CertValidate',
+                  'SPI',
+                  'SPCOM',
+                  'TLMM',
+                  'SecureDisplay',
+                  'DebugPolicySource',
+                  'IntMask',
+                  'OEMBuf',
+                  'TransNSAddr',
+                  'NSSystemReg',
+                  'HdcpEncryption',
+                  'RTICReport',
+                 ],
+  'heapSize': 0x1B8000,
+  'storageFilesNoPersist': True,
+  'totalStorageFiles': 2000
+}
+if env['PROC'] == 'scorpion':
+  md['memoryType'] = 'Unprotected'
+
+deploy_header_files = env.Glob('../inc/*') + env.Glob('../idl/*')
+
+sampleapp_units = env.SecureAppBuilder(
+  sources = sources,
+  includes = includes,
+  metadata = md,
+  image = target_name,
+  user_libs = libs,
+  deploy_sources = deploy_sources + ['SConscript'] + deploy_header_files,
+  deploy_variants = env.GetDefaultPublicVariants()
+)
+
+for image in env['IMAGE_ALIASES']:
+  op = env.Alias(image, sampleapp_units)

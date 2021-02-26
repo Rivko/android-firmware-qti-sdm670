@@ -1,0 +1,148 @@
+/** @file  IPVC.idl */
+
+/* Copyright (c) 2015-2017 Qualcomm Technologies, Inc.  All Rights Reserved.
+   Qualcomm Technologies Proprietary and Confidential. */
+
+
+interface IPVC 
+{
+
+/**
+ * @addtogroup interrupts
+ * @{
+ */
+  /** Interrupt is level-triggered. */
+  const int32 INTF_TRIGGER_LEVEL        = 0;
+
+  /** Interrupt is edge-triggered. */
+  const int32 INTF_TRIGGER_EDGE         = 1;
+
+  /** Interrupt is marked as registered for the internal OS (QTEE). */
+  const int32 INTF_INT_FLAG             = 0;
+
+  /** If active, the current interrupt configuration is saved and is to be restored
+   * when the interrupt service routine (ISR) is uninstalled. */
+  const int32 INTF_SAVE_INT             = 0x00004000;
+
+  /** Interrupt is configured as non-secure. Valid only for unregister. */
+  const int32 INTF_INT_FLAG_NON_SECURE  = 0x10000000;
+
+  /** Interrupt is configured for CPU0 only. \n
+      This flag is deprecated and should no longer be used. It is no longer
+      possible to target interrupts to CPU0 only. */
+  const int32 INTF_CPU0_ONLY            = 0x20000000;
+
+  /** Interrupt is marked registered for all CPUs. This affects only the
+   * interrupt registry state, not the interrupt controller. */
+  const int32 INTF_ALL_CPUS             = 0x40000000;
+
+  /** ISR is installed, but the interrupt itself cannot be configured on the
+   * interrupt controller. */
+  const int32 INTF_SKIP_INT_CONFIG      = 0x80000000;
+
+/** Raises an interrupt to the REE.
+
+    @param[in] intnum Interrupt number to raise.
+
+    @detdesc
+    Uses spare shared interrupts (SPIs) to provide IRQs to Android. 
+  
+    @note1hang The third-party TEE must ensure that the interrupt being triggered
+    is not currently in use by the REE.
+  
+    @return
+    Object_OK if successful.
+ */
+  method generateIrq(in uint32 intnum);
+
+/** Enables a JTAG debug fuse.
+  
+    @param[in] debug Specifies whether fuse debugging is enabled.
+  
+    @return
+    Object_OK if successful.
+ */
+  method jtagOverride(in uint32 debug);
+
+/** Notifies the TZBSP to register the FIQ in the Qualcomm generic
+    interrupt controller.
+  
+    @note1hang Different client operating systems cannot register for the same
+    interrupt.
+  
+    @note1hang The timer interrupt cannot be registered via this method.
+  
+    @param[in] intnum Interrupt number.
+    @param[in] flags Combination of IPVC_INTF_ interrupt initiation flags.
+    @param[in] enable Enables the interrupt when the interrupt is registered.
+    @param[out] registeredBit An integer with a single bit set, which identifies
+                             the newly registered interrupt.
+  
+    @return
+    Object_OK if successful.
+ */
+  method registerInterrupt(in uint32 intnum,
+                           in uint32 flags,
+                           in int32 enable,
+                           out uint32 registeredBit);
+
+
+/** Notifies the TZBSP to deregister the FIQ in the Qualcomm generic
+    interrupt controller.
+  
+    @param[in] intnum Interrupt number to be disabled.
+  
+    @return
+    Object_OK if successful.
+ */
+  method deregisterInterrupt(in uint32 intnum);
+
+/** Generates a secure software-generated interrupt (SGI) to the
+    processor that is currently running.
+  
+    @param[in] intnum Interrupt number to be raised. Supported values: 0-15.
+  
+    @return
+    Object_OK if successful.
+ */
+  method generateFiq(in uint32 intnum);
+/** @} */ /* end_addtogroup interrupts */
+
+
+/**
+ * @addtogroup timer
+ * @{
+ */
+
+/** Starts the secure timer for the calling third-party TEE.
+
+    @param[in]  timeoutMS  Duration before interrupt.
+
+    @param[in]  isPeriodic TRUE if the timer automatically restarts after it
+                           expires, FALSE otherwise.
+
+    @param[out] registeredBit An integer with a single bit set, which identifies
+                              the newly registered interrupt.
+
+    @detdesc
+    Even if the returned value is a valid interrupt mask, the client
+    OS is expected to only use the timer group functions
+    to start, stop, enable, and disable the associated timer. The
+    third-party TEE is not expected to use the functions from
+    the interrupts group.
+
+    @return
+    Object_OK if successful.
+ */
+  method startTimer(in uint32 timeoutMS,
+                    in uint32 isPeriodic,
+                    out uint32 registeredBit);
+
+/** Stops (deregisters) the timer from calling the third-party TEE.
+
+    @return
+    Object_OK if successful.
+ */
+  method stopTimer();
+/** @} */ /* end_addtogroup interrupts */
+};

@@ -1,0 +1,39 @@
+entry &array &address &output
+;;Usage of memheap free array script
+;;Ex: do memheap_free_array.cmm arg[1] arg[2] arg[3]
+;;arg[1] is which memheap free array to check
+;;arg[2] is which memory pointer to check
+;;arg[3] is output folder to get memheap_free_array.txt file
+;;Ex: do memheap_free_array.cmm \\M8937AAAAAAAAQ1234\Global\memheap_info_free_array 0xf0a59080 C:\Temp
+;;Ex: do memheap_free_array.cmm \\M8937AAAAAAAAQ1234_SENSOR\Global\memheap_info_free_array 0x345E2110 C:\Temp
+
+&length=0x400 ;length of the array assuming as 1024 
+&counter=0
+
+OPEN #1 "&output\memheap_free_array.txt" /CREATE
+
+RePeaT 
+(
+    IF &counter==&length
+    (
+        GOTO endloop
+    )
+    &memory_ptr=V.VALUE(&array[&counter].mem_ptr)
+    &offset=V.VALUE(&array[&counter].forw_offset)
+    &mem_offset=&memory_ptr+&offset
+    if (&address>=&memory_ptr)&&(&address<=&mem_offset)
+    (
+        &heap_ptr=v.string(((mem_heap_type *)&array[&counter].heap_ptr))
+        &heap_ptr_info= Y.NAME(D:&heap_ptr)
+        &mem_ptr=v.string((mem_heap_type *)&array[&counter].mem_ptr)
+        &mem_ptr_name= Y.NAME(D:&mem_ptr)
+        &task_id=v.string((mem_heap_type *)&array[&counter].task_id)
+        &caller=v.string((mem_heap_type *)&array[&counter].caller)
+        &caller_info=Y.NAME(D:&caller)
+        &forw_offset=v.string((mem_heap_type *)&array[&counter].forw_offset)
+        WRITE #1 "heap_ptr = &heap_ptr = &heap_ptr_info, mem_ptr = &mem_ptr = &mem_ptr_name, task_id = &task_id, caller = &caller = &caller_info, forw_offset = &forw_offset"
+    )
+    &counter=&counter+1
+)
+endloop:CLOSE #1
+print "&counter"

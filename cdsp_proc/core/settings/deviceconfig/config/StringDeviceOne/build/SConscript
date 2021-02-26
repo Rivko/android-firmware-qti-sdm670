@@ -1,0 +1,122 @@
+#===============================================================================
+# Copyright (c) 2009 - 2010 Qualcomm Incorporated.
+# All Rights Reserved.
+# Qualcomm Confidential and Proprietary
+#
+#  $Header: //components/rel/core.qdsp6/2.1.c4/settings/deviceconfig/config/StringDeviceOne/build/SConscript#1 $
+#  $DateTime: 2018/07/30 01:21:36 $
+#  $Author: pwbldsvc $
+#  $Change: 16759227 $
+#===============================================================================
+# DAL Timer Lib
+#-------------------------------------------------------------------------------
+Import('env')
+env = env.Clone()
+#if ('PLATFORM_KERNEL_TEST' not in env._dict['CPPDEFINES']):
+#    Return()
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+#SRCPATH = "${BUILD_ROOT}/core/test/platform/kernel/deviceconfig/drivers/StringDeviceOne"
+SRCPATH = "${CORE_SETTINGS_DIR}/deviceconfig/config/StringDeviceOne"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# External depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   # needs to be last also contains wrong comdef.h      
+   'KERNEL',   
+   'TEST',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+env.UsesInc([
+   "${DAL_API}",
+   "${DEBUGTOOLS_API}",
+   "${HWENGINES_API}",
+   "${MPROC_API}",
+   "${SERVICES_API}",
+   "${SYSTEMDRIVERS_API}",
+   "${KERNEL_API}",
+])
+
+env.UsesInc([
+   "${DAL_LEGACY}",
+   "${DEBUGTOOLS_LEGACY}",
+   "${HWENGINES_LEGACY}",
+   "${MPROC_LEGACY}",
+   "${SERVICES_LEGACY}",
+   "${SYSTEMDRIVERS_LEGACY}",
+
+   # needs to be last also contains wrong comdef.h
+   "${KERNEL_LEGACY}",
+])
+
+#-------------------------------------------------------------------------------
+# Source Code
+#-------------------------------------------------------------------------------
+
+env.Append(CPPPATH = [                    
+   #'${INC_ROOT}/core/test/platform/kernel/deviceconfig/api'   
+   '${INC_ROOT}/core/settings/deviceconfig/interface'  
+])
+
+DAL_STRING_SOURCES =  [ 
+        '${BUILDPATH}/DalTestStringOne.c'
+]
+daltf_kernel_dalstring_obj = env.Object(DAL_STRING_SOURCES)
+daltf_kernel_dalstring_lib = env.Library('${BUILDPATH}/DALStringOne', daltf_kernel_dalstring_obj)
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+#GUEST_OS_IMAGES = ['QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'CORE_QDSP6_SW']
+#MODEM_IMAGES = ['MODEM_IMAGE', 'CBSP_MODEM_IMAGE']
+#SENSOR_IMAGES = ['CORE_QDSP6_SENSOR_SW']
+#GENERIC_USER_PD = ['CORE_USER_PD']
+
+#ALL_GUEST_IMAGES = MODEM_IMAGES + GUEST_OS_IMAGES
+#ALL_USER_IMAGES = SENSOR_IMAGES + GENERIC_USER_PD
+
+#env.AddLibrary (['CORE_MODEM'], '${BUILDPATH}/DALStringOne', DAL_STRING_SOURCES)
+#env.AddLibrary (ALL_USER_IMAGES, '${BUILDPATH}/DALStringOne_USER', DAL_STRING_SOURCES)
+if not env.has_key('ENABLE_APTTESTS_KERNEL_NONE'):
+	env.AddLibsToImage (
+		['CBSP_MODEM_IMAGE',
+        'MODEM_IMAGE',
+        'CORE_USER_PD',
+        'CORE_GSS',
+		'CORE_QDSP6_SW',
+        'CORE_QDSP6_AUDIO_SW',
+		'WCN_IMAGE',
+        'CBSP_WCN_IMAGE',
+        'CORE_WCN',
+        'CBSP_APPS_IMAGE',
+		'APPS_IMAGE',
+        'CORE_SSC_SLPI_USER',
+        'CORE_SLPI_ROOT',
+        'CORE_SLPI_USER',
+		'CORE_CDSP_ROOT'],
+		daltf_kernel_dalstring_lib)
+		
+#devcfg_xml_path = "${BUILD_ROOT}/core/test/platform/kernel/deviceconfig/drivers/StringDeviceOne/dalstring_wcn_1_testplan.xml"
+devcfg_xml_path = "${CORE_SETTINGS_DIR}/deviceconfig/config/StringDeviceOne/dalstring_wcn_1_testplan.xml"
+
+
+if 'USES_DEVCFG' in env:
+   DEVCFG_IMG = [
+      'DAL_DEVCFG_IMG', 'DAL_DEVCFG_AUDIO_PD_IMG',
+      'DEVCFG_CORE_QDSP6_SENSOR_SW', 'DEVCFG_CORE_QDSP6_AUDIO_SW'
+   ]
+
+   env.AddDevCfgInfo(DEVCFG_IMG,
+   {
+   'soc_xml' : [devcfg_xml_path]
+   })

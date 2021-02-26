@@ -1,0 +1,135 @@
+#===============================================================================
+#
+#                             Edit History
+#
+# $Header: //components/rel/core.qdsp6/2.1/systemdrivers/icb/build/icb.scons#1 $
+# when         who     what, where, why
+# ----------   ---     ---------------------------------------------------------
+# 2016/08/18   sds     Initial Creation
+#
+#===============================================================================
+#            Copyright (c) 2016 QUALCOMM Technologies,Incorporated.
+#                              All Rights Reserved.
+#                            QUALCOMM Proprietary/GTDR
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Python library imports
+#-------------------------------------------------------------------------------
+import os
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+BUILDPATH = '..'
+env.VariantDir('${BUILDPATH}', BUILDPATH, duplicate=0)
+SRCPATH = os.path.join( BUILDPATH, 'src' )
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_APIS = [
+  'HAL',
+  'POWER',
+  'RPM',
+  'DAL',
+  'SYSTEMDRIVERS',
+  'ICB_DEVCFG_INTERFACE',
+  'SERVICES',
+  'DEBUGTOOLS',
+  'SECUREMSM',
+  'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_APIS)
+env.RequireRestrictedApi(CBSP_APIS)
+
+#-------------------------------------------------------------------------------
+# Private depends within ICB
+#-------------------------------------------------------------------------------
+env.PublishPrivateApi('ICB_API', [ os.path.join(SRCPATH, 'common') ])
+
+#-------------------------------------------------------------------------------
+# Determine which modules to compile
+# Don't compile if no target data
+#-------------------------------------------------------------------------------
+compile_abt = os.path.exists(os.path.join('../../../settings/systemdrivers/icb/config',
+                                          env['IMAGE'], env['CHIPSET'], 'ABT_data.c'))
+
+#-------------------------------------------------------------------------------
+# Common Sources
+#-------------------------------------------------------------------------------
+icb_src =  [
+  '${BUILDPATH}/src/common/axicfg.c',
+  '${BUILDPATH}/src/common/axicfgint.c',
+  '${BUILDPATH}/src/common/axicfgos.c',
+  '${BUILDPATH}/src/common/HALnoc.c',
+  '${BUILDPATH}/src/common/ul_arb.c',
+  '${BUILDPATH}/src/common/ul_int.c',
+  '${BUILDPATH}/src/common/ul_tree.c',
+]
+
+#-------------------------------------------------------------------------------
+# Build products for RCINIT
+#-------------------------------------------------------------------------------
+# Arbiter
+if 'USES_RCINIT' in env and env['CHIPSET'] in ['sdm845','sdm670']:
+  RCINIT_IMG = ['CORE_Q6_ROOT']
+
+  RCINIT_INIT_ICBARB = {
+    'sequence_group' : 'RCINIT_GROUP_0', # required
+    'init_name'      : 'icbarb',         # required
+    'init_function'  : 'icbarb_init',    # required
+    'dependencies'   : ['npa','rpmh','clk_regime','cmd_db'],    # opt [python list]
+  }
+  env.AddRCInitFunc( RCINIT_IMG, RCINIT_INIT_ICBARB )
+
+  RCINIT_ICBARB_POST = {
+    'sequence_group' : 'RCINIT_GROUP_7',   # required
+    'init_name'      : 'icbarb_post',      # required
+    'init_function'  : 'icbarb_post_init', # required
+    'dependencies'   : ['npa','icbarb'],   # opt [python list]
+  }
+  env.AddRCInitFunc( RCINIT_IMG, RCINIT_ICBARB_POST )
+
+# AHB timeout
+if compile_abt:
+  icb_src += [
+    '${BUILDPATH}/src/common/ABT_dal.c',
+    '${BUILDPATH}/src/common/ABT_dal_interrupt.c',
+    '${BUILDPATH}/src/common/ABTimeout.c',
+  ]
+  if 'USES_RCINIT' in env and env['CHIPSET'] in ['sdm845','sdm670']:
+    RCINIT_ABT_IMG = ['CORE_Q6_ROOT']
+
+    RCINIT_INIT_ABT = {
+      'sequence_group' : 'RCINIT_GROUP_0', # required
+      'init_name'      : 'abt',            # required
+      'init_function'  : 'ABT_Init',       # required
+      'dependencies'   : ['dalsys','clk_regime'],    # opt [python list]
+    }
+    env.AddRCInitFunc( RCINIT_ABT_IMG, RCINIT_INIT_ABT )
+
+# NoC error
+icb_src += [
+  '${BUILDPATH}/src/common/NOC_error.c',
+  '${BUILDPATH}/src/common/NOC_error_dal.c',
+  '${BUILDPATH}/src/common/NOC_error_dal_interrupt.c',
+]
+if 'USES_RCINIT' in env and env['CHIPSET'] in ['sdm845','sdm670']:
+  RCINIT_NOCERR_IMG = ['CORE_Q6_ROOT']
+
+  RCINIT_INIT_NOCERR = {
+    'sequence_group' : 'RCINIT_GROUP_0', # required
+    'init_name'      : 'nocerr',         # required
+    'init_function'  : 'NOC_Error_Init', # required
+    'dependencies'   : ['dalsys','clk_regime'],    # opt [python list]
+  }
+  env.AddRCInitFunc( RCINIT_NOCERR_IMG, RCINIT_INIT_NOCERR )
+
+#-------------------------------------------------------------------------------
+# Images 
+#-------------------------------------------------------------------------------
+env.AddLibrary( ['CORE_Q6_ROOT'], '${BUILDPATH}/icb', icb_src)

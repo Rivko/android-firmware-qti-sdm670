@@ -1,0 +1,200 @@
+;---------------------------------------------------------------------------
+;  File: uSleepDump.cmm
+;  
+;  Description: Dumps uSleep related data structures
+;  
+;               Copyright (c) 2016-2017 Qualcomm Technologies, Inc. (QTI).
+;               All Rights Reserved.
+;               Qualcomm Confidential and Proprietary.
+;               Export of this technology or software is regulated by the U.S. Government.
+;               Diversion contrary to U.S. law prohibited.
+;---------------------------------------------------------------------------
+
+;Path to the output file.
+;The three options are for nolog, nodump, and/or nomerge. any ordering is fine
+ENTRY &op_path &opt1 &opt2 &opt3 &opt4
+
+;ULog time stamp
+GLOBAL &ULogTimestamp &output &curr_dir &resourceStr 
+GLOBAL &str
+
+;Local variables
+LOCAL &temp &lprmName &ulogcall &uSleepulogcall &clprListPtr
+LOCAL &fTable &fCnt &fCore &numElem &eCnt &elem
+LOCAL &scriptDir &ulogcall
+LOCAL &tmpCnt
+LOCAL &logCnt &logName &numLogs
+
+&curr_dir=os.pwd()
+
+if "&op_path"==""
+(
+  ;Print a help message for srcipt
+  AREA.Create SleepDumpHelp
+  AREA.Select SleepDumpHelp
+  AREA SleepDumpHelp
+
+  ; no path to output provided.
+  PRINT "Use: SleepDump.cmm <output_path> [config] [nolog] [nodump] [nomerge] [unpa]"
+  PRINT "  Optional arguments, 
+  PRINT "  config - default (for default directory structure)"
+  PRINT "  nolog  - Sleep Ulogs will not be dumped"
+  PRINT "           (Will set nomerge implicitly)"
+  PRINT "  nodump - Sleep Data structures will not be dumped"
+  PRINT "  nomerge - Sleep logs will not be merged"
+  PRINT "  unpa    - Also dump NPA state"
+
+  ENDDO
+)
+
+;---------------------------------------------------------------------------
+; op_path is the path to output the file, 
+; We will see if that directory already exist if not we try to create
+; If it fails, we abort the script
+;---------------------------------------------------------------------------
+if !OS.DIR(&op_path)
+(
+  PRINT "Output path does not exist. Trying to create..."
+  mkdir &op_path
+
+  ; Error while creating output path
+  if !OS.DIR(&op_path)
+  (
+    PRINT "Error: Failed to locate/create &(op_path). Exiting..."
+    ENDDO
+  )
+)
+
+; Opening a file for sleep dump at given output path
+cd &op_path
+&op_path=os.pwd()
+cd &curr_dir
+
+;-------------------------------------------------------------------------
+; Processing the optional arguments
+;
+; Currently we are comparing all combination of last 4 arguments in order 
+; to provide flexibility to specify option in any order. But try to find
+; out if there is a way for command line arguments with varying numbers.
+;-------------------------------------------------------------------------
+&merge="true"
+&log="true"
+&dump="true"
+&npastate="false"
+&allDump="false"
+
+if "&opt1"=="all"||"&opt2"=="all"||"&opt3"=="all"||"&opt4"=="all"
+(
+  &allDump="true"
+  &log="true"
+)
+
+;if nomerge is passed as either option param
+if "&opt1"=="nomerge"||"&opt2"=="nomerge"||"&opt3"=="nomerge"||"&opt4"=="nomerge"
+(
+  &merge="false"
+)
+
+;if npa is passed as either option param
+if "&opt1"=="unpa"||"&opt2"=="unpa"||"&opt3"=="unpa"||"&opt4"=="unpa"
+(
+  &npastate="true"
+)
+
+;if nolog is passed as either option param
+;merge is implicitly declared as false when log is false, 
+;because then theres only 1 or 0 logs, and there's nothing to merge
+if "&opt1"=="nolog"||"&opt2"=="nolog"||"&opt3"=="nolog"||"&opt4"=="nolog"
+(
+  &log="false"
+  &merge="false"
+)
+
+;if nodump is passed as one of optional param
+if "&opt1"=="nodump"||"&opt2"=="nodump"||"&opt3"=="nodump"||"&opt4"=="nodump" 
+(
+  &dump="false"
+)
+
+;-----------------------------------------------------------------------
+; Constructing log call string and calling ulog dump on it based on
+; build configuration
+;-----------------------------------------------------------------------
+&resourceStr=""
+;switching to appropriate directory to get sleep logs
+
+;Don't run if we passed the nolog param
+if "&log"=="true"
+(   
+  ;String to call ulog dump 
+  &ulogcall="&(curr_dir)\..\..\ulog\scripts\ULogDump.cmm" 
+  &uSleepulogcall="&(curr_dir)\..\..\micro_ulog\scripts\micro_ULogDump.cmm"
+  &scriptDir="&(curr_dir)"
+  
+  ; Call micro ulog to dump logs from island section  
+  &logCnt=0
+  &numLogs=VAR.SIZEOF(g_uSleepLogs)/VAR.SIZEOF(g_uSleepLogs[0])
+  while &logCnt<&numLogs
+  (      
+    &logName=DATA.STRING(D:V.VALUE(g_uSleepLogs[&logCnt].name))
+    ;print "Dumping Log: &logName"
+    DO &uSleepulogcall &op_path "&logName"
+    &logCnt=&logCnt+1
+  )
+
+  ; Call ulog to dump logs from normal section
+  &logCnt=0
+  &numLogs=VAR.SIZEOF(g_uSleepDDRLogs)/VAR.SIZEOF(g_uSleepDDRLogs[0])
+  while &logCnt<&numLogs
+  (
+    &logName=DATA.STRING(D:V.VALUE(g_uSleepDDRLogs[&logCnt].name))
+    ;print "Dumping Log: &logName"
+    DO &ulogcall &op_path "&logName"
+    &logCnt=&logCnt+1
+  )
+)
+
+;----------------------------------------------------------------------------
+; Running the actual dump for sleep data structures. If we don't have correct
+; time stamp (due to nolog option as input or ulog failed for some reason)
+; we simply set it to all Fs so that during merging, dump will be at the end.
+;----------------------------------------------------------------------------
+if "&ULogTimestamp"==""
+(
+  &ULogTimestamp=0xFFFFFFFF
+)
+
+;Don't run dump if we passed nodump
+if "&dump"=="true"
+(
+;  cd &op_path
+;  OPEN #1 "SleepDump.ulog" /Create
+;  &output="WRITE #1"
+ 
+  
+;  CLOSE #1  
+)
+
+;End Dump
+PRINT "Sleep dump completed..."
+
+
+if "&merge"=="true"
+(
+  if &numLogs>1
+  (
+    do &(scriptDir)\mergeLogs.cmm &(scriptDir) &op_path uMergedOutput.ulog
+  )
+)
+
+;Dump the NPA state if option was given
+if "&npastate"=="true"
+(
+  PRINT "Dumping NPA state..."
+  &ulogcall="&(curr_dir)/../../unpa/scripts/unpadump.cmm"
+  DO &ulogcall &op_path
+)
+
+cd &(curr_dir)
+
+ENDDO

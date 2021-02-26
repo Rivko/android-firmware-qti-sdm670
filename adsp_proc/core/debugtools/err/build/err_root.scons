@@ -1,0 +1,212 @@
+#===============================================================================
+#
+# ERR Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009 - 2017 by Qualcomm Technologies, Inc.  All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1/debugtools/err/build/err_root.scons#3 $
+#  $DateTime: 2018/02/28 21:43:44 $
+#  $Author: pwbldsvc $
+#  $Change: 15572026 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/debugtools/err/src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Features and Definitions
+#-------------------------------------------------------------------------------
+env.Append(CPPDEFINES=['ERR_CFG_QURT'])
+env.Append(CPPDEFINES=['ERR_HW_QDSP6'])
+
+env.PublishPrivateApi("ERR", [
+   "${INC_ROOT}/core/debugtools/err/src/q6",
+   "${INC_ROOT}/core/debugtools/err/src/qurt"
+])
+
+if 'USES_DEVCFG' in env:
+    env.Append(CPPDEFINES=['ERR_USES_DEVCFG'])
+
+#-------------------------------------------------------------------------------
+# External depends outside CoreBSP
+#-------------------------------------------------------------------------------
+
+env.RequireExternalApi([
+])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+CBSP_API = [
+   'DAL',
+   'DEBUGTOOLS',
+   'HAL',
+   'MPROC',
+   'POWER',
+   'SERVICES',
+   'STORAGE',
+   'SYSTEMDRIVERS',
+
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Sources
+#-------------------------------------------------------------------------------
+
+env.Append(CPPDEFINES = ["ERR_LOG_SMEM_ITEM = 611"])
+
+ERR_ROOTPD_SOURCES =  [
+    '${BUILDPATH}/err.c',
+    '${BUILDPATH}/err_root.c',
+    '${BUILDPATH}/err_exception_handler.c',
+    '${BUILDPATH}/err_log_ssr.c',
+    '${BUILDPATH}/err_smem_log.c',
+    '${BUILDPATH}/err_post_stm_force_wdog_bite.c',
+    ]
+
+ERR_MPSS_SOURCES =  [
+   '${BUILDPATH}/err_nv_log.c',
+   '${BUILDPATH}/errlog.c',
+   '${BUILDPATH}/err_decompress.c',
+   '${BUILDPATH}/err_target_mpss.c',
+]
+
+ERR_NON_MPSS_SOURCES =  [
+    '${BUILDPATH}/err_target_non_mpss.c',
+    ]
+
+#Source meant for Uerr, Should be explicitly added for island mode
+UERR_ROOTPD_FULL_SOURCES = [
+   '${BUILDPATH}/uerr_exception_handler.c',
+   '${BUILDPATH}/q6/err_jettison_core_q6.S',
+   ]
+
+if 'USES_ISLAND_FEATURE' in env:
+  ERR_ROOTPD_SOURCES.append('${BUILDPATH}/uerr_exception_task.c')
+  UERR_ROOTPD_FULL_SOURCES.append('${BUILDPATH}/err_fatal.c')
+  UERR_ROOTPD_FULL_SOURCES.append('${BUILDPATH}/err_fatal_root.c')
+  env.Append(CFLAGS = "-DUERR_ISLAND_MODE ")
+else:
+  ERR_ROOTPD_SOURCES.append('${BUILDPATH}/q6/err_jettison_core_q6.S')
+  ERR_ROOTPD_SOURCES.append('${BUILDPATH}/err_fatal.c')
+  ERR_ROOTPD_SOURCES.append('${BUILDPATH}/err_fatal_root.c')
+
+   
+VERSION_IMG = [
+   'IMAGE_TREE_VERSION_AUTO_GENERATE',
+]
+
+if env.IsTargetEnable(VERSION_IMG):
+   ERR_ROOTPD_SOURCES.append('${BUILDPATH}/err_image_version.c')
+else:
+   ERR_ROOTPD_SOURCES.append('${BUILDPATH}/err_image_version_void.c')
+
+# SMEM Logging of build timestamp string
+if ('QCOM_TIME_STAMP' in env) and ('ENGG_TIME_STAMP' in env):
+    ERR_ROOTPD_SOURCES.append('${BUILDPATH}/err_ts_string.c')
+else:
+    ERR_ROOTPD_SOURCES.append('${BUILDPATH}/err_ts_string_stub.c')
+
+#-------------------------------------------------------------------------------
+# Add MPSS sources
+#-------------------------------------------------------------------------------
+if env.has_key('MODEM_PROC'):
+  ERR_IMGS = [
+    'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE','CORE_ROOT_PD', 
+  ]
+  BLD_SOURCES = ERR_ROOTPD_SOURCES + ERR_MPSS_SOURCES
+
+#-------------------------------------------------------------------------------
+# Add NON MPSS ( ADSP/SLPI ) root sources
+#-------------------------------------------------------------------------------
+else : 
+  ERR_IMGS = [
+      'CORE_QDSP6_SW', 'CORE_SLPI_ROOT'
+  ]
+  BLD_SOURCES = ERR_ROOTPD_SOURCES + ERR_NON_MPSS_SOURCES
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+err_full_libs = env.AddLibrary( ERR_IMGS, '${BUILDPATH}/err_root', BLD_SOURCES )
+
+if 'USES_ISLAND_FEATURE' in env:
+   #Move data from sbss/scommon to bss/data segments
+   env.Append(CCFLAGS = "-G0") 
+   #We don't support island functions with '-fstack-protector'
+   if "-fstack-protector" in env['HEXAGON_STKPRO']:
+      env.Replace(HEXAGON_STKPRO = "")
+   uerr_full_libs = env.AddLibrary(ERR_IMGS,'${BUILDPATH}/uerr_root', UERR_ROOTPD_FULL_SOURCES)
+
+if 'USES_ISLAND' in env:
+   env.AddIslandLibrary(ERR_IMGS, uerr_full_libs )
+   env.AddSymbolToIslandWhitelist(ERR_IMGS, uerr_full_libs, ['err_update_coredump_tid_and_is_exception'])
+   env.AddSymbolToIslandWhitelist(ERR_IMGS, uerr_full_libs, ['tms_get_timetick'])
+   env.AddSymbolToIslandWhitelist(ERR_IMGS, uerr_full_libs, ['err_update_reentrancy_flag'])
+   env.AddSymbolToIslandWhitelist(ERR_IMGS, uerr_full_libs, ['coredump'])
+   env.AddSymbolToIslandWhitelist(ERR_IMGS, uerr_full_libs, ['qurt_exception_shutdown_fatal'])
+
+# Register initializations with rcinit
+if 'USES_RCINIT' in env:
+    env.AddRCInitFunc(           
+    ERR_IMGS,                    
+    {
+     'sequence_group'             : 'RCINIT_GROUP_0',                   # required
+     'init_name'                  : 'err_init',                         # required
+     'init_function'              : 'err_init',                         # required
+     'dependencies'               : ['dalsys', 'tms_timetick',]
+    })
+
+    env.AddRCInitFunc(
+    ERR_IMGS,                    
+    {
+     'sequence_group'             : 'RCINIT_GROUP_0',                    # required
+     'init_name'                  : 'err_wdog_fbite',                    # required
+     'init_function'              : 'err_post_stm_force_wdog_bite_init', # required
+     'dependencies'               : ['gencbctxtinit']
+    })    
+
+    env.AddRCInitFunc(
+    ERR_IMGS,                    
+    {
+     'sequence_group'             : 'RCINIT_GROUP_1',                   # required
+     'init_name'                  : 'err_pd_init',                      # required
+     'init_function'              : 'err_pd_init',                      # required
+     'dependencies'               : ['err_init',]
+    })
+
+    if env.IsTargetEnable(['CORE_MODEM']):
+      env.AddRCInitFunc(
+      ERR_IMGS,                    
+      {
+       'sequence_group'             : 'RCINIT_GROUP_1',                   # required
+       'init_name'                  : 'err_nv_log_init',                  # required
+       'init_function'              : 'err_nv_log_init',                  # required
+       'dependencies'               : ['err_init',]
+      })

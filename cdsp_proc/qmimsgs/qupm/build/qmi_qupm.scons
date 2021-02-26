@@ -1,0 +1,75 @@
+#===============================================================================
+#
+# QUPM (Qualcomm Universal Peripheral Manager) QMI APIs
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2014 Qualcomm Technologies, Inc.  All Rights Reserved.
+# Qualcomm Technologies Proprietary and Confidential.
+#
+#-------------------------------------------------------------------------------
+#                      EDIT HISTORY FOR FILE
+#
+#  $Header: //components/rel/qmimsgs.adsp/2.6/qupm/build/qmi_qupm.scons#1 $
+#  $DateTime: 2014/09/25 17:45:45 $
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 09/23/14   pm      Baseline version
+#===============================================================================
+Import('env')
+env = env.Clone()
+from glob import glob
+from os.path import join, basename, exists
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "../src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+# ------------------------------------------------------------------------------
+# Include Paths
+#---------------------------------------------------------------------------------
+
+
+#-------------------------------------------------------------------------------
+# APIs needed to build the QUPM APIs
+#-------------------------------------------------------------------------------
+
+# Should be first
+if exists(env.subst("${BUILD_ROOT}/interfaces")):
+   env.RequirePublicApi([
+     'QMI_COMMON',
+     'QMI_QUPM',
+     ])
+else:
+   env.RequirePublicApi([
+     'COMMON',
+     'QUPM',
+     ])
+
+env.RequirePublicApi([
+  'MPROC',
+  ], area='CORE')
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+# Construct the list of source files by looking for *.c
+QUPM_C_SOURCES = ['${BUILDPATH}/' + basename(fname)
+                 for fname in glob(join(env.subst(SRCPATH), '*.c'))]
+
+# Add our library to the following build tags:
+#   QMIMSGS_ADSP for ADSP / LPASS images
+env.AddLibrary (['QMIMSGS_ADSP'], 
+                 '${BUILDPATH}/qmimsgs_qupm', [QUPM_C_SOURCES])
+
+# Load test units
+env.LoadSoftwareUnits()

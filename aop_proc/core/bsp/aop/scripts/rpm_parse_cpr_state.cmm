@@ -1,0 +1,322 @@
+
+v.v %std %e %open.2 cpr_info
+
+area.select A000
+area.view
+
+on error gosub
+(
+    print %cont %attr 4 " ? "
+    return
+)
+
+setup.Var %decimal.off %hex.off
+
+print
+print
+print
+
+&i=0
+
+&indent_lvl1="  "
+print "CPR INFO:"
+print "&indent_lvl1"+"ChipVersion : 0x"+format.hex(0,v.value(cpr_info.chipVersion))
+print "&indent_lvl1"+"CPR Rev     : 0x"+format.hex(0,v.value(cpr_info.cprRev))
+print "&indent_lvl1"+"Foundry     : "+v.string(cpr_info.foundry)
+print "&indent_lvl1"+"DataInit    : "+v.string(cpr_info.dataInit)
+print "&indent_lvl1"+"CfgInit     : "+v.string(cpr_info.cfgInit)
+print "&indent_lvl1"+"FullInit    : "+v.string(cpr_info.fullInit)
+print "&indent_lvl1"+"VP Hash     : "+d.string(d:v.value(cpr_info.settings->hashValue))
+print "&indent_lvl1"+"Rail Info   :"
+
+;&num_rails=v.sizeof(cpr_info.railStates)/v.sizeof(cpr_info.railStates[0])
+&num_rails=v.value(cpr_info.settings->railsCount)
+
+while &i<&num_rails
+(
+    &railStates=v.value(&cpr_info.railStates[&i])
+    &railCfg=v.value(cpr_info.settings->rails[&i])
+    &enab=v.value(((cpr_rail*)&railCfg)->enablement)
+
+    &indent_lvl2="&indent_lvl1"+"  "
+    &railId=v.value(((cpr_rail_state*)&railStates)->id)
+    print
+    print %attr 0x26 "&(indent_lvl2)Rail          : "+string.cut(v.string(((cpr_rail_state*)&railStates)->id),9)
+
+    &indent_lvl3="&indent_lvl2"+"  "
+
+    print "&indent_lvl3"+"CtrlMode    : "
+    print %cont %attr 0x46 string.cut(v.string(((cpr_rail_state*)&railStates)->cMode),12.)
+
+    &cmode=string.cut(v.string(((cpr_rail_state*)&railStates)->cMode),12.)
+
+    print "&indent_lvl3"+"FuseStepSize: "+format.decimal(0,v.value(((cpr_enablement*)&enab)->stepSize))+" uV"
+    print "&indent_lvl3"+"FuseMult    : "+format.decimal(0,v.value(((cpr_enablement*)&enab)->fuseMultiplier))+" uV"
+    if string.scan("&cmode","SW_CLOSED_LOOP",0)>=0
+    (
+        print "&indent_lvl3"+"Margins     : (Aging: "+format.decimal(0,v.value(((cpr_rail_state*)&railStates)->marginAdjustments[0]))+" uV), "
+        print %cont "(Thermal: "+format.decimal(0,v.value(((cpr_rail_state*)&railStates)->marginAdjustments[1]))+" uV), "
+        print "&indent_lvl3"+"DisableVotes: 0x"+format.hex(0,v.value(((cpr_rail_state*)&railStates)->disableVotes))
+        print "&indent_lvl3"+"Modes       : "
+        print %cont "(Active: "
+        if v.value(((cpr_rail_state*)&railStates)->activeMode)!=0
+        (
+            print %cont string.cut(v.string(((cpr_rail_state*)&railStates)->activeMode->mode),17.)+") "
+        )
+        else
+        (
+            print %cont "NULL) "
+        )
+        print %cont "(Prev: "
+        if v.value(((cpr_rail_state*)&railStates)->previousMode)!=0
+        (
+            print %cont string.cut(v.string(((cpr_rail_state*)&railStates)->previousMode->mode),17.)+")"
+        )
+        else
+        (
+            print %cont "NULL)"
+        )
+    )
+
+    &indent_lvl4="&indent_lvl3"+"  "
+    &indent_lvl5="&indent_lvl4"+"  "
+
+    if string.scan("&cmode","SW_CLOSED_LOOP",0)>=0
+    (
+        print "&indent_lvl3"+"HAL Info    :"
+
+        &ctrl=v.value(((cpr_rail*)&railCfg)->hal.controller)
+
+        &mask=v.value(((cpr_hal_controller*)&ctrl)->roMask)
+        gosub ParseMask &mask
+        entry &str
+
+        print "&indent_lvl4"+"Controller: "
+        print "&indent_lvl5"+"Base             : 0x"+format.hex(0,v.value(((cpr_hal_controller*)&ctrl)->base))
+        print "&indent_lvl5"+"Init             : "+v.string(((cpr_hal_controller*)&ctrl)->init)
+        print "&indent_lvl5"+"Enabled          : "+v.string(((cpr_hal_controller*)&ctrl)->enabled)
+        print "&indent_lvl5"+"marginAdjEnabled : "+v.string(((cpr_hal_controller*)&ctrl)->marginAdjEnabled)
+        print "&indent_lvl5"+"roMask           : 0x"+format.hex(0,&mask)+" (ROs Enabled: "+&str+")"
+        if v.value(((cpr_rail*)&railCfg)->vp->tempAdjCfg)!=0
+        (
+            print "&indent_lvl5"+"TempSensorData   : (HOT: Sensor:"+format.decimal(2,v.value(((cpr_hal_controller*)&ctrl)->tempSensorData.hotSensor))+", Temp:"+format.float(3,1,v.value(((cpr_hal_controller*)&ctrl)->tempSensorData.hotTempCx10)/10.0)+" degC)  (COLD: Sensor:"+format.decimal(2,v.value(((cpr_hal_controller*)&ctrl)->tempSensorData.coldSensor))+", Temp:"+format.float(3,1,v.value(((cpr_hal_controller*)&ctrl)->tempSensorData.coldTempCx10)/10.0)+" degC)"
+        )
+
+        print "&indent_lvl4"+"Thread    : "
+
+        print "&(indent_lvl5)+-----+------+---------+---------------+"
+        print "&indent_lvl5"+"| "+format.string("TID",3,' ')+" | "+format.string("Init",4,' ')+" | "+format.string("Enabled",7,' ')+" | "+format.string("RoMask4Thread",13.,' ')+" | "
+
+        print "&(indent_lvl5)+-----+------+---------+---------------+"
+
+        &t=0
+        &num_threads=v.value(((cpr_hal_controller*)&ctrl)->threadsCount)
+        while &t<&num_threads
+        (
+            &thread=v.value(((cpr_hal_controller*)&ctrl)->threads[&t])
+
+            &attr=""
+            if &t==v.value(((cpr_rail*)&railCfg)->hal.thread->id)
+            (
+                &attr="%attr 0x2a"
+            )
+            print "&indent_lvl5"+"| "
+            print %cont &attr format.string(format.decimal(0,v.value(((cpr_hal_thread*)&thread)->id)),-3,' ')+" | "+format.string(v.string(((cpr_hal_thread*)&thread)->init),-4,' ')+" | "+format.string(v.string(((cpr_hal_thread*)&thread)->enabled),-7,' ')+" | "+format.string("0x"+format.hex(0,v.value(((cpr_hal_thread*)&thread)->roMask4Thread)),-13.,' ')
+            print %cont " |"
+
+            &t=&t+1
+        )
+
+        print "&(indent_lvl5)+-----+------+---------+---------------+"
+        print
+    )
+
+    print "&indent_lvl3"+"Mode Info   :"
+
+    print "&(indent_lvl4)"+"+---------+----------+----------+------------+----------+----------+----------+----------+----------+----------+----------+"
+
+    if string.scan("&cmode","SW_CLOSED_LOOP",0)>=0
+    (
+        print %cont "-------------+------------+------------+------------+------------+------------+"
+    )
+
+    print "&indent_lvl4"+"| "+format.string("Mode",7,' ')+" | "
+    print %cont format.string("VoltFuse",8,' ')+" | "+format.string("OffsFuse",8,' ')+" | "+format.string("EnabCount",10.,' ')+" | "
+    print %cont %attr 0x44 format.string("GCeiling",8,' ')+" | "
+    print %cont format.string("FuseRef",8,' ')+" | "
+    print %cont %attr 0x20 format.string("Ceiling",8,' ')+" | "
+    print %cont %attr 0x28 format.string("Current",8,' ')+" | "
+    print %cont format.string("Min",8,' ')+" | "
+    print %cont %attr 0x24 format.string("Floor",8,' ')+" | "
+    print %cont %attr 0x1c format.string("GFloor",8,' ')+" | "
+
+    if string.scan("&cmode","SW_CLOSED_LOOP",0)>=0
+    (
+        print %cont format.string("TotalMargin",11.,' ')+" | "+format.string("UpInt",10.,' ')+" | "+format.string("DownInt",10.,' ')+" | "+format.string("HitCeiling",10.,' ')+" | "+format.string("HitFloor",10.,' ')+" | "+format.string("Ignored",10.,' ')+" | "
+    )
+
+    print "&(indent_lvl4)"+"+---------+----------+----------+------------+----------+----------+----------+----------+----------+----------+----------+"
+
+    if string.scan("&cmode","SW_CLOSED_LOOP",0)>=0
+    (
+        print %cont "-------------+------------+------------+------------+------------+------------+"
+    )
+
+    &m=0
+    &num_modes=v.value(((cpr_rail_state*)&railStates)->modeSettingsCount)
+    while &m<&num_modes
+    (
+        &mode=v.value(&(((cpr_rail_state*)&railStates)->modeSettings[&m]))
+        &submode=v.value(&(((cpr_mode_settings*)&mode)->subModes[0]))
+        &vpmode=v.value(&(((cpr_rail*)&railCfg)->vp->modes[&m]))
+        &vpsubmode=v.value(&(((cpr_voltage_data*)&vpmode)->subModes[0]))
+
+        &attr=""
+        if v.value(((cpr_rail_state*)&railStates)->activeMode)==&mode;v.value(&((cpr_rail_state*)&railStates)->modeSettings[&m])
+        (
+            &attr="%attr 0x2a"
+        )
+        print "&indent_lvl4"+"| "
+        print %cont &attr format.string(string.cut(v.string(((cpr_mode_settings*)&mode)->mode),17.),7,' ')+" | "+format.string(format.decimal(0,v.value(((cpr_mode_settings*)&mode)->decodedFuseSteps)),-8,' ')+" | "+format.string(format.decimal(0,v.value(((cpr_mode_settings*)&mode)->decodedFuseOffset)),-8,' ')+" | "+format.string(format.decimal(0,v.value(((cpr_mode_settings*)&mode)->enableCount)),-10.,' ')+" | "
+        print %cont %attr 0x44 &attr format.string(format.decimal(0,v.value(((cpr_freq_data*)&vpsubmode)->ceiling)),-8,' ')+" | "
+        print %cont &attr format.string(format.decimal(0,v.value(((cpr_voltage_data*)&vpmode)->fref)),-8,' ')+" | "
+        print %cont %attr 0x20 &attr format.string(format.decimal(0,v.value(((cpr_submode_settings*)&submode)->ceiling)),-8,' ')+" | "
+        print %cont %attr 0x28 &attr format.string(format.decimal(0,v.value(((cpr_submode_settings*)&submode)->current)),-8,' ')+" | "
+        print %cont &attr format.string(format.decimal(0,v.value(((cpr_submode_settings*)&submode)->min)),-8,' ')+" | "
+        print %cont %attr 0x24 &attr format.string(format.decimal(0,v.value(((cpr_submode_settings*)&submode)->floor)),-8,' ')+" | "
+        print %cont %attr 0x1c &attr format.string(format.decimal(0,v.value(((cpr_freq_data*)&vpsubmode)->floor)),-8,' ')+" | "
+
+        if string.scan("&cmode","SW_CLOSED_LOOP",0)>=0
+        (
+            &debug=v.value(&(((cpr_submode_settings*)&submode)->debug))
+            print %cont &attr format.string(format.decimal(0,v.value(((cpr_mode_settings*)&mode)->totalMarginMV)*1000.),-11.,' ')+" | "+format.string(format.decimal(0,v.value(((cpr_debug_info*)&debug)->up)),-10.,' ')+" | "+format.string(format.decimal(0,v.value(((cpr_debug_info*)&debug)->down)),-10.,' ')+" | "+format.string(format.decimal(0,v.value(((cpr_debug_info*)&debug)->ceiling)),-10.,' ')+" | "+format.string(format.decimal(0,v.value(((cpr_debug_info*)&debug)->floor)),-10.,' ')+" | "+format.string(format.decimal(0,v.value(((cpr_debug_info*)&debug)->ignored)),-10.,' ')
+            print %cont " |"
+        )
+        &m=&m+1
+    )
+
+    print "&(indent_lvl4)"+"+---------+----------+----------+------------+----------+----------+----------+----------+----------+----------+----------+"
+
+    if string.scan("&cmode","SW_CLOSED_LOOP",0)>=0
+    (
+        print %cont "-------------+------------+------------+------------+------------+------------+"
+
+        print
+        print "&indent_lvl3"+"Quotients   :"
+        print "&indent_lvl4"+"+---------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------+"
+        print "&indent_lvl4"+"| "+format.string("Mode",7,' ')+" | "+format.string("RO 0",5,' ')+" | "+format.string("RO 1",5,' ')+" | "+format.string("RO 2",5,' ')+" | "+format.string("RO 3",5,' ')+" | "+format.string("RO 4",5,' ')+" | "+format.string("RO 5",5,' ')+" | "+format.string("RO 6",5,' ')+" | "+format.string("RO 7",5,' ')+" | "+format.string("RO 8",5,' ')+" | "+format.string("RO 9",5,' ')+" | "+format.string("RO 10",5,' ')+" | "+format.string("RO 11",5,' ')+" | "+format.string("RO 12",5,' ')+" | "+format.string("RO 13",5,' ')+" | "+format.string("RO 14",5,' ')+" | "+format.string("RO 15",5,' ')+" |"
+        print "&indent_lvl4"+"+---------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------+"
+        &m=0
+        &num_modes=v.value(((cpr_rail_state*)&railStates)->modeSettingsCount)
+        while &m<&num_modes
+        (
+            &mode=v.value(&(((cpr_rail_state*)&railStates)->modeSettings[&m]))
+            &num_targets=v.value(((cpr_mode_settings*)&mode)->targetsCount)
+            &ro=0
+            &t=0
+            &s="| "+format.string(string.cut(v.string(((cpr_mode_settings*)&mode)->mode),17.),7,' ')+" |"
+            while &ro<16.
+            (
+                if (&t<&num_targets)&&(&ro==v.value(((cpr_mode_settings*)&mode)->targets[&t].ro))
+                (
+                    &s="&s "+format.decimal(5,v.value(((cpr_mode_settings*)&mode)->targets[&t].quotient))+" |"
+                    &t=&t+1
+                )
+                else
+                (
+                    &s="&s "+"     "+" |"
+                )
+                &ro=&ro+1
+            )
+            print "&indent_lvl4"
+            if v.value(((cpr_rail_state*)&railStates)->activeMode)==&mode
+            (
+                print %cont %attr 0x2a "&s"
+            )
+            else
+            (
+                print %cont "&s"
+            )
+            &m=&m+1
+        )
+        print "&indent_lvl4"+"+---------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------+-------+"
+
+        print
+        print "&indent_lvl3"+"ISR Log     :"
+        gosub PrintCprStats "&indent_lvl4" &railId
+    )
+    print
+
+    &i=&i+1
+)
+
+print
+enddo
+
+ParseMask:
+    entry &mask
+    local &enabled_ros
+    local &ro
+    &ro=0
+    &enabled_ros=""
+    while &ro<16.
+    (
+        if (&mask&(1<<&ro))==0
+        (
+            if "&enabled_ros"==""
+                &enabled_ros=format.decimal(0,&ro)
+            else
+                &enabled_ros="&enabled_ros, "+format.decimal(0,&ro)
+        )
+        &ro=&ro+1
+    )
+    return "&enabled_ros"
+
+
+PrintCprStats:
+    entry &indent &rail_id
+    local &num_rails &i &j &idx &size &log_ptr
+
+    &num_rails=v.sizeof(cpr_stats)/v.sizeof(cpr_stats[0])
+    &i=0
+    while &i<&num_rails
+    (
+        if &rail_id==v.value(cpr_stats[&i].id)
+        (
+            print &indent+"+--------------------+---------+----------------+------------+------------+------------+------------+------------+---------+-------+"
+            print &indent+"| "+format.string("Timestamp",18.,' ')+" | "+format.string("Mode",7,' ')+" | "+format.string("Recommendation",14.,' ')+" | "+format.string("UpInt",10.,' ')+" | "+format.string("DownInt",10.,' ')+" | "+format.string("HitCeiling",10.,' ')+" | "+format.string("HitFloor",10.,' ')+" | "+format.string("Ignored",10.,' ')+" | "+format.string("Changed",7,' ')+" | "+format.string("Acked",5,' ')+" | "
+            print &indent+"+--------------------+---------+----------------+------------+------------+------------+------------+------------+---------+-------+"
+
+            &size=v.sizeof(cpr_stats[&i].logs)/v.sizeof(cpr_stats[&i].logs[0])
+            &idx=v.value(cpr_stats[&i].idx)+1
+            if &idx>=&size
+                &idx=0
+            &log_ptr=v.value(cpr_stats[&i].logs)
+            &j=0
+            while &j<&size
+            (
+                &ts0=v.value(((cpr_isr_log_t*)&log_ptr)[&idx].timestamp[0])
+                &ts1=v.value(((cpr_isr_log_t*)&log_ptr)[&idx].timestamp[1])
+                &mode=v.value(((cpr_isr_log_t*)&log_ptr)[&idx].data.mode)
+                &up=v.value(((cpr_isr_log_t*)&log_ptr)[&idx].data.up)
+                &dn=v.value(((cpr_isr_log_t*)&log_ptr)[&idx].data.down)
+                &rec=v.value(((cpr_isr_log_t*)&log_ptr)[&idx].data.recommendation)
+                &ceiling=v.value(((cpr_isr_log_t*)&log_ptr)[&idx].data.hit_ceiling)
+                &floor=v.value(((cpr_isr_log_t*)&log_ptr)[&idx].data.hit_floor)
+                &ignored=v.value(((cpr_isr_log_t*)&log_ptr)[&idx].data.ignored)
+                &changed=v.value(((cpr_isr_log_t*)&log_ptr)[&idx].data.changed)
+                &ack=v.value(((cpr_isr_log_t*)&log_ptr)[&idx].data.ackResult)
+
+                print &indent+"| 0x"+format.hex(8,&ts1)+format.hex(8,&ts0)+" | "+format.string(string.cut(v.string((cpr_voltage_mode)&mode),17.),7,' ')+" | "+format.decimal(14.,&rec)+" | "+format.decimal(10.,&up)+" | "+format.decimal(10.,&dn)+" | "+format.decimal(10.,&ceiling)+" | "+format.decimal(10.,&floor)+" | "+format.decimal(10.,&ignored)+" | "+format.decimal(7.,&changed)+" | "+format.decimal(5.,&ack)+" | "
+
+                &idx=&idx+1
+                if &idx>=&size
+                    &idx=0
+                &j=&j+1
+            )
+            print &indent+"+--------------------+---------+----------------+------------+------------+------------+------------+------------+---------+-------+"
+        )
+        &i=&i+1
+    )
+    return
+

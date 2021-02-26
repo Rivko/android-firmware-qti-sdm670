@@ -1,0 +1,229 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--========================================================================-->
+<!-- Copyright (c) 2016-2017 Qualcomm Technologies, Inc.                    -->
+<!-- All Rights Reserved.                                                   -->
+<!-- Confidential and Proprietary - Qualcomm Technologies, Inc.             -->
+<!--========================================================================-->
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+  <xs:include schemaLocation="ispglobalelements.xsd"/>
+  <xs:element name="cs20_ipe" type="chromatix_cs20Type">
+    <xs:annotation>
+      <xs:documentation>cs20 ipe module parameters</xs:documentation>
+    </xs:annotation>
+  </xs:element>
+  <xs:complexType name="chromatix_cs20Type">
+    <xs:sequence>
+      <xs:element name="enable_section">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="chroma_suppression_enable" type="enable_flag_type" default="0"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="module_version">
+        <xs:complexType>
+          <xs:attribute name="major_revision" type="xs:int" default="2"/>
+          <xs:attribute name="minor_revision" type="xs:int" default="0"/>
+          <xs:attribute name="incr_revision" type="xs:int" default="0"/>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="control_variables">
+        <xs:complexType>
+          <xs:sequence minOccurs="3" maxOccurs="3">
+            <xs:element name="control_var_type">
+              <xs:simpleType>
+                <xs:restriction base="control_var_type">
+                  <xs:pattern value="control_drc_gain"/>
+                  <xs:pattern value="control_exp_time_ratio"/>
+                  <xs:pattern value="control_aec_exp_sensitivity_ratio"/>
+                  <xs:pattern value="control_lux_idx"/>
+                  <xs:pattern value="control_gain"/>
+                </xs:restriction>
+              </xs:simpleType>
+            </xs:element>
+          </xs:sequence>
+          <xs:attribute name="default_value" type="xs:string" default="control_drc_gain, control_aec_exp_sensitivity_ratio, control_lux_idx"/>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="control_method">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="aec_exp_control" type="tuning_control_aec_type" default="control_lux_idx"/>
+            <xs:element name="aec_hdr_control" type="tuning_control_aec_hdr_type" default="control_aec_exp_sensitivity_ratio"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="chromatix_cs20_reserve" type="chromatix_cs20_reserveType"/>
+      <xs:element name="chromatix_cs20_core" type="chromatix_cs20_coreType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="chromatix_cs20_reserveType">
+    <xs:sequence>
+      <xs:element name="luma_q">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:unsignedInt">
+              <xs:attribute name="type" default="uint"/>
+              <xs:attribute name="description" type="xs:string" default="Q factor to define constraints on knee_point_lut "/>
+              <xs:attribute name="default_value" type="xs:string" default="1"/>
+              <xs:attribute name="range" type="xs:string" default="[0, 3]"/>
+              <xs:attribute name="bit_depth" type="xs:string" default="2u"/>
+              <xs:attribute name="length" type="xs:int" default="1"/>
+              <xs:attribute name="conversion" type="xs:string"/>
+              <xs:attribute name="tuning_parameter_level" type="tuning_level" default="never_tune"/>
+              <xs:attribute name="additional_notes" type="xs:string" default="knee_point_lut must satisfy (knee_point_lut[i+1] - knee_point_lut[i])>=2^(luma_q+1). By default, luma_q=1, so must have (knee_point_lut[i+1] - knee_point_lut[i])>=1. "/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="chroma_q">
+        <xs:complexType>
+          <xs:simpleContent>
+            <xs:extension base="xs:unsignedInt">
+              <xs:attribute name="type" default="uint"/>
+              <xs:attribute name="description" type="xs:string" default="Q factor to define constraints on c_thr1_lut and c_thr2_lut"/>
+              <xs:attribute name="default_value" type="xs:string" default="1"/>
+              <xs:attribute name="range" type="xs:string" default="[0, 3]"/>
+              <xs:attribute name="bit_depth" type="xs:string" default="2u"/>
+              <xs:attribute name="length" type="xs:int" default="1"/>
+              <xs:attribute name="conversion" type="xs:string"/>
+              <xs:attribute name="tuning_parameter_level" type="tuning_level" default="never_tune"/>
+              <xs:attribute name="additional_notes" type="xs:string" default="must satisfy (c_th2_lut[i] - c_th1_lut[i])>=2^(chroma_q+1). By default, chroma_q=1, so must have (c_th2_lut[i] - c_th1_lut[i])>=1"/>
+            </xs:extension>
+          </xs:simpleContent>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="chromatix_cs20_coreType">
+    <xs:sequence maxOccurs="unbounded">
+      <xs:element name="mod_cs20_drc_gain_data" type="mod_cs20_drc_gain_dataType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="mod_cs20_drc_gain_dataType">
+    <xs:sequence>
+      <xs:element name="drc_gain_trigger" type="trigger_pt_type"/>
+      <xs:element name="drc_gain_data">
+        <xs:complexType>
+          <xs:sequence maxOccurs="unbounded">
+            <xs:element name="mod_cs20_hdr_aec_data" type="mod_cs20_hdr_aec_dataType"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="mod_cs20_hdr_aec_dataType">
+    <xs:sequence>
+      <xs:element name="hdr_aec_trigger" type="trigger_pt_type_aec_hdr"/>
+      <xs:element name="hdr_aec_data">
+        <xs:complexType>
+          <xs:sequence maxOccurs="unbounded">
+            <xs:element name="mod_cs20_aec_data" type="mod_cs20_aec_dataType"/>
+          </xs:sequence>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="mod_cs20_aec_dataType">
+    <xs:sequence>
+      <xs:element name="aec_trigger" type="trigger_pt_type_aec"/>
+      <xs:element name="cs20_rgn_data" type="cs20_rgn_dataType"/>
+    </xs:sequence>
+  </xs:complexType>
+  <xs:complexType name="cs20_rgn_dataType">
+    <xs:sequence>
+      <xs:element name="knee_point_lut_tab">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="knee_point_lut">
+              <xs:simpleType>
+                <xs:restriction base="floatvar">
+                  <xs:length value="16"/>
+                </xs:restriction>
+              </xs:simpleType>
+            </xs:element>
+          </xs:sequence>
+          <xs:attribute name="type" default="float"/>
+          <xs:attribute name="description" type="xs:string" default="luma knee point LUT. Define the luma points users want to control "/>
+          <xs:attribute name="default_value" type="xs:string" default="0,17,34,51,68,85,102,119,136,153,170,187,204,221,238,256"/>
+          <xs:attribute name="range" type="xs:string" default="[0, 256]"/>
+          <xs:attribute name="bit_depth" type="xs:string" default="8bit, unsigned in chromatix (hw: 10u)"/>
+          <xs:attribute name="length" type="xs:int" fixed="16"/>
+          <xs:attribute name="conversion" type="xs:string" default="i.	cs_luma_threshold1 to knee_point_lut[1]. ii.	cs_luma_threshold2 to knee_point_lut[2]. iii.	cs_luma_threshold3 to knee_point_lut[13]. iv.	cs_luma_threshold4 to knee_point_lut[14]."/>
+          <xs:attribute name="tuning_parameter_level" type="tuning_level" default="often_tune"/>
+          <xs:attribute name="additional_notes" type="xs:string" default="i. LUTs are always programmed in ascending order. ii. First LUT is always 0. iii.	Last LUT is always Max. iv. No two entries for the LUT can be equal. v. must satisfy (knee_point_lut[i+1] - knee_point_lut[i])>=2^(luma_q+1). By default, luma_q=1, so must have (knee_point_lut[i+1] - knee_point_lut[i])>=1"/>
+          <xs:attribute name="tool_hint" default="float"/>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="y_weight_lut_tab">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="y_weight_lut">
+              <xs:simpleType>
+                <xs:restriction base="floatvar">
+                  <xs:length value="16"/>
+                </xs:restriction>
+              </xs:simpleType>
+            </xs:element>
+          </xs:sequence>
+          <xs:attribute name="type" default="float"/>
+          <xs:attribute name="description" type="xs:string" default="define luma weight for chroma suppression at luma knee points. Higher value makes less suppression and lower value makes more suppression"/>
+          <xs:attribute name="default_value" type="xs:string" default="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"/>
+          <xs:attribute name="range" type="xs:string" default="[0.0, 1.0]"/>
+          <xs:attribute name="bit_depth" type="xs:string" default="11uQ10 "/>
+          <xs:attribute name="length" type="xs:int" fixed="16"/>
+          <xs:attribute name="conversion" type="xs:string" default="i.	y_weight_lut[0] = y_weight_lut[0] = 0.0f. ii.	y_weight_lut[2 ... 13] = 1.0f.  iii.	y_weight_lut[14] = y_weight_lut[15] = 0.0f."/>
+          <xs:attribute name="tuning_parameter_level" type="tuning_level" default="must_tune"/>
+          <xs:attribute name="additional_notes" type="xs:string" default="none"/>
+          <xs:attribute name="tool_hint" default="float"/>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="c_thr1_lut_tab">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="c_thr1_lut">
+              <xs:simpleType>
+                <xs:restriction base="floatvar">
+                  <xs:length value="16"/>
+                </xs:restriction>
+              </xs:simpleType>
+            </xs:element>
+          </xs:sequence>
+          <xs:attribute name="type" default="float"/>
+          <xs:attribute name="description" type="xs:string" default="Define chroma threshold1. Chroma value smaller than this threshold will be suppressed with y_weight. Higher value makes more suppression and lower value makes less suppression"/>
+          <xs:attribute name="default_value" type="xs:string" default="0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0"/>
+          <xs:attribute name="range" type="xs:string" default="[0, 128]"/>
+          <xs:attribute name="bit_depth" type="xs:string" default="7bit, unsigned in chromatix (hw: 9u)"/>
+          <xs:attribute name="length" type="xs:int" fixed="16"/>
+          <xs:attribute name="conversion" type="xs:string" default="i.	cs_chroma_threshold1 to c_thr1_lut[0 .. 15] all the same"/>
+          <xs:attribute name="tuning_parameter_level" type="tuning_level" default="must_tune"/>
+          <xs:attribute name="additional_notes" type="xs:string" default="related with c_thr2_lut"/>
+          <xs:attribute name="tool_hint" default="float"/>
+        </xs:complexType>
+      </xs:element>
+      <xs:element name="c_thr2_lut_tab">
+        <xs:complexType>
+          <xs:sequence>
+            <xs:element name="c_thr2_lut">
+              <xs:simpleType>
+                <xs:restriction base="floatvar">
+                  <xs:length value="16"/>
+                </xs:restriction>
+              </xs:simpleType>
+            </xs:element>
+          </xs:sequence>
+          <xs:attribute name="type" default="float"/>
+          <xs:attribute name="description" type="xs:string" default="Define chroma threshold2. Chroma value bigger than this threshold will not be suppressed. Higher value makes more suppression and lower value makes less suppression"/>
+          <xs:attribute name="default_value" type="xs:string" default="2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2"/>
+          <xs:attribute name="range" type="xs:string" default="[1, 128]"/>
+          <xs:attribute name="bit_depth" type="xs:string" default="7bit, unsigned in chromatix (hw: 9u)"/>
+          <xs:attribute name="length" type="xs:int" fixed="16"/>
+          <xs:attribute name="conversion" type="xs:string" default="i.	cs_chroma_threshold2 to c_thr2_lut[0 .. 15] all the same"/>
+          <xs:attribute name="tuning_parameter_level" type="tuning_level" default="must_tune"/>
+          <xs:attribute name="additional_notes" type="xs:string" default="i. This value must be bigger then c_thr1_lut. ii. must satisfy (c_th2_lut[i] - c_th1_lut[i])>=2^(chroma_q+1). By default, chroma_q=1, so must have (c_th2_lut[i] - c_th1_lut[i])>=1"/>
+          <xs:attribute name="tool_hint" default="float"/>
+        </xs:complexType>
+      </xs:element>
+    </xs:sequence>
+  </xs:complexType>
+</xs:schema>

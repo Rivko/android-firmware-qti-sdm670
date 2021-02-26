@@ -1,0 +1,264 @@
+; olgak 4/20/2016
+
+; cmm script to walk levels of vtlb starting from level 2
+
+; currently assuming everything is under asid 0, but works for other asids as well
+
+; but this will need to be fixed soon 
+
+; takes in as argument: vpage, should also take asid eventually
+
+
+
+; adding in asid would involve (vtlb_tree_base + asid *2) as L1 page or table reference
+
+
+
+
+
+Area.Create IO 1000. 5000.
+
+Area.Select IO
+
+Area IO
+
+
+
+entry &vpage
+
+
+
+local &vtlb_tree_base
+
+local &vtlb_tree_asid0_base
+
+local &vtlb_entries_base
+
+local &L2_idx
+
+local &L3_idx
+
+local &L4_idx
+
+local &L5_idx
+
+local &vtlb_entry_idx
+
+local &walk_ptr
+
+local &temp
+
+local &tlbhi
+
+local &tlblo
+
+local &leaf
+
+
+
+if ("&vapge")=="";
+
+(
+
+    print %ERROR "vpage is a required script argument"
+
+)
+
+
+
+; precompute indecies
+
+&L2_idx=(&vpage>>12.)*2
+
+&L3_idx=((&vpage>>8)&0xF)*2
+
+&L4_idx=((&vpage>>4)&0xF)*2
+
+&L5_idx=(&vpage&0xF)*2
+
+
+
+print "vpage &vpage L2 idx &L2_idx"
+
+
+
+; initialize bases:
+
+&vtlb_tree_base=v.value((unsigned int*)&QURTK_vtlb_tree)
+
+&vtlb_tree_asid0_base=&vtlb_tree_base+0x100
+
+&vtlb_entries_base=v.value((unsigned int*)&QURTK_vtlb_entries)
+
+print "asid0 base: &vtlb_tree_asid0_base"
+
+
+
+; start the walk
+
+; 1. read contents under L2_idx
+
+&walk_ptr=v.value(&vtlb_tree_asid0_base+&L2_idx)
+
+&temp=data.short(d:&walk_ptr)
+
+;print "walk ptr &walk_ptr temp &temp"
+
+print "L2 location &walk_ptr L2 contents &temp"
+
+
+
+; check if leaf
+
+&leaf=&temp&0x1
+
+if &leaf==1 
+
+(
+
+	print "found leaf"
+
+	&walk_ptr=v.value(&vtlb_entries_base+&temp*4)
+
+	&tlbhi=data.long(d:&walk_ptr)
+
+	&tlblo=data.long(d:(&walk_ptr-0x4))
+
+	print "tlblo &tlblo tlbhi &tlbhi at &walk_ptr"
+
+	goto end_walk
+
+)
+
+
+
+; not leaf, continue to level 3 :
+
+; 2. location of L3 subtable or leaf = absolute_base + L3_idx + (read contents of walk_ptr and *8)
+
+; reading contents of that and checking LSB will tell either it is subtable or a leaf  
+
+&walk_ptr=&vtlb_tree_base+&L3_idx+(&temp*8)
+
+&temp=data.short(d:&walk_ptr)
+
+print "L3 location &walk_ptr L3 contents &temp"
+
+
+
+; check leaf
+
+&leaf=&temp&0x1
+
+if &leaf==1 
+
+(
+
+	print "found leaf"
+
+	&walk_ptr=v.value(&vtlb_entries_base+&temp*4)
+
+	&tlbhi=data.long(d:&walk_ptr)
+
+	&tlblo=data.long(d:(&walk_ptr-0x4))
+
+	print "tlblo &tlblo tlbhi &tlbhi at &walk_ptr"
+
+	goto end_walk
+
+)
+
+
+
+; not leaf, continue to level 4:
+
+; 3. location of L4 subtable of leaf = absolute_base + L4_idx + (read contents of walk_ptr and *8)
+
+; reading contents of that and checking LSB will tell either it is subtable or a leaf    
+
+&walk_ptr=&vtlb_tree_base+&L4_idx+(&temp*8)
+
+&temp=data.short(d:&walk_ptr)
+
+print "L4 location &walk_ptr L4 contents &temp"
+
+
+
+; check leaf
+
+&leaf=&temp&0x1
+
+if &leaf==1 
+
+(
+
+	print "found leaf"
+
+	&walk_ptr=v.value(&vtlb_entries_base+&temp*4)
+
+	&tlbhi=data.long(d:&walk_ptr)
+
+	&tlblo=data.long(d:(&walk_ptr-0x4))
+
+	print "tlblo &tlblo tlbhi &tlbhi at &walk_ptr"
+
+	goto end_walk
+
+)
+
+
+
+; not leaf, continuue to level 5:
+
+; 4. location of L5 subtable of leaf = absolute_base + L5_idx + (read contents of walk_ptr and *8)
+
+; reading contents of that and checking LSB will tell either it is a leaf or vtlb tree is corrupted
+
+; we do not expect subtables here
+
+
+
+&walk_ptr=&vtlb_tree_base+&L5_idx+(&temp*8)
+
+&temp=data.short(d:&walk_ptr)
+
+print "L5 location &walk_ptr L5 contents &temp"
+
+
+
+; check leaf
+
+&leaf=&temp&0x1
+
+if &leaf==1 
+
+(
+
+	print "found leaf"
+
+	&walk_ptr=v.value(&vtlb_entries_base+&temp*4)
+
+	&tlbhi=data.long(d:&walk_ptr)
+
+	&tlblo=data.long(d:(&walk_ptr-0x4))
+
+	print "tlblo &tlblo tlbhi &tlbhi at &walk_ptr"
+
+	goto end_walk
+
+)
+
+else
+
+(
+
+	print "found  non-leaf at level 5" 
+
+)
+
+
+
+end_walk:
+
+print "Done"
+

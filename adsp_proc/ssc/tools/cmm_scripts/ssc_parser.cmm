@@ -1,0 +1,60 @@
+;============================================================================
+;
+; SSC data parser
+;
+;   Parses a given ramdump and gets the statistics
+;
+; Version: 1.0
+;
+; Copyright (c) 2017-2018 Qualcomm Technologies, Inc.
+; All Rights Reserved.
+; Confidential and Proprietary - Qualcomm Technologies, Inc.
+;============================================================================
+ENTRY
+WINPOS 0. 0. 80% 102% 0. 0.
+Area.Delete SSC
+Area.Create SSC 200. 1000.       ;create an AREA window
+Area.Select SSC
+Area.View SSC
+
+GLOBAL &heap_info_avail
+
+&typeinfo=V.TYPEOF(&sns_main_heap_head)
+if "&typeinfo"=="void *"
+(
+  &heap_info_avail=0
+)
+else
+(
+  &heap_info_avail=1
+)
+
+&ssc_parser_out=OS.PTD()+"\ssc_data.txt"
+&i=1
+while OS.FILE(&ssc_parser_out)
+(
+  &ssc_parser_out=OS.PTD()+"\ssc_data"+format.decimal(1,&i)+".txt"
+  &i=&i+1
+)
+Area.Open SSC &ssc_parser_out
+
+&ssc_libraries_walker=OS.PPD()+"\ssc_libraries_walker.cmm"
+&thread_manager_walker_cmm=OS.PPD()+"\ssc_thread_manager_walker.cmm"
+&event_service_walker_cmm=OS.PPD()+"\ssc_event_service_walker.cmm"
+&diag_service_walker_cmm=OS.PPD()+"\ssc_diag_service_walker.cmm"
+&heaps_parser_cmm=OS.PPD()+"\ssc_heaps_parser.cmm"
+&find_locks_cmm=OS.PPD()+"\ssc_find_locks.cmm"
+
+do &ssc_libraries_walker
+do &thread_manager_walker_cmm
+do &event_service_walker_cmm
+do &diag_service_walker_cmm
+do &heaps_parser_cmm
+;do &find_locks_cmm
+
+Area.Close SSC
+
+print "The output is saved in "+"&ssc_parser_out"
+
+enddo
+

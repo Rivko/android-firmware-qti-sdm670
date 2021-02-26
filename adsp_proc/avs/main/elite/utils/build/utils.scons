@@ -1,0 +1,300 @@
+#===============================================================================
+#
+# AVS AU
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2009-2016 QUALCOMM Technologies, Inc.  All Rights Reserved.
+# QUALCOMM Technologies, Inc Proprietary.  Export of this technology or software is regulated
+# by the U.S. Government, Diversion contrary to U.S. law prohibited.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //source/qcom/qct/multimedia2/dsp/qdsp6/sandbox/VPMSM8974/lpass_proc/avs/elite/utils/build/utils.scons#1 $
+#  $DateTime: 2013/01/04 08:45:43 $
+#  $Author: ktadakam $
+#  $Change: 3193584 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+
+#-------------------------------------------------------------------------------
+# Make all warnings into errors
+#-------------------------------------------------------------------------------
+
+if 'USES_ENABLE_FUNCTION_SECTIONS' in env:
+   env.Append(CFLAGS = '-ffunction-sections')
+
+#import pdb; pdb.set_trace()
+
+if 'USES_USND_SVC_TEST' in env:
+   env.Append(CFLAGS = ' -DUSND_TEST')
+   env.Append(CPPFLAGS = ' -DUSND_TEST')
+   temp=env.get('CFLAGS')
+   if '-DADSP_TEST_ENTRY' in temp:
+       temp.remove('-DADSP_TEST_ENTRY')
+       env.Replace(CFLAGS=temp)
+
+if 'USES_AUDIO_PROC_SVC_TEST' in env:
+   env.Append(CFLAGS = ' -DAUDPPSVC_TEST ')
+   env.Append(CPPFLAGS = ' -DAUDPPSVC_TEST ')
+   temp=env.get('CFLAGS')
+   if '-DADSP_TEST_ENTRY' in temp:
+       temp.remove('-DADSP_TEST_ENTRY')
+       env.Replace(CFLAGS=temp)
+if 'AUDIO_IN_USERPD' in env:
+    env.Append(CPPFLAGS = ' -DENABLE_AUDIO_PD_F3_TRACE')   
+
+
+if 'USES_MPSS_MULTI_PD' in env:
+    if 'USES_AUDIO_IN_ROOTPD' not in env:
+       env.Append(CFLAGS = ' -DENABLE_AUDIO_PD_F3_TRACE ')
+       env.Append(CPPFLAGS = ' -DENABLE_AUDIO_PD_F3_TRACE ')
+
+    if 'USES_MDM_VOCODER_ONLY' in env:
+        # for MN builds, use reduced heap size
+        env.Append(CPPFLAGS = ' -DAUDIO_PD_HEAP_SIZE=0x219800 ')
+    else:
+        # for ROW builds (LE), use normal heap size
+        env.Append(CPPFLAGS = ' -DAUDIO_PD_HEAP_SIZE=0x4A0000 ')
+    
+core_public_apis = [
+   'DEBUGTOOLS',
+   'KERNEL',
+   'POWER',
+   'SERVICES',
+   'DAL',
+   'MPROC',
+   'SYSTEMDRIVERS'
+   ]
+
+platform_public_apis = [
+    'QAIC',
+    'STDDEF',
+    'HAPSDK'
+    ]
+
+env.RequirePublicApi(core_public_apis, area='core')
+env.RequireRestrictedApi(['AVS', 'SHARED_LIBRARY_INC_PATHS','AFE_UTILS_MISC','MODULE_INTERFACES_UTILS'])
+env.RequireProtectedApi('AVS')
+env.RequirePublicApi('ADSP_AMDB')
+env.RequirePublicApi('ADSP_MODULE_MGR')
+env.RequirePublicApi('ULTRASOUND', area='ultrasound')
+env.RequireRestrictedApi('CVD_PROTECTED')
+
+env.RequirePublicApi(platform_public_apis, area='platform') # This has to be the last include command, so that the Elite_CAPI.h and Elite_APPI.h are not overridden
+
+env.PublishPrivateApi('AVS',[
+   '../inc',
+   '${AVS_ROOT}/elite/utils/devcfg/inc',
+   '../build',
+   '../tst',
+   '../../../../qdsp6/tp/inc',
+   '../../../../core/api/services'
+   ])
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = ".."
+LIBNAME = 'EliteCmnUtils'
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+avs_sources = env.GlobSourceFiles(['src/*.cpp', 'src/*.c', 'devcfg/src/*.cpp', 'devcfg/src/*.c', 'tst/*.cpp'], SRCPATH,posix=True)
+
+# Since there is no multi-devcfg support for AUDIO and SENSOR for ADSP MPD env, can't add .c file to devcfg into user pd.
+# multi-devcfg support for user pd on ADSP is under discussion. On 8994 audio pd is not POR, used for development on target while 8996 is pre-silicon
+if 'AUDIO_IN_USERPD' in env:
+    if env['MSM_ID'] in ['8994']:
+        hwio_config = [
+            '${BUILDPATH}/devcfg/config/lpa_cfg_8996.c',
+        ]
+    elif env['MSM_ID'] in ['8996']:
+        hwio_config = [
+            '${BUILDPATH}/devcfg/config/lpa_cfg_8996.c',
+        ]
+    elif env['MSM_ID'] in ['8998', '660', '670', '845']:
+        hwio_config = [
+            '${BUILDPATH}/devcfg/config/lpa_cfg_8996.c',
+            '${BUILDPATH}/devcfg/config/elite_devcfg_8996.c',
+        ]
+    #avs_sources.extend(hwio_config)
+avs_sources = [source.replace(SRCPATH, '${BUILDPATH}') for source in avs_sources]
+
+if "MDSPMODE" in env:
+   
+    if 'mapss_b' not in env.get('IMAGE_ALIASES'): 
+       if ('USES_AUDIO_HAP' not in env) and (not env.IsBuildInternal()):
+          env.AddBinaryLibrary(['AVS_ADSP','AVS_ADSP_USER'], ('${BUILDPATH}/'+LIBNAME), avs_sources)
+       else:
+          env.AddLibrary(['AVS_ADSP','AVS_ADSP_USER'], '${BUILDPATH}/'+LIBNAME, avs_sources)
+else:
+
+    env.AddLibrary(['AVS_ADSP','AVS_ADSP_USER'], '${BUILDPATH}/'+LIBNAME, avs_sources)
+#-------------------------------------------------------------------------------
+# Device CFG data
+#-------------------------------------------------------------------------------
+LIBNAME_DEVCFG = 'lpa_devcfg'
+
+#avs_sources_devcfg = env.GlobSourceFiles(['devcfg/src/*.cpp', 'devcfg/src/*.c'], SRCPATH, posix=True)
+ 
+if 'USES_DEVCFG' in env:
+    DEVCFG_IMG = ['DEVCFG_CORE_QDSP6_AUDIO_SW','DAL_DEVCFG_IMG']
+    if 'USES_MPSS_MULTI_PD' in env:
+        DEVCFG_IMG = ['DAL_DEVCFG_IMG','DAL_DEVCFG_AUDIO_PD_IMG']
+    if 'USES_DEVCFG_STRICT_XML' in env:
+        # DevCfg is expecting XML-compliance for Napali onwards; USES_DEVCFG_STRICT_XML variable tells
+        # whether the new DevCfg is in this build or not.
+        env.AddDevCfgInfo(DEVCFG_IMG, 
+        {
+          '845_xml' : ['${AVS_ROOT}/elite/utils/devcfg/config/elite_strict_xml.xml',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/elite_devcfg_8996.c',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/lpa_cfg_8996.c'],
+
+          '670_xml' : ['${AVS_ROOT}/elite/utils/devcfg/config/elite_strict_xml.xml',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/elite_devcfg_8996.c',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/lpa_cfg_8996.c'],
+
+          '24_xml' : ['${AVS_ROOT}/elite/utils/devcfg/config/elite_strict_xml.xml',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/elite_devcfg_9x65.c',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/lpa_cfg_9x65.c'],
+
+          '855_xml' : ['${AVS_ROOT}/elite/utils/devcfg/config/elite_strict_xml.xml',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/elite_devcfg_8996.c',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/lpa_cfg_8996.c']
+
+        })
+    else:
+        env.AddDevCfgInfo(DEVCFG_IMG, 
+        {
+          
+          '8992_xml' : ['${AVS_ROOT}/elite/utils/devcfg/config/elite.xml',
+                        '${AVS_ROOT}/elite/utils/devcfg/config/elite_devcfg_8996.c',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/lpa_cfg_8996.c'],
+          '8998_xml' : ['${AVS_ROOT}/elite/utils/devcfg/config/elite.xml',
+                        '${AVS_ROOT}/elite/utils/devcfg/config/elite_devcfg_8996.c',
+                        '${AVS_ROOT}/elite/utils/devcfg/config/lpa_cfg_8996.c'],
+          '660_xml' : ['${AVS_ROOT}/elite/utils/devcfg/config/elite.xml',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/elite_devcfg_8996.c',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/lpa_cfg_8996.c'],
+          '670_xml' : ['${AVS_ROOT}/elite/utils/devcfg/config/elite.xml',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/elite_devcfg_8996.c',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/lpa_cfg_8996.c'],
+          '845_xml' : ['${AVS_ROOT}/elite/utils/devcfg/config/elite.xml',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/elite_devcfg_8996.c',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/lpa_cfg_8996.c'],
+          '670_xml' : ['${AVS_ROOT}/elite/utils/devcfg/config/elite.xml',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/elite_devcfg_8996.c',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/lpa_cfg_8996.c'],
+          '8994_xml' : ['${AVS_ROOT}/elite/utils/devcfg/config/elite.xml',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/elite_devcfg_8996.c',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/lpa_cfg_8996.c'],
+          '8996_xml' : ['${AVS_ROOT}/elite/utils/devcfg/config/elite.xml',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/elite_devcfg_8996.c',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/lpa_cfg_8996.c'],
+          '8952_xml' : ['${AVS_ROOT}/elite/utils/devcfg/config/elite.xml',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/elite_devcfg_8996.c',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/lpa_cfg_8996.c'],
+          '8976_xml' : ['${AVS_ROOT}/elite/utils/devcfg/config/elite.xml',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/elite_devcfg_8996.c',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/lpa_cfg_8996.c'],
+          '8953_xml' : ['${AVS_ROOT}/elite/utils/devcfg/config/elite.xml',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/elite_devcfg_8996.c',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/lpa_cfg_8996.c'],
+          '439_xml' : ['${AVS_ROOT}/elite/utils/devcfg/config/elite.xml',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/elite_devcfg_8996.c',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/lpa_cfg_8996.c'],
+          '8937_xml' : ['${AVS_ROOT}/elite/utils/devcfg/config/elite.xml',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/elite_devcfg_8996.c',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/lpa_cfg_8996.c'],
+          '8909_xml' : ['${AVS_ROOT}/elite/utils/devcfg/config/elite.xml',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/elite_devcfg_8909.c',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/lpa_cfg_8996.c'],
+          '9607_xml' : ['${AVS_ROOT}/elite/utils/devcfg/config/elite.xml',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/elite_devcfg_8909.c',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/lpa_cfg_9x35.c'],
+          '9665_xml' : ['${AVS_ROOT}/elite/utils/devcfg/config/elite.xml',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/elite_devcfg_9x65.c',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/lpa_cfg_9x65.c'],
+          '855_xml' : ['${AVS_ROOT}/elite/utils/devcfg/config/elite.xml',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/elite_devcfg_8996.c',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/lpa_cfg_8996.c'],
+          '9655_xml' : ['${AVS_ROOT}/elite/utils/devcfg/config/elite.xml',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/elite_devcfg_9x65.c',
+                       '${AVS_ROOT}/elite/utils/devcfg/config/lpa_cfg_9x65.c']   
+        })
+
+       
+
+#-------------------------------------------------------------------------------
+# RCINIT Task and Init Fields and Initialization
+#-------------------------------------------------------------------------------
+if 'AUDIO_IN_USERPD' in env:
+	IMAGES = ['AVS_ADSP_USER']
+	elite_fwk_init_depend_list = ['adsppm_client', 'apr_udrv']
+	
+	RCINIT_AUDIO_ELITE_FW_INIT_FN = {
+		'sequence_group'             : 'RCINIT_GROUP_2',           # required
+		'init_name'                  : 'elite_init',     # required
+		'init_function'              : 'elite_framework_init',     # required
+		'dependencies'               : elite_fwk_init_depend_list
+	}
+
+	RCINIT_AUDIO_ELITE_FW_START_INIT_FN = {
+		'sequence_group'             : 'RCINIT_GROUP_2',
+		'init_name'                  : 'elite_start',
+		'init_function'              : 'elite_framework_start',
+		'dependencies'               : ['elite_init']
+	}
+
+	if 'USES_RCINIT' in env:
+		print "Adding RCINIT functions elite_framework_start, elite_framework_init"
+		env.AddRCInitFunc(IMAGES, RCINIT_AUDIO_ELITE_FW_INIT_FN)
+		env.AddRCInitFunc(IMAGES, RCINIT_AUDIO_ELITE_FW_START_INIT_FN)
+
+if env.get('CHIPSET') == "msm8909" or env.get('CHIPSET') == "mdm9x55" or env.get('CHIPSET') == "msm8916" or env.get('CHIPSET') == "mdm9x65" or env.get('CHIPSET') == "mdm9607":
+#-------------------------------------------------------------------------------
+# RCINIT Task and Init Fields and Initialization
+#-------------------------------------------------------------------------------
+   if 'USES_MPSS_MULTI_PD' in env:
+      if 'USES_AUDIO_IN_ROOTPD' in env:
+         elite_fwk_init_depend_list = ['adsppm_client', 'apr_kdrv']
+         IMAGES = ['CORE_USER_PD','MULTIMEDIA_USER_PD']
+      else:
+         IMAGES = ['CORE_USER_PD','MULTIMEDIA_USER_PD']
+         elite_fwk_init_depend_list = ['adsppm_client', 'apr_udrv']
+   else:
+      IMAGES = ['MULTIMEDIA_QDSP6_SW']
+      elite_fwk_init_depend_list = ['adsppm', 'apr_init']
+
+#-------------------------------------------------------------------------------
+# RCINIT Init and Task Fields and Initialization
+#-------------------------------------------------------------------------------
+
+   RCINIT_AUDIO_ELITE_FW_INIT_FN = {
+     'sequence_group'             : 'RCINIT_GROUP_2',           # required
+     'init_name'                  : 'elite_framework_init',     # required
+     'init_function'              : 'elite_framework_init',     # required
+     'dependencies'               : elite_fwk_init_depend_list
+   }
+
+   RCINIT_AUDIO_ELITE_FW_START_INIT_FN = {
+     'sequence_group'             : 'RCINIT_GROUP_2',         
+     'init_name'                  : 'elite_framework_start',     
+     'init_function'              : 'elite_framework_start',   
+     'dependencies'               : ['elite_framework_init']
+   }
+
+   if 'USES_RCINIT' in env:
+      env.AddRCInitFunc(IMAGES, RCINIT_AUDIO_ELITE_FW_INIT_FN)
+      env.AddRCInitFunc(IMAGES, RCINIT_AUDIO_ELITE_FW_START_INIT_FN)
+      

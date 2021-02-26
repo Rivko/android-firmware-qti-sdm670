@@ -1,0 +1,72 @@
+//============================================================================
+//  Name:                                                                     
+//    apps_attach_actions.cmm
+//
+//  Description:                                                              
+//    When APPS attaches, execute the following.
+//    To be  used with 'GLOBALON SYSDOWN DO aop_attach_actions.cmm' command within T32.
+//                                                                            
+// Copyright (c) 2012 - 2017 by Qualcomm Technologies, Incorporated.  All Rights Reserved.  
+// Confidential and proprietary      
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who             what, where, why
+// --------   ---             ---------------------------------------------------------
+// 04/13/2017 JBILLING        Created
+
+// Can disable this action if desired. AOSSPWRUPREQ will be masked from APPS if set.
+LOCAL &MaskSYSPWRUPREQ_OnAttach
+&MaskSYSPWRUPREQ_OnAttach="TRUE"
+
+//////////////////////
+///
+/// @brief Main functionality. Writes SYSPWRUPREQ and masks to allow local apps power collapse, 
+/// but prevent CX power collapse when apps0 is attached.
+///
+//////////////////////
+MAIN:
+    
+    LOCAL &accessmode
+    &accessmode="EZAXI"
+    
+    //Variable  shared between attach script and detach script.
+    //Check so  that repeated sys.d does not rerun the detach script.
+    GLOBAL &ATTACH_ASSERTED
+    &ATTACH_ASSERTED=1.
+    
+    //print "HELLO!" ///<For debug
+    
+    ON ERROR GOSUB
+    (
+        IF ("&ReEnableWdogOnSYSDWN"=="TRUE")
+        (
+            PRINT "Warning - error ocurred when attempting to configure JTAG<->Power options on attach"
+        )
+        ENDDO
+    )
+
+    SYSTEM.OPTION PWRDWN ON
+    SYSTEM.OPTION SYSPWRUPREQ ON
+    
+    IF (SYSTEM.MODE()>0x0)
+    (
+        IF ("&MaskSYSPWRUPREQ_OnAttach"=="TRUE")
+        (
+            d.s EAXI:0x6B0EFB0 %LE %LONG 0xc5acce55 // QDSS_SWAO_SWAOCSR_CS_SWAOCSR_LOCKACCESS - enable QDSS writes
+            d.s EAXI:0x6B0E060 %LE %LONG 0xFFFFFFFF // QDSS_SWAO_SWAOCSR_CS_SWAOCSR_QDSSPWRREQIGNORE
+            d.s EAXI:0x6B0E0DC %LE %LONG 0xD        // QDSS_SWAO_SWAOCSR_CS_SWAOCSR_QDSSCSYSPWRREQIGNORE ; setting bit 1 leads to loss of DAP access
+            d.s EAXI:0x6B0EFB0 %LE %LONG 0xa5a5a5a5 // QDSS_SWAO_SWAOCSR_CS_SWAOCSR_LOCKACCESS - disable QDSS writes 
+        )
+    )
+    ELSE
+    (
+        PRINT "Warning - not attached to apps, unable to set power<->JTAG options"
+    )
+    
+    ENDDO

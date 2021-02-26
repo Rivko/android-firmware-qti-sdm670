@@ -1,0 +1,95 @@
+#===============================================================================
+#
+# GENERAL DESCRIPTION
+#    Build script for QDSS control library
+#
+# Copyright (c) 2011-2012 Qualcomm Technologies Incorporated.
+# All rights reserved.
+# Qualcomm Confidential and Proprietary
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1.c4/debugtrace/control/build/control.scons#1 $
+#
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 09/07/17   rs      Warlock specific changes
+#===============================================================================
+Import('env')
+import qdss
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "../src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+
+env.RequirePublicApi(['HAL','DAL','DEBUGTRACE','DEBUGTOOLS','SERVICES','SYSTEMDRIVERS','HWENGINES', 'POWER','WIREDCONNECTIVITY','MEMORY','KERNEL'])
+env.RequireRestrictedApi(['DEBUGTRACE'])
+env.RequireProtectedApi(['DEBUGTRACE'])
+
+# Configuring replicator for core PD only in ADSP
+#if 'USES_SENSOR_IMG' in env or 'USES_AUDIO_IMG' in env or 'USES_CDSP_IMG' in env:
+#  print("WARN: Enable ENABLE_LPA_REPLICATOR_SWITCH only for root PD")
+#else:
+#  env.Append(CPPDEFINES=['ENABLE_LPA_REPLICATOR_SWITCH'])
+  
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+QDSS_CONTROL_SRC = [
+   '${BUILDPATH}/qdss_diag.c',
+   '${BUILDPATH}/qdss_control.c',
+   '${BUILDPATH}/qdss_tfunnel.c',
+   '${BUILDPATH}/qdss_tpdm.c',
+   '${BUILDPATH}/qdss_tpda.c',   
+   '${BUILDPATH}/qdss_clock.c',   
+   '${BUILDPATH}/qdss_trace_sink.c',
+   '${BUILDPATH}/qdss_tmc.c',
+   '${BUILDPATH}/qdss_test.c',
+   '${BUILDPATH}/qdss_ts.c',
+]
+
+
+
+
+QDSS_CONTROL_STUB = [ '${BUILDPATH}/qdss_control_stub.c']
+
+if env.IsTargetEnable(qdss.BuildTags(['sensor2'])):
+  QDSS_CONTROL_STUB += [ '${BUILDPATH}/qdss_clock_user.c']
+elif env.IsTargetEnable(qdss.BuildTags(['cdsp','adsp','audio'])):
+  QDSS_CONTROL_STUB += [ '${BUILDPATH}/qdss_clock_stub.c']
+
+env.AddLibrary(qdss.BuildTags(['adsp']),
+   '${BUILDPATH}/qdss_control',QDSS_CONTROL_SRC)
+
+env.AddLibrary(qdss.BuildTags(['sensor2','cdsp','audio']),
+   '${BUILDPATH}/qdss_control',QDSS_CONTROL_STUB)
+
+
+QDSS_CONTROL_MICRO_SRC = [ '${BUILDPATH}/qdss_ts_micro.c']
+control_micro_obj = env.Object(QDSS_CONTROL_MICRO_SRC)
+control_micro_lib = env.Library('${BUILDPATH}/control_micro', control_micro_obj)
+env.AddLibsToImage(qdss.BuildTags(['adsp']), control_micro_lib)
+
+if 'USES_ISLAND' in env:
+  env.AddIslandLibrary(qdss.BuildTags(['adsp']), control_micro_lib)
+
+
+if 'USES_RCINIT' in env:
+  env.AddRCInitFunc(
+    qdss.BuildTags(['adsp']),
+    {
+      'sequence_group'          : 'RCINIT_GROUP_1',
+      'init_name'               : 'qdss_control',
+      'init_function'           : 'qdss_control_init',
+      'dependencies'            : ['dalsys','diag','npa']
+      })
+

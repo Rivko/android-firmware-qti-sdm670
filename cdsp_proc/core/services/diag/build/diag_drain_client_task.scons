@@ -1,0 +1,85 @@
+#===============================================================================
+#
+# Diag Drain Client Task Lib
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2017 by QUALCOMM Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1.c4/services/diag/build/diag_drain_client_task.scons#1 $
+#  $DateTime: 2018/07/30 01:21:36 $
+#  $Author: pwbldsvc $
+#  $Change: 16759227 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#06/05/17     sp     Initial version to support diag drain client task
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+env.PrintInfo("diag drain client task scons")    
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/services/diag"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'POWER',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'DEBUGTOOLS',
+   'DEBUGTRACE',
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',   
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Sources
+#-------------------------------------------------------------------------------
+DIAG_DRAIN_CLIENT_TASK_SOURCES = [
+ '${BUILDPATH}/diag_drain_client_task/src/diag_drain_client_task.c',
+]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+env.AddLibrary(['CORE_CDSP_USER', 'CORE_SLPI_USER', 'CORE_ADSP_USER', 'CORE_QDSP6_SENSOR_SW'], '${BUILDPATH}/diag_drain_client_task', DIAG_DRAIN_CLIENT_TASK_SOURCES)
+  
+if 'USES_SENSOR_IMG' in env:  
+   RCINIT_INIT_DIAG_DRAIN_CLIENT_TASK_INIT = {
+     'sequence_group'             : 'RCINIT_GROUP_1',          # required
+     'init_name'                  : 'diag_drain_client_task',                    # required
+     'init_function'              : 'diag_drain_client_task_init',               # required
+     'dependencies'               : ['timer_client','osal']
+   }
+
+   if 'USES_RCINIT' in env:
+      env.AddRCInitFunc( 'CORE_QDSP6_SENSOR_SW', RCINIT_INIT_DIAG_DRAIN_CLIENT_TASK_INIT )
+
+
+#--------------------------------------------------------------------------------
+# Enable this to remove compile optimizations (for debugging)
+# DO NOT leave enabled when checking in file
+#--------------------------------------------------------------------------------
+#env.Replace(HEXAGONCC_OPT = "-O0")

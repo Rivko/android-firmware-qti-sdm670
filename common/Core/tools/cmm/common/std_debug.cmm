@@ -1,0 +1,1948 @@
+//============================================================================
+//  Name:                                                                     
+//    std_debug.cmm 
+//
+//  Description:                                                              
+//    Top level debug script
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who             what, where, why
+// --------   ---             ---------------------------------------------------------
+// 11/30/2017 JBILLING        Minor changes for sdx24
+// 09/10/2017 MARTHAM         sdm670 ADSP debug issue fixed.
+// 09/10/2017 MARTHAM         sdm670 ADSP debugging support added.
+// 01/20/2017 JBILLING        Fixed bug with std_debug RPM with sdx20 target
+// 12/08/2016 JBILLING        Added fusion3 setup
+// 11/22/2016 JBILLING        Call to std_results added
+// 11/15/2016 JBILLING        Updates for 9x45 fusion
+// 10/21/2016 JBILLING        Add sys.m.prepare workaround for 8998 apps0 power collapsing during bootup
+// 08/26/2016 JBILLING        Add option for some targets to not default Apps Symbol load option
+// 04/28/2016 JBILLING        Minor bug fixed for MDM apps debug during symbol check
+// 04/22/2016 JBILLING        RPM logic fixed
+// 04/07/2016 JBILLING        Added warning messages and disable of dialog for certain modes
+// 03/10/2016 JBILLING        Updated temp path for host OS
+// 02/02/2016 JBILLING        Apps symbol usage feature
+// 12/14/2015 JBILLING        Fusion changes
+// 11/23/2015 JBILLING        Added Apps symbol usage feature since PIL timeout via adb command not working on Android M
+// 10/07/2015 JBILLING        Updates for 9x55 bringup, symbol reuse
+// 09/30/2015 RSSRIDHA        Changes made for 9x45/9x55 bringup and automation
+// 09/14/2015 JBILLING        Significant changes for automation
+// 09/03/2015 JBILLING        moved Appsbkpt logic to chip specific std_debug file
+// 08/24/2015 JBILLING        Additional help button added
+// 08/13/2015 RSSRIDHA        Added MPROC debug support for MDM
+// 05/19/2015 JBILLING        Help menu and command line fixes
+// 04/15/2015 JBILLING        Add modem back in for 8996v2 
+// 03/23/2015 JBILLING        Removed deprecated debug options, disabled modem debug for now
+// 05/22/2014 JBILLING        Add GUI, update for newer target level std_debug_&CHIPSET
+// 05/14/2014 AJCheriyan      Changes for Bootloader debug
+// 05/09/2014 JBILLING        Change to new 8994 std_debug 
+// 02/19/2014 AJCheriyan      Added MDM debug support for fusion platform
+// 07/10/2012 AJCheriyan      Created for B-family. Ideas ported from 8660/8960 version from rvennam/byule.
+//
+//
+//     
+//      std_debug help and info"
+//      std_debug is a script which wraps all live JTag debug functionality for Qualcomm chipsets."
+//      The script 'std_debug.cmm' is included within the path delivered with Qualcomm metabuild scripts"
+//      so 'do std_debug' can be entered on T32 command line with no paths."
+//     
+//      The purpose of std_debug is to get the user to their desired breakpoint with JTag attached of their desired image."
+//      Default error breakpoints are always set, so that if no user breakpoint is specified, the desired image"
+//      should halt on an error within that image"
+//     
+//      std_debug can be used with GUI (try 'do std_debug' with no parameters) or with parameters for command line functionality"
+//      
+//      
+//     - If no parameters are specified, a debug GUI will open prompting the user to select their image (Img)
+//     - If any parameters are passed, at a minimum the user must specify the image (Img keyword)
+//     - By default GUI's will open for user input. To supress these GUI's, specify 'extraoption=silent' and 
+//        std_debug will boot up the system on its own, using symbols from 'alternateelf' specified or from 
+//        defaults given in global variables (usually obtained from metabuild defaults). Please see a '*_loadsyms.cmm'
+//        script for further symbol loading options.
+//    
+//        Command line details:
+//            6 parameter inputs are available for command line input. 
+//        Possible parameters:
+//            Img (necessary, else a GUI will open)
+//                Target dependent. For example on 8996, this is: xbl,rpm,tz,appsboot,mba,mpss,slpi,adsp 
+//            Lpm (not necessary)
+//                Low power mode disablement. Useful to keep debug-ability on some processors which go to sleep
+//                Low power modes are enabled by default
+//                Lpm=lpm_enable
+//                Lpm=lpm_disable
+//            Bkpts (not necessary)
+//                User specified breakpoints. These are comma-deliminated. They can be symbols, hex addresses, 
+//                or function offsets (e.g.: main\23). If an error occurs during breakpoint setting, it fails 
+//                silently (a message will show up in AREA window but debug will continue)
+//            CTI_Enable (not necessary)
+//                Enabling this feature will halt the rest of the SoC when breakpoint of interest is set
+//                <Note for 8996 ES2 release - this feature not yet functional>
+//            alternateelf (not necessary)
+//                Useful for command line functionality. Give the full path to the elf file (root elf if 
+//                a multi-elf subsystem is used) and scripts will use this elf for debug 
+//                e.g. 
+//                alternateelf=\\mypath\adsp_proc\build\ms\M8996AAAAAAAA1234.elf
+//                Scripts will attempt to automatically load second elf (in adsp case, M8996AAAAAA1234_AUDIO.elf)
+//            extraoption (not necessary)
+//                For extra options, comma deliminated. Currently supported are:
+//                silent
+//                    Attempts to not use GUI. If paths do not resolve, reverts to GUI
+//                forcesilent
+//                    Doesn't use GUI. If paths do not resolve, Fatal exit out of scripts.
+//                resultslog
+//                    Mainly for automation. Log file is created on script completion (error or success)
+//                    e.g.: extraoption=resultslog->c:\temp\results.txt
+//
+//          Some example command lines:
+//              do std_debug Img=slpi alternateelf=\\myslpibuild\slpi_proc\build\ms\M8996AAAAAAAAQ1234.elf extraoption=silent
+//              do std_debug Img=adsp alternateelf=\\myadspbuild\adsp_proc\build\ms\M8996AAAAAAAAQ1234.elf extraoption=silent
+//           
+//               For commandline usecase for flashless
+//                do std_debug Img=sbl1 extraoption=usbboot->meta
+//                do std_debug Img=sbl1 extraoption=usbboot->menu   
+//                do std_debug Img=sbl1 extraoption=usbboot->c:\tmp\images
+
+//**************************************************
+//                  Declarations 
+//**************************************************
+LOCAL &ArgumentLine
+LOCAL &UTILITY &Remainder
+LOCAL &targetprocessor
+
+//**************************************************
+//                  Arguments Passed 
+//**************************************************
+ENTRY %LINE &ArgumentLine
+//ENTRY &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+
+ENTRY &UTILITY %LINE &Remainder
+//**************************************************
+//                  Defaults 
+//**************************************************
+//Only reinit these if they haven't been declared yet (i.e. new t32 session)
+
+IF STRING.SCAN("&OUTPUTFILE","OUTPUTFILE",0)!=-1
+(
+    GLOBAL &OUTPUTFILE &LOGSENABLED    
+
+    &OUTPUTFILE="&TEMPDIR/std_debug.log"
+    &LOGSENABLED="FALSE"
+
+    GLOBAL &FAILUREKEYWORD &SUCCESSKEYWORD
+    &FAILUREKEYWORD="FAILURE"
+    &SUCCESSKEYWORD="SUCCESS"
+)
+
+//communication to automation testing
+GLOBAL &AUTOMATION_MSG 
+&AUTOMATION_MSG=""
+//To be able to track if we should re-load symbols on subsequent debugs
+
+//ENTRYHEXADDR_LOC is for bootprocessor window
+//ENTRYHEXADDR is for target processor
+
+//Only reinit these if they haven't been declared yet (i.e. new t32 session)
+IF STRING.SCAN("&ENTRYHEXADDR_LOCAL","ENTRYHEXADDR_LOCAL",0)!=-1
+(
+    GLOBAL &ENTRYHEXADDR_LOCAL &USEEXISTINGSYMS_LOCAL &ENTRYHEXADDR_TARGET &USEEXISTINGSYMS_TARGET
+    &ENTRYHEXADDR_LOCAL="NULL"
+    &ENTRYHEXADDR_TARGET="NULL"
+    &USEEXISTINGSYMS_LOCAL="FALSE"
+    &USEEXISTINGSYMS_TARGET="FALSE"
+)
+LOCAL &chipset_lwr
+&chipset_lwr=STR.LWR("&CHIPSET")
+
+IF (STRING.SCAN("&MULTIPROC_DBG_FLAG","MULTIPROC_DBG_FLAG",0)!=-1)&&(!(("&chipset_lwr"=="sdm845")||("&chipset_lwr"=="sdm670")))
+(
+    GLOBAL &MULTIPROC_DBG_FLAG
+    &MULTIPROC_DBG_FLAG="TRUE"
+)
+//**************************************************
+//                  Subroutine Checks
+//**************************************************
+// Name of the utility we are calling
+LOCAL &SUBROUTINE
+// Any subroutine specific options
+// Default exists for each subroutine
+LOCAL &OPTION
+
+
+//**************************************************
+//                  Basic Options Check
+//**************************************************
+
+&SUBROUTINE="&UTILITY"
+IF ("&ArgumentLine"=="")
+(
+    &SUBROUTINE="DEBUG_GUI"
+
+)
+ELSE IF (STRING.UPR("&UTILITY")=="HELP")||(STRING.UPR("&UTILITY")=="STD_DEBUG_CALL_GUI")
+(
+    &SUBROUTINE="&UTILITY"
+)
+ELSE IF (STRING.UPR("&UTILITY")=="SETUPTARGETPROCESSOR")
+(
+    &SUBROUTINE="&UTILITY"
+    &ArgumentLine="&Remainder"
+)
+ELSE
+(
+    &SUBROUTINE="MAIN"
+)
+
+
+    LOCAL &rvalue
+    // This should be created by some top level script. The setupenv for each proc would
+    // set this up
+     AREA.SELECT
+    // Call the required utility
+    GOSUB &SUBROUTINE &ArgumentLine
+    ENTRY %LINE &rvalue
+
+    GOSUB EXIT &rvalue
+
+
+
+
+
+//**************************************************
+//
+// @Function: MAIN
+// @Description : Main logic of the script
+//
+//**************************************************
+MAIN:
+    LOCAL &ArgumentLine
+    ENTRY %LINE &ArgumentLine
+    
+    /////////////////////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////Get settings and defaults. Sanitize inputs//////////////////////////////
+    /////////////////////////////////////////////////////////////////////////////////////////////////
+    //from GETDEBUGDEFAULTS
+    LOCAL &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+    //from optextract:
+    LOCAL &user_defined_bkpts 
+
+    //For Multiproc debug
+    LOCAL &targetprocessorport_local &targetprocessor_target &debugscript_local &symbolloadscript1  &imagebuildroot1 &image1
+
+    
+    do optextract Img,Lpm,Bkpts,CTI_Enable,alternateelf,extraoption &ArgumentLine
+    LOCAL &image &lpm_option &user_defined_bkpts &cti_enable &alternateelf &extraoption
+    ENTRY &image &lpm_option &user_defined_bkpts &cti_enable &alternateelf &extraoption //expect 6 returns from optextract
+    
+    
+    //If no arguments given, run the debug GUI
+    if (("&image"=="NULL")||("&image"==""))
+    (
+        GOSUB DEBUG_GUI
+        GOSUB EXIT
+    )
+
+    //get chipset specific defaults for this image
+    do std_debug_&CHIPSET GETDEBUGDEFAULTS NONE &image &lpm_option &cti_enable &alternateelf &extraoption
+        ENTRY &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+
+    LOCAL &rvalue
+    
+    /////////////////////////////////////////////////////////////////////////////////////////////////
+    //////////////////////////////Setup System and T32 Windows///////////////////////////////////////
+    /////////////////////////////////////////////////////////////////////////////////////////////////
+    // Perform Debugger Session Validations
+    
+    GOSUB CHECKSESSION &targetprocessor &targetprocessorport
+    
+    //Reset target, prepare JTag windows
+    GOSUB SETUPSYSTEM &targetprocessorport &extraoption
+
+    do listparser FULLLIST reverse &debugscript &symbolloadscript &imagebuildroot &targetprocessor &targetprocessorport
+    LOCAL &debugscript_local &debugscript_target &symbolloadscript_local &symbolloadscript_target &imagebuildroot_local &imagebuildroot_target &targetprocessor_local &targetprocessor_target &targetprocessorport_local &targetprocessorport_target
+    ENTRY &debugscript_local &debugscript_target &symbolloadscript_local &symbolloadscript_target &imagebuildroot_local &imagebuildroot_target &targetprocessor_local &targetprocessor_target &targetprocessorport_local &targetprocessorport_target
+    
+    /////////////////////////////////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////Load Symbols////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////////////////////////////////////////////
+    //Load symbols on remote processor's window
+    IF (("&symbolloadscript_local"!="NULL")||("&symbolloadscript_local"==""))
+    (
+        IF !(("&USEEXISTINGSYMS_LOCAL"=="TRUE")&&("&USEEXISTINGSYMS_LOCAL"!="NULL"))
+        (
+            do &symbolloadscript_local &imagebuildroot_local remotely notliveattach nosecondelf &alternateelf &extraoption
+            //FIXME - make this not hardcoded
+            &ENTRYHEXADDR_LOCAL=ADDRESS.OFFSET(D:(0x80000000))
+            INTERCOM.EXECUTE &targetprocessorport_local Y.CREATE symbols_defined 0x1
+            INTERCOM.EXECUTE &targetprocessorport_local Y.CREATE.done
+        )
+        ELSE
+        (
+            INTERCOM.EXECUTE &targetprocessorport_local PRINT "Using pre-loaded symbols on this window. If new image was loaded, please re-start session"
+        )
+        
+    )    
+    IF !(("&symbolloadscript_target"=="NULL")||("&symbolloadscript_target"==""))
+    (
+        IF !(("&USEEXISTINGSYMS_TARGET"=="TRUE")&&("&USEEXISTINGSYMS_TARGET"!="NULL"))
+        (
+            do &symbolloadscript_target &imagebuildroot_target remotely notliveattach NULL &alternateelf &extraoption
+            //FIXME - make this not hardcoded
+            &ENTRYHEXADDR_LOCAL=ADDRESS.OFFSET(D:(0x80000000))
+            INTERCOM.EVALUATE &targetprocessorport_target Y.EXIST(&entry_bkpt)
+            &entrybpvalid=EVAL()
+            //Don't check if symbol exists if a hex value was given as entry breakpoint
+            IF (&entrybpvalid==0x0)&&(STRING.SCAN(STR.UPR("&entry_bkpt"),"0X",0)==-1)
+            (
+                do std_fatalexit USER "Error! &entry_bkpt not present on target processor after ELF loaded. Was the wrong elf selected?"
+            )
+            
+            INTERCOM.EVALUATE &targetprocessorport_target ADDRESS.OFFSET(D:(&entry_bkpt))
+            &ENTRYHEXADDR_TARGET=EVAL()
+            IF !("&ENTRYHEXADDR_TARGET"=="&ENTRYHEXADDR_LOCAL")
+            (
+                INTERCOM.EVALUATE &targetprocessorport_target Y.EXIST(&entry_bkpt)
+                &entrybpvalid=EVAL()
+                IF (&entrybpvalid==0x0)&&(STRING.SCAN(STR.UPR("&entry_bkpt"),"0X",0)==-1)
+                (
+                    do std_fatalexit USER "Error! &entry_bkpt symbol not defined from given elf. Are debug symbols present in given elf?"
+                )
+            )
+            
+            INTERCOM.EXECUTE &targetprocessorport_target Y.CREATE symbols_defined 0x1
+            INTERCOM.EXECUTE &targetprocessorport_target Y.CREATE.done  
+            
+        )
+        ELSE
+        (
+            INTERCOM.EXECUTE &targetprocessorport_target PRINT "Using pre-loaded symbols on this window. If new image was loaded, please re-start session"
+        )
+    )
+    
+    /////////////////////////////////////////////////////////////////////////////////////////////////
+    /////////////////////////////////////Run Debug Scripts////////////////////////////////////////////////
+    /////////////////////////////////////////////////////////////////////////////////////////////////
+    //FIXME - this removes trace options
+    
+    
+    if !(("&debugscript_local"=="NULL")||("&debugscript_local"==""))
+    (       
+        IF (!("&debugscript_target"=="NULL"))&&(STRING.SCAN("&CHIPSET","sdx24",0)!=-1)
+        (
+           do std_debug_&CHIPSET SETDEBUGCOOKIE set &image
+        )
+        do &debugscript_local Img=&image Lpm=&lpm_option Bkpts=&user_defined_bkpts CTI_Enable=&cti_enable alternateelf=&alternateelf extraoption=&extraoption
+        ENTRY %LINE &rvalue
+    )
+    
+    
+
+    //Boot up system and get target processor to initialization point
+    IF (STRING.SCAN("&extraoption","setuptargetdonebyhlosscript",0)==-1)
+    (
+        GOSUB SETUPTARGETPROCESSOR &peripheral_processor &processortimeoutvalue &targetprocessor_target &targetprocessorport_target &bootprocessor &extraoption
+    )
+    
+    
+    if !(("&debugscript_target"=="NULL")||("&debugscript_target"==""))
+    (       
+        do &debugscript_target Img=&image Lpm=&lpm_option Bkpts=&user_defined_bkpts CTI_Enable=&cti_enable alternateelf=&alternateelf extraoption=&extraoption
+        ENTRY %LINE &rvalue
+    )
+    
+    if (!(("&debugscript_local"=="NULL")||("&debugscript_local"=="")))&&(STRING.SCAN("&extraoption","prioritizeperiphproc",0)!=-1)
+    (       
+        &extraoption="&extraoption"+",firstrundone"
+        do &debugscript_local Img=&image Lpm=&lpm_option Bkpts=&user_defined_bkpts CTI_Enable=&cti_enable alternateelf=&alternateelf extraoption=&extraoption
+        ENTRY %LINE &rvalue
+    )
+    
+    
+    IF ("&FUSION_PLATFORM"=="TRUE")
+    (
+        do std_results std_debug_&FUSION_TYPE &rvalue &ArgumentLine
+    )
+    ELSE
+    (
+        do std_results std_debug &rvalue &ArgumentLine
+    )
+    
+    
+    
+    RETURN &rvalue
+   
+   //////////////////End MAIN//////////////////
+   
+//**************************************************
+//
+// @Function: SETUPTARGETPROCESSOR
+// @Description :
+// Sets up the target processor sub-system for debug. 
+// Assumes target is reset and ready to boot up
+// Support only for single processor debug
+//************************************************** 
+SETUPTARGETPROCESSOR:
+    LOCAL &peripheral_processor &WaitTimeout &targetprocessor &targetprocessorport &bootprocessor &extraoption
+    ENTRY &peripheral_processor &WaitTimeout &targetprocessor &targetprocessorport &bootprocessor &extraoption
+    LOCAL &counter &attachstate
+    
+    LOCAL &Rvalue &Session1 &Session2
+    // There can be upto two target processors
+    &targetprocessor=STRING.UPPER("&targetprocessor")
+    
+    
+    IF ("&targetprocessor"=="&bootprocessor")
+    (
+        RETURN 
+    )
+    
+    //Special case for RPM
+    IF ("&targetprocessor"=="RPM")
+    (
+            LOCAL &chipset_upr
+            &chipset_upr=STR.UPR("&CHIPSET")
+            IF (("&chipset_upr"=="SDX20")||("&chipset_upr"=="SDX50")||("&chipset_upr"=="SDM845")||("&chipset_upr"=="SDM670")||("&chipset_upr"=="SDX24")||("&chipset_upr"=="MDM9655"))
+            (
+                RETURN 
+            )
+            //////////////////////////////////////////////////////////////////////////
+            //Need to load tz symbols to set breakpoints before and after rpm out of reset
+            
+            //This already done as mproc operation
+            //PRINT "Please point to &apps_image elf"
+            //do &apps_symbol_script NULL remotely notliveattach nosecondelf NULL &extraoption
+            //PRINT " " 
+            LOCAL &apps_symbol_script &apps_breakpoint &apps_image
+            IF (STRING.SCAN(STR.UPR("&CHIPSET"),"MDM",0)!=-1)||(STRING.SCAN(STR.UPR("&CHIPSET"),"SDX",0)!=-1)
+            (
+                
+                IF ("&chipset_upr"=="MDM9645")
+                (
+                    &apps_breakpoint="sbl1_release_rpm_proc"
+                )
+                ELSE
+                (
+                    &apps_breakpoint="sbl1_release_modem_proc"
+                )
+                &apps_symbol_script="std_loadsyms_xbl"
+                &apps_image="SBL"
+                
+            )
+            ELSE
+            (
+                &apps_symbol_script="std_loadsyms_tz"
+                &apps_breakpoint="tzbsp_rpm_bring_up"
+                &apps_image="TZ"
+            )
+            
+
+            B.S &apps_breakpoint /o
+            
+            do std_debug_&CHIPSET SETDEBUGCOOKIE set &image
+            
+            
+            LOCAL &timeoutval
+            IF (STRING.SCAN(STR.UPR("&CHIPSET"),"MDM",0)!=-1)||(STRING.SCAN(STR.UPR("&CHIPSET"),"SDX",0)!=-1)
+            (
+                &timeoutval=300.
+            )
+            ELSE
+            (
+                &timeoutval=1000.
+            )
+            
+            
+            GO
+            LOCAL &counter
+            &counter=0
+            WHILE (STATE.RUN()&&(&counter<&timeoutval))
+            (
+                WAIT.100ms
+                &counter=&counter+1
+            )
+            IF (&counter>=&timeoutval)
+            (
+                PRINT %ERROR "Timeout occurred stopping &apps_image at AOP reset. Possible symbol mismatch. Exiting"
+                do std_fatalexit SYSTEM "std_debug_&targetprocessor line 160: Timeout occurred stopping &apps_image at AOP reset. Possible symbol mismatch. Exiting"
+                PLIST
+                PSTEP
+            )
+            IF STRING.SCAN(STR.UPR("&CHIPSET"),"MSM",0)!=-1
+            (
+                GO.RETURN
+                STEP
+            )
+            IF ("&chipset_upr"=="MDM9645")
+            (
+                go
+                wait.250ms
+                B
+            )
+
+
+    )
+    //Fusion uses different logic
+    ELSE IF "&peripheral_processor"=="apps-fus"
+    (
+        RETURN
+    )
+    ELSE IF "&peripheral_processor"=="apps-fus1"
+    (
+            //disable in case of wierd behavior
+        GLOBALON POWERUP default
+        //FIXME - make this cleaner
+        INTERCOM.EXECUTE &targetprocessorport ON ERROR CONTINUE  
+        INTERCOM.EXECUTE &targetprocessorport BREAK.DISABLE /ALL
+        INTERCOM.EXECUTE &targetprocessorport SYS.M.NODEBUG
+        INTERCOM.EXECUTE &targetprocessorport WINCLEAR
+        INTERCOM.EXECUTE &targetprocessorport ON ERROR 
+        do std_utils CLEARSYNCH &targetprocessorport
+        
+        Do std_debug_&CHIPSET APPSBOOT_BKPT set 
+        GOSUB SETUPDEBUGCOOKIE &bootprocessor &image
+        GOSUB SETUP_CTI
+
+        //FIXME - need to GO twice on Fusion
+        ON ERROR CONTINUE
+        GO
+        GO
+        ON ERROR
+            
+        if ("&cti_enable"=="true")
+        (
+            do std_cti masters=&targetprocessor slaves=&bootprocessor
+            ENTRY %LINE &rvalue
+            IF (STRING.SCAN("&rvalue","SUCCESS",0)==-1)
+            (
+                do std_fatalexit ATTACH &rvalue
+                PLIST
+                PSTEP
+            ) 
+        )
+
+        GOSUB MONITOR_CTI
+
+        
+        if ("&cti_enable"=="true")
+        (
+            do std_cti CLEARCTI &bootprocessor
+        )   
+        
+        ENTRY %LINE &rvalue
+        IF (STRING.SCAN("&rvalue","SUCCESS",0)==-1)
+        (
+            do std_fatalexit ATTACH &rvalue
+        ) 
+            
+        IF ("&cti_enable"=="true")
+        (
+            INTERCOM.EXECUTE &APPS0_MSM_PORT DO std_cti_apps SENDCTIBREAKTOALLCORES
+        )
+        
+        IF "&peripheral_processor"=="apps-fus1"
+        (
+            RETURN SUCCESS
+        )
+        
+ 
+        
+        
+    )
+    
+    
+    //All other usecases: Need to be at HLOS entry, setup CTI, GO, and wait for peripheral to boot up.
+    ELSE
+    (
+    
+        /////////////////Wait for device to get to apps bootloader/////////////////
+        IF ("&peripheral_processor"!="mproc")
+        (
+            Do std_debug_&CHIPSET APPSBOOT_BKPT set 
+        )
+            
+        GOSUB SETUPDEBUGCOOKIE &bootprocessor &image
+        LOCAL &chipset
+        &chipset=STR.LWR("&CHIPSET")
+        
+        GOSUB SETUP_CTI &targetprocessor
+                
+        /////////////////////////////////////////////
+        ///////////Issue a GO from HLOS entry////////
+        /////////////////////////////////////////////
+
+        ON ERROR GOSUB
+        (
+            DO std_fatalexit ATTACH "std_debug error - couldn't GO processor after HLOS"
+            PLIST
+            PSTEP
+        )
+        //IF !(("&chipset"=="mdm9665")||("&chipset"=="sdx20")||("&chipset"=="sdx20m"))
+        //(
+        IF !STATE.RUN()
+        (
+           GO
+        )
+        ON ERROR
+
+        
+        //Do this after 'GO' since T32 will reset CTI///
+        if ("&cti_enable"=="true")||(STRING.SCAN("&extraoption","onlyusehaltcti",0)!=-1)
+        (
+			LOCAL &chipset_upr
+			&chipset_upr=STR.UPR("&CHIPSET")
+			IF (STRING.SCAN("&chipset_upr","MDM",0)!=-1)||(STRING.SCAN("&chipset_upr","SDX24",0)!=-1)
+			(
+		    	sys.config.cticonfig none
+			)
+            do std_cti masters=&targetprocessor slaves=&bootprocessor
+        )
+     
+        /////////////////////////////////////////////
+        ///////////Run script for USB BOOT///////////
+        /////////////////////////////////////////////
+
+        IF (STRING.SCAN("&extraoption","usbboot",0)!=-1)
+        (
+            do std_utils EXECUTESCRIPT EXIT &COMMON_CHIPSET_METASCRIPTSDIR\std_debug_flashless  &extraoption
+        )
+        
+        //Wait for peripheral processor to boot up
+        GOSUB MONITOR_CTI &extraoption
+
+        
+        if ("&cti_enable"=="true")
+        (
+            do std_cti CLEARCTI &bootprocessor
+        )   
+        
+        
+        /////////////////////////////////////////////////////
+        /////////////Prepare and attach peripheral T32 //////
+        /////////////////////////////////////////////////////
+        
+        IF ("&peripheral_processor"=="true")||("&peripheral_processor"=="mproc")
+        (
+            INTERCOM.EXECUTE &targetprocessorport task.reset
+        )
+
+        
+        // Stop the processor of interest and validate attach
+        do std_intercom_do &targetprocessorport std_utils BREAKPROC
+
+        IF ("&cti_enable"=="true")&&("&FUSION_PLATFORM"=="TRUE")
+        (
+            INTERCOM.EXECUTE &APPS0_MSM_PORT DO std_cti_apps SENDCTIBREAKTOALLCORES
+        )
+
+        //do std_debug_&CHIPSET SETDEBUGCOOKIE clear &image
+        
+        
+        INTERCOM.EVALUATE &targetprocessorport SYSTEM.MODE()
+        &attachstate=EVAL()
+        IF (0==&attachstate)
+        (
+            PRINT %ERROR "Could not attach to &targetprocessor during bootup. Try coldbooting device, restart &targetprocessor T32 window, and try again"
+            DO std_fatalexit SYSTEM "Could not attach to &targetprocessor during bootup. Try coldbooting device, restart &targetprocessor T32 window, and try again"
+            PLIST
+            PSTEP
+        )
+
+    )
+    
+    RETURN SUCCESS
+    
+//////////////////////////////////////////////////////////
+//
+//          Function: SETUP_CTI
+//          Description : Sets up CTI network between target processor
+//                        And an unused RPM CTI TRIGOUT
+//                        Setup CTI to trigger from 
+//                        peripheral processor to RPM
+//                        This won't halt RPM, but will 
+//                        flip ECTRIGOUT on an unused CTI port
+//
+//////////////////////////////////////////////////////////
+SETUP_CTI:
+    LOCAL &targetprocessor
+    ENTRY &targetprocessor
+    
+    &TARGETPROCESSOR=STR.UPR("&targetprocessor")
+    
+    //Set CTI
+    do std_cti CTI_TRIGGER_BROADCAST &TARGETPROCESSOR 0 3
+    ENTRY %LINE &rvalue
+    IF (STRING.SCAN("&rvalue","SUCCESS",0)==-1)
+    (
+        do std_fatalexit ATTACH &rvalue
+        PLIST
+        PSTEP
+    ) 
+    do std_cti CTI_TRIGGER_RECEIVE RPM 6 3
+    ENTRY %LINE &rvalue
+    IF (STRING.SCAN("&rvalue","SUCCESS",0)==-1)
+    (
+        do std_fatalexit ATTACH &rvalue
+        PLIST
+        PSTEP
+    ) 
+    
+RETURN SUCCESS
+//////////////////////////////////////////////////////////
+//
+//          Function: MONITOR_CTI
+//          Description : Monitor if RPM ctitrig went off
+//                        Assumes that SETUP_CTI has been run first
+//
+//////////////////////////////////////////////////////////
+MONITOR_CTI:
+    
+    
+    ///Workaround for 8998 apps0 going to power collapse
+    LOCAL &chipset_upr
+    &chipset_upr=STR.UPR("&CHIPSET")
+    IF ("&chipset_upr"=="MSM8998")
+    (
+        sys.option.enreset off
+        sys.m.prepare
+        WINPOS 0. 0. 100. 10.
+        AREA
+        PRINT "Detaching from core, attaching to bus to avoid power collapse impact"
+        wait.250ms
+    )
+    
+
+	LOCAL &counter
+    &counter=0
+
+    //Now monitor CTI
+
+    LOCAL &rpm_trigoutstatus
+    &rpm_trigoutstatus=0x0
+    PRINT "Waiting for &image to come up. Please wait..."
+	LOCAL &attachstate &exitflag
+	&attachstate=SYSTEM.MODE()
+    &exitflag=0
+    WHILE ((&rpm_trigoutstatus==0x0)&&(&counter<(&WaitTimeout*10)))&&((&attachstate==0x0B)||(&attachstate==0x04))&&(&exitflag!=1.) //eventually use value for trigout 6 on rpm since it's not used
+    (
+        WAIT.10ms
+        &counter=&counter+1
+        IF (STRING.SCAN("&extraoption","onlyusehaltcti",0)==-1)
+        (
+            //monitor RPM CTI status
+            do std_utils HWIO_IN RPM_CTITRIGOUTSTATUS EDAP fatalexit
+               ENTRY &rpm_trigoutstatus
+        )            
+
+
+        if (&counter==0x200)&&((("&CHIPSET"=="sdm845")&&("&targetprocessor"=="SLPI")))
+        (
+            //GOSUB SETUP_CTI &targetprocessor
+            ON ERROR CONTINUE
+            INTERCOM.EXECUTE &targetprocessorport SYS.M.A
+            ON ERROR DEFAULT
+            INTERCOM.WAIT &targetprocessorport
+            INTERCOM.EXECUTE &targetprocessorport PRINT " "
+        )
+        IF (&counter==0x200)&&("&targetprocessor"=="MPSS")&&("&CHIPSET"=="msm8998")
+        (
+                //PRINT "8998 mpss hack"
+                ON ERROR CONTINUE
+                INTERCOM.EXECUTE &targetprocessorport SYS.M.A
+                INTERCOM.WAIT &targetprocessorport
+                INTERCOM.EXECUTE &targetprocessorport PRINT " "
+        )
+        
+        IF (("&CHIPSET"=="sdm845")&&("&targetprocessor"=="SLPI"))
+        (
+            LOCAL &value
+            &value=((&counter)&(0xF))
+            IF (&value==0x0)
+            (
+                GOSUB SETUP_CTI &targetprocessor
+                ON ERROR CONTINUE
+                INTERCOM.EXECUTE &targetprocessorport SYS.M.A
+                ON ERROR DEFAULT
+                INTERCOM.WAIT &targetprocessorport
+                INTERCOM.EXECUTE &targetprocessorport PRINT " "
+            )
+            
+            LOCAL &T32_stopstate &T32_attachstate
+            INTERCOM.EVALUATE &targetprocessorport STATE.RUN()
+            &T32_stopstate=EVAL()
+            INTERCOM.EVALUATE &targetprocessorport SYSTEM.MODE()
+            &T32_attachstate=EVAL()
+            IF ((0.==&T32_stopstate)&&("&T32_attachstate"=="0x0B"))
+            (
+                &exitflag=1
+            )
+        )
+        
+		//670-adsp cti not working as a workaround waiting for ~40secs for adsp to be up.
+		IF (&counter==0xf00)&&(("&CHIPSET"=="sdm670")&&("&targetprocessor"=="ADSP"))
+        (
+			(
+                PRINT "sdm670 adsp back"
+				//NOTE!!!:Once adsp is brought out of reset,set below few registers to be able to attach to adsp.
+				do std_debug_&CHIPSET SETDEBUGCOOKIE clear &image
+				WAIT.1000ms
+                ON ERROR CONTINUE
+                INTERCOM.EXECUTE &targetprocessorport SYS.M.A
+                INTERCOM.WAIT &targetprocessorport
+                INTERCOM.EXECUTE &targetprocessorport PRINT " "		
+            )
+            
+            LOCAL &T32_stopstate &T32_attachstate
+            INTERCOM.EVALUATE &targetprocessorport STATE.RUN()
+            &T32_stopstate=EVAL()
+            INTERCOM.EVALUATE &targetprocessorport SYSTEM.MODE()
+            &T32_attachstate=EVAL()
+            IF ((0.==&T32_stopstate)&&("&T32_attachstate"=="0x0B"))
+            (
+                &exitflag=1
+            )
+        )
+		
+        &attachstate=SYSTEM.MODE()
+        IF !((&attachstate==0xB)||(&attachstate==0x4))
+        (
+
+            &attachstate=SYSTEM.MODE()
+            IF !((&attachstate==0x0B)||(&attachstate==0x04))
+            (
+                do std_fatalexit SYSTEM "Error! Debugger not attached. Did target crash during bootup?"
+                plist
+                pstep
+            )
+            
+        )
+        IF (&attachstate==0xB)&&(!STATE.RUN()) //Exit if we're attached and stopped
+        (
+            &rpm_trigoutstatus=0x1
+        )
+
+    )
+    
+    
+    LOCAL &attachstate
+    &attachstate=SYSTEM.MODE()
+    IF !((&attachstate==0x0B)||(&attachstate==0x04))
+    (
+        do std_fatalexit SYSTEM "Error! Debugger not attached. Did target crash during bootup?"
+        plist
+        pstep
+    )
+    IF STATE.RUN()==FALSE()
+    (
+        //FIXME - for automation
+        &AUTO_LOG="&AUTOLOG"+",bootprochalted"
+    )
+    
+    IF &counter>=(&WaitTimeout*10)
+    (
+        do std_fatalexit SYSTEM "Error! Did not detect peripheral processor bootup. Did bootup sequence go wrong?"
+        plist
+        pstep
+    )
+    
+    do std_cti CLEARCTI RPM
+    do std_cti CLEARCTI &TARGETPROCESSOR
+    
+    ON ERROR DEFAULT
+    
+    RETURN SUCCESS
+
+//**************************************************
+//
+// @Function: SETUPDEBUGCOOKIE
+// @Description :
+// Setup for Debug Cookie based on image value 
+//
+//************************************************** 
+SETUPDEBUGCOOKIE:
+
+    LOCAL &bootprocessor &image
+    ENTRY &bootprocessor &image
+    
+    LOCAL &TARGET_ALIVE &Rvalue &image1 &image2
+    // There can be upto two target processors
+    
+    IF "&FUSION_TYPE"=="FUSION3"
+    (
+        RETURN
+    )
+    
+    do listparser &image
+        ENTRY &image1 &image2
+
+    IF ("&image1"!="")
+    (
+        IF !(STRING.SCAN("&targetprocessor","&bootprocessor",0)!=-1)
+        (
+            do std_debug_&CHIPSET SETDEBUGCOOKIE set &image1 
+        )
+    )
+
+    IF ("&image2"!="")
+    (
+        do std_debug_&CHIPSET SETDEBUGCOOKIE set &image2 
+    )
+
+
+    //Implied success if we got to here
+    RETURN        
+   
+//**************************************************
+//
+// @Function: DEBUG_GUI
+// @Description :
+// Setup for GUI based std_debug input 
+//
+//************************************************** 
+DEBUG_GUI:
+    
+
+    do std_debug_gui
+    ENTRY %LINE &result
+    
+    
+    //should never get here
+    
+    GOSUB EXIT    
+
+
+STD_DEBUG_CALL_GUI:
+    LOCAL &utility &argumentline
+    ENTRY &utility %LINE &argumentline
+
+        GOSUB IMAGE_DEBUG_GUI &argumentline
+        
+        GOSUB EXIT
+    
+    
+STD_DEBUG_EXECUTE_DEBUG:
+    LOCAL &image &therest
+    ENTRY &image %LINE &therest
+        
+        do std_debug Img=&image &therest
+        
+        GOSUB EXIT
+    
+    
+    
+//**************************************************
+//
+// @Function: SETUPSYSTEM
+// @Description : System level setup to be performed
+//
+//**************************************************
+SETUPSYSTEM:
+LOCAL &targetprocessorport &extraoption
+ENTRY &targetprocessorport &extraoption
+
+    // Reset the chip
+    IF "&FUSION_TYPE"!="FUSION3"
+    (
+        
+        do std_reset &extraoption
+        LOCAL &result
+        ENTRY %LINE &result
+        IF (STRING.SCAN("&result","SUCCESS",0)==-1)
+        (
+        
+            DO std_fatalexit SYSTEM &result
+            //Try to keep going if we get a failure here
+            PRINT %ERROR "Error found during system reset, but will attempt to continue. Error message: &result"
+            WAIT.4s
+            
+        )
+        
+    )
+    // Load the memorymap. Don't expect to get an error from here
+    do std_memorymap
+    
+    do std_debug_&CHIPSET BOOTUP_WORKAROUND
+    
+    
+    RETURN 
+
+//**************************************************
+//
+// @Function: CHECKSESSION
+// @Description : Debugger Session Validations
+//
+//**************************************************
+CHECKSESSION:
+    LOCAL &targetprocessor &targetprocessorport &rvalue
+    ENTRY &targetprocessor &targetprocessorport
+    PRINT "Checking T32 sessions"
+    LOCAL &TARGET_ALIVE &Rvalue &Session1 &Session2 &targetprocessorport1 &targetprocessorport2
+    // There can be upto two target processors
+    &targetprocessor=STRING.UPPER("&targetprocessor")
+    
+    do listparser &targetprocessor
+        ENTRY &Session1 &Session2
+    
+    do listparser &targetprocessorport
+        ENTRY &targetprocessorport1 &targetprocessorport2
+   
+    
+    
+    
+    // There should be at least one session defined. So no need to check for that
+    do std_intercom_init CHECKSESSION 1 &Session1
+    ENTRY &rvalue
+    
+    //Special case for apps window - can have apps0 or cluster
+    IF (&rvalue!=1.)&&("&Session1"=="APPS0")
+    (
+        do std_intercom_init CHECKSESSION 1 APPSC0
+        ENTRY &rvalue
+    )
+    
+    LOCAL &entryhexaddr1 &useexistingsyms1
+    IF STRING.SCAN("&peripheral_processor","mproc",0)!=-1
+    (
+        &entryhexaddr1="&ENTRYHEXADDR_LOCAL"
+        &useexistingsyms1="&USEEXISTINGSYMS_LOCAL"
+    )
+    ELSE
+    (
+        &entryhexaddr1="&ENTRYHEXADDR_TARGET"
+        &useexistingsyms1="&USEEXISTINGSYMS_TARGET"
+    )
+    
+    
+    
+    IF (&rvalue!=1.)
+    (
+
+        PRINT %ERROR "&Session1 T32 window not open. Please open and try again"
+        DO std_fatalexit USER "&Session1 T32 window not open. Please open and try again"
+    )
+    ELSE
+    (   
+        INTERCOM.EXECUTE &targetprocessorport1 ON ERROR CONTINUE  
+        INTERCOM.EXECUTE &targetprocessorport1 BREAK.DISABLE /ALL
+
+        INTERCOM.EXECUTE &targetprocessorport1 SYS.D
+
+        INTERCOM.EXECUTE &targetprocessorport1 SYS.M.NODEBUG
+        INTERCOM.EXECUTE &targetprocessorport1 WINCLEAR
+        INTERCOM.EXECUTE &targetprocessorport1 ON ERROR 
+        
+        IF !(("&entryhexaddr1"!="NULL")&&("&useexistingsyms1"=="TRUE"))
+        (
+            &AUTOMATION_MSG="&AUTOMATION_MSG"+"Clearing symbols on &targetprocessorport1."
+            INTERCOM.EXECUTE &targetprocessorport1 Y.RESET  
+        )
+            
+
+    )
+
+    IF ("&Session2"!="")
+    (
+        do std_intercom_init CHECKSESSION 1 &Session2
+        ENTRY &rvalue
+        IF (&rvalue!=1.)
+        (
+            PRINT %ERROR "&Session2 T32 window not open. Please open and try again"
+            DO std_fatalexit USER "&Session2 T32 window not open. Please open and try again"
+        ) 
+    
+        ELSE
+        (
+            INTERCOM.EXECUTE &targetprocessorport2 ON ERROR CONTINUE  
+            INTERCOM.EXECUTE &targetprocessorport2 BREAK.DISABLE /ALL
+            INTERCOM.EXECUTE &targetprocessorport2 SYS.M.NODEBUG
+            INTERCOM.EXECUTE &targetprocessorport2 WINCLEAR
+            INTERCOM.EXECUTE &targetprocessorport2 ON ERROR 
+            
+            IF !(("&ENTRYHEXADDR_TARGET"!="NULL")&&("&USEEXISTINGSYMS_TARGET"=="TRUE"))
+            (
+                &AUTOMATION_MSG="&AUTOMATION_MSG"+"Clearing targetproc symbols"
+                INTERCOM.EXECUTE &targetprocessorport2 Y.RESET  
+            )
+        
+        )
+    )
+    //Clear synch between processors if it's been setup.
+    do std_utils CLEARSYNCH &targetprocessorport1 &targetprocessorport2
+    //Errors are handled by fatalexit callback so returning from here implies success
+    //RETURN &rvalue
+    RETURN
+    
+
+   
+////////////////////////////////////////
+//
+//            DEBUG_GUI
+//            
+//            Main DEBUG_GUI logic
+//
+/////////////////////////////////////////  
+IMAGE_DEBUG_GUI:
+
+        ///////////////Variables/////////////////////
+        LOCAL &argumentline
+        LOCAL &image &therest
+        ENTRY %LINE &argumentline
+        ENTRY &image %LINE &therest
+
+        LOCAL &image &lpm_option &user_defined_bkpts &cti_enable &alternateelf &extraoption
+        IF STRING.SCAN("&image","=",0)!=-1
+        (
+            do optextract Img,Lpm,Bkpts,CTI_Enable,alternateelf,extraoption &argumentline
+            
+            ENTRY &image &lpm_option &user_defined_bkpts &cti_enable &alternateelf &extraoption //expect 6 returns from optextract
+        )
+        
+        
+        //setup intercoms
+        do std_intercom_init NEWSESSION
+        
+        //from GETDEBUGDEFAULTS
+        LOCAL &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+        
+        //Trace Variables//
+        LOCAL &tracesource &tracesink &tpiusink &cycleaccurate &traceconfiguration &portsize &cycleaccuratecommand &portsizecommand 
+        
+        ///////////get target specific debug defaults////////////////
+        do std_debug_&CHIPSET GETDEBUGDEFAULTS NONE &image &lpm_option &cti_enable &alternateelf &extraoption
+            ENTRY &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+        
+        /////////////Addtional Variables////////////////
+        LOCAL &user_defined_bkpts
+        IF (STRING.SCAN("&extraoption","stopatentry",0)!=-1)
+        (
+            //Fusion is special since there are multiple entry breakpoints for different windows
+            IF "&FUSION_PLATFORM"=="TRUE"
+            (
+                do std_debug_&CHIPSET GETDEBUGDEFAULTS NONE mpss
+                ENTRY &none1 &none2 &none3 &none4 &none5 &none6 &none7 &none8 &none9 &none10 &remote_entry_bkpt %LINE &therest
+                &user_defined_bkpts="&remote_entry_bkpt"
+            )
+            ELSE
+            (
+                &user_defined_bkpts="&entry_bkpt"
+            )
+        )
+        ELSE
+        (
+            &user_defined_bkpts="NoBreak"
+        )
+        
+        LOCAL &PORTSIZE_SIZES
+        &PORTSIZE_SIZES="4bit,8bit,16bit"
+
+        
+
+        
+        ////////////get target specific trace defaults////////////////
+    
+    // There can be upto two target processors, trace is only supported on one Processor. If session 2 available choose that.    
+    LOCAL &Session1 &Session2
+
+    do listparser &targetprocessor
+        ENTRY &Session1 &Session2
+        
+    LOCAL &tracescript &tracesource
+    IF !(("&Session2"=="NULL")||("&Session2"==""))
+    (
+        &tracesource="&Session2"
+        IF "&tracesource"=="APPS0"
+        (
+            &tracesource="APPS"
+        )
+        &tracescript="std_trace"+"_"+"&tracesource"+"_"+"&CHIPSET"
+    )
+    ELSE
+    (
+        &tracesource="&Session1"
+        IF "&tracesource"=="APPS0"
+        (
+            &tracesource="APPS"
+        )
+        &tracescript="std_trace"+"_"+"&tracesource"+"_"+"&CHIPSET"
+    )
+
+        do &tracescript GETTRACEDEFAULTS &tracesource &tracesink &tpiusink &cycleaccurate &traceconfiguration &portsize 
+            LOCAL &tracesource &tracesink &tpiusink &portsize &cycleaccuratecommand &traceconfiguration &portsizecommand 
+            ENTRY &tracesource &tracesink &tpiusink &portsize &cycleaccuratecommand &traceconfiguration &portsizecommand 
+        
+        
+        
+        //Check that window is open
+        //FIXME - shouldn't be resetting windows from checksession
+        &temp1="&USEEXISTINGSYMS_LOCAL"
+        &temp2="&USEEXISTINGSYMS_TARGET"
+        &USEEXISTINGSYMS_LOCAL="TRUE"
+        &USEEXISTINGSYMS_TARGET="TRUE"
+        GOSUB CHECKSESSION &targetprocessor &targetprocessorport
+        &USEEXISTINGSYMS_LOCAL="&temp1"
+        &USEEXISTINGSYMS_TARGET="&temp2"
+        
+        //Check if entry breakpoint symbol exists. If so, enable ELF-already-loaded option.
+        
+        
+        GOSUB CREATEDIALOG &image &targetprocessor &user_defined_bkpts &lpm_option &cti_enable &multi_elf_option &peripheral_processor &tracesink &tpiusink &portsize &cycleaccuratecommand &portsizecommand &extraoption
+        
+        
+        
+        DIALOG.END
+        
+        RETURN
+      
+
+      
+
+
+// Sub-routine to create the dialog
+CREATEDIALOG:
+
+    LOCAL &image &targetprocessor &user_defined_bkpts &lpm_option &cti_enable &multi_elf_option &peripheral_processor &tracesink &tpiusink &portsize &cycleaccuratecommand &portsizecommand &extraoption
+    ENTRY &image &targetprocessor &user_defined_bkpts &lpm_option &cti_enable &multi_elf_option &peripheral_processor &tracesink &tpiusink &portsize &cycleaccuratecommand &portsizecommand &extraoption
+    
+    // Check if the window exists
+    //WINTOP BUILDOPTIONS
+    //IF FOUND()
+    //   RETURN 
+    WINPOS ,,,,,, LOADSIM
+
+    DIALOG
+    (&
+        HEADER "std_debug &image options"
+        
+        
+        
+        ///////////////////////////////////////////
+        ////////////BREAKPOINT SECTION/////////////
+        /////////////////////////////////////////// 
+        POS 1. 1. 48. 5.
+        BOX "BreakPoints. Separate with commas"
+            POS 2. 2. 45. 2.
+            BREAKPOINTEDIT: EDIT "&user_defined_bkpts" "GOSUB VERIFYBREAKPOINTS"
+            POS 2. 4. 14. 1.
+            HELPBUTTON: DEFBUTTON "? - Breakpoints"
+            (
+                DIALOG.OK "Breakpoints can be entered separated by commas, no spaces."
+            )
+        
+        ///////////////////////////////////////////
+        ////////////POWER SECTION/////////////
+        /////////////////////////////////////////// 
+        POS 1. 6. 20. 4.
+        BOX "Power Options"
+            POS 2. 7. 18. 1
+            LOAD.LPM_ENABLE: CHOOSEBOX "Enable Power Collapse" "GOSUB POWEROPTIONS"
+            LOAD.LPM_DISABLE: CHOOSEBOX "Disable Power Collapse" "GOSUB POWEROPTIONS"
+            
+        ///////////////////////////////////////////
+        ////////////SYMBOL SELECT SECTION/////////////
+        /////////////////////////////////////////// 
+        POS 23. 6. 26. 4.
+        BOX "Symbol Options"
+            POS 24. 7. 13. 1
+            SYM.USE_APPS_SYMS: CHECKBOX "Use Apps Symbols" "GOSUB APPSSYM_USAGE"
+            POS 38. 7. 10. 1
+            SYM.SYMHELP: DEFBUTTON "Help - AppsSym"
+            (
+                GOSUB HELP_APPSSYM_USAGE
+            )
+            POS 24. 8. 13. 1
+            SYM.REUSE_SYMS: CHECKBOX "Reuse ELF File" "GOSUB SYMREUSEOPTIONS"
+            POS 38. 8. 10. 1
+            SYM.SYMHELP: DEFBUTTON "Help - ELF"
+            (
+                GOSUB PRINT_HELP_SYMBOL_REUSE_INFO
+            )
+        
+       
+        ///////////////////////////////////////////
+        ////////////TRACE SECTION//////////////////
+        ///////////////////////////////////////////        
+        POS 1. 10. 48. 7.
+        BOX "Trace Options"
+            POS 2. 11. 18. 1.
+            TRACE.TRACE_DISABLE: CHOOSEBOX "Trace Disabled" "GOSUB TRACE_OPTIONS"
+            TRACE.TRACE_ENABLE_ETB: CHOOSEBOX "ETB Tracing" "GOSUB TRACE_OPTIONS"
+            TRACE.TRACE_ENABLE_TPIU: CHOOSEBOX "TPIU Tracing" "GOSUB TRACE_OPTIONS"
+
+            POS 24. 12. 19. 1.
+            CYCLEACCURATE_CHECKBOX: CHECKBOX "Enable CycleAccurate Tracing" "GOSUB TRACE_SET_CYCLEACCURATE"
+
+            POS 4. 14. 8. 1.
+            TPIU_PORT.TPIU_A: CHOOSEBOX "TPIU A" "GOSUB TPIU_SELECT"
+            POS 13. 14. 8. 1.
+            TPIU_PORT.TPIU_B: CHOOSEBOX "TPIU B" "GOSUB TPIU_SELECT"
+
+            POS 24. 13. 12. 1.
+            TEXT "Trace Pin Width"
+            POS 24. 14. 10. 1.
+            PORTSIZE_DROPDOWN: DYNPULLDOWN "&PORTSIZE_SIZES" "GOSUB SETPORTSIZE"
+            
+            
+        ///////////////////////////////////////////
+        ////////////CTI SECTION////////////////////
+        ///////////////////////////////////////////                
+        POS 1. 20. 25. 5.
+        BOX "Halt other processors"
+            POS 2. 21. 15. 1.
+            CTI.CTI_DISABLE: CHOOSEBOX "CTI_Disable" "GOSUB CTI_OPTIONS"
+            CTI.CTI_ENABLE: CHOOSEBOX "CTI_Enable" "GOSUB CTI_OPTIONS"
+            POS 14. 23. 6. 1.
+            HELPBUTTON: DEFBUTTON "? - Halt"
+            (
+                DIALOG.OK "Enabling CTI halt on other processors will allow standalone debugging on this processor. However, System will not be recoverable."
+            )
+            
+        //add check for symbols. if they're already there, give option to not load new symbols
+        
+        POS 36. 24. 6. 1.
+        HELPBUTTON: DEFBUTTON "Help" "Do std_debug HELP"
+        
+        POS 44. 24. 6. 1.
+        GOBUTTON: DEFBUTTON "Go" "GOSUB RUN_DEBUG_COMMAND"
+        
+    )
+    // Set the default options here
+    
+    //////////////////////////////////////////////////////
+    ////////////////Set Power Defaults////////////////////
+    //////////////////////////////////////////////////////
+    IF ("&lpm_option"=="lpm_disable")
+    (
+        DIALOG.SET LOAD.LPM_DISABLE
+    )
+    ELSE
+    (
+        DIALOG.SET LOAD.LPM_ENABLE
+    )
+    
+    //DIALOG.DISABLE TRACE.TRACE_ENABLE_TPIU
+    //DIALOG.DISABLE CTI.CTI_ENABLE
+    //////////////////////////////////////////////////////
+    ////////////////Apps Symbol Options//////////////////
+    //////////////////////////////////////////////////////
+    IF (("&peripheral_processor"=="true")||("&peripheral_processor"=="mproc"))&&(STRING.SCAN("&extraoption","appsimemdebugsupported",0)==-1)
+    (
+        &MULTIPROC_DBG_FLAG="TRUE"
+        DIALOG.SET SYM.USE_APPS_SYMS
+    )
+    ELSE IF (("&peripheral_processor"=="true")||("&peripheral_processor"=="mproc"))&&(STRING.SCAN("&extraoption","appsimemdebugsupported",0)!=-1)
+    (
+        DIALOG.SET SYM.USE_APPS_SYMS "0"
+        &MULTIPROC_DBG_FLAG="FALSE"
+    )
+    ELSE
+    (
+        DIALOG.DISABLE SYM.USE_APPS_SYMS
+    )
+    
+    //////////////////////////////////////////////////////
+    ////////////////Symbol Reuse Options//////////////////
+    //////////////////////////////////////////////////////
+    
+    //If sentinal flag on target is present and hexaddr is present, enable elf-reuse option
+    //  if that's the case but sential flag on local is not present, still enable elf reuse but ask user for local elfs
+    //else disable elf-reuse and ask user for symbols
+    
+    LOCAL &symdefined_local &symdefined_target &targetprocessorport_local &targetprocessorport_target
+    IF STRING.SCAN("&targetprocessorport",",",0)!=-1
+    (
+        do listparser &targetprocessorport
+        ENTRY &targetprocessorport_local &targetprocessorport_target
+        INTERCOM.EVALUATE &targetprocessorport_target y.exist(symbols_defined)
+        &symdefined_target=EVAL()
+        
+        INTERCOM.EVALUATE &targetprocessorport_local y.exist(symbols_defined)
+        &symdefined_local=EVAL()
+    )
+    ELSE
+    (
+        INTERCOM.EVALUATE &targetprocessorport y.exist(symbols_defined)
+        &symdefined_target=EVAL()
+        &symdefined_local=0x1
+    )
+    
+    IF ("&ENTRYHEXADDR_TARGET"!="NULL")&&(&symdefined_target!=0x0)&&(STRING.SCAN("&extraoption","nosymreuse",0)==-1)
+    (
+        GOSUB PRINT_SYMBOL_REUSE_INFO
+        &USEEXISTINGSYMS_TARGET="TRUE"
+        
+        IF ("&ENTRYHEXADDR_LOCAL"!="NULL")&&(&symdefined_local!=0x0)
+        (
+            &USEEXISTINGSYMS_LOCAL="TRUE"
+        )
+        ELSE
+        (
+            &USEEXISTINGSYMS_LOCAL="FALSE"
+        )
+        
+        DIALOG.SET SYM.REUSE_SYMS
+    )
+    ELSE
+    (
+        DIALOG.DISABLE SYM.REUSE_SYMS
+        &USEEXISTINGSYMS_LOCAL="FALSE"
+        &USEEXISTINGSYMS_TARGET="FALSE"
+    )
+    
+    
+    
+    //////////////////////////////////////////////////////
+    ////////////////Set Trace Defaults////////////////////
+    //////////////////////////////////////////////////////
+    DIALOG.SET PORTSIZE_DROPDOWN "&portsize"
+    
+    IF ("&tpiusink"=="tpiub")
+    (
+        DIALOG.SET TPIU_PORT.TPIU_B
+    )
+    ELSE
+    (
+        DIALOG.SET TPIU_PORT.TPIU_A
+    )
+    
+    IF ("&tracesink"=="none")
+    (
+        DIALOG.DISABLE TPIU_PORT.TPIU_A
+        DIALOG.DISABLE TPIU_PORT.TPIU_B
+        DIALOG.DISABLE PORTSIZE_DROPDOWN
+        DIALOG.SET TRACE.TRACE_DISABLE
+    )
+    
+    IF ("&cycleaccuratecommand"=="off")
+    (
+        DIALOG.DISABLE CYCLEACCURATE_CHECKBOX
+    )
+    
+    //////////////////////////////////////////////////////
+    ////////////////Set CTI Defaults////////////////////
+    //////////////////////////////////////////////////////
+    IF ("&cti_enable"=="false")
+    (
+        DIALOG.SET CTI.CTI_DISABLE
+    )
+    ELSE
+    (
+        DIALOG.SET CTI.CTI_ENABLE
+        DIALOG.DISABLE CTI.CTI_ENABLE
+        DIALOG.DISABLE CTI.CTI_DISABLE
+    )
+    
+    
+    //////////////////////////////////////////////////////
+    ////////////////Set Breakpoint Defaults///////////////
+    //////////////////////////////////////////////////////
+    
+    IF ("&user_defined_bkpts"=="nobreak")
+    (
+        DIALOG.SET BREAKPOINTEDIT "NoBreak"
+    )
+    ELSE
+    (
+        DIALOG.SET BREAKPOINTEDIT "&user_defined_bkpts"
+    )
+    
+    
+    STOP
+    RETURN
+
+
+
+CTI_OPTIONS:
+    IF DIALOG.BOOLEAN(CTI.CTI_ENABLE)
+    (
+        &cti_enable="true"
+    )
+    IF DIALOG.BOOLEAN(CTI.CTI_DISABLE)
+    (
+        &cti_enable="false"    
+    )
+    RETURN
+
+TRACE_OPTIONS:
+    IF DIALOG.BOOLEAN(TRACE.TRACE_DISABLE)
+    (
+        AREA.CREATE TRACEWARNING
+        AREA.CLEAR TRACEWARNING
+        AREA.SELECT TRACEWARNING
+        WINPOS 0. 0. 80. 8.
+        AREA.VIEW TRACEWARNING
+        PRINT " "
+        PRINT "Warning! Enabling trace from here will likely cause stability "
+        PRINT "issues due to lag time to start up ETM during the core's early "
+        PRINT "bootup. This ETM is designed only for early bootup tracing"
+        PRINT "For general tracing, use the hotattach menu in the remote"
+        PRINT "processor's T32 window after everything is booted up and running"
+        PRINT "The hotattach menu is accessible via the yellow button on the menu bar"
+        PRINT " "
+        AREA.SELECT A000
+        
+        &tracesink="none"
+        DIALOG.DISABLE CYCLEACCURATE_CHECKBOX
+        DIALOG.DISABLE PORTSIZE_DROPDOWN    
+        DIALOG.DISABLE TPIU_PORT.TPIU_A
+        DIALOG.DISABLE TPIU_PORT.TPIU_B
+    )
+    IF DIALOG.BOOLEAN(TRACE.TRACE_ENABLE_ETB)
+    (
+        AREA.CREATE TRACEWARNING
+        AREA.CLEAR TRACEWARNING
+        AREA.SELECT TRACEWARNING
+        WINPOS 0. 0. 80. 8.
+        AREA.VIEW TRACEWARNING
+        PRINT "Warning! Enabling trace from here will likely cause stability "
+        PRINT "issues due to lag time to start up ETM during the core's early "
+        PRINT "bootup. This ETM is designed only for early bootup tracing"
+        PRINT "For general tracing, use the hotattach menu in the remote"
+        PRINT "processor's T32 window after everything is booted up and running"
+        PRINT "The hotattach menu is accessible via the yellow button on the menu bar"
+        PRINT " "
+        AREA.SELECT A000
+        
+        &tracesink="etb"
+        DIALOG.ENABLE CYCLEACCURATE_CHECKBOX
+        DIALOG.ENABLE CYCLEACCURATE_CHECKBOX
+        DIALOG.DISABLE TPIU_PORT.TPIU_A
+        DIALOG.DISABLE TPIU_PORT.TPIU_B
+    
+    )
+    IF DIALOG.BOOLEAN(TRACE.TRACE_ENABLE_TPIU)
+    (
+        &tracesink="tpiu"
+        DIALOG.ENABLE CYCLEACCURATE_CHECKBOX
+        DIALOG.ENABLE PORTSIZE_DROPDOWN    
+        DIALOG.ENABLE TPIU_PORT.TPIU_A
+        DIALOG.ENABLE TPIU_PORT.TPIU_B
+        
+    )
+    RETURN
+
+////////////////////////////////////////////
+/////////////GUI Subroutines////////////////
+////////////////////////////////////////////
+TPIU_SELECT:
+    IF DIALOG.BOOLEAN(TPIU_PORT.TPIU_A)
+    (
+        &tpiusink="tpiua"
+    )
+    IF DIALOG.BOOLEAN(TPIU_PORT.TPIU_B)
+    (
+        &tpiusink="tpiub"    
+    )
+    RETURN
+
+SETPORTSIZE:
+        &portsize=DIALOG.STRING(PORTSIZE_DROPDOWN)
+        
+        RETURN
+        
+TRACE_SET_CYCLEACCURATE:
+    
+    IF DIALOG.BOOLEAN(CYCLEACCURATE_CHECKBOX)
+    (
+        &cycleaccuratecommand="on"
+    )
+    ELSE
+    (
+        &cycleaccuratecommand="off"
+    )
+
+    RETURN
+
+POWEROPTIONS:
+
+
+    IF DIALOG.BOOLEAN(LOAD.LPM_ENABLE)
+    (
+        &lpm_option="lpm_enable"
+    )
+    IF DIALOG.BOOLEAN(LOAD.LPM_DISABLE)
+    (
+        &lpm_option="lpm_disable"    
+    )
+    
+    RETURN
+
+
+
+RETURN
+APPSSYM_USAGE:
+    IF DIALOG.BOOLEAN(SYM.USE_APPS_SYMS)
+    (
+        &MULTIPROC_DBG_FLAG="TRUE"
+        DIALOG.SET SYM.USE_APPS_SYMS
+    )
+    ELSE
+    (
+        &MULTIPROC_DBG_FLAG="FALSE"
+        DIALOG.SET SYM.USE_APPS_SYMS "0"
+        
+        //Newer targets don't need CTI enabled
+        IF (STRING.SCAN("&extraoption","appsimemdebugsupported",0)==-1)
+        (
+            //Enable CTI if user disables apps sym reuse
+            GOSUB HELP_APPSSYM_USAGE
+            DIALOG.SET CTI.CTI_ENABLE
+            GOSUB CTI_OPTIONS
+            PRINT "Apps Symbol usage disabled. Enabling CTI"
+            
+            AREA.CREATE USE_APPS_SYMS_WARNING
+            AREA.CLEAR USE_APPS_SYMS_WARNING
+            AREA.SELECT USE_APPS_SYMS_WARNING
+            WINPOS 0. 8. 80. 8.
+            AREA.VIEW USE_APPS_SYMS_WARNING
+            PRINT " "
+            PRINT "Warning! It is recommended to enable Apps symbol usage "
+            PRINT "as this is a more stable implementation for remote core debug. "
+            PRINT "If apps symbols are not used, the system will attempt to use CTI"
+            PRINT "to halt apps while debugging remote core. However, timers may continue,"
+            PRINT "resulting in bootup timelines being missed in apps"
+            PRINT " "
+            AREA.SELECT A000
+        )
+    )
+    
+SYMREUSEOPTIONS:
+    IF DIALOG.BOOLEAN(SYM.REUSE_SYMS)
+    (
+        IF ("&ENTRYHEXADDR_TARGET"!="NULL")
+        (    
+            GOSUB PRINT_SYMBOL_REUSE_INFO
+            &USEEXISTINGSYMS_TARGET="TRUE"
+            IF ("&ENTRYHEXADDR_LOCAL"!="NULL")
+            (
+                &USEEXISTINGSYMS_LOCAL="TRUE"
+            )
+        )
+        ELSE
+        (
+            //Shouldn't really get here
+            GOSUB PRINT_HELP_SYMBOL_REUSE_INFO
+            AREA.SELECT symbol_reuse_warning
+            WINPOS 0. 0. 50. 12.
+            AREA.VIEW symbol_reuse_warning
+            PRINT " " 
+            PRINT "    Error! Cannot find previous entry bp  address"
+            PRINT "    symbol address. Symbol reuse requires this  "
+            PRINT "    address. Disabling symbol reuse feature."
+            PRINT " "
+            AREA.SELECT A000
+            DIALOG.SET SYM.REUSE_SYMS "0"
+            DIALOG.DISABLE SYM.REUSE_SYMS
+            &USEEXISTINGSYMS_TARGET="FALSE"
+            &USEEXISTINGSYMS_LOCAL="FALSE"
+        )
+    )
+    ELSE
+    (
+        GOSUB PRINT_SYMBOL_REUSE_INFO
+        &USEEXISTINGSYMS_TARGET="FALSE"
+        &USEEXISTINGSYMS_LOCAL="FALSE"
+        &ENTRYHEXADDR_TARGET="NULL"
+    )
+   
+RETURN
+
+PRINT_HELP_SYMBOL_REUSE_INFO:
+    AREA.CREATE symbol_reuse_warning 60. 20.
+    AREA.SELECT symbol_reuse_warning
+    WINPOS 0. 0. 50. 20%
+    AREA.VIEW symbol_reuse_warning
+    
+
+    PRINT " "
+    PRINT "    ////////////Symbol Reuse Help///////////////"
+    PRINT " "
+    PRINT "    If std_debug has already run once, an entry "
+    PRINT "    hex address will be stored, so that the same"
+    PRINT "    symbol file can be used on subsequent debug runs"
+    PRINT " "
+    PRINT "    If the hex address is detected the feature "
+    PRINT "    Will automatically enable."
+    PRINT " "
+    PRINT "    IMPORTANT: If symbols have been cleared or "
+    PRINT "    a different binary has been loaded to target"
+    PRINT "    deselect this feature or symbol mismatch will"
+    PRINT "    result!"
+    
+    
+    //Switch back to original area window
+    AREA.SELECT A000
+    RETURN
+PRINT_SYMBOL_REUSE_INFO:
+    AREA.CREATE symbol_reuse_warning 75. 11.
+    AREA.SELECT symbol_reuse_warning
+    WINPOS 0. 0. 50. 20%
+    AREA.VIEW symbol_reuse_warning
+    
+
+    PRINT " "
+    PRINT "    ///////////////Symbol Reuse///////////////"
+    PRINT " "
+    PRINT "    Detected previously loaded entry address. "
+    PRINT "    T32 will attempt to use the same symbols "
+    PRINT "    already loaded on target processor.      "
+    PRINT " "
+    PRINT "    IMPORTANT: If symbols have been cleared or "
+    PRINT "    a different binary has been loaded to target"
+    PRINT "    deselect this feature or symbol mismatch will"
+    PRINT "    result!"
+    
+    
+    //Switch back to original area window
+    AREA.SELECT A000
+RETURN
+//Invoked by user.
+HELP_APPSSYM_USAGE:
+    AREA.CREATE symbol_reuse_warning 60. 20.
+    AREA.SELECT symbol_reuse_warning
+    WINPOS 0. 0. 70. 26%
+    AREA.VIEW symbol_reuse_warning
+    
+    LOCAL &symfilename
+    IF "&HLOS"=="WP"
+    (
+        &symfilename="WP boot symbols"
+    )
+    ELSE
+    (
+        &symfilename="VMLINUX"
+    )
+    PRINT " "
+    PRINT "    ////////////Apps Symbol Usage vs CTI///////////////"
+    PRINT " "
+    PRINT "    Apps symbols are needed to set HLOS variables to prevent"
+    PRINT "    HLOS peripheral image loader from timing out."
+    PRINT "    "
+    PRINT "    If HLOS symbols are  not availabe, CTI must be used. "
+    PRINT "    However, CTI has inherent stability issues (due to timers"
+    PRINT "    not stopping while processors are halted)."
+    PRINT " "
+    PRINT "    Preferred method is to load &symfilename file associated with "
+    PRINT "    the HLOS bootloader"
+    PRINT " "
+    
+    //Switch back to original area window
+    AREA.SELECT A000
+    RETURN
+    
+RETURN
+
+//macro to verify no spaces given with breakpoints
+VERIFYBREAKPOINTS:
+
+    &user_defined_bkpts=DIALOG.STRING(BREAKPOINTEDIT)
+    //wrap in another layer of quotes to be passed
+    &user_defined_bkpts="&user_defined_bkpts"
+
+    RETURN
+
+
+RUN_DEBUG_COMMAND:
+        DIALOG.END
+
+        IF ("&tracesink"=="tpiu")
+        (
+            &tracesink="&tpiusink"
+        )
+        
+        do std_debug Img=&image Lpm="&lpm_option" Bkpts="&user_defined_bkpts" CTI_Enable="&cti_enable" extraoption="&extraoption" TraceSink="&tracesink" CycleAccurate="&cycleaccuratecommand" Portsize="&portsize" 
+
+        GOSUB EXIT
+
+
+help:
+HELP:
+    AREA.RESET
+    AREA.CREATE std_debug_help 125. 90.
+    AREA.SELECT std_debug_help
+    WINPOS 0. 29. 125. 90.
+    AREA.VIEW std_debug_help
+
+    //HEADER "std_cti help window"
+    
+
+    
+    PRINT " ////////////////////////////////////////////////////////////////////"
+    PRINT " /////////////////////// std_debug Help /////////////////////////////"
+    PRINT " ////////////////////////////////////////////////////////////////////"
+    PRINT " "
+    PRINT "  std_debug help and info"
+    PRINT "  std_debug is a script which wraps all live JTag debug functionality for Qualcomm chipsets."
+    PRINT "  The script 'std_debug.cmm' is included within the path delivered with Qualcomm metabuild scripts"
+    PRINT "  so 'do std_debug' can be entered on T32 command line with no paths."
+    PRINT " "
+    PRINT "  The purpose of std_debug is to get the user to their desired breakpoint with JTag attached of their desired image."
+    PRINT "  Default error breakpoints are always set, so that if no user breakpoint is specified, the desired image"
+    PRINT "  should halt on an error within that image"
+    PRINT " "
+    PRINT "  std_debug can be used with GUI (try 'do std_debug' with no parameters) or with parameters for command line functionality"
+    PRINT "  "
+    PRINT "  "
+    PRINT "  - If no parameters are specified, a debug GUI will open prompting the user to select their image (Img)"
+    PRINT "  - If any parameters are passed, at a minimum the user must specify the image (Img keyword)"
+    PRINT "  - By default GUI's will open for user input. To supress these GUI's, specify 'extraoption=silent' and "
+    PRINT "     std_debug will boot up the system on its own, using symbols from 'alternateelf' specified or from "
+    PRINT "     defaults given in global variables (usually obtained from metabuild defaults). Please see a '*_loadsyms.cmm'"
+    PRINT "     script for further symbol loading options."
+    PRINT " "
+    PRINT " "
+    PRINT "     Common problems:"
+    PRINT "          Apps timeouts"
+    PRINT "              For peripheral processors, make sure to disable apps timeouts. For android this command is 'adb shell setprop persist.sys.ssr.enable_debug 1'"
+    PRINT "              For MBA, this command is different: 'adb shell setprop persist.sys.mba_boot_timeout 0'"
+    PRINT "          Reset issues"
+    PRINT "              If the device is in particular bootup states or sleep states, it is difficult for the JTag to properly reset it."
+    PRINT "              It is therefore advisable to do a hard reset on the board and then run your usecase a few seconds after the device gets power, during its bootup"
+    PRINT " "
+    PRINT "     Additional Notes:"
+    PRINT "          For peripheral processors (ADSP,MPSS,SLPI), it is inadvisable to turn on ETM (ETB button) from std_debug"
+    PRINT "              Reason being that enabling ETM takes time and usually causes timing issues between apps and  your processor."
+    PRINT "              Instead, use the hotattach menu button (yellow button on peripheral processor's T32 window) and enable ETM from there"
+    PRINT "          CTI is useful for peripheral core debug (Halts apps at peripheral core entry), but it can introduce instability in the system"
+    PRINT " "
+    PRINT "     Command line details:"
+    PRINT "         6 parameter inputs are available for command line input. "
+    PRINT "     Possible parameters:"
+    PRINT "         Img (necessary, else a GUI will open)"
+    PRINT "             Target dependent. For example on 8996, this is: xbl,rpm,tz,appsboot,mba,mpss,slpi,adsp "
+    PRINT "         Lpm (not necessary)"
+    PRINT "             Low power mode disablement. Useful to keep debug-ability on some processors which go to sleep"
+    PRINT "             Low power modes are enabled by default"
+    PRINT "             Lpm=lpm_enable"
+    PRINT "             Lpm=lpm_disable"
+    PRINT "             Lpm=island_debug"
+    PRINT "                 - For SLPI island only. Keeps votes present DDR and JTag clocks/power to enable"
+    PRINT "                   JTag debug while in island mode <Not functional at this time>"
+    PRINT "         Bkpts (not necessary)"
+    PRINT "             User specified breakpoints. These are comma-deliminated. They can be symbols, hex addresses, "
+    PRINT "             or function offsets (e.g.: main\23). If an error occurs during breakpoint setting, it fails "
+    PRINT "             silently (a message will show up in AREA window but debug will continue)"
+    PRINT "         CTI_Enable (not necessary)"
+    PRINT "             Enabling this feature will halt the rest of the SoC when breakpoint of interest is set"
+    PRINT "             <Note for 8996 ES2 release - this feature not yet functional>"
+    PRINT "         alternateelf (not necessary)"
+    PRINT "             Useful for command line functionality. Give the full path to the elf file (root elf if "
+    PRINT "             a multi-elf subsystem is used) and scripts will use this elf for debug "
+    PRINT "             e.g. "
+    PRINT "             alternateelf=\\mypath\adsp_proc\build\ms\M8996AAAAAAAA1234.elf"
+    PRINT "             Scripts will attempt to automatically load second elf (in adsp case, M8996AAAAAA1234_AUDIO.elf)"
+    PRINT "         extraoption (not necessary)"
+    PRINT "             For extra options, comma deliminated. Currently supported are:"
+    PRINT "             silent"
+    PRINT "                 Attempts to not use GUI. If paths do not resolve, reverts to GUI"
+    PRINT "             forcesilent"
+    PRINT "                 Doesn't use GUI. If paths do not resolve, Fatal exit out of scripts."
+    PRINT "             "
+    PRINT " "
+    PRINT "         Some example command lines: "
+    PRINT "              do std_debug Img=slpi alternateelf=\\myslpibuild\slpi_proc\build\ms\M8996AAAAAAAAQ1234.elf extraoption=silent"
+    PRINT "              do std_debug Img=adsp Lpm=lpm_disable alternateelf=\\myadspbuild\adsp_proc\build\ms\M8996AAAAAAAAQ1234.elf extraoption=silent"
+    PRINT " "
+
+    PRINT " "
+    RETURN
+
+
+PRINTRESULTLOG:
+    LOCAL &result
+    ENTRY %LINE &result 
+    
+    IF ("&LOGSENABLED"!="TRUE")
+    (
+        GOSUB EXIT
+    )
+    //Reset sentinal value for multiple runs in same window
+    IF (STRING.SCAN("&LOGGINGSETUP","LOGGINGSETUP",0)!=-1)&&("&LOGGINGSETUP"=="1.")
+    (
+        &LOGGINGSETUP=0.
+    )
+    
+    
+    
+    //Check if directory exists
+    LOCAL &tempdir
+    &tempdir=OS.FILE.PATH("&OUTPUTFILE")
+    IF !(OS.DIR(&tempdir))
+    (
+        PRINT %ERROR "Could not access log directory &tempdir. Cannot print logs"
+        &LOGSENABLED="FALSE"
+        GOSUB EXIT
+    )
+    
+    //Don't want to get caught here
+    ON ERROR CONTINUE
+    PRINTER.FILE &OUTPUTFILE
+    PRINTER.FILETYPE ASCII
+    PRINTER.SIZE 0xFA, 0xFA
+    
+    
+    winpos 0, 0, 100. 10. , , , RESULTWINDOW
+    AREA.CREATE ResultAreaWindow
+    AREA.SELECT ResultAreaWindow
+    area.view ResultAreaWindow
+    PRINT "&result"
+    WINPRT RESULTWINDOW
+    
+    AREA.CLOSE ResultAreaWindow
+    
+    ON ERROR
+    RETURN
+    
+////////////////////////////////////////////
+//
+//          FATALEXIT
+//
+//          Exits all scripts.
+//          If logging is enabled, appends failure keyword
+//          to passed string and sends that to PRINTRESULTLOG
+//
+//
+//
+///////////////////////////////////////////
+FATALEXIT:
+    LOCAL &string
+    ENTRY %LINE &string
+
+    PRINT %ERROR "Loadsim error. Error type: &Result "
+    
+    
+    
+        IF ("&LOGSENABLED"=="TRUE")
+        (
+            //Failure keyword is sometimes passed from lower scripts. 
+            //Only append it if it's not already there for cleaner logs.
+            IF STRING.SCAN("&string","&FAILUREKEYWORD",0)!=-1
+            (
+                GOSUB PRINTRESULTLOG &string 
+            )
+            ELSE
+            (
+                GOSUB PRINTRESULTLOG &FAILUREKEYWORD " - " &string 
+            )
+        )
+
+    END
+
+EXIT:
+
+    IF ("&LOGSENABLED"=="TRUE")
+    (
+        LOCAL &string
+        ENTRY %LINE &string
+        
+        GOSUB PRINTRESULTLOG &string 
+    )
+    ENDDO
+
+    
+

@@ -1,0 +1,176 @@
+/** Radio Config Proto Interface definition
+ *
+ * Copyright (c) 2015 Qualcomm Technologies, Inc.  All Rights Reserved.
+ * Qualcomm Technologies Proprietary and Confidential.
+ *
+ * This proto file describes the interface between RIL and RadioConfigInterface
+ * service for setting/getting config items
+ */
+
+package com.qualcomm.qti.radioconfiginterface;
+
+/* Message Tag */
+message MessageTag {
+  required MessageType type    = 1;
+  required MessageId   id      = 2;
+  optional Error       error   = 3;
+  optional fixed32     token   = 4;
+  optional bytes       payload = 5;
+}
+
+enum MessageType {
+  RADIO_CONFIG_MSG_UNKNOWN = 0;
+  RADIO_CONFIG_MSG_REQUEST = 1;
+  RADIO_CONFIG_MSG_RESPONSE = 2;
+  RADIO_CONFIG_MSG_INDICATION = 3;
+}
+
+enum MessageId {
+  RADIO_CONFIG_UNKNOWN = 0;
+  RADIO_CONFIG_SET_CONFIG = 1;
+  RADIO_CONFIG_GET_CONFIG = 2;
+
+  RADIO_CONFIG_UNSOL_PSK_EXPIRED = 1000;
+}
+
+enum Error {
+  RADIO_CONFIG_ERR_SUCCESS = 0;
+  RADIO_CONFIG_ERR_GENERIC_FAILURE = 1;
+  RADIO_CONFIG_ERR_NOT_SUPPORTED = 2;
+  RADIO_CONFIG_ERR_INVALID_PARAMETER = 3;
+}
+
+enum ConfigItem {
+  CONFIG_ITEM_NONE = 0;
+  CONFIG_ITEM_IN_CALL_LTE_RSRP_LOW = 1;
+  CONFIG_ITEM_IN_CALL_LTE_RSRP_MID = 2;
+  CONFIG_ITEM_IN_CALL_LTE_RSRP_HIGH = 3;
+  CONFIG_ITEM_IN_CALL_WIFI_RSSI_THRESHOLD_LOW = 4;
+  CONFIG_ITEM_IN_CALL_WIFI_RSSI_THRESHOLD_HIGH = 5;
+  CONFIG_ITEM_IN_CALL_WIFI_SINR_THRESHOLD_LOW = 6;
+  CONFIG_ITEM_IN_CALL_WIFI_SINR_THRESHOLD_HIGH = 7;
+  CONFIG_ITEM_IDLE_LTE_RSRP_LOW = 8;
+  CONFIG_ITEM_IDLE_LTE_RSRP_MID = 9;
+  CONFIG_ITEM_IDLE_LTE_RSRP_HIGH = 10;
+  CONFIG_ITEM_IDLE_WIFI_RSSI_THRESHOLD_LOW = 11;
+  CONFIG_ITEM_IDLE_WIFI_RSSI_THRESHOLD_HIGH = 12;
+  CONFIG_ITEM_IDLE_WIFI_SINR_THRESHOLD_LOW = 13;
+  CONFIG_ITEM_IDLE_WIFI_SINR_THRESHOLD_HIGH = 14;
+  CONFIG_ITEM_ECIO_1X_THRESHOLD_LOW = 15;
+  CONFIG_ITEM_ECIO_1X_THRESHOLD_HIGH = 16;
+
+  // LTED provisioning related ConfigItems
+  // LtedConfig message will be packed in the byteArrayValue
+  CONFIG_ITEM_SET_LTED_CONFIG = 100;
+  CONFIG_ITEM_GET_LTED_CONFIG = 101;
+  CONFIG_ITEM_SET_LTED_CATEGORY = 102;
+  CONFIG_ITEM_GET_LTED_CATEGORY = 103;
+}
+
+enum ConfigFailureCause {
+  CONFIG_NO_ERR = 0;
+  CONFIG_GENERIC_ERR = 1;
+  CONFIG_ITEM_NOT_PRESENT = 2;
+}
+
+message Value128 {
+    optional fixed64 lsb = 1; /* 0 to 63 bits */
+    optional fixed64 msb = 2; /* 64 to 127 bits */
+}
+
+message Plmn {
+    optional string mcc = 1;
+    optional string mnc = 2;
+}
+
+message AnnouncingPolicy {
+    optional Plmn plmn = 1;
+    optional fixed32 validityTime = 2;
+    optional fixed32 range = 3;  /* 1 - INVALID, 2 - SHORT, 3 - MEDIUM, 4 - LONG */
+}
+
+message MonitoringPolicy {
+    optional Plmn plmn = 1;
+    optional fixed32 validityTime = 2;
+    optional fixed32 remainingTime = 3;
+}
+
+message LtedConfig {
+    optional Value128 osId = 1;  /* Operating System ID */
+    optional string   apn  = 2;  /* APN */
+    repeated AnnouncingPolicy announcingPolicy = 3;  /* Announcing Policy */
+    repeated MonitoringPolicy monitoringPolicy = 4;  /* Monitoring Policy */
+    optional bytes    bakPassword  = 5;  /* BAK Password */
+}
+
+message LtedCategory {
+    optional string  osAppId  = 1;  /* OS App ID */
+    optional fixed32 category = 2;  /* Category */
+}
+
+/**
+  * Note: Out of values int/bool/string/byteArray Value. Only one of them needs to be
+  *       used, rest should have has_xxx value set to FALSE.
+  */
+message ConfigItemMsg {
+
+  required ConfigItem item = 1; /* Identifier for config */
+
+  optional bool boolValue = 2; /* Value of the boolean ConfigItem */
+
+  optional fixed32 intValue = 3; /* Value of the integer ConfigItem */
+
+  optional string stringValue = 4; /* Value of the string ConfigItem */
+
+  optional bytes byteArrayValue = 5;/* Value of the
+                                    * serialized
+                                    * ConfigItem
+                                    */
+
+  optional ConfigFailureCause errorCause = 6;
+
+}
+
+/**
+  * This message is common structure used for
+  * Setting or Getting Config Items
+  *
+  * Contains List of ConfigItemMsg structures
+  *
+  * Corresponding message id's which use this msg
+  *
+  * 1. RADIO_CONFIG_SET_CONFIG: To Set a config item
+  *
+  *        Request: Contains a List of ConfigItemMsg
+  *                 which should have the following fields:
+  *                 1. "item"
+  *                 2. "Value" - depending on the type,
+  *                              only one should be set
+  *                              (check comments of ConfigItem)
+  *
+  *        Response: Contains a List of ConfigItemMsg which
+  *                  may have the below fields:
+  *                  1. "item"
+  *                  2. "errorCause" - If there is any error
+  *                                    setting the value.
+  *
+  * 2. RADIO_CONFIG_GET_CONFIG: To get value of the config item
+  *
+  *        Request: Contains a List of ConfigItemMsg which
+  *                 should have only "item" filled (to get the value of)
+  *
+  *        Response: Contains a List of ConfigItemMsg which
+  *                  may contain the following
+  *                  1. "item"
+  *                  2. "Value" - depending on the type,
+  *                              only one should be set
+  *                              (check comments of ConfigItem)
+  *                  3. "errorCause" - If there is any error
+  *                                    getting the value.
+  *
+  * Note: Out of values int/bool/string/byteArray Value. Only one of them needs to be
+  *       used, rest should have has_xxx value set to FALSE.
+  */
+message ConfigMsg {
+  repeated ConfigItemMsg settings = 1;
+}

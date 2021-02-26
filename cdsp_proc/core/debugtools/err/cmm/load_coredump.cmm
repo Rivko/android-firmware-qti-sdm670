@@ -1,0 +1,131 @@
+;****************************************************************************
+;**           load_coredump.CMM                                           
+;**           This script loads the register values in coredump           
+;**           into the registers for debugging purposes.                  
+;**
+;**  $Header: //components/rel/core.qdsp6/2.1.c4/debugtools/err/cmm/load_coredump.cmm#1 $
+;**       
+;** when       who     what, where, why
+;** --------   ---     ------------------------------------------------------
+;** 02/06/09   tbg     Additional error checking
+;** 11/06/08   tbg     First version
+;****************************************************************************
+
+local &ARCH_ARM
+local &ARCH_QDSP6
+local &cpuID
+&ARCH_ARM=1
+&ARCH_QDSP6=2
+GLOBAL &COREDUMP_SUCCESS
+&COREDUMP_SUCCESS="FAILURE"
+&cpuID=CPU()
+if !simulator()
+(
+  ; The MMU scan is only needed for QDSP6 (and not on simulator)
+  ; Skip for ARM
+  if string.mid("&cpuID",0,string.len("QDSP6"))=="QDSP6"
+  (
+    on error GOTO SKIP_ERROR
+    mmu.tlb.scan
+    SKIP_ERROR:
+  )
+)
+
+on error GOTO SYMBOL_ISSUE
+
+if (!y.exist(coredump))
+(
+  print "coredump symbol not present in build."
+  print "Register values not loaded."
+) ; Now determine if this is ARM or QDSP6
+else if v.value("coredump.arch.type")==&ARCH_QDSP6
+(
+  r.s r0 v.value("coredump.arch.regs.name.gp_regs[0]")
+  r.s r1 v.value("coredump.arch.regs.name.gp_regs[1]")
+  r.s r2 v.value("coredump.arch.regs.name.gp_regs[2]")
+  r.s r3 v.value("coredump.arch.regs.name.gp_regs[3]")
+  r.s r4 v.value("coredump.arch.regs.name.gp_regs[4]")
+  r.s r5 v.value("coredump.arch.regs.name.gp_regs[5]")
+  r.s r6 v.value("coredump.arch.regs.name.gp_regs[6]")
+  r.s r7 v.value("coredump.arch.regs.name.gp_regs[7]")
+  r.s r8 v.value("coredump.arch.regs.name.gp_regs[8]")
+  r.s r9 v.value("coredump.arch.regs.name.gp_regs[9]")
+  r.s r10 v.value("coredump.arch.regs.name.gp_regs[10]")
+  r.s r11 v.value("coredump.arch.regs.name.gp_regs[11]")
+  r.s r12 v.value("coredump.arch.regs.name.gp_regs[12]")
+  r.s r13 v.value("coredump.arch.regs.name.gp_regs[13]")
+  r.s r14 v.value("coredump.arch.regs.name.gp_regs[14]")
+  r.s r15 v.value("coredump.arch.regs.name.gp_regs[15]")
+  r.s r16 v.value("coredump.arch.regs.name.gp_regs[16]")
+  r.s r17 v.value("coredump.arch.regs.name.gp_regs[17]")
+  r.s r18 v.value("coredump.arch.regs.name.gp_regs[18]")
+  r.s r19 v.value("coredump.arch.regs.name.gp_regs[19]")
+  r.s r20 v.value("coredump.arch.regs.name.gp_regs[20]")
+  r.s r21 v.value("coredump.arch.regs.name.gp_regs[21]")
+  r.s r22 v.value("coredump.arch.regs.name.gp_regs[22]")
+  r.s r23 v.value("coredump.arch.regs.name.gp_regs[23]")
+  r.s r24 v.value("coredump.arch.regs.name.gp_regs[24]")
+  r.s r25 v.value("coredump.arch.regs.name.gp_regs[25]")
+  r.s r26 v.value("coredump.arch.regs.name.gp_regs[26]")
+  r.s r27 v.value("coredump.arch.regs.name.gp_regs[27]")
+  r.s r28 v.value("coredump.arch.regs.name.gp_regs[28]")
+  r.s r29 v.value("coredump.arch.regs.name.sp")
+  r.s r30 v.value("coredump.arch.regs.name.fp")
+  r.s r31 v.value("coredump.arch.regs.name.lr")
+  r.s pc v.value("coredump.arch.regs.name.pc")
+  &COREDUMP_SUCCESS="SUCCESS"
+)
+else if v.value("coredump.arch.type")==&ARCH_ARM
+(
+  r.s CPSR v.value("coredump.arch.regs.name.cpsr")
+  r.s r0 v.value("coredump.arch.regs.array[0]")
+  r.s r1 v.value("coredump.arch.regs.array[1]")
+  r.s r2 v.value("coredump.arch.regs.array[2]")
+  r.s r3 v.value("coredump.arch.regs.array[3]")
+  r.s r4 v.value("coredump.arch.regs.array[4]")
+  r.s r5 v.value("coredump.arch.regs.array[5]")
+  r.s r6 v.value("coredump.arch.regs.array[6]")
+  r.s r7 v.value("coredump.arch.regs.array[7]")
+  r.s r8 v.value("coredump.arch.regs.array[8]")
+  r.s r9 v.value("coredump.arch.regs.array[9]")
+  r.s r10 v.value("coredump.arch.regs.array[10]")
+  r.s r11 v.value("coredump.arch.regs.array[11]")
+  r.s r12 v.value("coredump.arch.regs.array[12]")
+  r.s r13_svc v.value("coredump.arch.regs.array[13]")
+  r.s r14_svc v.value("coredump.arch.regs.array[14]")
+  r.s spsr_svc v.value("coredump.arch.regs.array[15]")
+  r.s pc v.value("coredump.arch.regs.array[16]")
+  r.s r13_usr v.value("coredump.arch.regs.array[17]")
+  r.s r14_usr v.value("coredump.arch.regs.array[18]")
+  r.s r13_irq v.value("coredump.arch.regs.array[19]")
+  r.s r14_irq v.value("coredump.arch.regs.array[20]")
+  r.s spsr_irq v.value("coredump.arch.regs.array[21]")
+  r.s r13_abt v.value("coredump.arch.regs.array[22]")
+  r.s r14_abt v.value("coredump.arch.regs.array[23]")
+  r.s spsr_abt v.value("coredump.arch.regs.array[24]")
+  r.s r13_und v.value("coredump.arch.regs.array[25]")
+  r.s r14_und v.value("coredump.arch.regs.array[26]")
+  r.s spsr_und v.value("coredump.arch.regs.array[27]")
+  r.s r8_fiq v.value("coredump.arch.regs.array[28]")
+  r.s r9_fiq v.value("coredump.arch.regs.array[29]")
+  r.s r10_fiq v.value("coredump.arch.regs.array[30]")
+  r.s r11_fiq v.value("coredump.arch.regs.array[31]")
+  r.s r12_fiq v.value("coredump.arch.regs.array[32]")
+  r.s r13_fiq v.value("coredump.arch.regs.array[33]")
+  r.s r14_fiq v.value("coredump.arch.regs.array[34]")
+  r.s spsr_fiq v.value("coredump.arch.regs.array[35]")
+  &COREDUMP_SUCCESS="SUCCESS"
+)
+else
+(
+  print "Unrecognized coredump.arch.type field."
+  print "Register values not loaded."
+)
+on error
+ENDDO
+
+SYMBOL_ISSUE:
+print "Error interpretting coredump symbol...values not loaded."
+print "Not enough debug information present in build to load coredump."
+on error
+ENDDO

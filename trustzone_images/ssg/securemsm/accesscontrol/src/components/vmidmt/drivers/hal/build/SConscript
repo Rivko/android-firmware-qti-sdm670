@@ -1,0 +1,148 @@
+#===============================================================================
+#
+#                             Edit History
+# $Header: $
+#
+# when         who     what, where, why
+# ----------   ---     ---------------------------------------------------------
+# 2013/09/26   sc      Reverted previous temporarily changes
+# 2013/09/25   sc      Updated with USES_8916_CONFIG temporarily
+# 2013/02/27   sc      Separated the non-pageable codes
+# 2013/01/18   sc      Updated for Aragorn v2
+# 2012/12/17   sc      2nd attempt to migrate to use DevCfg
+# 2012/12/10   sc      Reverted DevCfg changes
+# 2012/12/04   sc      Fixed packout issue
+# 2012/11/29   sc      Migrated to use DevConfig
+# 2012/11/12   sc      Updated for Luxor
+# 2012/11/08   sc      Updated for Frodo
+# 2012/05/17   sc      Removed HAL_VMIDMT_MAX_VMID and updated with 9x25
+# 2012/02/16   sc      Compile in the source files
+# 2011/11/21   sc      Initial revision for VMIDMT
+# 2010/06/21   sds     Code review updates
+# 2010/01/04   sds     Initial Creation
+#
+#===============================================================================
+# Copyright (c) 2010-2013, 2017
+# Qualcomm Incorporated.
+# All Rights Reserved.
+# Qualcomm Confidential and Proprietary
+#===============================================================================
+#-------------------------------------------------------------------------------
+# HAL VMIDMT Libs
+#-------------------------------------------------------------------------------
+Import('env')
+env = env.Clone()
+   
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "../src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_APIS = [
+   'BUSES',
+   'DAL',
+   'DEBUGTOOLS',
+   'HAL',
+   'KERNEL_VMIDMT',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'KERNEL',   
+]
+
+env.RequirePublicApi(CBSP_APIS, area='core')
+
+SSG_API = [
+   'AC',
+   'MINK',
+]
+
+env.RequirePublicApi(SSG_API, area='ssg')
+
+#-------------------------------------------------------------------------------
+# Internal depends within subunit
+#-------------------------------------------------------------------------------
+env.PublishPrivateApi('KERNEL_VMIDMT_HAL', [
+   '${INC_ROOT}/ssg/securemsm/accesscontrol/src/components/vmidmt/drivers/hal/src',
+   '${INC_ROOT}/ssg/securemsm/accesscontrol/src/components/vmidmt/drivers/hal/config/${AC_MSM_ID}',
+])
+
+#-------------------------------------------------------------------------------
+# Compiler options
+#-------------------------------------------------------------------------------
+#env.Append(CCFLAGS = "--gnu")
+
+#-------------------------------------------------------------------------------
+# HWIO
+#-------------------------------------------------------------------------------
+if env.has_key('HWIO_IMAGE'):
+   env.AddHWIOFile('HWIO', [
+      {
+         'filename': '${INC_ROOT}/ssg/securemsm/accesscontrol/src/components/vmidmt/drivers/hal/config/${MSM_ID}/HALvmidmtHWIOTarget.h',
+         'modules': ['.*VMIDMT.*'],
+         'filter-include': ['.*VMIDMT.*'],
+         'output-offsets': True,
+         'header': '#include "msmhwiobase.h"'
+      }
+   ])
+   env.AddHWIOFile('HWIO', [
+      {
+         'filename': '${INC_ROOT}/ssg/securemsm/accesscontrol/src/components/vmidmt/drivers/hal/config/${MSM_ID}/HALSOCHWIOTarget.h',
+         'modules': ['TCSR_TCSR_REGS'],
+         'filter-include': ['.*SOC_HW.*'],
+         'output-offsets': True,
+         'header': '#include "msmhwiobase.h"'
+      }
+   ])
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+HAL_VMIDMT_COMMON_SOURCES = [
+   '${BUILDPATH}/HALvmidmt.c',
+   '${BUILDPATH}/HALvmidmtGenImpl.c',
+   '${BUILDPATH}/HALvmidmtInfoImpl.c',
+   '${BUILDPATH}/HALvmidmtImpl_unpaged.c',
+]
+
+if 'USES_DEVCFG' in env:
+   DEVCFG_IMG = ['DAL_DEVCFG_IMG']
+   env.AddDevCfgInfo(DEVCFG_IMG,
+   {
+      'devcfg_xml' : '${BUILD_ROOT}/ssg/securemsm/accesscontrol/src/components/vmidmt/drivers/hal/config/${AC_MSM_ID}/HALvmidmtData.xml'
+   })
+
+HAL_VMIDMT_PACKOUT_HEADER_FILES = [
+   '${BUILDPATH}/HALhwioVmidmtGeneric.h',
+   '${BUILDPATH}/HALvmidmtGenImpl.h',
+   '${BUILDPATH}/HALvmidmtHwio.h',
+   '${BUILDPATH}/HALvmidmtInternal.h',
+]
+
+HAL_VMIDMT_PACKOUT_HEADER_FILES += env.FindFiles(
+   'HALSOCHWIOTarget.h',
+   '${INC_ROOT}/ssg/securemsm/accesscontrol/src/components/vmidmt/drivers/hal/config/')
+
+HAL_VMIDMT_PACKOUT_SOURCE_FILES = env.FindFiles(
+   '*.c',
+   '${INC_ROOT}/ssg/securemsm/accesscontrol/src/components/vmidmt/drivers/hal/')
+
+env.CleanPack(['TZOS_IMAGE'],
+              HAL_VMIDMT_PACKOUT_HEADER_FILES)
+
+env.CleanPack(['TZOS_IMAGE'],
+              HAL_VMIDMT_PACKOUT_SOURCE_FILES)
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+env.AddBinaryLibrary(['TZOS_IMAGE'],
+                     '${BUILDPATH}/HALvmidmtTZOS',
+                     [HAL_VMIDMT_COMMON_SOURCES])
+env.Deploy('SConscript')

@@ -1,0 +1,259 @@
+#===============================================================================
+# QDSS Tracer
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2011-2012 Qualcomm Technologies Incorporated.
+# All rights reserved.
+# Qualcomm Confidential and Proprietary
+#-------------------------------------------------------------------------------
+#
+#$Header$
+#
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 09/07/17   rs      Warlock specific changes
+#===============================================================================
+Import('env')
+import qdss
+
+
+#-------------------------------------------------------------------------------
+# Enviroment variables
+#-------------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
+# Image OS tags
+#
+qdss_dal_tags = qdss.BuildTags(['wcn','gss','venus'])
+qdss_l4_tags = qdss.BuildTags(['apps'])
+qdss_qurt_tags = qdss.BuildTags(['modem', 'audio','cdsp'])
+qdss_qurt_micro_tags = qdss.BuildTags(['adsp', 'sensor', 'sensor2'])
+
+# Configuring replicator for core PD only in ADSP
+if 'USES_SENSOR_IMG' in env or 'USES_AUDIO_IMG' in env or 'USES_CDSP_IMG' in env:
+  print("WARN: Enable ENABLE_LPA_REPLICATOR_QDSS only for root PD")
+else:
+  env.Append(CPPDEFINES=['ENABLE_LPA_REPLICATOR_QDSS'])
+ 
+#-------------------------------------------------------------------------------
+# SW workaround to HW bug
+# To build tracer with the SW workaround to the HW bug of restricted
+# bit-width to the STM, compile with the following two flags defined.
+#   TRACER_OST_WA_PAD
+#   TRACER_WA_ALIGNMENT=x  where x is 4, 8, or 16 (minimum bytes for write)
+#   IMITATE_STPPKTS  Tracer generated STP pkt sequences to mimic HW bug.
+#-------------------------------------------------------------------------------
+#Example for MPSS image on 8974 on virtio
+#if env['MSM_ID'] in ['8974'] :
+#   if env.IsTargetEnable(qdss.BuildTags(['modem']):
+#      env.Append(CCFLAGS = " -DTRACER_OST_WA_PAD -DTRACER_WA_ALIGNMENT=4")
+#      env.Append(CCFLAGS = " -DIMITATE_STPPKTS")
+
+#-------------------------------------------------------------------------------
+# Set TRACER_TEST_ENABLE to 'Yes' (otherwise 'No') to build with tracer tests.
+#   Makes call to "tracer_test()" for a quick sanity check of tracer APIs.
+#   if USES_QDSS_SWE is also defined, tracer events are defined and tested.
+#-------------------------------------------------------------------------------
+env.Append(TRACER_TEST_ENABLED = 'No')
+
+if env['TRACER_TEST_ENABLED'] == 'Yes':
+   env.Append(CCFLAGS = " -DTRACER_TESTING_ON")
+
+#-------------------------------------------------------------------------------
+# Build with tracer software events
+# Configure port pool size to maximum number of threads expected to be
+#   sending simple events with parameters.
+#-------------------------------------------------------------------------------
+if 'USES_QDSS_SWE' in env:
+   env.Append(CCFLAGS = " -DTRACER_SWEVT")
+   env.Append(CCFLAGS = " -DTRACER_PORT_POOL_SIZE=4")
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "../src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+env.RequirePublicApi([
+   'DEBUGTRACE',
+   'DAL',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'KERNEL',
+   'POWER',            # Config sw events on RPM procesor.
+])
+
+env.RequireRestrictedApi([
+   'DEBUGTRACE',
+   'DAL',
+   'KERNEL'
+])
+
+env.RequireProtectedApi(['DEBUGTRACE'])
+
+#-------------------------------------------------------------------------------
+# Publish Private APIs
+#-------------------------------------------------------------------------------
+env.PublishPrivateApi('QDSS_TRACER', [
+   "../src",
+   "../../common/src"
+])
+
+if env.IsTargetEnable(qdss_dal_tags):
+   env.PublishPrivateApi('TRACER_OSAL',['../src/dal'])
+elif env.IsTargetEnable(qdss_l4_tags):
+   env.PublishPrivateApi('TRACER_OSAL',['../src/l4'])
+elif env.IsTargetEnable(qdss_qurt_tags + qdss_qurt_micro_tags):
+   env.PublishPrivateApi('TRACER_OSAL',['../src/qurt'])
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+QDSS_TRACER_SRC = [
+   '${BUILDPATH}/tracer.c',
+   '${BUILDPATH}/tracer_config.c',
+   '${BUILDPATH}/tracer_list.c',
+   '${BUILDPATH}/tracer_portmgr.c',
+   '${BUILDPATH}/tracer_stp.c',
+   '${BUILDPATH}/tracer_tds.c',
+   '${BUILDPATH}/tracer_test.c',
+   '${BUILDPATH}/tracer_test_api.c'
+   ]
+
+TRACER_MICRO_SOURCES=[
+   '${BUILDPATH}/tracer_micro.c',
+   '${BUILDPATH}/tracer_config_micro.c',
+   '${BUILDPATH}/tracer_stp_micro.c',
+   '${BUILDPATH}/tracer_portmgr_micro.c',
+   '${BUILDPATH}/tracer_ost.c',
+   ]
+
+if not env.IsTargetEnable(qdss.BuildTags(['venus'])):
+   QDSS_TRACER_SRC += ['${BUILDPATH}/tracer_diag.c']
+
+if env.IsTargetEnable(qdss_dal_tags):
+   QDSS_TRACER_SRC += ['${BUILDPATH}/dal/tracer_mutex.c',
+                       '${BUILDPATH}/dal/tracer_portget.c',
+                      ]
+elif env.IsTargetEnable(qdss_l4_tags):
+   QDSS_TRACER_SRC += ['${BUILDPATH}/l4/tracer_mutex.c',
+                       '${BUILDPATH}/l4/tracer_portget.c',
+                      ]
+elif env.IsTargetEnable(qdss_qurt_tags):
+   QDSS_TRACER_SRC += ['${BUILDPATH}/qurt/tracer_mutex.c',
+                       '${BUILDPATH}/qurt/tracer_portget.c',
+                      ]
+elif env.IsTargetEnable(qdss_qurt_micro_tags):
+   QDSS_TRACER_SRC += ['${BUILDPATH}/qurt/tracer_mutex.c']
+   TRACER_MICRO_SOURCES += ['${BUILDPATH}/qurt/tracer_portget.c']
+
+
+#if ( env.IsTargetEnable(qdss.BuildTags(['modem'])) or
+#     env.IsTargetEnable(qdss.BuildTags(['adsp'])) 
+#   ):
+#   QDSS_TRACER_SRC += ['${BUILDPATH}/tracer_cfgrpm.c']
+#else:
+QDSS_TRACER_SRC += ['${BUILDPATH}/tracer_cfgrpm_stub.c']
+
+
+if env['TRACER_TEST_ENABLED'] == 'Yes':
+   QDSS_TRACER_SRC += ['${BUILDPATH}/tracer_apitest.c']
+
+
+env.AddLibrary(qdss_dal_tags + qdss_l4_tags + qdss_qurt_tags,
+   '${BUILDPATH}/qdss_tracer', QDSS_TRACER_SRC + TRACER_MICRO_SOURCES)
+
+env.AddLibrary(qdss_qurt_micro_tags,
+   '${BUILDPATH}/qdss_tracer', QDSS_TRACER_SRC)
+
+tracer_micro_obj = env.Object(TRACER_MICRO_SOURCES)
+tracer_micro_lib = env.Library('${BUILDPATH}/tracer_micro', tracer_micro_obj)
+env.AddLibsToImage(qdss_qurt_micro_tags, tracer_micro_lib)
+
+if 'USES_ISLAND' in env:
+   env.AddIslandLibrary(qdss_qurt_micro_tags, tracer_micro_lib)
+
+
+#-------------------------------------------------------------------------------
+# Build for QDSS SW Events
+#-------------------------------------------------------------------------------
+
+if 'USES_QDSS_SWE' in env:
+   QDSS_IMG = ['QDSS_EN_IMG']
+   events = [
+      ['TRACER_EVENT_INIT_COMPLETE','Tracer event initialization complete', 'T'],
+      ['TRCEVT_TEST1','Tracer test event','F'],
+      ['TRCEVT_TEST2_3ARGS','Tracer test 3arg event %d %d %d','F'],
+      ['QDSS_ISLAND_ENTER', 'QDSS island enter callback','F'],
+      ['QDSS_ISLAND_EXIT', 'QDSS island exit. SSC ETB write_ptr=%u','F'],
+      ['QDSS_SSC_ETB_ISLAND_MODE_START', 'SSC ETB island mode trace start','T'],
+      ['QDSS_SSC_ETB_ISLAND_MODE_END','SSC ETB island mode trace end','T'],
+      ['QDSS_SSC_ETB_NORMAL_MODE_START','SSC ETB normal mode trace start','T'],
+      ['QDSS_SSC_ETB_NORMAL_MODE_END','SSC ETB normal mode trace end','T'],
+      ['QDSS_SSC_TS_SYNC','QDSS SSC timestamp sync at %llu','T'],
+      ['QDSS_SSC_TIMETICK','Event [0x%x] uTimetick = %llu','F'],
+      ['QDSS_SAVED_TIMESTAMP','AON and QDSS timestamp counters saved','F'],
+      ['QDSS_RELOADED_TIMESTAMP','aon_pre=%llx  aon_post=%llx  qdss_pre==%llx qdss_post==%llx','F'],
+
+      ]
+   env.AddSWEInfo(QDSS_IMG, events)
+
+
+if 'QDSS_TRACER_SWE' in env:  #if SWE builder is loaded
+   tracer_event_inc=env['DEBUGTRACE_TRACER_EVENT_INC']
+
+   gen_tracer_event_ids_h=tracer_event_inc+'/tracer_event_ids.h'
+   gen_tracer_event_tbl_h=tracer_event_inc+'/tracer_event_tbl.h'
+   gen_tracer_event_info_txt=tracer_event_inc+'/tracer_event_info.txt'
+
+   env.SWEBuilder([gen_tracer_event_ids_h,
+                   gen_tracer_event_tbl_h,
+                   gen_tracer_event_info_txt],
+                   None)
+   env.Append(CPPPATH = [tracer_event_inc])
+
+
+if env.IsTargetEnable(qdss.BuildTags(['sensor2'])):
+   env.Append(CCFLAGS = " -DTRACER_USER_PD")
+
+if env.IsTargetEnable(qdss.BuildTags(['adsp','sensor2','sensor'])):
+   env.Append(CCFLAGS = " -DTRACER_SLPI")
+
+	
+#-------------------------------------------------------------------------------
+# Build for RCINIT
+#-------------------------------------------------------------------------------
+if 'USES_RCINIT' in env:
+   if 'USES_QDSS_SWE' in env:
+      RCINIT_IMG = ['USES_QDSS_SWE']
+      env.AddRCInitFunc(       # Code Fragment in TMC: NO
+      RCINIT_IMG,
+      {
+         'sequence_group'             : 'RCINIT_GROUP_1',            # required
+         'init_name'                  : 'tracer_simple',             # required
+         'init_function'              : 'tcfg_event_simple_init',    # required
+         'dependencies'               : ['qdss','qdss_control']
+      })
+   else:
+      if env['TRACER_TEST_ENABLED'] == 'Yes':
+         RCINIT_IMG = qdss.BuildTags(['apps', 'modem', 'cdsp', 'adsp', 'sensor', 'sensor2', 'wcn'])
+         env.AddRCInitFunc(       # Code Fragment in TMC: NO
+         RCINIT_IMG,
+         {
+            'sequence_group'          : 'RCINIT_GROUP_1',            # required
+            'init_name'               : 'tracer_test',               # required
+            'init_function'           : 'tracer_test1',              # required
+            'dependencies'            : ['qdss']
+         })
+

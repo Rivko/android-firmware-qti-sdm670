@@ -1,0 +1,10 @@
+ACLOCAL_AMFLAGS = -I m4
+if MAKE_VPP_LIB
+LIBDIR = lib
+endif
+
+if MAKE_VPP_TEST
+TESTDIR = test
+endif
+
+SUBDIRS = $(LIBDIR) $(TESTDIR)

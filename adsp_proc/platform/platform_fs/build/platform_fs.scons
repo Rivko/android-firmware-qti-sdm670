@@ -1,0 +1,107 @@
+#===============================================================================
+# Copyright (c) 2012 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===============================================================================
+Import('env')
+
+env = env.Clone()
+
+platform_root = '${BUILD_ROOT}/platform'
+env.Replace(ADSP_PLATFORM_ROOT = platform_root)
+
+env.RequirePublicApi([
+    'HAPSDK',
+    'PLATFORM_LIBS',
+    'STDDEF',
+    'APPS_STD',
+    'QAIC',
+    'UTILS',
+    ])
+
+
+core_public_apis = [
+     'STORAGE',
+     'KERNEL',
+ ]
+
+env.RequirePublicApi(core_public_apis, area='core')
+
+env.RequireRestrictedApi([
+    'SECURITY',
+    'PLATFORM_FS',
+])
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${ADSP_PLATFORM_ROOT}/platform_fs/src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+
+# Register as static library
+env.PLRegister("platform_fs_qdi",['PLATFORM_LIBS', 'PLATFORM_ROOT_LIBS'])
+if ('USES_ENABLE_GUESTOS_AUDIOPD_SUPPORT' not in env): 
+   env.PLRegister("platform_fs",['PLATFORM_LIBS', 'PLATFORM_ROOT_LIBS', 'SSC_SLPI_USER', 'SSC_ADSP_USER','FASTRPC_SHELL_IMG','AVS_ADSP_USER', 'SENSOR_IMG'])
+else:
+   env.PLRegister("platform_fs",['PLATFORM_LIBS', 'PLATFORM_ROOT_LIBS', 'SSC_SLPI_USER', 'SSC_ADSP_USER','FASTRPC_SHELL_IMG', 'SENSOR_IMG'])
+
+if ('USES_FASTRPC_SHELL_IMG' in env) and (env['PLATFORM_SUBSYSTEM'] not in ['slpi']):
+    env.Append(CFLAGS='-DPLATFORM_FS_QDI_STUB')
+    env.PLRegister("platform_fs_qdi_stub",['FASTRPC_SHELL_IMG'])
+
+PLATFORM_FS_SHELL_SOURCES = [
+    env.AddQaicHeaderDep('${BUILDPATH}/platform_fs.c', "apps_std"),
+]
+
+PLATFORM_FS_SHELL_USER_SOURCES = [
+    env.AddQaicHeaderDep('${BUILDPATH}/platform_fs_user.c', "apps_std"),
+]
+
+PLATFORM_FS_SOURCES =  [
+    '${BUILDPATH}/platform_fs_qdi_driver.c',
+]
+
+PLATFORM_FS_STUB_SOURCES =  [
+    '${BUILDPATH}/platform_fs_qdi_stub.c',
+ ]
+
+if 'USES_FASTRPC_SHELL_IMG' in env:
+    PLATFORM_FS_SHELL_USER_SOURCES.append('${BUILDPATH}/platform_fs_qdi_stub.c')
+
+if 'USES_PLATFORM_FS' in env:
+    PLATFORM_FS_SOURCES.append(env.AddQaicHeaderDep('${BUILDPATH}/platform_fs.c', "apps_std"))
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+platform_fs_lib = env.AddBinaryLibrary(   ['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+  'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE'],'${BUILDPATH}/platform_fs', PLATFORM_FS_SOURCES)
+
+#platform_fs_lib = env.AddBinaryLibrary(   ['SSC_ADSP_USER'],'${BUILDPATH}/platform_fs', PLATFORM_FS_STUB_SOURCES)
+
+platform_fs_lib = env.AddBinaryLibrary(   ['SSC_SLPI_USER'],'${BUILDPATH}/platform_fs', PLATFORM_FS_SHELL_SOURCES)
+
+if ('USES_ENABLE_GUESTOS_AUDIOPD_SUPPORT' in env):
+  platform_fs_shell_lib = env.AddBinaryLibrary(   ['AVS_ADSP_USER'],'${BUILDPATH}/platform_fs_stub', PLATFORM_FS_STUB_SOURCES) 
+else:
+  platform_fs_shell_lib = env.AddBinaryLibrary(   ['AVS_ADSP_USER'],'${BUILDPATH}/platform_fs', PLATFORM_FS_SHELL_SOURCES)
+
+platform_fs_shell_lib = env.AddBinaryLibrary(   ['SSC_ADSP_USER'],'${BUILDPATH}/platform_fs', PLATFORM_FS_SHELL_SOURCES)
+
+if env['PLATFORM_SUBSYSTEM'] in ['slpi']:
+	platform_fs_shell_user_lib = env.AddBinaryLibrary(   ['FASTRPC_SHELL_IMG'],'${BUILDPATH}/platform_fs', PLATFORM_FS_SHELL_SOURCES)
+else:
+	platform_fs_shell_user_lib = env.AddBinaryLibrary(   ['FASTRPC_SHELL_IMG'],'${BUILDPATH}/platform_fs', PLATFORM_FS_SHELL_USER_SOURCES)
+
+#-------------------------------------------------------------------------------
+# Load Subunits (sys)
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+#Clean and pack rules
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.cpp', '*.h'], '${ADSP_PLATFORM_ROOT}/platform_fs/inc'))
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.cpp', '*.h'], '${ADSP_PLATFORM_ROOT}/platform_fs/src'))
+env.CleanPack(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE','QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'CORE_QDSP6_SENSOR_SW', 'FASTRPC_SHELL_IMG', 'SSC_SLPI_USER','SSC_ADSP_USER', 'AVS_ADSP_USER'], CLEAN_LIST)

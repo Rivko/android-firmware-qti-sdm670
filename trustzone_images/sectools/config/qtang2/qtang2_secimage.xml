@@ -1,0 +1,200 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+===============================================================================
+
+  Copyright (c) 2020 Qualcomm Technologies, Inc.
+  All Rights Reserved.
+  Confidential and Proprietary - Qualcomm Technologies, Inc.
+
+===============================================================================
+-->
+<tns:secimage xmlns:tns="http://www.qualcomm.com/secimage"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.qualcomm.com/secimage ../xsd/secimage.xsd">
+
+    <!-- qtang2 -->
+    <metadata>
+        <chipset>qtang2</chipset>
+        <version>2.0</version>
+    </metadata>
+
+    <!--
+       See documentation on general_properties below.
+    -->
+    <general_properties>
+        <selected_signer>local_v2</selected_signer>
+        <selected_encryptor></selected_encryptor>
+        <selected_cert_config>qti_presigned_certs</selected_cert_config>
+        <cass_capability>secboot_sha2_pss_subca2</cass_capability>
+
+        <key_size>2048</key_size>
+        <exponent>65537</exponent>
+
+        <!--
+        JTAG IDs:
+        0x0018B0E1 - qtang2 -->
+        <msm_part>0x0018B0E1</msm_part>
+        <soc_vers>0x7001</soc_vers>
+        <in_use_soc_hw_version>enable</in_use_soc_hw_version>
+        <use_serial_number_in_signing>disable</use_serial_number_in_signing>
+        <oem_id_independent>disable</oem_id_independent>
+        <oem_id>0x0000</oem_id>
+        <model_id>0x0000</model_id>
+        <debug>nop</debug>
+        <multi_serial_numbers>
+            <!--<serial>0x12345678</serial>-->
+        </multi_serial_numbers>
+
+        <secboot_version>3.0</secboot_version>
+        <qti_sign>false</qti_sign>
+        <oem_sign>true</oem_sign>
+
+        <max_cert_size>2048</max_cert_size>
+        <num_certs_in_certchain>3</num_certs_in_certchain>
+
+        <hmac>false</hmac>
+        <dsa_type>rsa</dsa_type>
+        <rsa_padding>pss</rsa_padding>
+        <hash_algorithm>sha256</hash_algorithm>
+        <segment_hash_algorithm>sha384</segment_hash_algorithm>
+    </general_properties>
+
+    <!--
+        ***general_properties***
+
+        The default properties for all images. These properties may be overridden
+        per image in the 'images' section below as needed.
+
+        Supported signer are:
+        local_v2: use local signer with test keys
+
+        Capability selected the signing key used. Currently, the following capabilities are supported.
+        OEM may obtain additional capabilities from CASS support.
+
+        secboot_sha2_pss_subca1: use SHA256, RSAPSS signed root cert
+
+        If "secboot_sha2_pss_subca2" is selected,the PK_HASH_IN_FUSE needs to be blown,
+        and the ROOT CERT HASH below needs to be blown in OEM PK HASH:
+        d40eee56f3194665574109a39267724ae7944134cd53cb767e293d3c40497955bc8a4519ff992b031fadc6355015ac87
+
+        key_size: Size (in bits) of the key used for signing.
+        exponent: exponent value used in attestation key generation.
+
+        msm_part: jtag_id for signing. (in hex)
+        in_use_soc_hw_version: flag to use JTAG_ID or SOC_HW_VERSION (disable or enable)
+        oem_id_independent: flag to set oem_id=0x0001 and model_id=0x0000 (disable or enable)
+        oem_id: oem_id for signing. (in hex)
+        model_id: model_id for signing. (in hex)
+        debug: debug_id for signing. (in hex)
+        multi_serial_numbers: serial number list that enable serial binding (in hex)
+
+        max_cert_size: Maximum size (in bytes) of one certificate.
+        num_certs_in_certchain: Number of certificates in the certificate chain (2,3)
+
+        hmac: use HMAC or SHA256 (in boolean)
+        rsa_padding: PKCS1.5 or RSAPSS for signature and certificate chain (pkcs or pss)
+
+        QTI internal: (shall not be modified by customer)
+        secboot_version: define ELF image header format (1.0, 2.0, or 3.0)
+        oem_sign: enable OEM sig segment
+        qti_sign: enable QTI sig segment
+    -->
+
+    <parsegen>
+        <!--
+        Parsegen information by default will be read from parsegen_config.xml.
+        Additional image_id's can be included here or existing image_id's may be overwritten
+        to be generated with the default image_ids.
+        -->
+    </parsegen>
+
+    <!-- Signing configurations used by secimage. -->
+    <signing>
+        <signer_attributes>
+            <!--
+                Use of CASS signer will require additional license agreement
+                and contract. Hardware token is required for access.
+            -->
+            <cass_signer_attributes>
+                <!--
+                    keystore_type: PKCS11 (hardware token)
+                    token_password: User will be prompted if password
+                                    is an empty string
+                    token_driver_home: Safenet driver location
+                -->
+                <user_identity>
+                    <keystore_type>PKCS11</keystore_type>
+                    <token_password></token_password>
+                    <token_driver_home>
+                        <windows>C:/WINDOWS/SYSTEM32/eTpkcs11.dll</windows>
+                        <linux>/usr/lib/libeTPkcs11.so</linux>
+                    </token_driver_home>
+                </user_identity>
+            </cass_signer_attributes>
+        </signer_attributes>
+    </signing>
+
+    <post_process>
+        <pil_splitter>$(META_BUILD)/common/tools/misc/pil-splitter.py</pil_splitter>
+    </post_process>
+
+    <data_provisioning>
+        <base_path>./../../resources/data_prov_assets/</base_path>
+    </data_provisioning>
+
+    <images_list>
+        <image sign_id="mba" name="mba.mbn" image_type="elf_has_ht">
+            <general_properties_overrides>
+                <sw_id>0x00000001</sw_id>
+                <anti_rollback_version>0x00000000</anti_rollback_version>
+            </general_properties_overrides>
+            <pil_split>true</pil_split>
+            <meta_build_location>$(FILE_TYPE:download_file, ATTR:cmm_file_var, VAR:MBA_BINARY)</meta_build_location>
+        </image>
+
+        <image sign_id="modem" name="qdsp6sw.mbn" image_type="elf_has_ht" output_file_name="modem.mbn">
+            <general_properties_overrides>
+                <sw_id>0x00000002</sw_id>
+                <anti_rollback_version>0x00000000</anti_rollback_version>
+            </general_properties_overrides>
+            <pil_split>true</pil_split>
+            <meta_build_location>$(FILE_TYPE:download_file, ATTR:cmm_file_var, VAR:MPSS_BINARY)</meta_build_location>
+        </image>
+
+        <image sign_id="mcfg_hw" name="mcfg_hw.mbn" image_type="elf_has_ht">
+            <general_properties_overrides>
+                <sw_id>0x00000002</sw_id>
+                <anti_rollback_version>0x00000000</anti_rollback_version>
+            </general_properties_overrides>
+        </image>
+
+        <image sign_id="mcfg_sw" name="mcfg_sw.mbn" image_type="elf_has_ht">
+            <general_properties_overrides>
+                <sw_id>0x00000002</sw_id>
+                <anti_rollback_version>0x00000000</anti_rollback_version>
+            </general_properties_overrides>
+        </image>
+
+        <image sign_id="rpm" name="rpm.mbn" image_type="elf_has_ht">
+            <general_properties_overrides>
+                <sw_id>0x0000000A</sw_id>
+            </general_properties_overrides>
+        </image>
+
+        <image sign_id="wlan" name="wlanmdsp.mbn" image_type="elf_has_ht">
+            <general_properties_overrides>
+                <sw_id>0x00000012</sw_id>
+                <anti_rollback_version>0x00000000</anti_rollback_version>
+            </general_properties_overrides>
+            <pil_split>true</pil_split>
+        </image>
+
+        <image sign_id="efs_tar" name="fs_image.tar.gz.mbn" image_type="mbn_40b">
+            <general_properties_overrides>
+                <sw_id>0x0000001B</sw_id>
+                <anti_rollback_version>0x00000000</anti_rollback_version>
+            </general_properties_overrides>
+        </image>
+    </images_list>
+
+</tns:secimage>

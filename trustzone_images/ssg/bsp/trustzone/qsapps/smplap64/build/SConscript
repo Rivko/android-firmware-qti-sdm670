@@ -1,0 +1,57 @@
+#===============================================================================
+#
+# sampleapp  build script
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2010, 2017 by QUALCOMM, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/ssg.tz/1.0.2/bsp/trustzone/qsapps/smplap64/build/SConscript#1 $
+#  $DateTime: 2018/02/06 03:00:17 $
+#  $Author: pwbldsvc $
+#  $Change: 15399933 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+#===============================================================================
+import os
+Import('env')
+
+env = env.Clone()
+
+#------------------------------------------------------------------------------
+# Check if we need to load this script or just bail-out
+#------------------------------------------------------------------------------
+# alias - First alias is always the target then the other possible aliases
+aliases = [
+   'sampleapp', 'smplap64', 'uefitzt', 'tzbsptest', 'all', 'deploy'
+]
+env.InitImageVars(
+   alias_list = aliases,       # list of aliases, unique name index [0]
+   proc = 'A53_64',          # proc settings
+   config = 'apps',            # config settings
+   build_tags = ['APPS_PROC',
+      'SAMPLEAPP64_IMAGE'],  # list of build tags for sub lib scripts
+)
+
+
+if not env.CheckAlias():
+  Return()
+#------------------------------------------------------------------------------
+# Configure and load in USES and path variables
+#------------------------------------------------------------------------------
+env.LoadToolScript('${BUILD_ROOT}/ssg/bsp/build/scripts/secure_app_builder.py')
+env.InitBuildConfig()
+env.Append(OUT_DIR = os.getcwd())
+sconspath = env.subst('${BUILD_ROOT}/ssg/securemsm/trustzone/qsapps/sampleapp/src/SConscript')
+env.Replace(SRC_SCONS_ROOT = sconspath.split('SConscript')[0])
+env.Replace(DEPLOY_APP = True)
+SConscript(sconspath, exports='env',)
+env.Deploy('SConscript')

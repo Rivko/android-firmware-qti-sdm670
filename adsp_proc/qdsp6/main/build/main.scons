@@ -1,0 +1,101 @@
+#===============================================================================
+#
+# main AU
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2014 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#===============================================================================
+Import('env')
+
+# Core API 
+#  KERNEL for qube.h used by qurt_elite.h and qurt.h
+#  SERVICES for msg.h and msgcfg.h
+#  DEBUGTOOLS for err.h
+
+core_public_apis = [
+   'KERNEL',
+   'SERVICES',
+   'DEBUGTOOLS',
+   'ADSPPM',
+   'POWER',
+   'MPROC',
+   'SYSTEMDRIVERS',
+   'DEBUGTRACE',
+   'DAL',
+   'DIAG',
+   ]
+
+platform_public_apis = [
+   'PLATFORM_LIBS',
+   ]
+
+env.RequirePublicApi(core_public_apis, area='core')
+env.RequirePublicApi(platform_public_apis, area='platform')
+env.RequirePublicApi(['AVS',], area='avs')
+env.RequirePublicApi(['ADSP_SYSMON'], area='qdsp6')
+env.RequireRestrictedApi('QDSP6')
+
+if env.PathExists("${BUILD_ROOT}/Sensors"):
+   env.RequirePublicApi('INIT', area="Sensors")
+
+if env.PathExists("${BUILD_ROOT}/apr"):
+   env.RequirePublicApi('APR', area='apr')
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/qdsp6/main/src"
+#LIBNAME = 'main'
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+if 'USES_STRESS_TEST' in env:
+   SRC_DIRS = [
+                 '${BUILDPATH}/main.c',
+                 '${BUILDPATH}/latency.c',                 
+                 '${BUILDPATH}/pd_audio_spawn.c',
+              ]
+else:
+   SRC_DIRS = [
+                 '${BUILDPATH}/main.c',
+                 '${BUILDPATH}/pd_audio_spawn.c',
+              ]
+
+if 'USES_CDSP_IMG' in env:
+    SRC_DIRS.remove('${BUILDPATH}/pd_audio_spawn.c')
+env.AddObject(['QDSP6_SW_IMAGE'], [SRC_DIRS])
+
+# Add the PD Spawn Call to the Root PD.
+if env.get('AUDIO_IMG_NAME'):
+    env.Append(CPPDEFINES="AUDIO_IMG_NAME=\\\"audio_process\\\"")
+else:
+    env.Append(CPPDEFINES="AUDIO_IMG_NAME=\\\"M${BUILD_ASIC}${BUILD_ID}${BUILD_VER}_AUDIO.pbn\\\"")
+
+if 'USES_RCINIT' in env:
+ RCINIT_IMG = ['CORE_QDSP6_SW','QDSP6_SW_IMAGE']
+ env.AddRCInitFunc(
+  RCINIT_IMG,
+  {
+   'sequence_group'             : 'RCINIT_GROUP_7',
+   'init_name'                  : 'image_timestamp',
+   'init_function'              : 'image_creation_timestamp',
+  })
+ if (env.get('IMAGE','adsp') == 'adsp'): 
+    env.AddRCInitFunc(
+     RCINIT_IMG,
+     {
+      'sequence_group'             : 'RCINIT_GROUP_7',
+      'init_name'                  : 'pd_audio',
+      'init_function'              : 'pd_mon_audio',
+     })
+    
+
+if 'AUDIO_IN_USERPD' in env:
+   env.Append(CPPDEFINES="SPAWN_AUDIO_USERPD")
+
+env.LoadSoftwareUnits()

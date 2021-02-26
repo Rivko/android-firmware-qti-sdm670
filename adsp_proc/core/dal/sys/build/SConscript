@@ -1,0 +1,152 @@
+#===============================================================================
+#
+# DAL SYS Lib
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009 - 2011 Qualcomm Incorporated.
+# All Rights Reserved.
+# Qualcomm Confidential and Proprietary
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1/dal/sys/build/SConscript#1 $
+#  $DateTime: 2017/07/21 22:10:47 $
+#  $Author: pwbldsvc $
+#  $Change: 13907704 $
+#                      EDIT HISTORY FOR FILE
+#                      
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#  
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+import os
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SCRIPTPATH = env['BUILD_ROOT']+'/core/dal/sys/scripts'
+SRCPATH = "${DAL_ROOT}/sys/src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DEBUGTOOLS',
+   'SERVICES',
+   'MPROC',
+   'SYSTEMDRIVERS',   
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+env.RequireRestrictedApi('DAL')
+
+env.Append(CPPDEFINES = [
+   "DALSYS_MEM_BUS_ATTR=0",
+   "DALSYS_WL_DEFAULT_PRIO=207",
+   "DALSYS_WL_DEFAULT_STACK_SIZE=0x1000",
+   "DALSYS_WL_TRACK_CNT=32",
+   "DALSYS_LOG_BUFFER_SIZE_POWER=7", 
+   "DALSYS_LOG_LEVEL=DALSYS_LOGEVENT_WARNING",
+   "DALSYS_SYNC_CEILING_PRIO=0",
+   ])
+
+if env.PathExists("${BUILD_ROOT}/core/api/debugtools/err.h"):
+   env.Append(CPPDEFINES = ["DAL_ERR_LOG"])
+
+# suffix to distinguish symbols between PDs
+if env.GetUsesFlag('USES_SENSOR_IMG') is True:
+   env.Append(CPPDEFINES = ["PD_SUFFIX=_sensor"])
+elif env.GetUsesFlag('USES_AUDIO_IMG') is True:
+   env.Append(CPPDEFINES = ["PD_SUFFIX=_audio"])
+
+DALSYS_COMMON_SOURCES =  [
+   '${BUILDPATH}/dal_asm_wrap.c',
+   '${BUILDPATH}/DALSysCmn.c',
+   '${BUILDPATH}/DALSysEvent.c',
+   '${BUILDPATH}/DALSysLogEvent.c',
+   '${BUILDPATH}/DALSysMem.c',
+   '${BUILDPATH}/DALSysMem_dynamic.c',
+   '${BUILDPATH}/DALSysSync.c',
+   '${BUILDPATH}/DALSysTimer_ats.c',
+   '${BUILDPATH}/DALSysWorkLoop.c',
+   '${BUILDPATH}/DALSysWorkLoop_qthread.c',
+]
+
+#-------------------------------------------------------------------------------
+# Guest OS Source Code
+#-------------------------------------------------------------------------------
+DALSYS_GUESTOS_SOURCES =  [
+   '${BUILDPATH}/DALGlbCtxt.c',
+   '${BUILDPATH}/DALModEnv_guestos.c',
+]
+DALSYS_GUESTOS_SOURCES.extend(DALSYS_COMMON_SOURCES)
+
+dalsys_guestos_obj = env.Object(DALSYS_GUESTOS_SOURCES)
+dalsys_guestos_lib = env.Library('${BUILDPATH}/DALSys_guestos', dalsys_guestos_obj)
+
+#-------------------------------------------------------------------------------
+# User Source Code
+#-------------------------------------------------------------------------------
+DALSYS_USER_SOURCES =  [
+   '${BUILDPATH}/DALModEnv_userpd.c',
+]
+DALSYS_USER_SOURCES.extend(DALSYS_COMMON_SOURCES)
+
+dalsys_user_obj = env.Object(DALSYS_USER_SOURCES)
+dalsys_user_lib = env.Library('${BUILDPATH}/DALSys_user', dalsys_user_obj)
+
+#-------------------------------------------------------------------------------
+# Add Guest OS Libraries to image
+#-------------------------------------------------------------------------------
+env.AddLibsToImage(
+   ['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+    'APPS_IMAGE', 'CBSP_APPS_IMAGE', 'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE','AVS_ADSP'],
+    dalsys_guestos_lib)
+
+#-------------------------------------------------------------------------------
+# Add User Libraries to image
+#-------------------------------------------------------------------------------
+if env.GetUsesFlag('USES_SENSOR_IMG') is True:
+   env.AddLibsToImage(['CORE_QDSP6_SENSOR_SW'], dalsys_user_lib)
+
+if env.GetUsesFlag('USES_AUDIO_IMG') is True:
+   env.AddLibsToImage(['CORE_QDSP6_AUDIO_SW'], dalsys_user_lib)
+
+#-------------------------------------------------------------------------------
+# Add CMM Scripts
+#-------------------------------------------------------------------------------
+try:
+   env.AddCMMScripts ('ADSP', [SCRIPTPATH], { 'DALLog.cmm' : 'DAL Log' }, 'DAL')
+except:
+  pass
+
+#-------------------------------------------------------------------------------
+# RC Init
+#-------------------------------------------------------------------------------
+if 'USES_RCINIT' in env:
+   RCINIT_DALSYS = {
+      'sequence_group'             : 'RCINIT_GROUP_0',      # required
+      'init_name'                  : 'dalsys',              # required
+      'init_function'              : 'DALSYS_Init',         # required
+      'dependencies'               : ['PDCInt','PDCInt_user'],
+   }
+
+   RCINIT_IMG = ['CORE_MODEM', 'CORE_QDSP6_SW']
+   env.AddRCInitFunc( RCINIT_IMG, RCINIT_DALSYS );
+
+   if env.GetUsesFlag('USES_SENSOR_IMG') is True:
+      env.AddRCInitFunc( 'CORE_QDSP6_SENSOR_SW', RCINIT_DALSYS )
+
+   if env.GetUsesFlag('USES_AUDIO_IMG') is True:
+      env.AddRCInitFunc( 'CORE_QDSP6_AUDIO_SW', RCINIT_DALSYS )

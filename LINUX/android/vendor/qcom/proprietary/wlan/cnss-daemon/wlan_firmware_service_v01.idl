@@ -1,0 +1,2301 @@
+/*****************************************************************************
+  @FILE     wlan_firmware_service_v01.idl
+
+  @BRIEF    WLAN Firmware service API between APSS and Modem
+
+  @DESCRIPTION
+  This specification documents Major Version 1 of the Qualcomm technologies, Inc
+  Messaging Interface (QMI) for WLAN Firmware Service (QMI_WLFW).
+
+  WLAN Host runs on APSS and WLAN Firmware runs on Modem. This service
+  is used for downloading WLAN calibration data, WLAN board data and passing
+  WLAN on/off status information from APSS to Modem. WLAN HOST plays the role
+  of WLFW QMI client and WLAN Firmware plays the role of WLFW QMI server.
+  There are two clients using this service. One is in user-space responsible for
+  WLAN calibration data and WLAN board data. The other client is in
+  kernel-space responsible for WLAN on/off information.
+
+  @Copyright Copyright (c) 2015-2019 Qualcomm Technologies, Inc.
+  All Rights Reserved.
+  Confidential and Proprietary - Qualcomm Technologies, Inc.
+
+*****************************************************************************/
+
+include "common_v01.idl";
+
+revision 1;
+
+
+//! Maximum number of copy engine
+const QMI_WLFW_MAX_NUM_CE = 12;
+//! Maximum number of copy engine service
+const QMI_WLFW_MAX_NUM_SVC = 24;
+//! Maximum data size
+const QMI_WLFW_MAX_DATA_SIZE = 6144;
+//! Maximum number of calibration data files
+const QMI_WLFW_MAX_NUM_CAL = 5;
+//! Maximum string length
+const QMI_WLFW_MAX_STR_LEN = 16;
+//! Maximum number of shadow registers
+const QMI_WLFW_MAX_NUM_SHADOW_REG = 24;
+//! Maximum number of shadow registers version 2
+const QMI_WLFW_MAX_NUM_SHADOW_REG_V2 = 36;
+//! Maximum number of memory regions
+const QMI_WLFW_MAX_NUM_MEMORY_REGIONS = 2;
+//! Maximum number of memory configuration
+const QMI_WLFW_MAX_NUM_MEM_CFG = 2;
+//! Maxinum number of memory segment
+const QMI_WLFW_MAX_NUM_MEM_SEG = 32;
+//! Maximum timestamp length
+const QMI_WLFW_MAX_TIMESTAMP_LEN = 32;
+//! WLAN MAC address size
+const QMI_WLFW_MAC_ADDR_SIZE = 6;
+//! Maximum FW build ID length
+const QMI_WLFW_MAX_BUILD_ID_LEN = 128;
+//! Maximum Function Name length
+const QMI_WLFW_FUNCTION_NAME_LEN = 128;
+//! Maximum athdiag data size
+const QMI_WLFW_MAX_ATHDIAG_DATA_SIZE = 6144;
+//! Maxinum number of GPIO
+const QMI_WLFW_MAX_NUM_GPIO = 32;
+
+//! WLAN driver mode
+enum {
+  QMI_WLFW_MISSION,
+  /**< Mission mode */
+  QMI_WLFW_FTM,
+  /**< FTM mode */
+  QMI_WLFW_EPPING,
+  /**< Epping mode */
+  QMI_WLFW_WALTEST,
+  /**< WAL test mode */
+  QMI_WLFW_OFF,
+  /**< OFF mode */
+  QMI_WLFW_CCPM,
+  /**< CCPM unit test */
+  QMI_WLFW_QVIT,
+  /**< QVIT mode */
+  QMI_WLFW_CALIBRATION
+  /**< CALIBRATION mode */
+} wlfw_driver_mode_enum;
+
+//! Calibration file ID
+enum {
+  QMI_WLFW_CAL_TEMP_IDX_0,
+  /**< temp 25C file */
+  QMI_WLFW_CAL_TEMP_IDX_1,
+  /**< temp 45C file */
+  QMI_WLFW_CAL_TEMP_IDX_2,
+  /**< temp 5C file */
+  QMI_WLFW_CAL_TEMP_IDX_3,
+  /**< temp 65C file */
+  QMI_WLFW_CAL_TEMP_IDX_4
+  /**< temp -15C file */
+} wlfw_cal_temp_id_enum;
+
+//! Pipe direction
+enum {
+  QMI_WLFW_PIPEDIR_NONE,
+  QMI_WLFW_PIPEDIR_IN,
+  /**< Target to Host */
+  QMI_WLFW_PIPEDIR_OUT,
+  /**< Host to Target */
+  QMI_WLFW_PIPEDIR_INOUT
+  /**< Bidirectional */
+} wlfw_pipedir_enum;
+
+enum {
+  QMI_WLFW_MEM_TYPE_MSA,
+  /**< MSA memory */
+  QMI_WLFW_MEM_TYPE_DDR,
+  /**< DDR memory */
+  QMI_WLFW_MEM_BDF,
+  /**< BDF memory */
+  QMI_WLFW_MEM_M3,
+  /**< M3 memory */
+  QMI_WLFW_MEM_CAL,
+  /**< Calibration data memory */
+  QMI_WLFW_MEM_DPD,
+  /**< DPD memory */
+  QMI_WLFW_MEM_QDSS
+  /**< QDSS trace memory */
+} wlfw_mem_type_enum;
+
+enum {
+  QMI_WLFW_QDSS_TRACE_OFF,
+  /**< QDSS trace off */
+  QMI_WLFW_QDSS_TRACE_ON
+  /**< QDSS trace on */
+} wlfw_qdss_trace_mode_enum;
+
+//! Copy engine attribute flag values
+mask32 {
+   QMI_WLFW_CE_ATTR_FLAGS                  = 0x00,
+   QMI_WLFW_CE_ATTR_NO_SNOOP               = 0x01,
+   /**< NonSnooping */
+   QMI_WLFW_CE_ATTR_BYTE_SWAP_DATA         = 0x02,
+   /**< Byte swap data */
+   QMI_WLFW_CE_ATTR_SWIZZLE_DESCRIPTORS    = 0x04,
+   /**< Swizzle descriptors */
+   QMI_WLFW_CE_ATTR_DISABLE_INTR           = 0x08,
+   /**< No interrupt on copy completion */
+   QMI_WLFW_CE_ATTR_ENABLE_POLL            = 0x10
+   /**< Poll for residue */
+} wlfw_ce_attr_mask;
+
+//!WLAN FW mask
+mask {
+  QMI_WLFW_ALREADY_REGISTERED             = 0x01,
+  /**< Already registered */
+  QMI_WLFW_FW_READY                       = 0x02,
+  /**< FW is ready */
+  QMI_WLFW_MSA_READY                      = 0x04,
+  /**< MSA configuration is ready */
+  QMI_WLFW_FW_MEM_READY                   = 0x08,
+  /**< Memory is ready */
+  QMI_WLFW_FW_INIT_DONE                   = 0x10
+  /**< FW initialization is done */
+} wlfw_fw_mask;
+
+//!WLAN dynamic feature mask
+mask {
+  QMI_WLFW_FW_REJUVENATE                  = 0x01
+  /**< FW rejuvenate is enabled */
+} wlfw_dynamic_feature_mask;
+
+//! structure for copy engine configuration
+struct {
+  uint32 pipe_num;
+  wlfw_pipedir_enum pipe_dir;
+  uint32 nentries;
+  uint32 nbytes_max;
+  wlfw_ce_attr_mask flags;
+} wlfw_ce_tgt_pipe_cfg_s;
+
+//! structure for copy engine service configuration
+struct {
+  uint32 service_id;
+  wlfw_pipedir_enum pipe_dir;
+  uint32 pipe_num;
+} wlfw_ce_svc_pipe_cfg_s;
+
+//! structure for shadow register
+struct {
+  uint16 id;
+  uint16 offset;
+} wlfw_shadow_reg_cfg_s;
+
+//! structure for shadow register version 2
+struct {
+  uint32 addr;
+} wlfw_shadow_reg_v2_cfg_s;
+
+//! structure for read index update memory information
+struct {
+  uint32 base_addr_low;
+  uint32 base_addr_high;
+} wlfw_rri_over_ddr_cfg_s;
+
+//! structure for CE MSI configuration
+struct {
+  uint16 ce_id;
+  uint16 msi_vector;
+} wlfw_msi_cfg_s;
+
+//! structure for memory region information
+struct {
+  uint64 region_addr;
+  uint32 size;
+  uint8 secure_flag;
+} wlfw_memory_region_info_s;
+
+//! structure for memory configuration information
+struct {
+  uint64 offset;
+  uint32 size;
+  uint8 secure_flag;
+} wlfw_mem_cfg_s;
+
+//! structure for memory segment request information
+struct {
+  uint32 size;
+  wlfw_mem_type_enum type;
+  wlfw_mem_cfg_s mem_cfg<QMI_WLFW_MAX_NUM_MEM_CFG>;
+} wlfw_mem_seg_s;
+
+//! structure for memory segment allocation information
+struct {
+  uint64 addr;
+  uint32 size;
+  wlfw_mem_type_enum type;
+  boolean restore;
+} wlfw_mem_seg_resp_s;
+
+//! structure for RF chip information
+struct {
+  uint32 chip_id;
+  uint32 chip_family;
+} wlfw_rf_chip_info_s;
+
+//! structure for RF board information
+struct {
+  uint32 board_id;
+} wlfw_rf_board_info_s;
+
+//! structure for SOC information
+struct {
+  uint32 soc_id;
+} wlfw_soc_info_s;
+
+//! structure for FW version information
+struct {
+  uint32 fw_version;
+  string fw_build_timestamp<QMI_WLFW_MAX_TIMESTAMP_LEN>;
+} wlfw_fw_version_info_s;
+
+//============================================================================
+/** @COMMAND QMI_WLFW_IND_REGISTER
+    @BRIEF This command sends client interested indications
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @EQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_IND_REGISTER_REQ
+//! @TYPE    Request
+//! @SENDER  Control point
+//----------------------------------------------------------------------------
+
+message {
+  //! Subscribe option of wlfw_fw_ready_ind_msg
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional boolean fw_ready_enable;
+  //! Subscribe option of wlfw_initiate_cal_download_ind_msg
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional boolean initiate_cal_download_enable;
+  //! Subscribe option of wlfw_initiate_cal_update_ind_msg
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional boolean initiate_cal_update_enable;
+  //! Subscribe option of wlfw_msa_ready_ind_msg
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional boolean msa_ready_enable;
+  //! Subscribe option of wlfw_pin_connect_result_ind_msg
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional boolean pin_connect_result_enable;
+  //! Unique client ID
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint32 client_id;
+  //! Subscribe option of wlfw_request_mem_ind_msg
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional boolean request_mem_enable;
+  //! Subscribe option of wlfw_fw_mem_ready_ind_msg
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional boolean fw_mem_ready_enable;
+  //! Subscribe option of wlfw_fw_init_done_ind_msg
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional boolean fw_init_done_enable;
+  //! Subscribe option of wlfw_rejuvenate_ind_msg
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint32 rejuvenate_enable;
+  //! Subscribe option of wlfw_xo_cal_ind_msg
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional boolean xo_cal_enable;
+  //! Subscribe option of wlfw_cal_done_ing_msg
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional boolean cal_done_enable;
+  //! Subscribe option of wlfw_qdss_trace_req_mem_ind_msg
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional boolean qdss_trace_req_mem_enable;
+  //! Subscribe option of wlfw_qdss_trace_save_ind_msg
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional boolean qdss_trace_save_enable;
+  //! Subscribe option of wlfw_qdss_trace_free_ind_msg
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional boolean qdss_trace_free_enable;
+} wlfw_ind_register_req_msg;
+
+//! @MSG     QMI_WLFW_IND_REGISTER_RESP
+//! @TYPE    Response
+//! @SENDER  Service
+//----------------------------------------------------------------------------
+
+message {
+  //! Result Code
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory qmi_response_type resp;           //!< Standard response type.
+  //! FW Status Mask
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional wlfw_fw_mask fw_status;
+} wlfw_ind_register_resp_msg;
+
+/** @ERROR
+   QMI_ERR_NONE        No error in the request
+   QMI_ERR_INTERNAL    Unexpected error occurred during processing
+*/
+
+/** @DESCRIPTION
+This command sends client interested indications to server.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_FW_READY_IND
+    @BRIEF indicates a client that calibration is done and FW can be turned on
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @REQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_FW_READY_IND
+//! @TYPE    Indication
+//! @SENDER  Service
+//! @SCOPE   Unicast
+//----------------------------------------------------------------------------
+
+message {
+} wlfw_fw_ready_ind_msg;
+
+/** @DESCRIPTION
+This indication is sent from a service to a client, indicating that FW is
+ready to be turned on.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_MSA_READY_IND
+    @BRIEF indicates a client that FW is ready with memory mapping on server side
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @REQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_MSA_READY_IND
+//! @TYPE    Indication
+//! @SENDER  Service
+//! @SCOPE   Unicast
+//----------------------------------------------------------------------------
+
+message {
+} wlfw_msa_ready_ind_msg;
+
+/** @DESCRIPTION
+This indication is sent from a service to a client, indicating that FW
+is done with memory mapping.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_PIN_CONNECT_RESULT_IND
+    @BRIEF indicates a client that HAL-PHY done with Pin connect test on server side
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @REQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_PIN_CONNECT_RESULT_IND
+//! @TYPE    Indication
+//! @SENDER  Service
+//! @SCOPE   Unicast
+//----------------------------------------------------------------------------
+
+message {
+  //! Power Grid Test Result
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint32 pwr_pin_result;
+  //! IO Pin Test Result
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint32 phy_io_pin_result;
+  //! RF Pin Test Result
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint32 rf_pin_result;
+} wlfw_pin_connect_result_ind_msg;
+
+/** @DESCRIPTION
+This indication is sent from a service to a client, indicating the HAL-PHY
+pin connect test result.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_WLAN_MODE
+    @BRIEF This command sends WLAN mode
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @EQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_WLAN_MODE_REQ
+//! @TYPE    Request
+//! @SENDER  Control point
+//----------------------------------------------------------------------------
+
+message {
+  //! WLAN Driver Mode
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory wlfw_driver_mode_enum mode;
+  //! Hardware Debug option
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional boolean hw_debug;
+} wlfw_wlan_mode_req_msg;
+
+//! @MSG     QMI_WLFW_WLAN_MODE_RESP
+//! @TYPE    Response
+//! @SENDER  Service
+//----------------------------------------------------------------------------
+
+message {
+  //! Result Code
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory qmi_response_type resp;           //!< Standard response type.
+} wlfw_wlan_mode_resp_msg;
+
+/** @ERROR
+   QMI_ERR_NONE        No error in the request
+   QMI_ERR_INTERNAL    Unexpected error occurred during processing
+*/
+
+/** @DESCRIPTION
+This command sends WLAN mode.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_WLAN_CFG
+    @BRIEF This command sends WLAN driver's configurations
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @REQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_WLAN_CFG_REQ
+//! @TYPE    Request
+//! @SENDER  Control point
+//----------------------------------------------------------------------------
+
+message {
+  //! Host driver version
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional string host_version<QMI_WLFW_MAX_STR_LEN>;
+  //! CE Configuration Information
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional wlfw_ce_tgt_pipe_cfg_s tgt_cfg<QMI_WLFW_MAX_NUM_CE>;
+  //! CE Service Configuration Information
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional wlfw_ce_svc_pipe_cfg_s svc_cfg<QMI_WLFW_MAX_NUM_SVC>;
+  //! Shadow Registers Information
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional wlfw_shadow_reg_cfg_s shadow_reg<QMI_WLFW_MAX_NUM_SHADOW_REG>;
+  //! Shadow Registers Version 2 Information
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional wlfw_shadow_reg_v2_cfg_s shadow_reg_v2<QMI_WLFW_MAX_NUM_SHADOW_REG_V2>;
+  //! Host memory address for read index update
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional wlfw_rri_over_ddr_cfg_s rri_over_ddr_cfg;
+  //! MSI Config for copy engines
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional wlfw_msi_cfg_s msi_cfg<QMI_WLFW_MAX_NUM_CE>;
+} wlfw_wlan_cfg_req_msg;
+
+//! @MSG     QMI_WLFW_WLAN_CFG_RESP
+//! @TYPE    Response
+//! @SENDER  Service
+//----------------------------------------------------------------------------
+
+message {
+  //! Result Code
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory qmi_response_type resp;           //!< Standard response type.
+} wlfw_wlan_cfg_resp_msg;
+
+/** @ERROR
+   QMI_ERR_NONE        No error in the request
+   QMI_ERR_INTERNAL    Unexpected error occurred during processing
+*/
+
+/** @DESCRIPTION
+This command sends WLAN driver's configurations.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_CAP
+    @BRIEF This command asks for server's capabilities
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @REQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_CAP_REQ
+//! @TYPE    Request
+//! @SENDER  Control point
+//----------------------------------------------------------------------------
+
+message {
+} wlfw_cap_req_msg;
+
+//! @MSG     QMI_WLFW_CAP_RESP
+//! @TYPE    Response
+//! @SENDER  Service
+//----------------------------------------------------------------------------
+
+message {
+  //! Result Code
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory qmi_response_type resp;           //!< Standard response type.
+  //! RF Chip Information
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional wlfw_rf_chip_info_s chip_info;
+  //! RF Board Information
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional wlfw_rf_board_info_s board_info;
+  //! SOC Information
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional wlfw_soc_info_s soc_info;
+  //! FW Version Information
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional wlfw_fw_version_info_s fw_version_info;
+  //! WLAN FW Build ID
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional string fw_build_id<QMI_WLFW_MAX_BUILD_ID_LEN>;
+  //! Total MAC Number
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint8 num_macs;
+  //! Proper voltage for open loop CPR
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint32 voltage_mv;
+} wlfw_cap_resp_msg;
+
+/** @ERROR
+   QMI_ERR_NONE        No error in the request
+   QMI_ERR_INTERNAL    Unexpected error occurred during processing
+*/
+
+/** @DESCRIPTION
+This command requires server's capabilities.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_BDF_DOWNLOAD
+    @BRIEF This command sends board data file to server
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @EQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_BDF_DOWNLOAD_REQ
+//! @TYPE    Request
+//! @SENDER  Control point
+//----------------------------------------------------------------------------
+
+message {
+  //! Validity of BDF Data
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory boolean valid;
+  //! File ID
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional wlfw_cal_temp_id_enum file_id;
+  //! Total Size
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint32 total_size;
+  //! Segment ID
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint32 seg_id;
+  //! BDF Data
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint8 data<QMI_WLFW_MAX_DATA_SIZE>;
+  //! End Mark of a File
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional boolean end;
+  //! Board Data File Type
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint8 bdf_type;
+} wlfw_bdf_download_req_msg;
+
+//! @MSG     QMI_WLFW_BDF_DOWNLOAD_RESP
+//! @TYPE    Response
+//! @SENDER  Service
+//----------------------------------------------------------------------------
+
+message {
+  //! Result Code
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory qmi_response_type resp;           //!< Standard response type.
+} wlfw_bdf_download_resp_msg;
+
+/** @ERROR
+   QMI_ERR_NONE        No error in the request
+   QMI_ERR_INTERNAL    Unexpected error occurred during processing
+*/
+
+/** @DESCRIPTION
+This command downloads BDF file to server.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_CAL_REPORT
+    @BRIEF This command sends calibration meta-data to server
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @EQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_CAL_REPORT_REQ
+//! @TYPE    Request
+//! @SENDER  Control point
+//----------------------------------------------------------------------------
+
+message {
+  //! Calibration Meta-data
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory wlfw_cal_temp_id_enum meta_data<QMI_WLFW_MAX_NUM_CAL>;
+  //! PMIC XO Calibration Data
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint8 xo_cal_data;
+} wlfw_cal_report_req_msg;
+
+//! @MSG     QMI_WLFW_CAL_REPORT_RESP
+//! @TYPE    Response
+//! @SENDER  Service
+//----------------------------------------------------------------------------
+
+message {
+  //! Result Code
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory qmi_response_type resp;           //!< Standard response type.
+} wlfw_cal_report_resp_msg;
+
+/** @ERROR
+   QMI_ERR_NONE        No error in the request
+   QMI_ERR_INTERNAL    Unexpected error occurred during processing
+*/
+
+/** @DESCRIPTION
+This command sends calibration meta-data to server.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_INITIATE_CAL_DOWNLOAD_IND
+    @BRIEF This command tells which calibration data to download
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @REQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_INITIATE_CAL_DOWNLOAD_IND
+//! @TYPE    Indication
+//! @SENDER  Service
+//! @SCOPE   Unicast
+//----------------------------------------------------------------------------
+
+message {
+  //! Calibration File ID
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory wlfw_cal_temp_id_enum cal_id;
+  //! Total Size
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint32 total_size;
+  //! Offset of cal data
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint32 cal_data_location;
+} wlfw_initiate_cal_download_ind_msg;
+
+/** @DESCRIPTION
+This indication tells which calibration data file to download.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_CAL_DOWNLOAD
+    @BRIEF This command sends calibration data to server
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @EQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_CAL_DOWNLOAD_REQ
+//! @TYPE    Request
+//! @SENDER  Control point
+//----------------------------------------------------------------------------
+
+message {
+  //! Validity of Calibration Data
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory boolean valid;
+  //! File ID
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional wlfw_cal_temp_id_enum file_id;
+  //! Total Size
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint32 total_size;
+  //! Segment ID
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint32 seg_id;
+  //! Calibration Data
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint8 data<QMI_WLFW_MAX_DATA_SIZE>;
+  //! End Mark of a File
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional boolean end;
+  //! Offset of cal data
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint32 cal_data_location;
+} wlfw_cal_download_req_msg;
+
+//! @MSG     QMI_WLFW_CAL_DOWNLOAD_RESP
+//! @TYPE    Response
+//! @SENDER  Service
+//----------------------------------------------------------------------------
+
+message {
+  //! Result Code
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory qmi_response_type resp;           //!< Standard response type.
+} wlfw_cal_download_resp_msg;
+
+/** @ERROR
+   QMI_ERR_NONE        No error in the request
+   QMI_ERR_INTERNAL    Unexpected error occurred during processing
+*/
+
+/** @DESCRIPTION
+This command sends calibration data to server.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_INITIATE_CAL_UPDATE_IND
+    @BRIEF This command tells client to update local-stored calibration data
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @REQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_INITIATE_CAL_UPDATE_IND
+//! @TYPE    Indication
+//! @SENDER  Service
+//! @SCOPE   Unicast
+//----------------------------------------------------------------------------
+
+message {
+  //! Calibration Data ID
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory wlfw_cal_temp_id_enum cal_id;
+  //! Total Size of Data
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory uint32 total_size;
+  //! Offset of cal data
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint32 cal_data_location;
+} wlfw_initiate_cal_update_ind_msg;
+
+/** @DESCRIPTION
+This indication tells client to update local-stored calibration data.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_CAL_UPDATE
+    @BRIEF This command pulls calibration data from server
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @EQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_CAL_UPDATE_REQ
+//! @TYPE    Request
+//! @SENDER  Control point
+//----------------------------------------------------------------------------
+
+message {
+  //! Calibration Data ID
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory wlfw_cal_temp_id_enum cal_id;
+  //! Calibration Data Segment ID
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory uint32 seg_id;
+} wlfw_cal_update_req_msg;
+
+//! @MSG     QMI_WLFW_CAL_UPDATE_RESP
+//! @TYPE    Response
+//! @SENDER  Service
+//----------------------------------------------------------------------------
+
+message {
+  //! Result Code
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory qmi_response_type resp;           //!< Standard response type.
+  //! File ID
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional wlfw_cal_temp_id_enum file_id;
+  //! Total Size
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint32 total_size;
+  //! Segment ID
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint32 seg_id;
+  //! Calibration Data
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint8 data<QMI_WLFW_MAX_DATA_SIZE>;
+  //! End Mark of a File
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional boolean end;
+  //! Offset of cal data
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint32 cal_data_location;
+} wlfw_cal_update_resp_msg;
+
+/** @ERROR
+   QMI_ERR_NONE        No error in the request
+   QMI_ERR_INTERNAL    Unexpected error occurred during processing
+*/
+
+/** @DESCRIPTION
+This command pulls calibration data from server.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_MSA_INFO
+    @BRIEF This command sends memory info to FW.
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @EQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_MSA_INFO_REQ
+//! @TYPE    Request
+//! @SENDER  Control point
+//----------------------------------------------------------------------------
+
+message {
+  //! Physical Memory Address
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory uint64 msa_addr;
+  //! Size of Memory in Bytes
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory uint32 size;
+} wlfw_msa_info_req_msg;
+
+//! @MSG     QMI_WLFW_MSA_INFO_RESP
+//! @TYPE    Response
+//! @SENDER  Service
+//----------------------------------------------------------------------------
+
+message {
+  //! Result Code
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory qmi_response_type resp;           //!< Standard response type.
+  //! Memory Region Information
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory wlfw_memory_region_info_s  mem_region_info<QMI_WLFW_MAX_NUM_MEMORY_REGIONS>;
+} wlfw_msa_info_resp_msg;
+
+/** @ERROR
+   QMI_ERR_NONE        No error in the request
+   QMI_ERR_INTERNAL    Unexpected error occurred during processing
+*/
+
+/** @DESCRIPTION
+This command send memory map infomation to server.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_MSA_READY
+    @BRIEF This command sends memory map ready info to FW.
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @EQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_MSA_READY_REQ
+//! @TYPE    Request
+//! @SENDER  Control point
+//----------------------------------------------------------------------------
+
+message {
+} wlfw_msa_ready_req_msg;
+
+//! @MSG     QMI_WLFW_MSA_READY_RESP
+//! @TYPE    Response
+//! @SENDER  Service
+//----------------------------------------------------------------------------
+
+message {
+  //! Result Code
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory qmi_response_type resp;           //!< Standard response type.
+} wlfw_msa_ready_resp_msg;
+
+/** @ERROR
+   QMI_ERR_NONE        No error in the request
+   QMI_ERR_INTERNAL    Unexpected error occurred during processing
+*/
+
+/** @DESCRIPTION
+This command send memory map ready infomation to server.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_INI
+    @BRIEF This command sends WLAN INI configuration to FW.
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @EQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_INI_REQ
+//! @TYPE    Request
+//! @SENDER  Control point
+//----------------------------------------------------------------------------
+
+message {
+  //! FW Debug Log Option
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional boolean enablefwlog;
+} wlfw_ini_req_msg;
+
+//! @MSG     QMI_WLFW_INI_RESP
+//! @TYPE    Response
+//! @SENDER  Service
+//----------------------------------------------------------------------------
+
+message {
+  //! Result Code
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory qmi_response_type resp;           //!< Standard response type.
+} wlfw_ini_resp_msg;
+
+/** @ERROR
+   QMI_ERR_NONE        No error in the request
+   QMI_ERR_INTERNAL    Unexpected error occurred during processing
+*/
+
+/** @DESCRIPTION
+This command send WLAN INI configurations to FW.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_ATHDIAG_READ
+    @BRIEF This command sends athdiag read command to FW.
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @EQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_ATHDIAG_READ_REQ
+//! @TYPE    Request
+//! @SENDER  Control point
+//----------------------------------------------------------------------------
+
+message {
+  //! Address Offset
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory uint32 offset;
+  //! Memory Type
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory uint32 mem_type;
+  //! Data Length
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory uint32 data_len;
+} wlfw_athdiag_read_req_msg;
+
+//! @MSG     QMI_WLFW_ATHDIAG_READ_RESP
+//! @TYPE    Response
+//! @SENDER  Service
+//----------------------------------------------------------------------------
+
+message {
+  //! Result Code
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory qmi_response_type resp;           //!< Standard response type.
+  //! Data
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint8 data<QMI_WLFW_MAX_ATHDIAG_DATA_SIZE>;
+} wlfw_athdiag_read_resp_msg;
+
+/** @ERROR
+   QMI_ERR_NONE        No error in the request
+   QMI_ERR_INTERNAL    Unexpected error occurred during processing
+*/
+
+/** @DESCRIPTION
+This command send athdiag read command to FW.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_ATHDIAG_WRITE
+    @BRIEF This command sends athdiag write command to FW.
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @EQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_ATHDIAG_WRITE_REQ
+//! @TYPE    Request
+//! @SENDER  Control point
+//----------------------------------------------------------------------------
+
+message {
+  //! Address Offset
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory uint32 offset;
+  //! Memory Type
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory uint32 mem_type;
+  //! Data
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory uint8 data<QMI_WLFW_MAX_ATHDIAG_DATA_SIZE>;
+} wlfw_athdiag_write_req_msg;
+
+//! @MSG     QMI_WLFW_ATHDIAG_WRITE_RESP
+//! @TYPE    Response
+//! @SENDER  Service
+//----------------------------------------------------------------------------
+
+message {
+  //! Result Code
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory qmi_response_type resp;           //!< Standard response type.
+} wlfw_athdiag_write_resp_msg;
+
+/** @ERROR
+   QMI_ERR_NONE        No error in the request
+   QMI_ERR_INTERNAL    Unexpected error occurred during processing
+*/
+
+/** @DESCRIPTION
+This command send athdiag write command to FW.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_VBATT
+    @BRIEF This command sends battery power to FW.
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @EQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_VBATT_REQ
+//! @TYPE    Request
+//! @SENDER  Control point
+//----------------------------------------------------------------------------
+
+message {
+  //! Battery Power in Micro Voltage
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory uint64 voltage_uv;
+} wlfw_vbatt_req_msg;
+
+//! @MSG     QMI_WLFW_VBATT_RESP
+//! @TYPE    Response
+//! @SENDER  Service
+//----------------------------------------------------------------------------
+
+message {
+  //! Result Code
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory qmi_response_type resp;           //!< Standard response type.
+} wlfw_vbatt_resp_msg;
+
+/** @ERROR
+   QMI_ERR_NONE        No error in the request
+   QMI_ERR_INTERNAL    Unexpected error occurred during processing
+*/
+
+/** @DESCRIPTION
+This command send battery power to FW.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_MAC_ADDR
+    @BRIEF This command sends WLAN MAC address to FW.
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @EQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_MAC_ADDR_REQ
+//! @TYPE    Request
+//! @SENDER  Control point
+//----------------------------------------------------------------------------
+
+message {
+  //! WLAN MAC address
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint8 mac_addr[QMI_WLFW_MAC_ADDR_SIZE];
+} wlfw_mac_addr_req_msg;
+
+//! @MSG     QMI_WLFW_MAC_ADDR_RESP
+//! @TYPE    Response
+//! @SENDER  Service
+//----------------------------------------------------------------------------
+
+message {
+  //! Result Code
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory qmi_response_type resp;           //!< Standard response type.
+} wlfw_mac_addr_resp_msg;
+
+/** @ERROR
+   QMI_ERR_NONE        No error in the request
+   QMI_ERR_INTERNAL    Unexpected error occurred during processing
+*/
+
+/** @DESCRIPTION
+This command send WLAN MAC address to FW.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_HOST_CAP
+    @BRIEF This command sends WLAN host capabilities to server.
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @EQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_HOST_CAP
+//! @TYPE    Request
+//! @SENDER  Control point
+//----------------------------------------------------------------------------
+
+message {
+  //! Number of Clients
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint32 num_clients;
+  //! WAKE MSI Base Data
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint32 wake_msi;
+  //! GPIO Configurations
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint32 gpios<QMI_WLFW_MAX_NUM_GPIO>;
+  //! Whether NM Modem or Full Modem is Loaded
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional boolean nm_modem;
+  //! BDF Download Support
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional boolean bdf_support;
+  //! BDF Cache Support
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional boolean bdf_cache_support;
+  //! M3 Image Download Support
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional boolean m3_support;
+  //! M3 Image Cache Support
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional boolean m3_cache_support;
+  //! Calibration Data Remote Filesys Support
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional boolean cal_filesys_support;
+  //! Calibration Data Cache Support
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional boolean cal_cache_support;
+  //! Calibration Is Done Or Not
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional boolean cal_done;
+  //! Memory Bucket Selection
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint32 mem_bucket;
+  //! Memory Configuration Mode
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint8 mem_cfg_mode;
+  //! Duration Available For Best Effort Cold Calibration
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint16 cal_duration;
+} wlfw_host_cap_req_msg;
+
+//! @MSG     QMI_WLFW_HOST_CAP_RESP
+//! @TYPE    Response
+//! @SENDER  Service
+//----------------------------------------------------------------------------
+
+message {
+  //! Result Code
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory qmi_response_type resp;           //!< Standard response type.
+} wlfw_host_cap_resp_msg;
+
+/** @ERROR
+   QMI_ERR_NONE        No error in the request
+   QMI_ERR_INTERNAL    Unexpected error occurred during processing
+*/
+
+/** @DESCRIPTION
+This command sends WLAN host capabilities to server.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_REQUEST_MEM_IND
+    @BRIEF indicates client that server requests a chunk of memory
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @REQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_REQUEST_MEM_IND
+//! @TYPE    Indication
+//! @SENDER  Service
+//! @SCOPE   Unicast
+//----------------------------------------------------------------------------
+
+message {
+  //! Memory Segment Info
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory wlfw_mem_seg_s mem_seg<QMI_WLFW_MAX_NUM_MEM_SEG>;
+} wlfw_request_mem_ind_msg;
+
+/** @DESCRIPTION
+This indication is sent from server to client, indicating the memory which
+the server needs.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_RESPOND_MEM
+    @BRIEF This command sends the requested memory to server.
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @EQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_RESPOND_MEM_REQ
+//! @TYPE    Request
+//! @SENDER  Control point
+//----------------------------------------------------------------------------
+
+message {
+  //! Allocated Memory Information
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory wlfw_mem_seg_resp_s mem_seg<QMI_WLFW_MAX_NUM_MEM_SEG>;
+} wlfw_respond_mem_req_msg;
+
+//! @MSG     QMI_WLFW_RESPOND_MEM_RESP
+//! @TYPE    Response
+//! @SENDER  Service
+//----------------------------------------------------------------------------
+
+message {
+  //! Result Code
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory qmi_response_type resp;           //!< Standard response type.
+} wlfw_respond_mem_resp_msg;
+
+/** @ERROR
+   QMI_ERR_NONE        No error in the request
+   QMI_ERR_INTERNAL    Unexpected error occurred during processing
+*/
+
+/** @DESCRIPTION
+This command sends the requested memory to server.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_FW_MEM_READY_IND
+    @BRIEF indicates a client that server has finished memory mapping
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @REQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_FW_MEM_READY_IND
+//! @TYPE    Indication
+//! @SENDER  Service
+//! @SCOPE   Unicast
+//----------------------------------------------------------------------------
+
+message {
+} wlfw_fw_mem_ready_ind_msg;
+
+/** @DESCRIPTION
+This indication is sent from server to client, indicating that server has
+finished memory mapping.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_FW_INIT_DONE_IND
+    @BRIEF indicates client that FW initialization has completed
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @REQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_FW_INIT_DONE_IND
+//! @TYPE    Indication
+//! @SENDER  Service
+//! @SCOPE   Unicast
+//----------------------------------------------------------------------------
+
+message {
+} wlfw_fw_init_done_ind_msg;
+
+/** @DESCRIPTION
+This indication is sent from server to client, indicating that FW initialization
+has completed.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_REJUVENATE_IND
+    @BRIEF indicates a client that FW will start the rejuvenate process
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @REQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_REJUVENATE_IND
+//! @TYPE    Indication
+//! @SENDER  Service
+//! @SCOPE   Unicast
+//----------------------------------------------------------------------------
+
+message {
+  //! Cause for Rejuvenation
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint8 cause_for_rejuvenation;
+  //! Request for Sub-System
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint8 requesting_sub_system;
+  //! Line Number
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint16 line_number;
+  //! WLAN rejuvenation requesting function name
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional string function_name<QMI_WLFW_FUNCTION_NAME_LEN>;
+} wlfw_rejuvenate_ind_msg;
+
+/** @DESCRIPTION
+This indication is sent from a service to a client, indicating that FW
+will perfrom rejuvenate process.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_REJUVENATE_ACK
+    @BRIEF This command is send from client to server to ack rejuvenation.
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @EQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_REJUVENATE_ACK_REQ
+//! @TYPE    Request
+//! @SENDER  Control point
+//----------------------------------------------------------------------------
+
+message {
+} wlfw_rejuvenate_ack_req_msg;
+
+//! @MSG     QMI_WLFW_REJUVENATE_ACK_RESP
+//! @TYPE    Response
+//! @SENDER  Service
+//----------------------------------------------------------------------------
+
+message {
+  //! Result Code
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory qmi_response_type resp;           //!< Standard response type.
+} wlfw_rejuvenate_ack_resp_msg;
+
+/** @ERROR
+   QMI_ERR_NONE        No error in the request
+   QMI_ERR_INTERNAL    Unexpected error occurred during processing
+*/
+
+/** @DESCRIPTION
+This command is send from client to server to ack rejuvenation.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_DYNAMIC_FEATURE_MASK
+    @BRIEF This command sends WLAN dynamic feature mask to FW.
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @EQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_DYNAMIC_FEATURE_MASK_REQ
+//! @TYPE    Request
+//! @SENDER  Control point
+//----------------------------------------------------------------------------
+
+message {
+  optional wlfw_dynamic_feature_mask mask;
+} wlfw_dynamic_feature_mask_req_msg;
+
+//! @MSG     QMI_WLFW_DYNAMIC_FEATURE_MASK_RESP
+//! @TYPE    Response
+//! @SENDER  Service
+//----------------------------------------------------------------------------
+
+message {
+  //! Result Code
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory qmi_response_type resp;           //!< Standard response type.
+  //! Previous FW Feature Mask
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional wlfw_dynamic_feature_mask prev_mask;
+  //! Current FW Feature Mask
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional wlfw_dynamic_feature_mask curr_mask;
+} wlfw_dynamic_feature_mask_resp_msg;
+
+/** @ERROR
+   QMI_ERR_NONE        No error in the request
+   QMI_ERR_INTERNAL    Unexpected error occurred during processing
+*/
+
+/** @DESCRIPTION
+This command sends WLAN feature mask to FW.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_M3_INFO
+    @BRIEF This command sends the M3 information to server.
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @EQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_M3_INFO_REQ
+//! @TYPE    Request
+//! @SENDER  Control point
+//----------------------------------------------------------------------------
+
+message {
+  //! Physical Memory Address
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory uint64 addr;
+  //! Size of Memory in Bytes
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory uint32 size;
+} wlfw_m3_info_req_msg;
+
+//! @MSG     QMI_WLFW_M3_INFO_RESP
+//! @TYPE    Response
+//! @SENDER  Service
+//----------------------------------------------------------------------------
+
+message {
+  //! Result Code
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory qmi_response_type resp;           //!< Standard response type.
+} wlfw_m3_info_resp_msg;
+
+/** @ERROR
+   QMI_ERR_NONE        No error in the request
+   QMI_ERR_INTERNAL    Unexpected error occurred during processing
+*/
+
+/** @DESCRIPTION
+This command sends the M3 image information to server.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_XO_CAL_IND
+    @BRIEF sets PMIC XO calibration data to client
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @REQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_XO_CAL_IND
+//! @TYPE    Indication
+//! @SENDER  Service
+//! @SCOPE   Unicast
+//----------------------------------------------------------------------------
+
+message {
+  //! PMIC XO Calibration Data
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory uint8 xo_cal_data;
+} wlfw_xo_cal_ind_msg;
+
+/** @DESCRIPTION
+This indication sets PMIC XO calibration data to client.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_CAL_DONE_IND
+    @BRIEF indicates calibration is done on FW side
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @REQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_CAL_DONE_IND
+//! @TYPE    Indication
+//! @SENDER  Service
+//! @SCOPE   Unicast
+//----------------------------------------------------------------------------
+
+message {
+} wlfw_cal_done_ind_msg;
+
+/** @DESCRIPTION
+This indication is sent from server to client, indicating calibration is done.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_QDSS_TRACE_REQ_MEM_IND
+    @BRIEF This command tells client to allocate buffer for QDSS trace
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @REQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_QDSS_TRACE_REQ_MEM_IND
+//! @TYPE    Indication
+//! @SENDER  Service
+//! @SCOPE   Unicast
+//----------------------------------------------------------------------------
+
+message {
+  //! Memory Segment Info
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory wlfw_mem_seg_s mem_seg<QMI_WLFW_MAX_NUM_MEM_SEG>;
+} wlfw_qdss_trace_req_mem_ind_msg;
+
+/** @DESCRIPTION
+This indication tells client to allocate buffer for QDSS trace.
+*/
+
+
+//============================================================================
+/** @COMMAND QMI_WLFW_QDSS_TRACE_MEM_INFO
+    @BRIEF This command sends QDSS trace buffer address to server
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @EQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_QDSS_TRACE_MEM_INFO_REQ
+//! @TYPE    Request
+//! @SENDER  Control point
+//----------------------------------------------------------------------------
+
+message {
+  //! Allocated Memory Information
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory wlfw_mem_seg_resp_s mem_seg<QMI_WLFW_MAX_NUM_MEM_SEG>;
+} wlfw_qdss_trace_mem_info_req_msg;
+
+//! @MSG     QMI_WLFW_QDSS_TRACE_MEM_INFO_RESP
+//! @TYPE    Response
+//! @SENDER  Service
+//----------------------------------------------------------------------------
+
+message {
+  //! Result Code
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory qmi_response_type resp;           //!< Standard response type.
+} wlfw_qdss_trace_mem_info_resp_msg;
+
+/** @ERROR
+   QMI_ERR_NONE        No error in the request
+   QMI_ERR_INTERNAL    Unexpected error occurred during processing
+*/
+
+/** @DESCRIPTION
+This command sends QDSS trace buffer address to server.
+*/
+
+
+//============================================================================
+/** @COMMAND QMI_WLFW_QDSS_TRACE_SAVE_IND
+    @BRIEF This command tells client to save QDSS trace data
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @REQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_QDSS_TRACE_SAVE_IND
+//! @TYPE    Indication
+//! @SENDER  Service
+//! @SCOPE   Unicast
+//----------------------------------------------------------------------------
+
+message {
+  //! QDSS Trace Data Source
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory uint32 source;
+  //! Total Size of Data
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory uint32 total_size;
+  //! Memory Segment Information
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional wlfw_mem_seg_resp_s mem_seg<QMI_WLFW_MAX_NUM_MEM_SEG>;
+  //!File Name
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional string file_name<QMI_WLFW_MAX_STR_LEN>;
+} wlfw_qdss_trace_save_ind_msg;
+
+/** @DESCRIPTION
+This indication tells client to save QDSS trace data.
+*/
+
+
+//============================================================================
+/** @COMMAND QMI_WLFW_QDSS_TRACE_DATA
+    @BRIEF This command pulls QDSS trace data from server
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @EQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_QDSS_TRACE_DATA_REQ
+//! @TYPE    Request
+//! @SENDER  Control point
+//----------------------------------------------------------------------------
+
+message {
+  //! QDSS Trace Data Segment ID
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory uint32 seg_id;
+} wlfw_qdss_trace_data_req_msg;
+
+//! @MSG     QMI_WLFW_QDSS_TRACE_DATA_RESP
+//! @TYPE    Response
+//! @SENDER  Service
+//----------------------------------------------------------------------------
+
+message {
+  //! Result Code
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory qmi_response_type resp;           //!< Standard response type.
+  //! Total Size
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint32 total_size;
+  //! Segment ID
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint32 seg_id;
+  //! Calibration Data
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint8 data<QMI_WLFW_MAX_DATA_SIZE>;
+  //! End Mark of a File
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional boolean end;
+} wlfw_qdss_trace_data_resp_msg;
+
+/** @ERROR
+   QMI_ERR_NONE        No error in the request
+   QMI_ERR_INTERNAL    Unexpected error occurred during processing
+*/
+
+/** @DESCRIPTION
+This command pulls QDSS trace data from server.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_QDSS_TRACE_CONFIG_DOWNLOAD
+    @BRIEF This command sends QDSS trace configuration file to server
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @EQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_QDSS_TRACE_CONFIG_DOWNLOAD_REQ
+//! @TYPE    Request
+//! @SENDER  Control point
+//----------------------------------------------------------------------------
+
+message {
+  //! Total Size
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint32 total_size;
+  //! Segment ID
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint32 seg_id;
+  //! BDF Data
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint8 data<QMI_WLFW_MAX_DATA_SIZE>;
+  //! End Mark of a File
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional boolean end;
+} wlfw_qdss_trace_config_download_req_msg;
+
+//! @MSG     QMI_WLFW_QDSS_TRACE_CONFIG_DOWNLOAD_RESP
+//! @TYPE    Response
+//! @SENDER  Service
+//----------------------------------------------------------------------------
+
+message {
+  //! Result Code
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory qmi_response_type resp;           //!< Standard response type.
+} wlfw_qdss_trace_config_download_resp_msg;
+
+/** @ERROR
+   QMI_ERR_NONE        No error in the request
+   QMI_ERR_INTERNAL    Unexpected error occurred during processing
+*/
+
+/** @DESCRIPTION
+This command downloads QDSS trace configuration file to server.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_QDSS_TRACE_MODE
+    @BRIEF This command sends QDSS trace start/stop command to server
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @EQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_QDSS_TRACE_MODE_REQ
+//! @TYPE    Request
+//! @SENDER  Control point
+//----------------------------------------------------------------------------
+
+message {
+  //! QDSS Trace Mode
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional wlfw_qdss_trace_mode_enum mode;
+  //! Mode Options
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint64 option;
+} wlfw_qdss_trace_mode_req_msg;
+
+//! @MSG     QMI_WLFW_QDSS_TRACE_MODE_RESP
+//! @TYPE    Response
+//! @SENDER  Service
+//----------------------------------------------------------------------------
+
+message {
+  //! Result Code
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory qmi_response_type resp;           //!< Standard response type.
+} wlfw_qdss_trace_mode_resp_msg;
+
+/** @ERROR
+   QMI_ERR_NONE        No error in the request
+   QMI_ERR_INTERNAL    Unexpected error occurred during processing
+*/
+
+/** @DESCRIPTION
+This command sends QDSS trace start/stop command to server.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_QDSS_TRACE_FREE_IND
+    @BRIEF This command frees QDSS trace memory
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @EQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_QDSS_TRACEFREE_IND
+//! @TYPE    Indication
+//! @SENDER  Service
+//! @SCOPE   Unicast
+//----------------------------------------------------------------------------
+
+message {
+  //! QDSS Memory Segment Information
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional wlfw_mem_seg_resp_s mem_seg<QMI_WLFW_MAX_NUM_MEM_SEG>;
+} wlfw_qdss_trace_free_ind_msg;
+
+/** @DESCRIPTION
+This command frees QDSS trace memory.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_SHUTDOWN
+    @BRIEF This command sends WLAN SHUTDOWN configuration to FW.
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @EQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_SHUTDOWN_REQ
+//! @TYPE    Request
+//! @SENDER  Control point
+//----------------------------------------------------------------------------
+
+message {
+  //! Shutdown config
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional boolean shutdown;
+} wlfw_shutdown_req_msg;
+
+//! @MSG     QMI_WLFW_SHUTDOWN_RESP
+//! @TYPE    Response
+//! @SENDER  Service
+//----------------------------------------------------------------------------
+
+message {
+  //! Result Code
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory qmi_response_type resp;           //!< Standard response type.
+} wlfw_shutdown_resp_msg;
+
+/** @ERROR
+   QMI_ERR_NONE        No error in the request
+   QMI_ERR_INTERNAL    Unexpected error occurred during processing
+*/
+
+/** @DESCRIPTION
+This command send WLAN graceful shutdown message to FW.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_ANTENNA_SWITCH
+    @BRIEF This command queries whether antenna switch is enabled or not
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @EQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_ANTENNA_SWITCH_REQ
+//! @TYPE    Request
+//! @SENDER  Control point
+//----------------------------------------------------------------------------
+
+message {
+} wlfw_antenna_switch_req_msg;
+
+//! @MSG     QMI_WLFW_ANTENNA_SWITCH_RESP
+//! @TYPE    Response
+//! @SENDER  Service
+//----------------------------------------------------------------------------
+
+message {
+  //! Result Code
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory qmi_response_type resp;           //!< Standard response type.
+  //! Antenna Switch Status
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint64 antenna;
+} wlfw_antenna_switch_resp_msg;
+
+/** @ERROR
+   QMI_ERR_NONE        No error in the request
+   QMI_ERR_INTERNAL    Unexpected error occurred during processing
+*/
+
+/** @DESCRIPTION
+This command queries whether antenna switch is enabled or not.
+*/
+
+//============================================================================
+/** @COMMAND QMI_WLFW_ANTENNA_GRANT
+    @BRIEF This command sends antenna grant value to FW
+    @CMD_VERSION 1.0
+    @USAGE Production
+    @SECURITY_LEVEL Low Risk
+    @EQUIRED_ACTION Default
+*/
+//============================================================================
+
+//! @MSG     QMI_WLFW_ANTENNA_GRANT_REQ
+//! @TYPE    Request
+//! @SENDER  Control point
+//----------------------------------------------------------------------------
+
+message {
+  //! Antenna Granted
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  optional uint64 grant;
+} wlfw_antenna_grant_req_msg;
+
+//! @MSG     QMI_WLFW_ANTENNA_GRANT_RESP
+//! @TYPE    Response
+//! @SENDER  Service
+//----------------------------------------------------------------------------
+
+message {
+  //! Result Code
+  //! @VERSION 1.0
+  //! @VERSION_INTRODUCED 1.0
+  mandatory qmi_response_type resp;           //!< Standard response type.
+} wlfw_antenna_grant_resp_msg;
+
+/** @ERROR
+   QMI_ERR_NONE        No error in the request
+   QMI_ERR_INTERNAL    Unexpected error occurred during processing
+*/
+
+/** @DESCRIPTION
+This command sends antenna grant value to FW.
+*/
+
+//============================================================================
+// Service definition
+//============================================================================
+service wlfw {
+  //! @ID QMI_WLFW_IND_REGISTER
+  wlfw_ind_register_req_msg            QMI_WLFW_IND_REGISTER_REQ,
+  wlfw_ind_register_resp_msg           QMI_WLFW_IND_REGISTER_RESP = 0x020;
+
+  //! @ID QMI_WLFW_FW_READY_IND
+  wlfw_fw_ready_ind_msg                QMI_WLFW_FW_READY_IND;
+
+  //! @ID QMI_WLFW_WLAN_MODE
+  wlfw_wlan_mode_req_msg               QMI_WLFW_WLAN_MODE_REQ,
+  wlfw_wlan_mode_resp_msg              QMI_WLFW_WLAN_MODE_RESP;
+
+  //! @ID QMI_WLFW_WLAN_CFG
+  wlfw_wlan_cfg_req_msg                QMI_WLFW_WLAN_CFG_REQ,
+  wlfw_wlan_cfg_resp_msg               QMI_WLFW_WLAN_CFG_RESP;
+
+  //! @ID QMI_WLFW_CAP
+  wlfw_cap_req_msg                     QMI_WLFW_CAP_REQ,
+  wlfw_cap_resp_msg                    QMI_WLFW_CAP_RESP;
+
+  //! @ID QMI_WLFW_BDF_DOWNLOAD
+  wlfw_bdf_download_req_msg            QMI_WLFW_BDF_DOWNLOAD_REQ,
+  wlfw_bdf_download_resp_msg           QMI_WLFW_BDF_DOWNLOAD_RESP;
+
+  //! @ID QMI_WLFW_CAL_REPORT
+  wlfw_cal_report_req_msg              QMI_WLFW_CAL_REPORT_REQ,
+  wlfw_cal_report_resp_msg             QMI_WLFW_CAL_REPORT_RESP;
+
+  //! @ID QMI_WLFW_CAL_DOWNLOAD
+  wlfw_cal_download_req_msg            QMI_WLFW_CAL_DOWNLOAD_REQ,
+  wlfw_cal_download_resp_msg           QMI_WLFW_CAL_DOWNLOAD_RESP;
+
+  //! @ID QMI_WLFW_INITIATE_CAL_DOWNLOAD_IND
+  wlfw_initiate_cal_download_ind_msg   QMI_WLFW_INITIATE_CAL_DOWNLOAD_IND;
+
+  //! @ID QMI_WLFW_CAL_UPDATE
+  wlfw_cal_update_req_msg              QMI_WLFW_CAL_UPDATE_REQ,
+  wlfw_cal_update_resp_msg             QMI_WLFW_CAL_UPDATE_RESP;
+
+  //! @ID QMI_WLFW_INITIATE_CAL_UPDATE_IND
+  wlfw_initiate_cal_update_ind_msg     QMI_WLFW_INITIATE_CAL_UPDATE_IND;
+
+  //! @ID QMI_WLFW_MSA_READY_IND
+  wlfw_msa_ready_ind_msg              QMI_WLFW_MSA_READY_IND;
+
+  //! @ID QMI_WLFW_PIN_CONNECT_RESULT_IND
+  wlfw_pin_connect_result_ind_msg      QMI_WLFW_PIN_CONNECT_RESULT_IND;
+
+  //! @ID QMI_WLFW_MSA_INFO
+  wlfw_msa_info_req_msg              QMI_WLFW_MSA_INFO_REQ,
+  wlfw_msa_info_resp_msg             QMI_WLFW_MSA_INFO_RESP;
+
+  //! @ID QMI_WLFW_MSA_READY
+  wlfw_msa_ready_req_msg             QMI_WLFW_MSA_READY_REQ,
+  wlfw_msa_ready_resp_msg            QMI_WLFW_MSA_READY_RESP;
+
+  //! @ID QMI_WLFW_INI
+  wlfw_ini_req_msg                   QMI_WLFW_INI_REQ,
+  wlfw_ini_resp_msg                  QMI_WLFW_INI_RESP;
+
+  //! @ID QMI_WLFW_ATHDIAG_READ
+  wlfw_athdiag_read_req_msg          QMI_WLFW_ATHDIAG_READ_REQ,
+  wlfw_athdiag_read_resp_msg         QMI_WLFW_ATHDIAG_READ_RESP;
+
+  //! @ID QMI_WLFW_ATHDIAG_WRITE
+  wlfw_athdiag_write_req_msg         QMI_WLFW_ATHDIAG_WRITE_REQ,
+  wlfw_athdiag_write_resp_msg        QMI_WLFW_ATHDIAG_WRITE_RESP;
+
+  //! @ID QMI_WLFW_VBATT
+  wlfw_vbatt_req_msg           QMI_WLFW_VBATT_REQ,
+  wlfw_vbatt_resp_msg          QMI_WLFW_VBATT_RESP;
+
+  //! @ID QMI_WLFW_MAC_ADDR
+  wlfw_mac_addr_req_msg        QMI_WLFW_MAC_ADDR_REQ,
+  wlfw_mac_addr_resp_msg       QMI_WLFW_MAC_ADDR_RESP;
+
+  //! @ID QMI_WLFW_HOST_CAP
+  wlfw_host_cap_req_msg                QMI_WLFW_HOST_CAP_REQ,
+  wlfw_host_cap_resp_msg               QMI_WLFW_HOST_CAP_RESP;
+
+  //! @ID QMI_WLFW_REQUEST_MEM_IND
+  wlfw_request_mem_ind_msg             QMI_WLFW_REQUEST_MEM_IND;
+
+  //! @ID QMI_WLFW_RESPOND_MEM
+  wlfw_respond_mem_req_msg             QMI_WLFW_RESPOND_MEM_REQ,
+  wlfw_respond_mem_resp_msg            QMI_WLFW_RESPOND_MEM_RESP;
+
+  //! @ID QMI_WLFW_FW_MEM_READY_IND
+  wlfw_fw_mem_ready_ind_msg            QMI_WLFW_FW_MEM_READY_IND;
+
+  //! @ID QMI_WLFW_FW_INIT_DONE_IND
+  wlfw_fw_init_done_ind_msg      QMI_WLFW_FW_INIT_DONE_IND;
+
+  //! @ID QMI_WLFW_REJUVENATE_IND
+  wlfw_rejuvenate_ind_msg      QMI_WLFW_REJUVENATE_IND;
+
+  //! @ID QMI_WLFW_REJUVENATE_ACK
+  wlfw_rejuvenate_ack_req_msg        QMI_WLFW_REJUVENATE_ACK_REQ,
+  wlfw_rejuvenate_ack_resp_msg       QMI_WLFW_REJUVENATE_ACK_RESP;
+
+  //! @ID QMI_WLFW_DYNAMIC_FEATURE_MASK
+  wlfw_dynamic_feature_mask_req_msg     QMI_WLFW_DYNAMIC_FEATURE_MASK_REQ,
+  wlfw_dynamic_feature_mask_resp_msg    QMI_WLFW_DYNAMIC_FEATURE_MASK_RESP;
+
+  //! @ID QMI_WLFW_M3_INFO
+  wlfw_m3_info_req_msg                 QMI_WLFW_M3_INFO_REQ,
+  wlfw_m3_info_resp_msg                QMI_WLFW_M3_INFO_RESP;
+
+  //! @ID QMI_WLFW_XO_CAL_IND
+  wlfw_xo_cal_ind_msg                  QMI_WLFW_XO_CAL_IND;
+
+  //! @ID QMI_WLFW_CAL_DONE_IND
+  wlfw_cal_done_ind_msg                QMI_WLFW_CAL_DONE_IND;
+
+  //! @ID QMI_WLFW_QDSS_TRACE_REQ_MEM_IND
+  wlfw_qdss_trace_req_mem_ind_msg      QMI_WLFW_QDSS_TRACE_REQ_MEM_IND;
+
+  //! @ID QMI_WLFW_QDSS_TRACE_MEM_INFO
+  wlfw_qdss_trace_mem_info_req_msg     QMI_WLFW_QDSS_TRACE_MEM_INFO_REQ,
+  wlfw_qdss_trace_mem_info_resp_msg    QMI_WLFW_QDSS_TRACE_MEM_INFO_RESP;
+
+  //! @ID QMI_WLFW_QDSS_TRACE_SAVE_IND
+  wlfw_qdss_trace_save_ind_msg         QMI_WLFW_QDSS_TRACE_SAVE_IND;
+
+  //! @ID QMI_WLFW_QDSS_TRACE_DATA
+  wlfw_qdss_trace_data_req_msg         QMI_WLFW_QDSS_TRACE_DATA_REQ,
+  wlfw_qdss_trace_data_resp_msg        QMI_WLFW_QDSS_TRACE_DATA_RESP;
+
+  //! @ID QMI_WLFW_SHUTDOWN
+  wlfw_shutdown_req_msg                   QMI_WLFW_SHUTDOWN_REQ,
+  wlfw_shutdown_resp_msg                  QMI_WLFW_SHUTDOWN_RESP;
+
+  //! @ID QMI_WLFW_QDSS_TRACE_CONFIG_DOWNLOAD
+  wlfw_qdss_trace_config_download_req_msg  QMI_WLFW_QDSS_TRACE_CONFIG_DOWNLOAD_REQ,
+  wlfw_qdss_trace_config_download_resp_msg QMI_WLFW_QDSS_TRACE_CONFIG_DOWNLOAD_RESP;
+
+  //! @ID QMI_WLFW_QDSS_TRACE_MODE
+  wlfw_qdss_trace_mode_req_msg        QMI_WLFW_QDSS_TRACE_MODE_REQ,
+  wlfw_qdss_trace_mode_resp_msg       QMI_WLFW_QDSS_TRACE_MODE_RESP;
+
+  //! @ID QMI_WLFW_QDSS_TRACE_FREE_IND
+  wlfw_qdss_trace_free_ind_msg        QMI_WLFW_QDSS_TRACE_FREE_IND;
+
+  //! @ID QMI_WLFW_ANTENNA_SWITCH
+  wlfw_antenna_switch_req_msg         QMI_WLFW_ANTENNA_SWITCH_REQ,
+  wlfw_antenna_switch_resp_msg        QMI_WLFW_ANTENNA_SWITCH_RESP;
+
+  //! @ID QMI_WLFW_ANTENNA_GRANT
+  wlfw_antenna_grant_req_msg          QMI_WLFW_ANTENNA_GRANT_REQ,
+  wlfw_antenna_grant_resp_msg         QMI_WLFW_ANTENNA_GRANT_RESP;
+} = 0x45;
+
+//============================================================================
+// File footer
+//============================================================================
+/*
+@FOOTER Test Appendix
+*/
+//============================================================================
+// End of Module
+//============================================================================

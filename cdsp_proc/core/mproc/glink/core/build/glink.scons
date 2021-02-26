@@ -1,0 +1,203 @@
+#===============================================================================
+#
+# G-Link Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2014-2015 Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Qualcomm Technologies, Inc. Confidential and Proprietary.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1.c4/mproc/glink/core/build/glink.scons#1 $
+#  $DateTime: 2018/07/30 01:21:36 $
+#  $Author: pwbldsvc $
+#  $Change: 16759227 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 07/17/15   pp      Update to include the diag support
+# 06/10/15   bc      Update for secure processor
+# 05/29/15   an      QoS support
+# 05/18/15   bc      Separated channel migration from common core
+# 05/13/15   db      Added RCINIT functions for TN APSS image
+# 02/23/15   bc      Added tracer packet support
+# 12/09/14   db      Added channel migration related files
+# 11/12/14   an      Core refactoring for limited memory environment support
+# 06/02/14   bm      Initial version for GLink core driver
+#
+#===============================================================================
+Import('env')
+env = env.Clone()
+Import('GLINK_BUILD_ROOT')
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = GLINK_BUILD_ROOT + "/core/src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+#  Publish Private APIs
+#-------------------------------------------------------------------------------
+# Images that will have full glink features
+FULL_GLINK_FEAUTRE_IMAGES = ['CORE_SLPI_ROOT', 'CORE_ADSP_ROOT', 'CORE_MPSS_ROOT',
+                             'CORE_QDSP6_SW', 'CBSP_APPS_IMAGE', 'APPS_IMAGE']
+
+OS_INC_PATH = GLINK_BUILD_ROOT+"/os/inc"
+CORE_INC_PATH = GLINK_BUILD_ROOT+"/core/inc"
+
+if env.IsTargetEnable(FULL_GLINK_FEAUTRE_IMAGES):
+  TRACER_PACKET = GLINK_BUILD_ROOT+"/glink_tracer/inc"
+else:
+  TRACER_PACKET = ""
+
+env.PublishPrivateApi('MPROC_GLINK', [
+   OS_INC_PATH,
+   TRACER_PACKET,
+   CORE_INC_PATH
+] )
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'BOOT',
+   'DEBUGTOOLS',
+   'HAL',
+   'DAL',
+   'HWENGINES',
+   'MPROC',
+   'MEMORY',
+   'POWER',
+   'SERVICES',
+   'SECUREMSM',
+   'SYSTEMDRIVERS',
+   'WIREDCONNECTIVITY',
+
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+env.RequireProtectedApi(['MPROC_GLINK'])
+  
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+GLINK_CORE_COMMON = [
+   '${BUILDPATH}/glink_api.c',
+   '${BUILDPATH}/glink_core_if.c',
+   '${BUILDPATH}/glink_vector.c',
+   '${BUILDPATH}/glink_core_internal.c',
+]
+
+GLINK_CORE_INTENT = [
+   '${BUILDPATH}/glink_core_intent.c'
+]
+
+GLINK_CORE_SETUP = [
+   '${BUILDPATH}/glink_core_setup.c',
+   '${BUILDPATH}/glink_core_full_xport.c',
+   '${BUILDPATH}/glink_core_intentless_xport.c',
+   '${BUILDPATH}/glink_channel_migration.c',
+   '${BUILDPATH}/glink_qos.c'
+]
+
+GLINK_SENSORS_CORE_SETUP = [
+   '${BUILDPATH}/glink_core_setup.c',
+   '${BUILDPATH}/glink_core_full_xport.c',
+   '${BUILDPATH}/glink_core_intentless_xport.c',
+   '${BUILDPATH}/glink_channel_migration.c',   
+]
+
+GLINK_RPMCORE_SETUP = [
+   '${BUILDPATH}/glink_rpmcore_setup.c',
+   '${BUILDPATH}/glink_core_intentless_xport.c',
+]
+
+GLINK_INTENT_CORE_SETUP = [
+   '${BUILDPATH}/glink_intent_core_setup.c',
+   '${BUILDPATH}/glink_core_intent_xport.c',
+   '${BUILDPATH}/glink_core_intentless_xport.c'
+]
+
+GLINK_SENSORS_INTENT_CORE_SETUP = [
+   '${BUILDPATH}/glink_intent_core_setup.c',
+   '${BUILDPATH}/glink_core_intent_xport.c',   
+]
+
+GLINK_CORE_DIAG_SETUP = [
+    '${BUILDPATH}/glink_diag_setup.c'
+]
+
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+APPS_IMAGES = ['CBSP_APPS_IMAGE', 'APPS_IMAGE']
+
+ROOT_IMAGES = ['CORE_QDSP6_SW', 'CORE_MPSS_ROOT', 'CORE_ADSP_ROOT', 'WCN_IMAGE',
+               'CORE_SLPI_ROOT', 'CORE_ADSP_SLPI_ROOT', 'CORE_CDSP_ROOT']
+
+SENSOR_IMAGES = ['CORE_QDSP6_SENSOR_SW']
+
+# Add Image-specific Libraries, whose sources should be packed out.
+env.AddBinaryLibrary(APPS_IMAGES + ROOT_IMAGES, '${BUILDPATH}/glink',
+                     [GLINK_CORE_COMMON,  GLINK_CORE_INTENT, 
+                      GLINK_CORE_SETUP, GLINK_CORE_DIAG_SETUP])
+
+env.AddBinaryLibrary(['RPM_IMAGE'],
+                     '${BUILDPATH}/glink',
+                     [GLINK_CORE_COMMON, GLINK_RPMCORE_SETUP])
+
+env.AddBinaryLibrary(['MISSIONROM_IMAGE'],
+                     '${BUILDPATH}/glink',
+                     [GLINK_CORE_COMMON, GLINK_CORE_INTENT, GLINK_INTENT_CORE_SETUP])
+
+env.AddBinaryLibrary(SENSOR_IMAGES, '${BUILDPATH}/glink',
+                     [GLINK_CORE_COMMON,  GLINK_CORE_INTENT, 
+                      GLINK_SENSORS_CORE_SETUP])
+
+
+                     
+#-------------------------------------------------------------------------------
+# CleanPack (Remove) all remaining files for peripheral processors
+#-------------------------------------------------------------------------------
+PACK_OUT = env.FindFiles(['*.h', '*.c', '*.s'], SRCPATH)
+# Don't include RPM in this list, because it already does we want automatically.
+env.CleanPack(ROOT_IMAGES, PACK_OUT)
+
+#-------------------------------------------------------------------------------
+# RCINIT Task and Init Fields and Initialization
+#-------------------------------------------------------------------------------
+RCINIT_INIT_GLINK_INIT = {
+  'sequence_group'             : 'RCINIT_GROUP_0',           # required
+  'init_name'                  : 'glink',                    # required
+  'init_function'              : 'glink_init',               # required
+  'dependencies'               : ['dalsys']
+}
+
+RCINIT_INIT_GLINK_DIAG_INIT = {
+  'sequence_group'             : 'RCINIT_GROUP_1',           # required
+  'init_name'                  : 'glink_diag',               # required
+  'init_function'              : 'glink_diag_init',          # required
+  'dependencies'               : ['glink', 'diag']
+}
+
+if 'USES_RCINIT' in env:
+  RCINIT_IMG = APPS_IMAGES + ROOT_IMAGES
+  env.AddRCInitFunc( RCINIT_IMG, RCINIT_INIT_GLINK_INIT )
+  env.AddRCInitFunc( RCINIT_IMG, RCINIT_INIT_GLINK_DIAG_INIT )
+
+if 'USES_RCINIT' in env:
+  RCINIT_IMG = SENSOR_IMAGES
+  env.AddRCInitFunc(RCINIT_IMG, RCINIT_INIT_GLINK_INIT )
+

@@ -1,0 +1,140 @@
+#===============================================================================
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2013 - 2017 by Qualcomm Technologies, Inc.  All Rights Reserved.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#===============================================================================
+
+Import('env')
+
+# Requirements:
+#
+# 1. VERSION shall use SMEM as a dependency. PL's without SMEM
+# shall be unable to use VERSION.
+#
+# 2. VERSION may use RCINIT. PL's without RCINIT shall arrange to
+# call the initialization function directly, version_init. The call
+# shall be performed after SMEM initialization. The function
+# prototype is available within the API header file, version.h.
+#
+# 3. VERSION shall not broker in dynamic data. VERSION shall only
+# perform initialization from data sources one time per data source.
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+
+env.VariantDir('${BUILDPATH}', "${BUILD_ROOT}/core/debugtools/version/src/", duplicate=0)
+
+env.Append(CFLAGS = "-Werror ") # GCC Warnings are Fatal
+
+#env.Append(CFLAGS = "--diag_error=warning ") # ARMCC Warnings are Fatal
+#env.Append(CFLAGS = "--diag_suppress=2523 ") # Exception Deprecated Inline Assembler
+#env.Append(CFLAGS = "--diag_suppress=9931 ") # Exception License Manager Failure
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+CBSP_API = [
+   'DAL',
+   'MPROC',
+   'TMS',
+   'DEBUGTOOLS',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'KERNEL',   # needs to be last also contains wrong comdef.h
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+VERSION_SOURCES =  [
+   '${BUILDPATH}/version_init.c',
+   '${BUILDPATH}/version_support.c',
+   '${BUILDPATH}/version_term.c',
+]
+
+VERSION_IMAGE_SOURCES = [
+   '${BUILDPATH}/image_version.c',
+]
+
+VERSION_UUID_SOURCES = [
+   '${BUILDPATH}/image_uuid.c',
+]
+
+VERSION_IMAGE_VOID_SOURCES = [
+   '${BUILDPATH}/image_version_void.c',
+]
+
+if env.IsTargetEnable(['CORE_ADSP_ROOT']):
+   env.Append(CPPDEFINES = ["IMAGE_INDEX=IMAGE_INDEX_ADSP"])
+
+if env.IsTargetEnable(['CORE_SLPI_ROOT']):
+   env.Append(CPPDEFINES = ["IMAGE_INDEX=IMAGE_INDEX_DSPS"])
+
+if env.IsTargetEnable(['CORE_CDSP_ROOT']):
+   env.Append(CPPDEFINES = ["IMAGE_INDEX=IMAGE_INDEX_CDSP"])
+
+if (env.IsTargetEnable(['CORE_QDSP6_AUDIO_PD', 'CORE_QDSP6_AUDIO_SW'])):
+   env.Append(CPPDEFINES = ["IMAGE_INDEX=IMAGE_INDEX_ADSP"])
+
+if env.IsTargetEnable(['CORE_MODEM']):
+   env.Append(CPPDEFINES = ["IMAGE_INDEX=IMAGE_INDEX_MPSS"])
+   
+if env.IsTargetEnable(['USES_WLAN_PD']):
+   env.Append(CPPDEFINES = ["IMAGE_INDEX=IMAGE_INDEX_WCNS"])
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+VERSION_IMG = [
+   'IMAGE_TREE_VERSION_AUTO_GENERATE',
+]
+
+VERSION_UUID_IMG = [
+   'IMAGE_TREE_UUID_AUTO_GENERATE',
+]
+
+env.AddLibrary(VERSION_IMG, '${BUILDPATH}/version', VERSION_SOURCES)
+
+env.AddLibrary(VERSION_UUID_IMG, '${BUILDPATH}/version_uuid', VERSION_UUID_SOURCES)
+
+# BOOT Images are 'special' when the build tag is not available; they
+# get the void implementation to satisfy link time errors.
+
+if env.IsTargetEnable(VERSION_IMG):
+   env.AddLibrary(VERSION_IMG, '${BUILDPATH}/version_image', VERSION_IMAGE_SOURCES)
+else:
+   env.AddLibrary(['VERSION_BOOT_DRIVER', 'SMEM_BOOT_DRIVER'], '${BUILDPATH}/version_image_void', VERSION_IMAGE_VOID_SOURCES)
+
+if 'USES_RCINIT' in env and env.IsTargetEnable(VERSION_IMG):
+   env.AddRCInitFunc(
+      VERSION_IMG,
+      {
+         'sequence_group'        : 'RCINIT_GROUP_0',
+         'init_name'             : 'image_vers',
+         'init_function'         : 'version_init',
+         'dependencies'          : [ 'smem', ], # depends on smem_init
+      }
+   )
+
+if 'USES_RCINIT' in env and env.IsTargetEnable(VERSION_UUID_IMG):
+   env.AddRCInitFunc(
+      VERSION_UUID_IMG,
+      {
+         'sequence_group'        : 'RCINIT_GROUP_0',
+         'init_name'             : 'image_uuid',
+         'init_function'         : 'image_uuid',
+         'dependencies'          : [ 'image_vers', ], # depends on image_vers
+      }
+   )

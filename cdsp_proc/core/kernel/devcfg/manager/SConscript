@@ -1,0 +1,48 @@
+#===============================================================================
+# GENERAL DESCRIPTION
+#     DevCfg Artifacts build script
+##
+# Copyright (c) 2011,2014-16 by Qualcomm Technologies Inc.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===================================================================================
+Import('env')
+import os, glob
+env = env.Clone()
+
+#env.Replace(BUILDPATH = os.path.abspath(env.subst('./build/${BUILDPATH}')))
+env.Append(BUILDPATH = '/manager')
+env.VariantDir('${BUILDPATH}', "src", duplicate=0) 
+
+#-------------------------------------------------------------------------------
+# Load dal config builders
+#-------------------------------------------------------------------------------
+env.Tool('devcfgHwInfo_builder', toolpath = ['${DEVCFG_SCRIPTS}'])
+
+#-------------------------------------------------------------------------------
+# Devcfg Image dependent parameters
+#-------------------------------------------------------------------------------
+#import imp
+#image_config = imp.load_source('image_config',env.subst("${DEVCFG_SCRIPTS}")+'/image_config.py')
+config = env.get('DEVCFG')
+
+#-------------------------------------------------------------------------------
+# Build Devcfg Artifacts
+#-------------------------------------------------------------------------------
+return_list = []
+
+env.get('CPPPATH').append(os.path.realpath(env.subst('${BUILDPATH}')))
+structHeaaderPath = "$DEVCFG_ROOT/build/${{BINARY_BUILDPATH}}/data/{}/devcfgStructs.h".format(config.devcfgXMLTagList[0])
+
+# Source Code
+Devcfg_src = ['${BUILDPATH}/devcfgManager.c',]
+env.Append(CCFLAGS = " -include {} ".format(structHeaaderPath))
+devcfg_obj = env.AddObject(config.devcfgImgBuildTag, Devcfg_src)
+env.Depends(devcfg_obj, structHeaaderPath)
+return_list += devcfg_obj
+
+#env.AddRCInitFunc(config.devcfgImgBuildTag, {'sequence_group' : 'RCINIT_GROUP_0',
+#                                             'init_name' : 'devcfg_init',
+#                                             'init_function' : 'devcfgManagerInit'})
+
+Return('return_list')

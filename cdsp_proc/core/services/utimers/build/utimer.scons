@@ -1,0 +1,243 @@
+#===============================================================================
+#
+# UTimer Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009-2017 by QUALCOMM Technologies Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1.c4/services/utimers/build/utimer.scons#1 $
+#  $DateTime: 2018/07/30 01:21:36 $
+#  $Author: pwbldsvc $
+#  $Change: 16759227 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Build options
+#-------------------------------------------------------------------------------
+#Required for island build
+env.Append(CCFLAGS = "-G0")
+#We don't support island functions with '-fstack-protector'
+if "-fstack-protector" in env['HEXAGON_STKPRO']:
+    env.Replace(HEXAGON_STKPRO = "")
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/services/utimers/src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# External depends within CoreBSP
+#-------------------------------------------------------------------------------
+#Todo: Need to remove dependencies which are not needed
+
+env.RequireExternalApi([
+   'CS',
+   'DSM',
+   'MODEM_1X',
+   'ONEX',
+   'MODEM_DATA',
+   'MODEM_FTM',
+   'MODEM_HDR',
+   'MODEM_PMIC',
+   'MODEM_RF',
+   'MODEM_SERVICES',    
+
+])
+
+MODEM_API = [
+   'HDR',
+   'ONEX',
+]
+env.RequirePublicApi(MODEM_API, 'modem')
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'BOOT',
+   'DAL',
+   'DEBUGTOOLS',
+   'HWENGINES',
+   'MPROC',
+   'POWER',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'WIREDCONNECTIVITY',
+   'STORAGE',
+
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Feature Definitions
+#-------------------------------------------------------------------------------
+
+env.Append(CPPDEFINES=["FEATURE_UTIMER_QDSP6"])
+env.Append(CPPDEFINES=["FEATURE_UTIMER_USE_QURT_SYSCLOCK"])
+env.Append(CPPDEFINES=["UTIMER_ERROR_FATAL_THRESHOLD_ZEROED_OUT"])
+
+#Debug Features
+#env.Append(CPPDEFINES=["UTIMER_MIN_DEBUG"])
+#env.Append(CPPDEFINES=["FEATURE_ENABLE_UTIMER_DEBUG_VARIABLES"])
+#env.Append(CPPDEFINES=["FEATURE_UTIMER_TRACE"])
+
+#env.Append(CPPDEFINES=["FEATURE_RCINIT"])
+#env.Append(CPPDEFINES=["USE_QURT_DIRECT"])
+
+env.Append(CPPDEFINES=["FEATURE_UTIMER_DEFER_SUPPORT"])
+
+#-------------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+UTIMER_DDR_QDSP6_SOURCES = [
+   '${BUILDPATH}/utimer_ddr.c', 
+   '${BUILDPATH}/utimer_qdi_ddr.c',
+]
+
+UTIMER_QDSP6_SOURCES = [
+   '${BUILDPATH}/utimer.c', 
+   '${BUILDPATH}/utimer_deps.c',
+   '${BUILDPATH}/utimer_qdi.c',
+   #'${BUILDPATH}/utimer_test.c',
+]
+
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+utimer_qdsp6 = env.AddLibrary(['QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE'],'${BUILDPATH}/utimer_qdsp6', UTIMER_QDSP6_SOURCES)
+utimer_ddr_qdsp6 = env.AddLibrary(['QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE'], '${BUILDPATH}/utimer_ddr_qdsp6', UTIMER_DDR_QDSP6_SOURCES)
+
+#-------------------------------------------------------------------------------
+if 'USES_ISLAND' in env:
+   env.AddIslandLibrary(['CORE_QDSP6_SW'], utimer_qdsp6)
+
+#-------------------------------------------------------------------------------
+
+#if 'USES_RCINIT' in env:
+#   RCINIT_IMG = ['CORE_MODEM', 'CORE_QDSP6_SW']
+#   env.AddRCInitTask(           # STUB FOR DATA STRUCTURES; NEEDS CREATED EARLY
+#    RCINIT_IMG,                 # define TMC_RCINIT_INIT_TIMER_TASK_INIT
+#    {
+#      'sequence_group'             : 'RCINIT_GROUP_3',                  # required
+#      'thread_name'                : 'qurtTmrTest',                     # required
+#      'thread_entry'               : 'qurt_timer_test_task',            # NOT AVAILABLE
+#      'thread_type'                : 'RCINIT_TASK_QURTTASK',
+#      'stack_size_bytes'           : '4096',
+#      'priority_amss_order'        : 'TIMER_TEST_PRI_ORDER',
+#      'cpu_affinity'               : 'REX_ANY_SMT_MASK',
+#    })
+
+
+#-------------------------------------------------------------------------------
+
+
+#if 'USES_RCINIT' in env:
+#   RCINIT_IMG = ['CORE_MODEM', 'CORE_QDSP6_SW']
+#   env.AddRCInitTask(           # STUB FOR DATA STRUCTURES; NEEDS CREATED EARLY
+#    RCINIT_IMG,                 # define TMC_RCINIT_INIT_TIMER_TASK_INIT
+#    {
+#      'sequence_group'             : 'RCINIT_GROUP_3',                  # required
+#      'thread_name'                : 'UTimerTest',                      # required
+#      'thread_entry'               : 'utimer_test_task',             # NOT AVAILABLE
+#      'thread_type'                : 'RCINIT_TASK_QURTTASK',
+#      'stack_size_bytes'           : '4096',
+#      'priority_amss_order'        : 'UTIMER_TEST_PRI_ORDER',
+#      'cpu_affinity'               : 'REX_ANY_SMT_MASK',
+#    })
+
+#-------------------------------------------------------------------------------
+
+if 'USES_RCINIT' in env:
+   RCINIT_IMG = ['CORE_MODEM', 'CORE_QDSP6_SW']
+   env.AddRCInitFunc(           # Code Fragment in TMC: YES
+    RCINIT_IMG,                 # define TMC_RCINIT_INIT_TIMER_TASK_INIT
+    {
+     'sequence_group'             : 'RCINIT_GROUP_0',                   # required
+     'init_name'                  : 'utimer_task',                       # required
+     'init_function'              : 'utimer_task_init',                  # required
+     'dependencies'               : ['clk_regime','timer_slave1_task','timer_slave2_task','timer_slave3_task',]
+    })
+    
+#-------------------------------------------------------------------------------
+    
+if 'USES_RCINIT' in env:
+   RCINIT_IMG = ['CORE_MODEM', 'CORE_QDSP6_SW']
+   env.AddRCInitFunc(           # Code Fragment in TMC: YES
+    RCINIT_IMG,                 # define TMC_RCINIT_INIT_TIMER_TASK_INIT
+    {
+     'sequence_group'             : 'RCINIT_GROUP_0',                   # required
+     'init_name'                  : 'utimer_qdi',                        # required
+     'init_function'              : 'utimer_qdi_init',             # required
+     'dependencies'               : ['utimer_task',]
+    })
+
+#-------------------------------------------------------------------------------
+
+#if 'USES_RCINIT' in env:
+#   RCINIT_IMG = ['CORE_MODEM', 'CORE_QDSP6_SW']
+#   env.AddRCInitTask(           # STUB FOR DATA STRUCTURES; NEEDS CREATED EARLY
+#    RCINIT_IMG,                 # define TMC_RCINIT_INIT_TIMER_TASK_INIT
+#    {
+#      'sequence_group'             : 'RCINIT_GROUP_0',                  # required
+#      'thread_name'                : 'utimer',                          # required
+#      'thread_entry'               : 'RCINIT_NULL',                     # NOT AVAILABLE
+#      'thread_type'                : 'RCINIT_TASK_QURTTASK',
+#      'stack_size_bytes'           : '4096',
+#      'priority_amss_order'        : 'TIMER_PRI_ORDER',                 
+#      'cpu_affinity'               : 'REX_ANY_SMT_MASK',
+#    })
+
+
+
+#-------------------------------------------------------------------------------
+
+
+#-------------------------------------------------------------------------------
+
+
+#-------------------------------------------------------------------------------
+
+
+#-------------------------------------------------------------------------------
+
+#if 'USES_RCINIT' in env:
+#   RCINIT_IMG = ['CORE_MODEM', 'CORE_QDSP6_SW']
+#   env.AddRCInitTask(           # STUB FOR DATA STRUCTURES; NEEDS CREATED EARLY
+#    RCINIT_IMG,                 # define TMC_RCINIT_INIT_TIMER_TASK_INIT
+#    {
+#      'sequence_group'             : 'RCINIT_GROUP_0',                  # required
+#      'thread_name'                : 'tmr_debug',                      # required
+#      'thread_entry'               : 'RCINIT_NULL',                     # NOT AVAILABLE
+#      'thread_type'                : 'RCINIT_TASK_QURTTASK',
+#      'stack_size_bytes'           : '4096',
+#      'priority_amss_order'        : 'TIMER_SLAVE3_PRI_ORDER',
+#      'cpu_affinity'               : 'REX_ANY_SMT_MASK',
+#    })
+

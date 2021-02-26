@@ -1,0 +1,46 @@
+#===============================================================================
+# GENERAL DESCRIPTION
+#     DevCfg Artifacts build script
+##
+# Copyright (c) 2011,2014-16 by Qualcomm Technologies Inc.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===================================================================================
+Import('env')
+import os, glob
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${DEVCFG_ROOT}/service/src/"
+env.Replace(BUILDPATH = os.path.abspath(env.subst('${BUILDPATH}/build')))
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+#-------------------------------------------------------------------------------
+# Load dal config builders
+#-------------------------------------------------------------------------------
+env.Tool('devcfgHwInfo_builder', toolpath = ['${DEVCFG_SCRIPTS}'])
+
+config = env.get('DEVCFG')
+return_list = []
+
+#Build DevCfg_ImgParams.h 
+devcfg_params   = env.GenerateDevcfgImgHdr(['${BUILDPATH}/DevCfg_ImgParams.h'],None)
+
+env.get('CPPPATH').append(os.path.realpath(env.subst('${BUILDPATH}')))
+
+# Source Code
+Devcfg_src =  [
+    '${BUILDPATH}/DALProps.c',
+    '${BUILDPATH}/DALSysInt.c',
+    '${BUILDPATH}/devcfg.c',
+]
+
+# Do not include source for oem devcfg image
+if 'oem' not in config.targetImg:
+    devcfg_lib   = env.AddLibrary(config.devcfgImgBuildTag, '${BUILDPATH}/DevCfg_'+config.targetImg, Devcfg_src)
+    return_list += devcfg_lib
+    env.Depends(devcfg_lib,devcfg_params)
+
+Return('return_list')

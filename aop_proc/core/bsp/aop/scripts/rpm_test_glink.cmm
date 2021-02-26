@@ -1,0 +1,426 @@
+entry &ee_id &msg_bin_path
+
+area.view A000
+area.select A000
+
+global &XPORT_RPM_CMD_VERSION_REQ
+global &XPORT_RPM_CMD_VERSION_ACK
+global &XPORT_RPM_CMD_OPEN_CHANNEL
+global &XPORT_RPM_CMD_CLOSE_CHANNEL
+global &XPORT_RPM_CMD_OPEN_CHANNEL_ACK
+global &XPORT_RPM_CMD_TX_DATA
+global &XPORT_RPM_CMD_CLOSE_CHANNEL_ACK
+global &XPORT_RPM_CMD_TX_SIGNALS
+global &GLINK_XPORT_NEGOTIATING
+global &GLINK_XPORT_LINK_UP
+global &GLINK_LOCAL_CH_INIT
+global &GLINK_LOCAL_CH_CLOSED
+global &GLINK_LOCAL_CH_OPENING
+global &GLINK_LOCAL_CH_OPENED
+global &GLINK_LOCAL_CH_CLOSING
+global &GLINK_REMOTE_CH_INIT
+global &GLINK_REMOTE_CH_CLOSED
+global &GLINK_REMOTE_CH_OPENED
+global &GLINK_REMOTE_CH_SSR_RESET
+global &GLINK_REMOTE_CH_CLEANUP
+
+global &ran_break
+
+&XPORT_RPM_CMD_VERSION_REQ=0x0
+&XPORT_RPM_CMD_VERSION_ACK=0x1
+&XPORT_RPM_CMD_OPEN_CHANNEL=0x2
+&XPORT_RPM_CMD_CLOSE_CHANNEL=0x3
+&XPORT_RPM_CMD_OPEN_CHANNEL_ACK=0x4
+&XPORT_RPM_CMD_TX_DATA=0x9
+&XPORT_RPM_CMD_CLOSE_CHANNEL_ACK=0xB
+&XPORT_RPM_CMD_TX_SIGNALS=0xF
+
+&GLINK_XPORT_NEGOTIATING=1
+&GLINK_XPORT_LINK_UP=2
+
+&GLINK_LOCAL_CH_INIT=0
+&GLINK_LOCAL_CH_CLOSED=1
+&GLINK_LOCAL_CH_OPENING=2
+&GLINK_LOCAL_CH_OPENED=3
+&GLINK_LOCAL_CH_CLOSING=4
+
+&GLINK_REMOTE_CH_INIT=0
+&GLINK_REMOTE_CH_CLOSED=1
+&GLINK_REMOTE_CH_OPENED=2
+&GLINK_REMOTE_CH_SSR_RESET=3
+&GLINK_REMOTE_CH_CLEANUP=4
+
+&ran_break=false()
+
+if state.run()
+(
+    &ran_break=true()
+    b
+    wait 100ms
+)
+
+on pbreak gosub
+(
+    print
+    print "pbreak (by script:&ran_break) @ "+y.name(d:r(pc))
+
+    if !&ran_break
+    (
+        print %error "Hit breakpoint"
+        print "Terminated"
+        enddo
+    )
+    &ran_break=false()
+    return
+)
+
+gosub process_cmd &ee_id
+
+enddo
+
+
+;===============================================================================
+process_cmd:
+    entry &ee_id
+
+    &version_idx=v.value(xport_rpm_ctx[&ee_id].xport_if.glink_core_priv->version_indx)
+    &version=v.value(xport_rpm_ctx[&ee_id].xport_if.glink_core_priv->version_array[&version_idx].version)
+    &features=v.value(xport_rpm_ctx[&ee_id].xport_if.glink_core_priv->version_array[&version_idx].features)
+
+    &cmd=""
+    &sent=false()
+
+    repeat
+    (
+        gosub check_status
+
+        print
+
+        gosub read_word &ee_id
+        entry &cmd
+
+        if "&cmd"!=""
+        (
+            &cmd=0xffff&&cmd
+
+            if &cmd==&XPORT_RPM_CMD_VERSION_REQ
+            (
+                print %attr 0x2a "Received XPORT_RPM_CMD_VERSION_REQ command"
+                gosub read_word &ee_id
+                entry &cmd_arg
+                gosub send_version_ack &ee_id &version &features
+            )
+            else if &cmd==&XPORT_RPM_CMD_VERSION_ACK
+            (
+                print %attr 0x2a "Received XPORT_RPM_CMD_VERSION_ACK command"
+                gosub read_word &ee_id
+            )
+            else if &cmd==&XPORT_RPM_CMD_OPEN_CHANNEL
+            (
+                print %attr 0x2a "Received XPORT_RPM_CMD_OPEN_CHANNEL command"
+                gosub read_word &ee_id
+                entry &name_len
+
+                &data=""
+                &name=""
+                repeat
+                (
+                    gosub read_word &ee_id
+                    entry &data
+                    &name="&name&data"
+                )
+                while "&data"!=""
+
+                gosub send_open_channel_ack &ee_id &version
+                gosub send_open_channel &ee_id &version &name_len &name
+            )
+            else if &cmd==&XPORT_RPM_CMD_CLOSE_CHANNEL
+            (
+                print %attr 0x2a "Received XPORT_RPM_CMD_CLOSE_CHANNEL command"
+                gosub read_word &ee_id
+            )
+            else if &cmd==&XPORT_RPM_CMD_OPEN_CHANNEL_ACK
+            (
+                print %attr 0x2a "Received XPORT_RPM_CMD_OPEN_CHANNEL_ACK command"
+                gosub read_word &ee_id
+            )
+            else if &cmd==&XPORT_RPM_CMD_TX_DATA
+            (
+                print %attr 0x2a "Received XPORT_RPM_CMD_TX_DATA command"
+                gosub read_all &ee_id
+            )
+            else if &cmd==&XPORT_RPM_CMD_CLOSE_CHANNEL_ACK
+            (
+                print %attr 0x2a "Received XPORT_RPM_CMD_CLOSE_CHANNEL_ACK command"
+                gosub read_word &ee_id
+            )
+            else if &cmd==&XPORT_RPM_CMD_TX_SIGNALS
+            (
+                print %attr 0x2a "Received XPORT_RPM_CMD_TX_SIGNALS command"
+                gosub read_word &ee_id
+            )
+            else
+            (
+                print %attr 0x85 "Received unknown command (&cmd)"
+                gosub read_word &ee_id
+            )
+        )
+        else if &sent==false()&&"&msg_bin_path"!=""
+        (
+            gosub send_msg &ee_id &version &msg_bin_path
+            &sent=true()
+            &cmd="dummy"
+        )
+
+        g
+        on time 150ms gosub
+        (
+            &ran_break=true()
+            b
+            ;print "&ran_break"
+            return
+        )
+
+        wait 200ms
+    )
+    while "&cmd"!=""
+    print "done"
+    return
+
+;===============================================================================
+check_status:
+    &version_idx=v.value(xport_rpm_ctx[&ee_id].xport_if.glink_core_priv->version_indx)
+
+    &rx_write_ind=v.value(xport_rpm_ctx[&ee_id].rx_desc->write_ind)
+    &rx_read_ind=v.value(xport_rpm_ctx[&ee_id].rx_desc->read_ind)
+    &tx_write_ind=v.value(xport_rpm_ctx[&ee_id].tx_desc->write_ind)
+    &tx_read_ind=v.value(xport_rpm_ctx[&ee_id].tx_desc->read_ind)
+
+    print
+    print "================================================================================"
+    print "remote ss           : "+d.string(d:v.value(xport_rpm_ctx[&ee_id].xport_if.glink_core_priv->remote_ss))
+    print "link status         : "+v.string(xport_rpm_ctx[&ee_id].xport_if.glink_core_priv->status)
+    print "version             : "+v.string(xport_rpm_ctx[&ee_id].xport_if.glink_core_priv->version_array[&version_idx])
+    print "channel name        : "+d.string(d:v.value(((glink_channel_ctx_type*)xport_rpm_ctx[&ee_id].xport_if.glink_core_priv->open_list.next)->name))
+    print %attr 0x78 "channel local state : "+v.string(((glink_channel_ctx_type*)xport_rpm_ctx[&ee_id].xport_if.glink_core_priv->open_list.next)->local_state)
+    print %attr 0x78 "channel remote state: "+v.string(((glink_channel_ctx_type*)xport_rpm_ctx[&ee_id].xport_if.glink_core_priv->open_list.next)->remote_state)
+    print %attr 0x24 "RX FIFO address     : 0x"+format.hex(8,v.value(xport_rpm_ctx[&ee_id].rx_fifo))
+    print %attr 0x24 "RX FIFO size        : "+format.decimal(0,v.value(xport_rpm_ctx[&ee_id].rx_fifo_size))
+    print %attr 0x24 "RX desc             : "+v.string(*xport_rpm_ctx[&ee_id].rx_desc)
+    print %attr 0x28 "TX FIFO address     : 0x"+format.hex(8,v.value(xport_rpm_ctx[&ee_id].tx_fifo))
+    print %attr 0x28 "TX FIFO size        : "+format.decimal(0,v.value(xport_rpm_ctx[&ee_id].tx_fifo_size))
+    print %attr 0x28 "TX desc             : "+v.string(*xport_rpm_ctx[&ee_id].tx_desc)
+    ;print "TX write index      : "+format.decimal(0,&tx_write_ind)
+    print "================================================================================"
+
+    screen.display
+    return
+
+;===============================================================================
+send_msg:
+    entry &ee_id &version &path
+
+    print
+    print %attr 0x26 "Sending XPORT_RPM_CMD_TX_DATA command ..."
+
+    if !os.file(&path)
+    (
+        print "    &path does not exist"
+        return
+    )
+
+    &size=(~7)&(os.file.size(&path)+7)
+
+    if &size==0
+    (
+        print "    &path is empty"
+        return
+    )
+
+    d.clearvm
+    d.load.binary &path vm:0 /noclear
+
+    gosub write_word &ee_id (&version<<16.|&XPORT_RPM_CMD_TX_DATA)
+    gosub write_word &ee_id 0
+    gosub write_word &ee_id &size
+    gosub write_word &ee_id 0
+
+    &addr=0
+    repeat
+    (
+        &word=data.long.littleendian(vm:&addr)
+        gosub write_word &ee_id &word
+        &addr=&addr+4
+    )
+    while &addr<&size
+
+    gosub send_irq &ee_id
+    screen.display
+    return
+
+;===============================================================================
+send_version_ack:
+    entry &ee_id &version &features
+
+    print
+    print %attr 0x26 "Sending XPORT_RPM_CMD_VERSION_ACK command ..."
+
+    gosub write_word &ee_id (&version<<16.|&XPORT_RPM_CMD_VERSION_ACK)
+    gosub write_word &ee_id &features
+    gosub send_irq &ee_id
+    screen.display
+    return
+
+;===============================================================================
+send_open_channel_ack:
+    entry &ee_id &version
+
+    print
+    print %attr 0x26 "Sending XPORT_RPM_CMD_OPEN_CHANNEL_ACK command ..."
+
+    gosub write_word &ee_id (&version<<16.|&XPORT_RPM_CMD_OPEN_CHANNEL_ACK)
+    gosub write_word &ee_id 0
+    gosub send_irq &ee_id
+    screen.display
+    return
+
+;===============================================================================
+send_open_channel:
+    entry &ee_id &version &name_len &name
+
+    print
+    print %attr 0x26 "Sending XPORT_RPM_CMD_OPEN_CHANNEL command ..."
+
+    gosub write_word &ee_id (&version<<16.|&XPORT_RPM_CMD_OPEN_CHANNEL)
+    gosub write_word &ee_id &name_len
+
+    repeat
+    (
+        &idx=string.scan("&name","0x",1)
+        &word=0
+        if &idx>=0
+        (
+            &word=string.mid("&name",0,&idx)
+            &name=string.cut("&name",&idx)
+        )
+        else
+        (
+            &word=&name
+            &name=""
+        )
+        gosub write_word &ee_id &word
+    )
+    while "&name"!=""
+
+    screen.display
+    return
+
+;===============================================================================
+write_word:
+    entry &ee_id &data_word
+
+    print %attr 0x24 "    Writing word ... "
+
+    &read_ind=v.value(xport_rpm_ctx[&ee_id].rx_desc->read_ind)
+    &write_ind=v.value(xport_rpm_ctx[&ee_id].rx_desc->write_ind)
+    &rx_fifo_addr=v.value(xport_rpm_ctx[&ee_id].rx_fifo)+&write_ind
+
+    ;print %attr 0x24 %cont "write_ind: "+format.decimal(4,&write_ind)
+    print %attr 0x24 %cont "        0x"+format.hex(8,&rx_fifo_addr)+" <== 0x"+format.hex(8,&data_word)
+    print %attr 0x24 %cont " ("
+    &shift=0
+    repeat
+    (
+        print %attr 0x24 %cont convert.char(0xff&(&data_word>>&shift))
+        &shift=&shift+8
+    )
+    while &shift<32.
+    print %attr 0x24 %cont ")"
+
+    d.s &rx_fifo_addr %Long %LE &data_word
+
+    &write_ind_addr=v.value(&(xport_rpm_ctx[&ee_id].rx_desc->write_ind))
+    &write_ind=&write_ind+4
+    if &write_ind>=v.value(xport_rpm_ctx[&ee_id].rx_fifo_size)
+    (
+        &write_ind=&write_ind-v.value(xport_rpm_ctx[&ee_id].rx_fifo_size)
+    )
+    d.s &write_ind_addr %Long %LE &write_ind
+
+    &read_ind=v.value(xport_rpm_ctx[&ee_id].rx_desc->read_ind)
+    &write_ind=v.value(xport_rpm_ctx[&ee_id].rx_desc->write_ind)
+
+    ;print %attr 0x24 %cont "        write_ind: "+format.decimal(4,&write_ind)
+    return
+
+;===============================================================================
+read_all:
+    entry &ee_id
+
+    &data=""
+    repeat
+    (
+        gosub read_word &ee_id
+        entry &data
+    )
+    while "&data"!=""
+    screen.display
+    return
+
+;===============================================================================
+read_word:
+    entry &ee_id
+
+    print %attr 0x28 "    Reading word ... "
+
+    &write_ind=v.value(xport_rpm_ctx[&ee_id].tx_desc->write_ind)
+    &read_ind=v.value(xport_rpm_ctx[&ee_id].tx_desc->read_ind)
+    ;print %attr 0x28 %cont "read_ind : "+format.decimal(4,&read_ind)
+
+    if &read_ind==&write_ind
+    (
+        print %attr 0x28 %cont "        no data"
+        return
+    )
+
+    &tx_fifo_addr=v.value(xport_rpm_ctx[&ee_id].tx_fifo)
+
+    &data=data.long.littleendian(d:&tx_fifo_addr+&read_ind)
+    print %attr 0x28 %cont "        0x"+format.hex(8,&tx_fifo_addr+&read_ind)+" ==> 0x"+format.hex(8,&data)
+    print %attr 0x28 %cont " ("
+    &shift=0
+    repeat
+    (
+        print %attr 0x28 %cont convert.char(0xff&(&data>>&shift))
+        &shift=&shift+8
+    )
+    while &shift<32.
+    print %attr 0x28 %cont ")"
+
+    &read_ind_addr=v.value(&(xport_rpm_ctx[&ee_id].tx_desc->read_ind))
+    &read_ind=&read_ind+4
+    if &read_ind>=v.value(xport_rpm_ctx[&ee_id].tx_fifo_size)
+    (
+        &read_ind=&read_ind-v.value(xport_rpm_ctx[&ee_id].tx_fifo_size)
+    )
+    d.s &read_ind_addr %Long %LE &read_ind
+
+    &write_ind=v.value(xport_rpm_ctx[&ee_id].tx_desc->write_ind)
+    &read_ind=v.value(xport_rpm_ctx[&ee_id].tx_desc->read_ind)
+    ;print %attr 0x28 %cont "        read_ind : "+format.decimal(4,&read_ind)
+
+    return &data
+
+;===============================================================================
+send_irq:
+    entry &ee_id
+    &irq_num=v.value(xport_rpm_config[&ee_id].irq_in)
+    print "    firing IRQ "+format.decimal(2,&irq_num)+" ..."
+
+    &mask=(1.<<(&irq_num%32.))
+    &idx=&irq_num/32.
+    &NVIC_Set=0xE000E200+(0x4*&idx)
+
+    d.s d:&NVIC_Set %Long %LE &mask
+    return
+

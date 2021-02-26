@@ -1,0 +1,224 @@
+#===============================================================================
+#
+# Sensors framework library
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2016-2017 by Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Id: //components/rel/ssc.slpi/3.2/framework/build/framework.scons#1 $
+#  $DateTime: 2018/02/01 03:15:18 $
+#  $Change: 15367748 $
+#
+#===============================================================================
+Import('env')
+import os, inspect
+
+ME = inspect.getfile(inspect.currentframe())
+MY_ROOT = os.path.dirname(os.path.dirname(ME))
+MY_NAME = os.path.basename(MY_ROOT)
+
+#-------------------------------------------------------------------------------
+# External dependencies
+#-------------------------------------------------------------------------------
+if 'SSC_TARGET_HEXAGON' in env['CPPDEFINES']:
+  CBSP_API = [
+    'DEBUGTOOLS',
+    'KERNEL',
+    ]
+  env.RequirePublicApi(CBSP_API, area='core')
+env.RequirePublicApi('UTILS', area='platform')
+
+#-------------------------------------------------------------------------------
+# Internal dependencies
+#-------------------------------------------------------------------------------
+SENSORS_API = [
+  'SNS_FRAMEWORK',
+  'SNS_INTERNAL_INCLUDES',
+  ]
+env.RequireProtectedApi(SENSORS_API)
+env.RequirePublicApi('SNS_INCLUDES', area='ssc')
+
+SUID_INCPATH = os.path.join(MY_ROOT, 'suid_sensor', 'inc')
+INCPATH = os.path.join(MY_ROOT, 'inc')
+if os.path.isdir(INCPATH):
+  MY_API = MY_NAME + '_API'
+  env.PublishPrivateApi(MY_API, [INCPATH, SUID_INCPATH])
+
+#-------------------------------------------------------------------------------
+# Source Path
+#-------------------------------------------------------------------------------
+SRCPATH = os.path.join(MY_ROOT, 'src')
+if not os.path.isdir(SRCPATH):
+  if 'SSC_TARGET_X86' in env['CPPDEFINES']:
+    SRCPATH = os.path.join(MY_ROOT, 'x86')
+  elif 'SSC_TARGET_HEXAGON' in env['CPPDEFINES']:
+    SRCPATH = os.path.join(MY_ROOT, 'hexagon')
+
+env.VariantDir('${BUILDPATH}', MY_ROOT, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Source files
+#-------------------------------------------------------------------------------
+SRCFILES = env.FindFiles(['*.c'], SRCPATH)
+SRCFILES_2 = env.FindFiles(['sns_static_sensors.c'], SRCPATH)
+[SRCFILES.remove(f) for f in SRCFILES_2 if f in SRCFILES]
+temp_set = set(SRCFILES)
+SRCFILES = list(temp_set)
+VARIANT_SRCFILES = [f.replace(MY_ROOT,'${BUILDPATH}') for f in SRCFILES]
+VARIANT_2_SRCFILES = [f.replace(MY_ROOT,'${BUILDPATH}') for f in SRCFILES_2]
+VARIANT_PROTO_SRCFILES = []
+Q62SRCPATH = os.path.join(MY_ROOT, 'ccd_sensor', 'hexagon_core_qdsp6_2.0')
+
+#-------------------------------------------------------------------------------
+# Protocol Buffer API files
+#-------------------------------------------------------------------------------
+PB_PATH = os.path.join(MY_ROOT, 'pb')
+if os.path.isdir(PB_PATH) and 'USES_NANOPB' in env:
+  PROTO_NAME = MY_NAME.upper() + "_PROTO"
+  env.PublishProtectedApi(PROTO_NAME, [PB_PATH])
+  PROTO_SRCFILES, HDRFILES = env.CompilePB(env['SSC_BUILD_TAGS'],
+    PROTO_NAME, env.FindFiles(['*.proto'], PB_PATH))
+  #print '\n'.join(["%s" % i for i in PROTO_SRCFILES])
+  #print '\n'.join(["%s" % i for i in HDRFILES])
+
+  # moves generated pb.h files to top level inc folder
+  try:
+    [os.rename(f, f.replace(PB_PATH,env.subst('${SSC_PB_INC}'))) for f in HDRFILES]
+  except OSError:
+    pass
+  VARIANT_PROTO_SRCFILES += [f.replace(MY_ROOT,'${BUILDPATH}') for f in PROTO_SRCFILES]
+  #print '\n'.join(["%s" % i for i in VARIANT_SRCFILES])
+
+#-------------------------------------------------------------------------------
+# Remove source files
+#-------------------------------------------------------------------------------
+
+REMOVE_FILES  = []
+
+if 'SSC_TARGET_HEXAGON_CORE_QDSP6_2_0' not in env['CPPDEFINES']:
+  REMOVE_FILES  += env.FindFiles('*.*', Q62SRCPATH)
+
+if 'SENSORS_DD_DEV_FLAG' in env:
+  REMOVE_FILES +=  env.FindFiles(['*.c','*.h'], SRCPATH)
+  REMOVE_FILES +=  env.FindFiles(['*.c','*.h'], INCPATH)
+  REMOVE_FILES +=  env.FindFiles(['*.c','*.h'], PB_PATH)
+  REMOVE_FILES +=  env.FindFiles(['*.*'],Q62SRCPATH)
+else:
+  REMOVE_FILES +=  env.FindFiles(['*.pb.c'],PB_PATH)
+
+env.CleanPack(env['SSC_BUILD_TAGS'], REMOVE_FILES)
+
+#-------------------------------------------------------------------------------
+# Static sensors source file
+#-------------------------------------------------------------------------------
+static_sensors_file = os.path.join(env.subst('${SSC_ROOT}'),
+                                     'framework', 'src', 'sns_static_sensors.c')
+
+if os.path.exists(static_sensors_file):
+  os.remove(static_sensors_file)
+
+if 'USES_STATIC_SENSORS_LIST_GEN' in env:
+  if 'sns_static_sensors.c' not in VARIANT_2_SRCFILES:
+    VARIANT_2_SRCFILES.append(os.path.join(env.subst('${SSC_ROOT}'),
+                              'framework', 'src', 'sns_static_sensors.c'))
+
+#-------------------------------------------------------------------------------
+# Add Libraries to Image
+#-------------------------------------------------------------------------------
+MY_LIB = os.path.join('${BUILDPATH}', MY_NAME)
+MY_PROTO_LIB = MY_LIB + '_PROTO'
+MY_STATIC_LIB = os.path.join('${BUILDPATH}', 'static_list')
+
+my_static_lib = env.AddLibrary(env['SSC_BUILD_TAGS'], MY_STATIC_LIB, VARIANT_2_SRCFILES)
+if 'SENSORS_DD_DEV_FLAG' in env:
+  lib = env.AddBinaryLibrary(env['SSC_BUILD_TAGS'], MY_LIB, VARIANT_SRCFILES)
+else:
+  lib = env.AddLibrary(env['SSC_BUILD_TAGS'], MY_LIB, VARIANT_SRCFILES)
+if len(VARIANT_PROTO_SRCFILES) > 0:
+  proto_lib = env.AddLibrary(env['SSC_BUILD_TAGS'], MY_PROTO_LIB, VARIANT_PROTO_SRCFILES)
+
+#-------------------------------------------------------------------------------
+#island mode
+#-------------------------------------------------------------------------------
+if 'USES_ISLAND' in env:
+   sections = ['.text.sns', '.data.sns', '.rodata.sns']
+   env.AddIslandLibrary(env['SSC_BUILD_TAGS'], lib, sections)
+   env.AddIslandLibrary(env['SSC_BUILD_TAGS'], my_static_lib, sections)
+   if len(VARIANT_PROTO_SRCFILES) > 0:
+     env.AddIslandLibrary(env['SSC_BUILD_TAGS'], proto_lib)
+
+#-------------------------------------------------------------------------------
+# Debug Options
+#-------------------------------------------------------------------------------
+
+if 'SSC_TARGET_HEXAGON' in env['CPPDEFINES']:
+  env.Append(CPPDEFINES = ['SNS_DEBUG_EVENT_SERVICE'])
+  env.Append(CPPDEFINES = ['-DSNS_DIAG_SSID=MSG_SSID_SNS_FRAMEWORK'])
+
+#-------------------------------------------------------------------------------
+# QDSS profiling events
+#-------------------------------------------------------------------------------
+if 'USES_QDSS_SWE' in env:
+  QDSS_IMG = ['QDSS_EN_IMG']
+  events = [
+            #event service
+            ['SNS_EVENT_SERVICE_PROCESS_EVENTS_START', '', 'F'],
+            ['SNS_EVENT_SERVICE_PROCESS_EVENTS_END', '', 'F'],
+            ['SNS_EVENT_SERVICE_PROCESS_SENSOR', '', 'F'],
+            ['SNS_EVENT_SERVICE_PROCESS_SENSOR_INSTANCE', '', 'F'],
+            ['SNS_EVENT_SERVICE_NOTIFY_EVENT_START', 'sensor/instance: 0x%x', 'F'],
+            ['SNS_EVENT_SERVICE_NOTIFY_EVENT_END', '', 'F'],
+            ['SNS_EVENT_SERVICE_REMOVE_STREAM_START', 'stream: 0x%x', 'F'],
+            ['SNS_EVENT_SERVICE_REMOVE_STREAM_END', '', 'F'],
+            ['SNS_EVENT_SERVICE_PUBLISH_EVENT_START', '', 'F'],
+            ['SNS_EVENT_SERVICE_PUBLISH_EVENT_TO_CLIENT_START', 'stream: 0x%x, client: 0x%x', 'F'],
+            ['SNS_EVENT_SERVICE_PUBLISH_EVENT_TO_CLIENT_END', '', 'F'],
+            ['SNS_EVENT_SERVICE_PUBLISH_EVENT_END', '', 'F'],
+            ['SNS_EVENT_SERVICE_LOW_MEM_START', '', 'F'],
+            ['SNS_EVENT_SERVICE_LOW_MEM_END', '', 'F'],
+            ['SNS_EVENT_SERVICE_DROP_TAIL_START', '', 'F'],
+            ['SNS_EVENT_SERVICE_DROP_TAIL_END', '', 'F'],
+            ['SNS_EVENT_SERVICE_ALLOC_EVENT_START', '', 'F'],
+            ['SNS_EVENT_SERVICE_ALLOC_EVENT_END', '', 'F'],
+            ['SNS_EVENT_SERVICE_CONSUME_EVENT_START', '', 'F'],
+            ['SNS_EVENT_SERVICE_CONSUME_EVENT_END', '', 'F'],
+
+            #stream service
+            ['SNS_STREAM_SERVICE_DATA_STREAM_INIT_START', '', 'F'],
+            ['SNS_STREAM_SERVICE_DATA_STREAM_INIT_END', '', 'F'],
+            ['SNS_STREAM_SERVICE_REMOVE_CLIENTLESS_INSTANCES_START', '', 'F'],
+            ['SNS_STREAM_SERVICE_REMOVE_CLIENTLESS_INSTANCES_END', '', 'F'],
+            ['SNS_STREAM_SERVICE_DATA_STREAM_DEINIT_START', 'stream 0x%x', 'F'],
+            ['SNS_STREAM_SERVICE_DATA_STREAM_DEINIT_END', '', 'F'],
+            ['SNS_STREAM_SERVICE_HANDLE_STREAM_DESTROY_START', 'stream: 0x%x', 'F'],
+            ['SNS_STREAM_SERVICE_HANDLE_STREAM_DESTROY_END', '', 'F'],
+            ['SNS_STREAM_SERVICE_ADD_REQ_START', '', 'F'],
+            ['SNS_STREAM_SERVICE_ADD_REQ_END', '', 'F'],
+            ['SNS_STREAM_SERVICE_PEEK_INPUT_START', '', 'F'],
+            ['SNS_STREAM_SERVICE_PEEK_INPUT_END', '', 'F'],
+            ['SNS_STREAM_SERVICE_GET_NEXT_INPUT_START', '', 'F'],
+            ['SNS_STREAM_SERVICE_GET_NEXT_INPUT_END', '', 'F'],
+            ['SNS_STREAM_SERVICE_CREATE_SENSOR_STREAM_START', '', 'F'],
+            ['SNS_STREAM_SERVICE_CREATE_SENSOR_STREAM_END', '', 'F'],
+            ['SNS_STREAM_SERVICE_CREATE_INSTANCE_STREAM_START', '', 'F'],
+            ['SNS_STREAM_SERVICE_CREATE_INSTANCE_STREAM_END', '', 'F'],
+            ['SNS_STREAM_SERVICE_HANDLE_REQ_START', '', 'F'],
+            ['SNS_STREAM_SERVICE_HANDLE_REQ_END', '', 'F'],
+            ['SNS_STREAM_SERVICE_PROCESS_START', '', 'F'],
+            ['SNS_STREAM_SERVICE_PROCESS_END', '', 'F'],
+            ['SNS_STREAM_SERVICE_DESTROY_COMPLETE_START', '0x%x', 'F'],
+            ['SNS_STREAM_SERVICE_DESTROY_COMPLETE_END', '', 'F']
+          ]
+  env.AddSWEInfo(QDSS_IMG, events)
+
+#-------------------------------------------------------------------------------
+# Scan subdirectories to find more /build folders
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+

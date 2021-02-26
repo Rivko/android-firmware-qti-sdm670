@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+========================================================================
+   Copyright(c) 2018 Qualcomm Technologies, Inc.
+   All Rights Reserved.
+   Confidential and Proprietary - Qualcomm Technologies, Inc.
+========================================================================
+-->
+<Convergence
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:noNamespaceSchemaLocation="..\..\..\..\..\..\cdk\chromatix\XSD\stats\aec\aecConvergence.xsd">
+  <module_version>
+    <major_revision>1</major_revision>
+    <minor_revision>0</minor_revision>
+    <incr_revision>0</incr_revision>
+  </module_version>
+  <algoSelect description="Specifies which algorithm to run in preview state: AECConvSlowConv or AECConvFastConv. Slow is recommeded for smooth video capture and Fast for preview" tuning_parameter_level="often_tune">AECConvFastConv</algoSelect>
+  <fastConv description="Fast algorithm converges by measuring the delta to exposure target and adjusting to take into account system delay.">
+    <tolMultUnitStepSize description="Exposure index tolerance is tolMultUnitStepSize * unitStepSize; exposure index range within which AEC will not adjust" range="[1,5]" tuning_parameter_level="often_tune">2</tolMultUnitStepSize>
+    <frameSkipMethod description="Specifies which type of frame skip is desired: SmoothNoSkip for smooth convergence, SkipOne if there are synchronization concerns, SkipSystemLatency if speed is preferred to smoothness" tuning_parameter_level="rarely_tune">SmoothNoSkip</frameSkipMethod>
+    <aggressiveness description="Controls convergence speed; 0.0 is slowest and 1.0 is fastest" range="[0.0,1.0]" tuning_parameter_level="often_tune">0.8</aggressiveness>
+    <enableBrightDarkSpeedAdj description="Enable adjusting convergence speed when there are saturated regions" tuning_parameter_level="rarely_tune">false</enableBrightDarkSpeedAdj>
+    <darkRatioAdjStrength description="Strength of speed adjustment when there are dark clipped regions" range="[0,1.0]" tuning_parameter_level="rarely_tune">1.5</darkRatioAdjStrength>
+    <brightRatioAdjStrength description="Strength of speed adjustment when there are dark clipped regions" range="[0,1.0]" tuning_parameter_level="rarely_tune">0.4</brightRatioAdjStrength>
+    <thresDarkExpIndexDelta description="When image is dark and absolute index target delta is larger than this absolute threshold we will adjust convergence speed" range="[40,80]" tuning_parameter_level="never_tune">50</thresDarkExpIndexDelta>
+    <thresBrightExpIndexDelta description="When image is bright and absolute index target delta is larger than this absolute threshold we will adjust convergence speed" range="[10,30]" tuning_parameter_level="never_tune">50</thresBrightExpIndexDelta>
+    <ADRCConvSpeed description="Convergence speed for short and long exposures. Smaller value yields slower convergence." range="[0.0,0.5]" tuning_parameter_level="rarely_tune">0.15</ADRCConvSpeed>
+  </fastConv>
+  <slowConv description="Slow algorithm converges smoothly by using exposure index steps the size of which increases or decreases gracefully at the expense of convergence speed">
+    <tolMultUnitStepSize description="Exposure index tolerance is tolMultUnitStepSize * unitStepSize; exposure index range within which AEC will not adjust" range="[1,5]" tuning_parameter_level="often_tune">2</tolMultUnitStepSize>
+    <frameSkipMethod description="Specifies which type of frame skip is desired: SmoothNoSkip for smooth convergence, SkipOne if there are sync issues. Slow convergence does not implement SkipSystemLatency" tuning_parameter_level="rarely_tune">SmoothNoSkip</frameSkipMethod>
+    <stepFactorWhenFrameSkipEnabled description="Increase in step size when skip is enabled" range="[1.5,2.5]" tuning_parameter_level="rarely_tune">2</stepFactorWhenFrameSkipEnabled>
+    <convSpeed description="Controls convergence speed; larger value will result in larger step sizes and therefore faster convergence" range="[0.0,1.0]" tuning_parameter_level="often_tune">0.8</convSpeed>
+    <refFrameRate description="Reference frame rate at which the tuning settings were computed" range="[15.0,120.0]" tuning_parameter_level="rarely_tune">30</refFrameRate>
+    <!--
+
+Base Type Tuning Definition
+
+ -->
+    <stepRegular description="Range of step sizes for slow convergence when there are no dark or bright regions. Final step size is interpolated based on convSpeed parameter" range="[2.0,6.0]" tuning_parameter_level="rarely_tune">
+      <start>3</start>
+      <end>5</end>
+    </stepRegular>
+    <!--
+
+Base Type Tuning Definition
+
+ -->
+    <stepDark description="Range of step sizes for slow convergence when exposure is too dark and there are dark regions. Final step size is interpolated based on convSpeed parameter" range="[6.0,30.0]" tuning_parameter_level="rarely_tune">
+      <start>10</start>
+      <end>22</end>
+    </stepDark>
+    <!--
+
+Base Type Tuning Definition
+
+ -->
+    <stepBright description="Range of step sizes for slow convergence when exposure is too bright and there are bright regions. Final step size is interpolated based on convSpeed parameter" range="[5.0,18.0]" tuning_parameter_level="rarely_tune">
+      <start>8</start>
+      <end>16</end>
+    </stepBright>
+    <!--
+
+Base Type Tuning Definition
+
+ -->
+    <thresSlowDownAbsExpIndexDeltaDark description="Range of absolute exposure delta from target whithin which algorithm step size will be decreased to smoothly converge to target. Large value means slower approach. Final step size is interpolated based on convSpeed parameter" range="[6.0,20.0]" tuning_parameter_level="rarely_tune">
+      <start>17.3</start>
+      <end>7.55</end>
+    </thresSlowDownAbsExpIndexDeltaDark>
+    <!--
+
+Base Type Tuning Definition
+
+ -->
+    <thresSlowDownAbsExpIndexDeltaBright description="Range of absolute exposure delta from target whithin which algorithm step size will be decreased to smoothly converge to target. Large value means slower approach. Final step size is interpolated based on convSpeed parameter" range="[6.0,20.0]" tuning_parameter_level="rarely_tune">
+      <start>7.55</start>
+      <end>4.73</end>
+    </thresSlowDownAbsExpIndexDeltaBright>
+    <maxRawStepAdj description="Slow convergence algorithm is designed to maintain the same convergence speed, regardless of skip and frame rate. To that effect, the step size is adjusted by a factor. Parameter maxRawStepAdj controls the range of that factor: [1/maxRawStepAdj, maxRawStepAdj]" range="[1.0,2.5]" tuning_parameter_level="rarely_tune">2</maxRawStepAdj>
+    <tolExpIndexDeltaForceAdj description="If computed step size is zero we will force it to unitStepSize when absolute delta from target is larger than this threshold" range="[2,4]" tuning_parameter_level="rarely_tune">4</tolExpIndexDeltaForceAdj>
+    <thresNumBrightRgn description="The minimal ratio of bright regions required for bright step size to be used during convergence" range="[0.03,0.1]" tuning_parameter_level="rarely_tune">0.05</thresNumBrightRgn>
+    <thresNumDarkRgn description="The minimal ratio of dark regions required for dark step size to be used during convergence" range="[0.03,0.2]" tuning_parameter_level="rarely_tune">0.05</thresNumDarkRgn>
+    <holdTimeTuning description="These parameters control how long the algorithm will hold off adjusting in the presence of stats changes">
+      <enableHoldTime description="Enable holding off exposure adjustments when motion and exposure changes are small" tuning_parameter_level="rarely_tune">false</enableHoldTime>
+      <!--
+
+Base Type Tuning Definition
+
+ -->
+      <thresAbsExpDelta description="Range within which hold time is adjusted based on exposure deviation from target. Below this range: hold time is adjusted by expDeltaBasedHTAdjFactor.start; above this range hold time is adjusted by expDeltaBasedHTAdjFactor.end" range="[2.0,6.0]" tuning_parameter_level="rarely_tune">
+        <start>13.7</start>
+        <end>18</end>
+      </thresAbsExpDelta>
+      <!--
+
+Base Type Tuning Definition
+
+ -->
+      <expDeltaBasedHTAdjFactor description="Exposure-based hold time adjustment factor range, start needs to be larger than end!" range="[1.0,0.3]" tuning_parameter_level="rarely_tune">
+        <start>1</start>
+        <end>0.7</end>
+      </expDeltaBasedHTAdjFactor>
+      <tolAdjFactor description="Hold time is not allowed if exposure index absolute delta from target is larger than tolerance times this threshold" range="[1,4]" tuning_parameter_level="rarely_tune">2</tolAdjFactor>
+      <holdTimeEnterDelay description="The amount of time AEC needs to be stable before holding time gets activated" range="[1.0,10.0]" tuning_parameter_level="rarely_tune">3</holdTimeEnterDelay>
+      <maxHoldTime description="Maximum amount of time AEC will hold off exposure adjustments when large disturbance is measured" range="[0,3]" tuning_parameter_level="rarely_tune">1</maxHoldTime>
+      <enableGyroBasedHT description="Enable using gyro to determine amount of disturbance" tuning_parameter_level="rarely_tune">false</enableGyroBasedHT>
+      <!--
+
+Base Type Tuning Definition
+
+ -->
+      <thresGyroMagnitude description="Range within which hold time is adjusted based on gyro magnitude. Amount of adjustment is controlled by gyroBasedHTAdjFactor" range="[0.1,10.0]" tuning_parameter_level="rarely_tune">
+        <start>0.5</start>
+        <end>4</end>
+      </thresGyroMagnitude>
+      <!--
+
+Base Type Tuning Definition
+
+ -->
+      <gyroBasedHTAdjFactor description="Gyro-based hold time adjustment factor range, start needs to be larger than end!" range="[1.0,0.3]" tuning_parameter_level="rarely_tune">
+        <start>1</start>
+        <end>0.4</end>
+      </gyroBasedHTAdjFactor>
+    </holdTimeTuning>
+    <ADRCConvSpeed description="Convergence speed for short and long exposures. Smaller value yields slower convergence." range="[0.0,0.5]" tuning_parameter_level="rarely_tune">0.15</ADRCConvSpeed>
+  </slowConv>
+  <unitStepSize description="Base exposure index unit" range="[0.1,1.0]" tuning_parameter_level="rarely_tune">0.5</unitStepSize>
+  <enableConvergeGainFirst description="Speeds up dark to bright convergence by increasing gain first" tuning_parameter_level="often_tune">false</enableConvergeGainFirst>
+</Convergence>

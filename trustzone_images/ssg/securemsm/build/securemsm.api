@@ -1,0 +1,118 @@
+#===============================================================================
+#
+# SECUREMSM Paths
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009-2017,2019,2020 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/ssg.tz/1.0.2/securemsm/build/securemsm.api#4 $
+#  $DateTime: 2020/08/19 22:22:20 $
+#  $Author: pwbldsvc $
+#  $Change: 25664609 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#  2/16/17           move xbl_sec from core to ssg
+# 01/17/17   sm      Move to 'ssg' component.
+# 04/20/12   vg      Added paths for new secboot header files.
+# 05/13/11   rv      Added paths for secrsa
+# 05/04/11   vg      Added paths for secmath and secboot.
+# 02/08/11   nk      Added SMECOM residual paths to resolve compilation errors.
+# 02/08/11   nk      Added IPSec non CLF paths for backward compatibility.
+# 01/21/11   sp      Added changes for ipsec CLF directory structure.
+# 12/14/10   chm     Added support for PlayReady.
+# 01/10/10   nk      Added paths for CLF smecom
+# 11/08/10   cz      Added changes for PlayReady Provisioning
+# 09/15/10   qxu     Added changes for new sfs and cryptoutil directory stucture
+# 09/15/10   ejt     Added changes for new crypto directory stucture
+#===============================================================================
+import os
+Import('env')
+
+if env['MSM_ID'] in ['6200']:
+  env.Replace(XPU_VERSION = 'v2')
+  env.Replace(XPU_VERSION_NAME = 'xpu2')
+
+else:
+  env.Replace(XPU_VERSION = 'v3')
+  env.Replace(XPU_VERSION_NAME = 'xpu3')
+
+if os.path.exists(env.subst("${INC_ROOT}/ssg/securemsm/accesscontrol/src/common/${TARGET_FAMILY}")):
+   env.Replace(AC_FAMILY_ID = '${TARGET_FAMILY}')
+else:
+   env.Replace(AC_FAMILY_ID = 'stubs')
+
+if env['TARGET_FAMILY'] in ['hoya']:
+   env.Replace(AC_FAMILY_ID = 'honeybadger')
+if env['TARGET_FAMILY'] in ['bear']:
+   env.Replace(AC_FAMILY_ID = 'honeybadger')
+
+
+# Public APIs these are accecible by anyone internal or external to CoreBSP
+env.PublishPublicApi('SECUREMSM', [
+   "${INC_ROOT}/ssg/api/securemsm",
+   "${INC_ROOT}/ssg/api/securemsm/crypto",
+   "${INC_ROOT}/ssg/api/securemsm/trustzone/gp",
+   "${INC_ROOT}/ssg/api/securemsm/trustzone/qsee",
+   "${INC_ROOT}/ssg/api/securemsm/tzos",
+   "${INC_ROOT}/ssg/api/securemsm/secdbg",
+   "${INC_ROOT}/ssg/api/securemsm/util",
+   "${INC_ROOT}/ssg/api/rapi/securemsm/inc",
+   "${INC_ROOT}/ssg/securemsm/accesscontrol/api",
+   "${INC_ROOT}/ssg/securemsm/accesscontrol/src/components/xpu/${XPU_VERSION}",
+   "${INC_ROOT}/ssg/securemsm/accesscontrol/src/common/${AC_FAMILY_ID}",
+   "${INC_ROOT}/ssg/securemsm/accesscontrol/src/common",
+   "${INC_ROOT}/ssg/securemsm/cpz",
+   "${INC_ROOT}/apps/securemsm/trustzone/qsapps/secureindicator/inc",
+   "${INC_ROOT}/ssg/securemsm/seccam/inc",
+])
+
+
+# Restricted APIs these are accecible by anyone within CoreBSP
+env.PublishRestrictedApi('SECUREMSM', [
+   '${INC_ROOT}/ssg/securemsm/accesscontrol/api',
+   '${INC_ROOT}/ssg/securemsm/accesscontrol/src/components/xpu/${XPU_VERSION}',
+   '${INC_ROOT}/ssg/securemsm/cpz/',
+   "${INC_ROOT}/ssg/securemsm/unifiedcrypto/shared/sha/src",
+   "${INC_ROOT}/ssg/securemsm/unifiedcrypto/shared/sha/inc",
+   "${INC_ROOT}/ssg/securemsm/unifiedcrypto/environment/inc",
+   "${INC_ROOT}/ssg/securemsm/unifiedcrypto/core/sha/inc",
+   "${INC_ROOT}/ssg/securemsm/trustzone/qsee/include",
+   "${INC_ROOT}/ssg/securemsm/cryptodrivers/kc/api/inc",
+   "${INC_ROOT}/ssg/securemsm/cryptodrivers/cm/api/inc",
+   "${INC_ROOT}/ssg/securemsm/secrsa/shared/inc",
+   "${INC_ROOT}/ssg/securemsm/secrsa/shared/src",
+   "${INC_ROOT}/ssg/securemsm/trustzone/qsee/services/sec_key_mgr/inc",
+   "${INC_ROOT}/ssg/securemsm/secutils/inc",
+   "${INC_ROOT}/ssg/securemsm/accesscontrol/src/common/${AC_FAMILY_ID}",
+   "${INC_ROOT}/ssg/securemsm/trustzone/qsee/services/license_manager/inc/",
+])
+
+# Including thses for cmCommon usage in DeviceID
+if os.path.exists(env.subst("${INC_ROOT}/ssg/securemsm/cryptodrivers/cm/chipset/${CHIPSET}/inc/")):
+    env.PublishRestrictedApi('SECUREMSM', ["${INC_ROOT}/ssg/securemsm/cryptodrivers/cm/chipset/${CHIPSET}/inc/",])
+else:
+    env.PublishRestrictedApi('SECUREMSM', ["${INC_ROOT}/ssg/securemsm/cryptodrivers/cm/chipset/stubs/inc/",])
+
+# TZTD_845: Expose Required APIs for spss.
+# TZTD_670: Expose Required APIs for spss.  
+env.PublishPublicApi('SECUREMSM', [
+   "${INC_ROOT}/ssg/securemsm/trustzone/qsee/include",
+   "${INC_ROOT}/ssg/securemsm/trustzone/qsee/mink/include",
+   "${INC_ROOT}/ssg/securemsm/unifiedcrypto/shared/sha/src",
+   "${INC_ROOT}/ssg/securemsm/unifiedcrypto/shared/sha/inc",
+   "${INC_ROOT}/ssg/securemsm/unifiedcrypto/environment/inc",
+   "${INC_ROOT}/ssg/securemsm/unifiedcrypto/core/sha/inc",
+])
+
+env.LoadAPIUnits()

@@ -1,0 +1,90 @@
+#===============================================================================
+#
+# AVS AU
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2009-2009 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/avs.adsp/2.8.5/listen/services/static_svcs/listen_stream_mgr/build/listen_stream_mgr.scons#1 $
+#  $DateTime: 2017/11/07 23:00:25 $
+#  $Author: pwbldsvc $
+#  $Change: 14795016 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+
+core_public_apis = [
+   'DEBUGTOOLS',
+   'KERNEL',
+   'POWER',
+   'SERVICES',
+   ]
+
+platform_public_apis = [
+   'QAIC',
+   'STDDEF',
+   'HAPSDK',
+   'DLW' 
+   ]
+
+
+env.PublishPrivateApi('AVS',[
+   '../inc',   
+   '../build',
+   '${AVS_ROOT}/listen/algos/voice_wakeup_v2/vw_v2_capi_v2/inc',
+   '${AVS_ROOT}/listen/algos/acd/acd_capi_v2/inc',
+   ])
+
+
+env.RequirePublicApi(core_public_apis, area='core')
+env.RequireRestrictedApi(['AVS','SHARED_LIBRARY_INC_PATHS'])
+env.RequireProtectedApi('AVS')
+env.RequirePublicApi('ADSP_AMDB')
+
+
+env.RequirePublicApi(platform_public_apis, area='platform') # This has to be the last include command, so that the Elite_CAPI.h and Elite_APPI.h are not overridden
+
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = ".."
+LIBNAME = 'listen_stream_mgr'
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+# Generate regular source file list
+if env.get('hy22') == True:
+   avs_reg_sources = env.GlobSourceFiles(['/src/*.cpp', '/src/*.c', '/src/*.S', 'src/public/*.cpp', 'src/public/*.c'], SRCPATH,posix=True)
+else:
+   avs_reg_sources = env.GlobSourceFiles(['/src/*.cpp', '/src/*.c', '/src/*.S', 'src/prop/*.cpp', 'src/prop/*.c'], SRCPATH,posix=True)
+
+# Generate stub source file list
+avs_stub_sources = env.GlobSourceFiles(['/stub_src/*.cpp', '/stub_src/*.c', '/stub_src/*.S'], SRCPATH,posix=True)
+
+# Genate proprietary source file list
+avs_prop_sources = []
+
+# Enabling additional debug option for SIM 
+if 'SIM_DEFINED' in env.subst('$CCFLAGS'):
+    env.Append(CPPDEFINES=['LSM_DEBUG'])    
+
+env.Replace(HEXAGONCC_OPT = "-Os") 
+
+#import pdb; pdb.set_trace()
+if 'USES_AVS_LIBRARY_BUILDER' in env:
+   env.AddAvsLibrary(['AVS_ADSP','AVS_ADSP_USER'], '${BUILDPATH}/'+LIBNAME,
+      [avs_reg_sources, avs_stub_sources, avs_prop_sources], PACK_SRC=True)

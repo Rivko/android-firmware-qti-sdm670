@@ -1,0 +1,87 @@
+#===============================================================================
+#
+# AVS AU
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2009-2009 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: $
+#  $DateTime: $
+#  $Author:  $
+#  $Change:  $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+
+#-------------------------------------------------------------------------------
+# Make all warnings into errors
+#-------------------------------------------------------------------------------
+
+
+env.Append(CFLAGS = '-Wunused-variable')
+
+if 'USES_ENABLE_FUNCTION_SECTIONS' in env:
+   env.Append(CFLAGS = '-ffunction-sections')
+
+core_public_apis = [
+   'DEBUGTOOLS',
+   'KERNEL',
+   'POWER',
+   'SERVICES',
+   'DAL',
+   'SYSTEMDRIVERS'
+   ]
+
+env.RequirePublicApi(core_public_apis, area='core')
+env.RequireRestrictedApi('AVS')
+env.RequireProtectedApi('AVS')
+
+
+env.PublishPrivateApi('AVS',[
+   '../inc',
+   ])
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = ".."
+LIBNAME = 'qurt_elite'
+KLIBNAME = 'qurt_elite_qdi'
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+avs_sources = env.GlobSourceFiles(['src/*.cpp', 'src/*.c'], SRCPATH, posix=True)
+guestos_src = [
+                 '${BUILDPATH}/src/qurt_elite_qdi_driver.cpp',
+              ];
+
+avs_sources = [i for i in avs_sources if i not in guestos_src];
+ 
+env.AddLibrary(['AVS_ADSP','AVS_ADSP_USER', 'CORE_QDSP6_SENSOR_SW'], '${BUILDPATH}/'+LIBNAME, avs_sources)
+env.AddLibrary(['AVS_ADSP_ROOT'], '${BUILDPATH}/'+KLIBNAME, guestos_src)
+
+IMAGES = ['AVS_ADSP_ROOT'];
+
+if 'USES_RCINIT' in env:
+	env.AddRCInitFunc(IMAGES, {
+  		'sequence_group'             : 'RCINIT_GROUP_2',                   # required
+  		'init_name'                  : 'qurt_elite_qdi_server',            # required
+  		'init_function'              : 'qurt_elite_qdi_init',              # required
+  		'dependencies'               : []
+			})
+ 
+ 
+ 

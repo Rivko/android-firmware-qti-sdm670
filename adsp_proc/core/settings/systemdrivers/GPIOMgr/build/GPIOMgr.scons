@@ -1,0 +1,76 @@
+#===============================================================================
+#
+# Settings Registrations
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2016 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1/settings/systemdrivers/GPIOMgr/build/GPIOMgr.scons#1 $
+#  $DateTime: 2017/07/21 22:10:47 $
+#  $Author: pwbldsvc $
+#  $Change: 13907704 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+import os
+Import('env')
+
+# The LLVM compiler added in several dozen -Wunused-function warnings with entries
+# in device configuration.  We will suppress these warnings for the devcfg_img
+# SCons image only.
+env.Append(CFLAGS = ' -Wno-unused-function')
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "../config"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# External depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+  'DAL',
+  'SERVICES',
+  'GPIOMGR_DEVCFG_INTERFACE',
+  'SYSTEMDRIVERS',
+  'KERNEL'
+]
+env.RequireRestrictedApi(['GPIOMGR_DEVCFG_INTERFACE'])
+
+env.RequirePublicApi(CBSP_API)
+
+if 'USES_DEVCFG' in env:
+  image_path = os.path.join(os.getcwd(),'..','config',env['IMAGE'],env['CHIPSET'])
+  file_list = []
+  devcfg_key = ''
+
+  if os.path.exists(image_path):
+    file_list.append('../config/${IMAGE}/${CHIPSET}/GPIOMgr.xml')
+    file_list.append('${BUILDPATH}/${IMAGE}/${CHIPSET}/GPIOMgrConfigData.c')
+    devcfg_key = '{}_xml'.format(env['MSM_ID'])
+  else:
+    file_list.append('../config/GPIOMgrStub.xml')
+    file_list.append('${BUILDPATH}/GPIOMgrConfigDataStub.c')
+    devcfg_key = 'soc_xml'
+
+  DEVCFG_IMG = ['DAL_DEVCFG_IMG']
+  env.AddDevCfgInfo(DEVCFG_IMG, 
+  {
+     devcfg_key : file_list
+  })
+
+

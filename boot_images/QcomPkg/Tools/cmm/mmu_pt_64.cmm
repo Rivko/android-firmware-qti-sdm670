@@ -1,0 +1,351 @@
+;============================================================================
+; Name: mmu_pt.cmm
+;
+; Description: Dump MMU Page tables into a file
+;     
+; Copyright (c) 2014-2016 Qualcomm Technologies, Inc.
+; All Rights Reserved. 
+; Qualcomm Technologies Proprietary and Confidential. 
+;
+;----------------------------------------------------------------------------
+
+;============================================================================
+;
+;                        EDIT HISTORY FOR MODULE
+;
+;
+;
+;  when         who     what, where, why
+;  ----------   ---     -----------------------------------------------------
+;  01-19-2016   vk      Move from C15 to SPR for sytem registers
+;  02-12-2015   bh      Changing RD: to A: 
+;  05-07-2014   yg      Dump additional useful registers
+;  03-18-2014   yg      Initial version
+;============================================================================;
+
+;
+;
+;   Usage : do mmu_pt_64 <file_name>
+;     
+;     file_name : is where the page tables are dumped into
+;     NOTE: currently the script uses hardcoded TTBR0 address
+;           TODO: automatically read TTBR value in script from the register
+;
+
+
+;
+;   Assumptions :
+;      - Assuming input/output address (IA/OA) is 32 bits only
+;      - Assuming page size to be 4k
+;
+;
+
+
+;------------------------------------------------------------------------------
+;Entry Point
+;------------------------------------------------------------------------------
+entry  &MmuPtFile
+
+local &Till
+local &PTaddr
+local &PTdat
+local &Saddr
+local &PState
+local &CurrentEL
+local &SCTLR_ELx
+local &TTBR0_ELx
+local &TCR_ELx
+local &PageSize
+local &TG0
+local &L0Cnt
+
+  OPEN #1 &MmuPtFile  /Write /Create
+
+  GOSUB GetRegValues
+;
+;  0th level pages here
+;
+  ;&PtBase=0x83FBB000
+
+  &PtBase=&TTBR0_ELx
+
+  &L0Cnt=8
+
+  &EndPtr=&PtBase+(&L0Cnt*8)
+
+  WRITE #1 " "
+  WRITE #1 "MMU Table TTBR @ &PtBase"
+
+  WRITE #1 "L0 Table:"
+  while (&PtBase<&EndPtr)
+  (
+    &PTdat=data.quad(A:&PtBase)
+    WRITE #1 " &PtBase : " FORMAT.HEX(16.,&PTdat)
+    &PtBase=&PtBase+8
+  )
+
+  &PtBase=&TTBR0_ELx
+
+  &EndPtr=&PtBase+(&L0Cnt*8)
+
+  WRITE #1 " "
+
+  while (&PtBase<&EndPtr)
+  (
+    &PTdat=data.quad(A:&PtBase)
+
+    &PType=&PTdat&0x3
+    &PTaddr=&PTdat&0xFFFFFF000
+
+    if (((&PType&0x3)==3)&&(&PTaddr!=0))
+    (
+      WRITE #1 "L1 Table: at " FORMAT.HEX(8.,&PTaddr) " (Based on entry " FORMAT.HEX(16.,&PTdat) " @ " FORMAT.HEX(8.,&PtBase) ")"
+      WRITE #1 " "
+      gosub DumpL1Page &PTaddr
+    )
+    &PtBase=&PtBase+8
+  )
+  CLOSE #1
+  print "Done"
+
+enddo
+
+GetRegValues:
+
+  &PState=r(CPSR)
+  ;
+  ; Bit[3-0] => EL
+  ;
+  ; Bit[3-2] : EL level
+  ; Bit[1] = 0
+  ; Bit[0] : 1 => Handler, 0 => Thread
+  ;
+  &CurrentEL=(&PState&0xF)>>2
+
+  WRITE #1 "CPSR        : &PState"
+  WRITE #1 "Current EL  : &CurrentEL"
+
+  GOSUB GetSCTLR_ELx
+  entry &SCTLR_ELx
+  WRITE #1 "SCTLR       : &SCTLR_ELx"
+
+  GOSUB GetTCR_ELx
+  entry &TCR_ELx
+  WRITE #1 "TCR         : &TCR_ELx"
+
+  ; TG0 is same in both EL1 & EL2 registers
+  &TG0=(&TCR_ELx>>14)&0x3
+  &PageSize=0x1000  ; Default 4k for TG0==0
+  if (&TG0==01)
+  (
+    &PageSize=0x10000
+  )
+  else if (&TG0==0x10)
+  (
+    &PageSize=0x4000
+  )
+
+  GOSUB GetTTBR0_ELx
+  entry &TTBR0_ELx
+  WRITE #1 "TTBR0       : &TTBR0_ELx"
+
+  GOSUB GetMAIR_ELx
+  entry &MAIR_ELx
+  WRITE #1 "MAIR        : &MAIR_ELx"
+
+return
+
+DumpPage:
+  entry &PgPtr
+
+  local &EndPtr
+  local &Dat
+  local &Cnt
+  local &PgPtrTemp
+
+  &PgPtrTemp=&PgPtr
+  &EndPtr=&PgPtrTemp+&PageSize
+  &Cnt=0
+
+  while (&PgPtrTemp<&EndPtr)
+  (
+    if (&Cnt==0)
+    (
+      WRITE #1  %CONT "    &PgPtrTemp : "
+    )
+    &Dat=data.quad(A:&PgPtrTemp)
+    WRITE #1 %CONT " " FORMAT.HEX(16.,&Dat)
+
+    &PgPtrTemp=&PgPtrTemp+8
+    &Cnt=&Cnt+1
+    if (&Cnt>=4)
+    (
+      &Cnt=0
+      WRITE #1 " "
+    )
+  )
+  WRITE #1 " "
+return 
+
+DumpL1Page:
+  entry &PgPtr
+
+  local &EndPtr
+  local &Dat
+  local &Cnt
+  local &PType
+  local &PTaddr
+  local &PgPtrTemp
+
+  &PgPtrTemp=&PgPtr
+  &EndPtr=&PgPtrTemp+&PageSize
+
+  GOSUB DumpPage &PgPtr
+  
+  while (&PgPtrTemp<&EndPtr)
+  (
+    &Dat=data.quad(A:&PgPtrTemp)
+
+    &PType=&Dat&0x3
+    &PTaddr=&Dat&0xFFFFFF000
+    if ((&PType==3)&&(&PTaddr!=0))
+    (
+      WRITE #1 "L2 Table: at " FORMAT.HEX(8.,&PTaddr) " (Based on entry " FORMAT.HEX(16.,&Dat) " @ " FORMAT.HEX(8.,&PgPtrTemp) ")"
+      WRITE #1 " "
+      gosub DumpPage &PTaddr
+    )
+
+    &PgPtrTemp=&PgPtrTemp+8
+  )
+
+return
+enddo
+
+
+GetPageTableBaseAddr:
+  ; &PtBaseAddr=v.value(TranslationTable)
+
+  ; Read TTBR0
+  ; &PtBase=data.long(C15:0x2)
+  ; &Sctlr=data.long(C15:0x1)
+
+  ; &Ttbcr=data.long(C15:0x202)
+
+  ;&T0sz
+  return &PtBaseAddr
+
+
+;   Get TTBR0 for the current selected EL
+GetTTBR0_ELx:
+local &TTBR_Temp
+
+  if (&CurrentEL==1)
+  (
+    &TTBR_Temp=data.quad(SPR:0x30200)  ; TTBR0_EL1
+  )
+  else if (&CurrentEL==2)
+  (
+    &TTBR_Temp=data.quad(SPR:0x38200)  ; TTBR0_EL2
+  )
+  else
+  (
+    &TTBR_Temp=data.quad(SPR:0x36200)  ; TTBR0_EL3
+  )
+return &TTBR_Temp
+
+;   Get MAIR for the current selected EL
+GetMAIR_ELx:
+local &MAIR_Temp
+
+  if (&CurrentEL==1)
+  (
+    &MAIR_Temp=data.quad(SPR:0x30A20)  ; MAIR_EL1
+  )
+  else if (&CurrentEL==2)
+  (
+    &MAIR_Temp=data.quad(SPR:0x38A20)  ; MAIR_EL2
+  )
+  else
+  (
+    &MAIR_Temp=data.quad(SPR:0x36A20)  ; MAIR_EL3
+  )
+return &MAIR_Temp
+
+;   Get TCR for the current selected EL
+GetTCR_ELx:
+local &TCR_Temp
+
+  if (&CurrentEL==1)
+  (
+    &TCR_Temp=data.quad(SPR:0x30202)  ; TCR_EL1
+  )
+  else if (&CurrentEL==2)
+  (
+    &TCR_Temp=data.quad(SPR:0x38202)  ; TCR_EL2
+  )
+  else
+  (
+    &TCR_Temp=data.quad(SPR:0x36202)  ; TCR_EL3
+  )
+return &TCR_Temp
+
+;   Get SCTLR for the current selected EL
+GetSCTLR_ELx:
+local &SCTLR_Temp
+
+  if (&CurrentEL==1)
+  (
+    &SCTLR_Temp=data.long(SPR:0x30100)  ; SCTLR_EL1
+  )
+  else if (&CurrentEL==2)
+  (
+    &SCTLR_Temp=data.long(SPR:0x38100)  ; SCTLR_EL2
+  )
+  else
+  (
+    &SCTLR_Temp=data.long(SPR:0x36100)  ; SCTLR_EL3
+  )
+return &SCTLR_Temp
+
+
+
+
+  ; &TTBR_Temp=data.long(C15:0x3202)  ; TCR_EL3
+
+  ; &TTBR_Temp=data.long(C15:0x402A)  ; MAIR_EL3
+    
+  ; &TTBR_Temp=data.long(C15:0x6002)  ; TTBR0_EL3
+
+  ; &TTBR_Temp=data.long(C15:0x6002)  ; TTBR1_EL3
+
+  ; &TTBR_Temp=data.long(C15:0x000C)  ; VBAR_EL1
+  ; &TTBR_Temp=data.long(C15:0x200C)  ; VBAR_EL2
+  ; &TTBR_Temp=data.long(C15:0x300C)  ; VBAR_EL3
+
+  ; &TTBR_Temp=data.long(C15:0x2212)  ; VTCR_EL2
+
+  ; Mapping Practice script from spec instructions
+  ;
+  ; From Spec:
+  ; op0   op1   CRn    CRm   op2
+  ;
+  ;  op0 : Co-processor (11 : cp15, 10 : ?)
+
+  ; <MCR|MRC> p15, op1, Rd, CRn, CRm, op2
+  ; Bit[0-3]   : CRn
+  ; Bit[4-7]   : CRm
+  ; Bit[8-10]  : op2
+  ; Bit[12-14] : op1
+  ; Bit[16]    : 0 => 32 bit access
+  ; 
+  ; data.long(C15:0x????)    <--------- Practice JTAG script
+  ;  ???? = op1 op2 CRm CRn
+
+  ; <MCRR|MRRC> p15, op1, Rd1, Rd2, CRm
+  ; Bit[4-7]   : CRm
+  ; Bit[12-14] : op1
+  ; Bit[16]    : 1 => 64 bit access
+  ;
+
+
+

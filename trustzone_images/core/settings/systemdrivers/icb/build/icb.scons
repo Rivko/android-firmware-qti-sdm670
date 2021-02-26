@@ -1,0 +1,126 @@
+#===============================================================================
+#
+#                             Edit History
+#
+# $Header: //components/rel/core.tz/2.0.2/settings/systemdrivers/icb/build/icb.scons#1 $
+# when         who     what, where, why
+# ----------   ---     ---------------------------------------------------------
+# 2017/10/20   vph     Add 855/1000
+# 2016/06/03   vph     Add 9x45
+# 2015/06/25   sds     Added 8998 memmap devcfg
+# 2014/12/09   tb      Split OEM modifiable data from internal data
+# 2013/11/21   tb      Added 8994
+# 2013/10/31   pm      Added 8916
+# 2013/09/03   pm      Added 8092
+# 2013/08/01   pm      Added 9x35
+# 2013/05/26   pm      Added 8084
+# 2013/05/24   jc      Added 8962
+# 2012/11/06   jc      Added 8x26 and 8x10
+# 2012/07/24   jc      Added APPS ThinUI image
+# 2012/06/25   jc      Added 9x25
+# 2012/05/31   av      Added ABT driver
+# 2012/04/02   dj      Move icbarb_init to RCINIT group 0
+# 2012/03/20   av      Added BOOT image
+# 2012/03/02   pm      Changes for WCNSS PRONTO
+# 2011/12/12   sds     Initial Creation
+#
+#===============================================================================
+#            Copyright (c) 2011-2017 QUALCOMM Technologies Incorporated.
+#                            All Rights Reserved.
+#                         QUALCOMM Proprietary/GTDR
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Python library imports
+#-------------------------------------------------------------------------------
+import glob, os
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+BUILDPATH = '..'
+env.VariantDir('${BUILDPATH}', BUILDPATH, duplicate=0)
+SRCPATH = os.path.join( BUILDPATH, 'src' )
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_APIS = [
+  'BUSES',
+  'HAL',
+  'POWER',
+  'RPM',
+  'DAL',
+  'SYSTEMDRIVERS',
+  'ICB_DEVCFG_INTERFACE',
+  'SERVICES',
+  'DEBUGTOOLS',
+  'SECUREMSM',
+  'KERNEL',
+  'BOOT',
+  'MINK',
+  'QSEE',
+  'TZCHIPSET',
+]
+
+env.RequirePublicApi(CBSP_APIS)
+env.RequireRestrictedApi(CBSP_APIS)
+
+SSG_API = [
+    'SECUREMSM',
+    'SSGPLATFORM',
+]
+env.RequirePublicApi(SSG_API, area = 'ssg')
+
+
+
+#-------------------------------------------------------------------------------
+# Device Configuration Sources
+#-------------------------------------------------------------------------------
+if os.path.exists(env.subst('../config/${MSM_ID}')):
+   env.Replace(ICB_MSM_ID = env['MSM_ID'])
+else:
+   env.Replace(ICB_MSM_ID = 'stubs')
+   env.PrintWarning("ICB devcfg not implemented...")
+
+# Temporary until other features come in
+devcfg_src = [
+    '${BUILD_ROOT}/core/settings/systemdrivers/icb/config/icbcfg_tz_${ICB_MSM_ID}.xml',
+    '${BUILD_ROOT}/core/settings/systemdrivers/icb/config/icbcfg_uarb_${ICB_MSM_ID}.xml',
+    '${BUILD_ROOT}/core/settings/systemdrivers/icb/config/icb_error_${ICB_MSM_ID}.xml',
+    '${BUILD_ROOT}/core/settings/systemdrivers/icb/config/${ICB_MSM_ID}/icbcfg_query_data.c',
+    '${BUILD_ROOT}/core/settings/systemdrivers/icb/config/${ICB_MSM_ID}/NOC_error_data.c',
+    '${BUILD_ROOT}/core/settings/systemdrivers/icb/config/${ICB_MSM_ID}/u_data.c'
+    ]
+
+devcfg_oem_src = [
+    '${BUILD_ROOT}/core/settings/systemdrivers/icb/config/icb_error_oem_${ICB_MSM_ID}.xml',
+    '${BUILD_ROOT}/core/settings/systemdrivers/icb/config/${ICB_MSM_ID}/NOC_error_OEM_data.c',
+    ]
+
+devcfg_src = [file for file in devcfg_src if os.path.isfile(env.subst(file))]
+
+devcfg_oem_src = [file for file in devcfg_oem_src if os.path.isfile(env.subst(file))]
+
+if 'USES_DEVCFG' in env:
+   if 'USES_DEVCFG_MULTIPLE_CONFIG' not in env:
+      DEVCFG_IMG = ['DAL_DEVCFG_IMG']
+      env.AddDevCfgInfo(DEVCFG_IMG, 
+      {
+        'devcfg_xml' : devcfg_src
+      })
+      DEVCFG_IMG_OEM = ['DAL_DEVCFG_OEM_QSEE_IMG']
+      env.AddDevCfgInfo(DEVCFG_IMG_OEM, 
+      {
+        'devcfg_xml' : devcfg_oem_src       
+      })
+
+      if "USES_DEPLOY_BUILDER" in env:
+         env.Deploy(['icb.scons',
+                     env.subst('../config/${ICB_MSM_ID}/NOC_error_HWIO.h'),
+                     env.subst('../config/${ICB_MSM_ID}/NOC_error_OEM_data.c'),
+                     '../interface/NOC_error.h',
+                    ])
+

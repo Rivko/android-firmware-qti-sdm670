@@ -1,0 +1,2495 @@
+ENTRY &dump_path &elf_path
+
+area.create A000 500. 3000.
+area.create DlgLog 500. 1000.
+area.select DlgLog
+area.clear DlgLog
+
+
+local &family
+local &coderam_base
+local &coderam_limit
+local &dataram_base
+local &msgram_base
+local &mpm_base
+local &clk_ctl_base
+local &cmd
+local &elf_matched
+local &hansei_out
+local &hansei_path
+
+local &is_SaveDumpDialog_running
+local &is_LoadDumpDialog_running
+local &is_LoadElfDialog_running
+local &is_RestoreFromCoreDialog_running
+local &is_M3UnstackDialog_running
+local &is_ParseFaultsDialog_running
+local &is_NpaDumpDialog_running
+local &is_DumpStackDialog_running
+local &is_DumpMsgRamDialog_running
+local &is_DumpResourceRequestsDialog_running
+local &is_RunHanseiDialog_running
+local &is_DumpRpmLogDialog_running
+local &is_GlinkDialog_running
+local &is_VmpmDialog_running
+
+;-------------------------------------------------------------------------------
+; Main Dialog
+;-------------------------------------------------------------------------------
+Dialog
+(
+    name "RpmDebugDlg"
+    header "RPM Debug"
+
+    pos 1. 0. 74. 1.
+ScriptList: pulldown "--Select Script--,Save RPM Dump,Load RPM Dump,Load ELF,Restore Registers,Parse Faults,Unstack Exception Frame,Dump Stack,Dump NPA,Dump Resource Requests,Dump SetTransition Estimates,Dump MSG RAM,Dump RPM Log,Hansei,------------,Parse Railway,Parse CPR,Parse Sleep Stats,------------,Test GLink,Test VMPM" ""
+
+    pos 76. 0. 10. 1.
+RunScriptBtn: defbutton "Start" "gosub RunScript"
+
+    close
+    (
+        dialog.end
+        enddo
+    )
+)
+
+;
+; Get the RPM build path where this script is running from
+;
+&RPM_DEBUG_SCRIPT_DIR=os.ppd()
+&RPM_BUILD_ROOT=string.mid("&RPM_DEBUG_SCRIPT_DIR",0,string.scan("&RPM_DEBUG_SCRIPT_DIR","\rpm_proc\",0))
+
+if "&elf_path"==""
+(
+    if file.exist("&RPM_BUILD_ROOT\rpm_proc\core\bsp\rpm\build\RPM_AAAAANAAR.elf")
+    (
+        &elf_path="&RPM_BUILD_ROOT\rpm_proc\core\bsp\rpm\build\RPM_AAAAANAAR.elf"
+    )
+)
+else if file.exist("&elf_path\rpm_proc\core\bsp\rpm\build\RPM_AAAAANAAR.elf")
+(
+    &elf_path="&elf_path\rpm_proc\core\bsp\rpm\build\RPM_AAAAANAAR.elf"
+)
+
+winclear RpmDebugDlg
+
+winpos 0. 0.
+dialog.area DlgLog
+winresize 96. 21. RpmDebugDlg
+
+winpos 0. 28. 96.
+d.l
+
+winpos 101. 0. 52.
+r /spotlight
+
+winpos 101. 14.
+b.l
+
+winpos 101. 27.
+v.f
+
+&is_SaveDumpDialog_running=false()
+&is_LoadDumpDialog_running=false()
+&is_LoadElfDialog_running=false()
+&is_RestoreFromCoreDialog_running=false()
+&is_M3UnstackDialog_running=false()
+&is_ParseFaultsDialog_running=false()
+&is_NpaDumpDialog_running=false()
+&is_DumpStackDialog_running=false()
+&is_DumpMsgRamDialog_running=false()
+&is_DumpRpmLogDialog_running=false()
+&is_DumpResourceRequestsDialog_running=false()
+&is_RunHanseiDialog_running=false()
+&is_EstimateDialog_running=false()
+&is_GlinkDialog_running=false()
+&is_VmpmDialog_running=false()
+
+stop
+
+;===============================================================================
+;
+;
+RunScript:
+    area.select DlgLog
+
+    &script_name=dialog.string(ScriptList)
+
+    if "&script_name"=="Save RPM Dump"&&!&is_SaveDumpDialog_running
+    (
+        gosub SaveDumpDialog
+    )
+    else if "&script_name"=="Load RPM Dump"&&!&is_LoadDumpDialog_running
+    (
+        winpos 100. 15.
+        gosub LoadDumpDialog
+    )
+    else if "&script_name"=="Load ELF"&&!&is_LoadElfDialog_running
+    (
+        gosub LoadElfDialog true()
+    )
+    else if "&script_name"=="Restore Registers";&&!&is_RestoreFromCoreDialog_running
+    (
+        if !y.exist(rpm_core_dump)
+        (
+            print %error "Error: Symbol is not loaded"
+            return
+        )
+
+        ;gosub NoArgScriptDialog rpm_proc\core\bsp\rpm\scripts rpm_restore_from_core.cmm true() true()
+        do &RPM_BUILD_ROOT\rpm_proc\core\bsp\rpm\scripts\rpm_restore_from_core.cmm
+    )
+    else if "&script_name"=="Parse Faults";&&!&is_ParseFaultsDialog_running
+    (
+        ;gosub NoArgScriptDialog rpm_proc\core\bsp\rpm\scripts rpm_parse_faults.cmm true() true()
+        do &RPM_BUILD_ROOT\rpm_proc\core\bsp\rpm\scripts\rpm_parse_faults.cmm
+    )
+    else if "&script_name"=="Unstack Exception Frame"&&!&is_M3UnstackDialog_running
+    (
+        ;gosub NoArgScriptDialog rpm_proc\core\bsp\rpm\scripts rpm_m3_unstack.cmm true() true()
+        do &RPM_BUILD_ROOT\rpm_proc\core\bsp\rpm\scripts\rpm_m3_unstack.cmm
+    )
+    else if "&script_name"=="Dump Stack"&&!&is_DumpStackDialog_running
+    (
+        if !y.exist(rpm_image_section_array)
+        (
+            print %error "Error: Symbol is not loaded"
+            return
+        )
+
+        gosub DumpStackDialog
+    )
+    else if "&script_name"=="Dump NPA"&&!&is_NpaDumpDialog_running
+    (
+        if !y.exist(rpm_ulogContext)
+        (
+            print %error "Error: Symbol is not loaded"
+            return
+        )
+
+        ;gosub NoArgScriptDialog rpm_proc\core\power\npa\scripts rpm_npadump.cmm true() false()
+        do &RPM_BUILD_ROOT\rpm_proc\core\power\npa\scripts\rpm_npadump.cmm
+    )
+    else if "&script_name"=="Dump MSG RAM"&&!&is_DumpMsgRamDialog_running
+    (
+        if !y.exist(rpm)
+        (
+            print %error "Error: Symbol is not loaded"
+            return
+        )
+
+        gosub DumpMsgRamDialog
+    )
+    else if "&script_name"=="Dump Resource Requests"&&!&is_DumpResourceRequestsDialog_running
+    (
+        if !y.exist(rpm)
+        (
+            print %error "Error: Symbol is not loaded"
+            return
+        )
+
+        gosub DumpResourceRequestsDialog
+    )
+    else if "&script_name"=="Dump SetTransition Estimates"&&!&is_EstimateDialog_running
+    (
+        if !y.exist(rpm)
+        (
+            print %error "Error: Symbol is not loaded"
+            return
+        )
+
+        gosub EstimateDialog
+    )
+    else if "&script_name"=="Dump RPM Log"&&!&is_DumpRpmLogDialog_running
+    (
+        gosub DumpRpmLogDialog
+    )
+    else if "&script_name"=="Hansei"&&!&is_RunHanseiDialog_running
+    (
+        gosub RunHanseiDialog
+    )
+    else if "&script_name"=="Test GLink"&&!&is_GlinkDialog_running
+    (
+        if !y.exist(rpm)
+        (
+            print %error "Error: Symbol is not loaded"
+            return
+        )
+
+        gosub GlinkDialog
+    )
+    else if "&script_name"=="Test VMPM"&&!&is_VmpmDialog_running
+    (
+        if !y.exist(rpm)
+        (
+            print %error "Error: Symbol is not loaded"
+            return
+        )
+
+        gosub VmpmDialog
+    )
+    else if "&script_name"=="Parse Railway"
+    (
+        if !y.exist(railway)
+        (
+            print %error "Error: Symbol is not loaded"
+            return
+        )
+
+        do &RPM_BUILD_ROOT\rpm_proc\core\bsp\rpm\scripts\rpm_parse_railway_state.cmm
+    )
+    else if "&script_name"=="Parse CPR"
+    (
+        if !y.exist(cpr_info)
+        (
+            print %error "Error: Symbol is not loaded"
+            return
+        )
+
+        do &RPM_BUILD_ROOT\rpm_proc\core\bsp\rpm\scripts\rpm_parse_cpr_state.cmm
+    )
+    else if "&script_name"=="Parse Sleep Stats"
+    (
+        if !y.exist(sleep_stats)
+        (
+            print %error "Error: Symbol is not loaded"
+            return
+        )
+
+        do &RPM_BUILD_ROOT\rpm_proc\core\bsp\rpm\scripts\rpm_parse_sleep_stats.cmm
+    )
+    else
+    (
+        print %error "Error: invalid selection &script_name"
+    )
+
+    return
+
+;===============================================================================
+;
+;
+LoadDumpDialog:
+    dialog
+    (
+        header "Load RPM Dump"
+
+        pos 1. 0. 10. 1.
+        text "Dump Path:"
+
+        pos 11. 0. 70. 1.
+DumpPath: edit "" ""
+
+        pos 11. 1. 70. 3.
+DumpPathHist: listbox ""
+        (
+            dialog.set DumpPath dialog.string(DumpPathHist)
+        )
+
+;        pos 1. 4. 10. 1.
+;        text "Family:"
+;
+;        pos 11. 4. 20. 1.
+;Family: pulldown "--Select Family--,Honeybadger,Badger,Bear" ""
+
+        pos 1. 4. 10. 1.
+        text "Target:"
+
+        pos 11. 4. 5. 1.
+Target: edit "8998"
+        (
+            &target=dialog.string(Target)
+            if string.len("&target")>4
+            (
+                dialog.set Target string.mid("&target",0,4)
+            )
+        )
+
+        pos 71. 4. 10. 1.
+LoadDumpBtn: defbutton "Load"
+        (
+            &dump_path=dialog.string(DumpPath)
+            &dump_path_hist=dialog.string2(DumpPathHist)
+            gosub SavePaths "c:\Temp\rpm_debug_dump_hist.txt" &dump_path &dump_path_hist
+            gosub LoadPaths "c:\Temp\rpm_debug_dump_hist.txt"
+            entry &dump_path_hist
+            dialog.set DumpPathHist "" &dump_path_hist
+
+            gosub LoadDump all
+            entry &ret
+            if &ret
+            (
+                &is_LoadDumpDialog_running=false()
+                dialog.end
+            )
+        )
+
+        close
+        (
+            &is_LoadDumpDialog_running=false()
+            dialog.end
+        )
+    )
+
+    &dump_path_hist=""
+    if file.exist("c:\Temp\rpm_debug_dump_hist.txt")
+    (
+        gosub LoadPaths "c:\Temp\rpm_debug_dump_hist.txt"
+        entry &dump_path_hist
+        dialog.set DumpPathHist "" &dump_path_hist
+
+        if "&dump_path"==""&&"&dump_path_hist"!=""
+        (
+            &idx=string.scan(&dump_path_hist,",",0)
+            if &idx>=0
+                &dump_path=string.mid(&dump_path_hist,0,&idx)
+            else
+                &dump_path=&dump_path_hist
+        )
+    )
+
+;    if "&family"!=""
+;        dialog.set Family "&family"
+    if "&dump_path"!=""
+        dialog.set DumpPath "&dump_path"
+    &is_LoadDumpDialog_running=true()
+
+    if !&is_LoadElfDialog_running
+    (
+        winpos 100. 26.
+        gosub LoadElfDialog false()
+    )
+
+    ;if !&is_RestoreFromCoreDialog_running
+    ;(
+    ;    winpos 100. 44.
+    ;    gosub NoArgScriptDialog rpm_proc\core\bsp\rpm\scripts rpm_restore_from_core.cmm false() true()
+    ;)
+
+    ;if !&is_M3UnstackDialog_running
+    ;(
+    ;    winpos 100. 50.
+    ;    gosub NoArgScriptDialog rpm_proc\core\bsp\rpm\scripts rpm_m3_unstack.cmm false() true()
+    ;)
+
+    stop
+
+;===============================================================================
+;
+;
+LoadDump:
+    entry &option
+
+    sys.d
+    sys.cpu CortexM3
+    sys.u
+
+    area.select DlgLog
+
+    print
+    print "Loading dump..."
+
+    &dump_path=dialog.string(DumpPath)
+
+    ;&family=dialog.string(Family)
+    &target=dialog.string(Target)
+    if !os.dir(&dump_path)
+    (
+        print %error "Error: &dump_path does not exit"
+        return false()
+    )
+    ;else if !os.dir.access(&dump_path,"r")
+    ;(
+    ;    print %error "Error: No read access"
+    ;    return false()
+    ;)
+
+    if file.exist("&dump_path\RPM_AAAAANAAR.elf")
+    (
+        &elf_path="&dump_path\RPM_AAAAANAAR.elf"
+    )
+
+    if ("&target"=="8992")||("&target"=="8994")
+    (
+        ;
+        ; Badger
+        ;
+        &coderam_base=0x100000
+        &dataram_base=0x190000
+        &msgram_base=0xfc428000
+        &mpm_base=0xfc4a0000
+        &clk_ctl_base=0xfc400000
+    )
+    else if ("&target"=="8996")||("&target"=="8998")
+    (
+        ;
+        ; Honeybadger
+        ;
+        &coderam_base=0x0
+        &dataram_base=0x90000
+        &mpm_base=0x4a0000
+        &clk_ctl_base=0x300000
+        if "&target"=="8996"
+            &msgram_base=0x60068000
+        else
+            &msgram_base=0x60778000
+    )
+    else
+    (
+        ;
+        ; Bear
+        ;
+        &coderam_base=0x0
+        &dataram_base=0x90000
+        &msgram_base=0x60060000
+        &mpm_base=0x4a0000
+        &clk_ctl_base=0x1800000
+    )
+
+    if file.exist("&dump_path\CODERAM.BIN")
+    (
+        if "&option"=="all"||"&option"=="coderam"
+        (
+            print "d.load.binary &dump_path\CODERAM.BIN &coderam_base /more /noclear"
+            d.load.binary "&dump_path\CODERAM.BIN" &coderam_base /more /noclear
+        )
+        if "&option"=="all"||"&option"=="dataram"
+        (
+            print "d.load.binary &dump_path\DATARAM.BIN &dataram_base /more /noclear"
+            d.load.binary "&dump_path\DATARAM.BIN" &dataram_base /more /noclear
+        )
+        if "&option"=="all"
+        (
+            print "d.load.binary &dump_path\MSGRAM.BIN &msgram_base /more /noclear"
+            d.load.binary "&dump_path\MSGRAM.BIN" &msgram_base /more /noclear
+        )
+    )
+    else if file.exist("&dump_path\CODERAM.RAM")
+    (
+        if "&option"=="all"||"&option"=="coderam"
+        (
+            print "d.load.binary &dump_path\CODERAM.RAM &coderam_base /more /noclear"
+            d.load.binary "&dump_path\CODERAM.RAM" &coderam_base /more /noclear
+        )
+        if "&option"=="all"||"&option"=="dataram"
+        (
+            print "d.load.binary &dump_path\DATARAM.RAM &dataram_base /more /noclear"
+            d.load.binary "&dump_path\DATARAM.RAM" &dataram_base /more /noclear
+        )
+        if "&option"=="all"
+        (
+            print "d.load.binary &dump_path\MSGRAM.RAM &msgram_base /more /noclear"
+            d.load.binary "&dump_path\MSGRAM.RAM" &msgram_base /more /noclear
+        )
+    )
+    else if file.exist("&dump_path\rpm_code_ram.bin")
+    (
+        if "&option"=="all"||"&option"=="coderam"
+        (
+            print "d.load.binary &dump_path\rpm_code_ram.bin &coderam_base /more /noclear"
+            d.load.binary "&dump_path\rpm_code_ram.bin" &coderam_base /more /noclear
+        )
+        if "&option"=="all"||"&option"=="dataram"
+        (
+            print "d.load.binary &dump_path\rpm_data_ram.bin &dataram_base /more /noclear"
+            d.load.binary "&dump_path\rpm_data_ram.bin" &dataram_base /more /noclear
+        )
+        if "&option"=="all"
+        (
+            print "d.load.binary &dump_path\rpm_msg_ram.bin &msgram_base /more /noclear"
+            d.load.binary "&dump_path\rpm_msg_ram.bin" &msgram_base /more /noclear
+
+            if file.exist("&dump_path\rpm_scs.bin")
+            (
+                print "d.load.binary &dump_path\rpm_scs.bin 0xE000E000 /more /noclear"
+                d.load.binary "&dump_path\rpm_scs.bin" 0xE000E000 /more /noclear
+            )
+            else if file.exist("&dump_path\rpm__ppi.bin")
+            (
+                print "d.load.binary &dump_path\rpm__ppi.bin 0xE0000000 /more /noclear"
+                d.load.binary "&dump_path\rpm__ppi.bin"    0xE0000000 /more /noclear
+            )
+
+            if file.exist("&dump_path\mpm.bin")
+            (
+                print "d.load.binary &dump_path\mpm.bin &mpm_base /more /noclear"
+                d.load.binary "&dump_path\mpm.bin" &mpm_base /more /noclear
+            )
+
+            if file.exist("&dump_path\clk_ctl.bin")
+            (
+                print "d.load.binary &dump_path\clk_ctl.bin &clk_ctl_base /more /noclear"
+                d.load.binary "&dump_path\clk_ctl.bin" &clk_ctl_base /more /noclear
+            )
+
+            if file.exist("&dump_path\tcsr_regs_0.bin")
+            (
+                print "d.load.binary &dump_path\tcsr_regs_0.bin 0xFD4A0000 /more /noclear"
+                d.load.binary "&dump_path\tcsr_regs_0.bin" 0xFD4A0000 /more /noclear
+            )
+
+            if file.exist("&dump_path\tcsr_regs_1.bin")
+            (
+                print "d.load.binary &dump_path\tcsr_regs_1.bin 0xFD4A7000 /more /noclear"
+                d.load.binary "&dump_path\tcsr_regs_1.bin" 0xFD4A7000 /more /noclear
+            )
+        )
+    )
+    else if file.exist("&dump_path\RPM0.bin")
+    (
+        if "&option"=="all"||"&option"=="coderam"
+        (
+            print "d.load.binary &dump_path\RPM0.bin &coderam_base /more /noclear"
+            d.load.binary "&dump_path\RPM0.bin" &coderam_base /more /noclear
+        )
+        if "&option"=="all"||"&option"=="dataram"
+        (
+            print "d.load.binary &dump_path\RPM1.bin &dataram_base /more /noclear"
+            d.load.binary "&dump_path\RPM1.bin" &dataram_base /more /noclear
+        )
+        if "&option"=="all"
+        (
+            print "d.load.binary &dump_path\RPM2.bin &msgram_base /more /noclear"
+            d.load.binary "&dump_path\RPM2.bin" &msgram_base /more /noclear
+        )
+    )
+    else if file.exist("&dump_path\RPM0_0xFC100000.bin")
+    (
+        if "&option"=="all"||"&option"=="coderam"
+        (
+            print "d.load.binary &dump_path\RPM0_0xFC100000.bin &coderam_base /more /noclear"
+            d.load.binary "&dump_path\RPM0_0xFC100000.bin" &coderam_base /more /noclear
+        )
+        if "&option"=="all"||"&option"=="dataram"
+        (
+            print "d.load.binary &dump_path\RPM1_0xFC190000.bin &dataram_base /more /noclear"
+            d.load.binary "&dump_path\RPM1_0xFC190000.bin" &dataram_base /more /noclear
+        )
+        if "&option"=="all"
+        (
+            print "d.load.binary &dump_path\RPM2_0xFC428000.bin &msgram_base /more /noclear"
+            d.load.binary "&dump_path\RPM2_0xFC428000.bin" &msgram_base /more /noclear
+        )
+    )
+    else
+    (
+        print %error "Error: valid dump not found"
+        return false()
+    )
+
+    print "Done"
+    print
+
+    if file.exist("&dump_path\rpm_registers.cmm")
+    (
+        print "Restoring Registers ..."
+        print "do &dump_path\rpm_registers.cmm"
+        do "&dump_path\rpm_registers.cmm"
+        print "Done"
+        print
+    )
+
+    &offset=0x40
+    &str=v.string((char*)(&dataram_base+&offset))
+    if string.scan("&str","OEM_IMAGE_UUID",0)>=0
+    (
+        &str=string.cut("&str",string.scan("&str","OEM_IMAGE_UUID",0))
+        &str=string.cut("&str",-1)
+        print %attr 2 "OEM_IMAGE_UUID    : "+string.cut("&str",string.scan("&str","=",0)+1)
+        &offset=&offset+string.length("&str")+1
+    )
+
+    &str=v.string((char*)(&dataram_base+&offset))
+    if string.scan("&str","QC_IMAGE_VERSION",0)>=0
+    (
+        &str=string.cut("&str",string.scan("&str","QC_IMAGE_VERSION",0))
+        &str=string.cut("&str",-1)
+        print %attr 2 "QC_IMAGE_VERSION  : "+string.cut("&str",string.scan("&str","=",0)+1)
+        &offset=&offset+string.length("&str")+1
+    )
+
+    &str=v.string((char*)(&dataram_base+&offset))
+    if string.scan("&str","IMAGE_VARIANT",0)>=0
+    (
+        &str=string.cut("&str",string.scan("&str","IMAGE_VARIANT",0))
+        &str=string.cut("&str",-1)
+        print %attr 2 "IMAGE_VARIANT     : "+string.cut("&str",string.scan("&str","=",0)+1)
+        &offset=&offset+string.length("&str")+1
+    )
+
+    &str=v.string((char*)(&dataram_base+&offset))
+    if string.scan("&str","OEM_IMAGE_VERSION",0)>=0
+    (
+        &str=string.cut("&str",string.scan("&str","OEM_IMAGE_VERSION",0))
+        &str=string.cut("&str",-1)
+        print %attr 2 "OEM_IMAGE_VERSION : "+string.cut("&str",string.scan("&str","=",0)+1)
+    )
+
+    return true()
+
+;===============================================================================
+;
+;
+LoadElfDialog:
+    entry &stop
+    dialog
+    (
+        header "Load ELF"
+
+        pos 1. 0. 10. 1.
+        text "ELF Path:"
+
+        pos 11. 0. 70. 1.
+ElfPath: hotedit ""
+        (
+            &val=string.trim(dialog.string(ElfPath))
+            if string.length("&val")>10
+            (
+                if file.exist("&val\RPM_AAAAANAAR.elf")
+                (
+                    dialog.set ElfPath "&val\RPM_AAAAANAAR.elf"
+                )
+                else if file.exist("&val\rpm_proc\core\bsp\rpm\build\RPM_AAAAANAAR.elf")
+                (
+                    dialog.set ElfPath "&val\rpm_proc\core\bsp\rpm\build\RPM_AAAAANAAR.elf"
+                )
+            )
+        )
+
+        pos 11. 1. 70. 3.
+ElfPathHist: listbox ""
+        (
+            dialog.set ElfPath dialog.string(ElfPathHist)
+        )
+
+        pos 0. 5. 10. 1.
+        text "Breakpoints:"
+
+        pos 11. 5. 45. 4.
+Breakpoints: medit "" ""
+
+        pos 61. 5. 20. 1.
+RestoreCodeCb: checkbox "Restore code from ELF" ""
+
+        pos 61. 6. 19. 1.
+IgnoreMismatchCb: checkbox "Check ELF mismatch" ""
+
+        pos 65. 7. 15. 1.
+LoadElfBtn: defbutton "Load"
+        (
+            gosub LoadElf
+            entry &ret
+            if &ret
+            (
+                &is_LoadElfDialog_running=false()
+
+                if (sys.mode()!=0)
+                (
+                    if V.VALUE(rpm_core_dump.cookie)==0xbaff1ed&&V.VALUE(rpm_core_dump.dumped_at)!=0
+                    (
+                        print "Logging current registers before restoring ..."
+                        register.log all /area DlgLog
+                        register.log
+                        print
+                        print "Restoring rpm core dump ..."
+                        do &RPM_BUILD_ROOT\rpm_proc\core\bsp\rpm\scripts\rpm_restore_from_core.cmm
+
+                        area.select DlgLog
+                        print
+                        print "Parsing fault ..."
+                        do &RPM_BUILD_ROOT\rpm_proc\core\bsp\rpm\scripts\rpm_parse_faults.cmm
+
+                        area.select DlgLog
+                        print
+                        print "Logging current registers before unstacking ..."
+                        register.log all /area DlgLog
+                        register.log
+                        print
+                        print "Unstacking the exception stack frame ..."
+                        do &RPM_BUILD_ROOT\rpm_proc\core\bsp\rpm\scripts\rpm_m3_unstack.cmm
+
+                        area.select DlgLog
+                        print "Done"
+                    )
+                )
+
+                dialog.end
+            )
+        )
+
+        pos 65. 8. 15. 1.
+CompareCodeBtn: defbutton "Compare Code"
+        (
+            gosub CompareCode
+            entry &ret
+            if &ret
+            (
+                &is_LoadElfDialog_running=false()
+                dialog.end
+            )
+        )
+
+        close
+        (
+            &is_LoadElfDialog_running=false()
+            dialog.end
+        )
+    )
+
+    &elf_path_hist=""
+    if file.exist("c:\Temp\rpm_debug_elf_hist.txt")
+    (
+        gosub LoadPaths "c:\Temp\rpm_debug_elf_hist.txt"
+        entry &elf_path_hist
+        dialog.set ElfPathHist "" &elf_path_hist
+
+        if "&elf_path"==""&&"&elf_path_hist"!=""
+        (
+            &idx=string.scan(&elf_path_hist,",",0)
+            if &idx>=0
+                &elf_path=string.mid(&elf_path_hist,0,&idx)
+            else
+                &elf_path=&elf_path_hist
+        )
+    )
+
+    if "&elf_path"!=""
+        dialog.set ElfPath "&elf_path"
+
+    if file.exist("c:\Temp\rpm_debug_breakpoints.cmm")
+    (
+        gosub LoadFile "c:\Temp\rpm_debug_breakpoints.cmm"
+        entry &lines
+        dialog.set Breakpoints &lines
+    )
+    else
+    (
+        dialog.set Breakpoints "b.s abort /o"+convert.char(0x0a)+"b.s abort_isr /o"
+    )
+
+    &is_LoadElfDialog_running=true()
+
+    if &stop
+        stop
+    else
+        return
+
+;===============================================================================
+;
+;
+CompareCode:
+    area.select DlgLog
+    d.clearvm
+
+    if dialog.boolean(IgnoreMismatchCb)
+    (
+        gosub CheckElf
+        entry &ret
+        if &ret==false()
+        (
+            return false()
+        )
+    )
+
+    &coderam_base=address.offset(sYmbol.SECADDRESS(\\RPM_AAAAANAAR\CODE_RAM))
+    &coderam_limit=address.offset(sYmbol.SECEND(\\RPM_AAAAANAAR\CODE_RAM))
+    if y.exist(\\RPM_AAAAANAAR\DDR_CODE_RAM_END)
+        &coderam_limit=address.offset(sYmbol.SECEND(\\RPM_AAAAANAAR\DDR_CODE_RAM))
+
+    &elf_path=dialog.string(ElfPath)
+
+    print
+    print "Checking if CODE matches ELF ..."
+    print "d.load.elf &elf_path /noclear /vm"
+    d.load.elf "&elf_path" /noclear /vm
+
+    print "d.compare &coderam_base--&coderam_limit vm:&coderam_base"
+    d.compare &coderam_base--&coderam_limit vm:&coderam_base
+
+    if found()
+    (
+        print %error %attr 0x85 "Difference found"
+        print "--------------------------------------------------------------------------------"
+        print "          RAM                    ELF"
+        &addr=0xffffffff
+        &prev_addr=0xffffffff
+        while found()
+        (
+            &addr=0xfffffffC&address.offset(track.address())
+            if &addr!=&prev_addr
+            (
+                &dump_val=format.hex(8,d.long(sd:&addr))
+                &elf_val=format.hex(8,d.long(vm:&addr))
+                &str_addr=format.hex(8,&addr)
+                if y.function(sd:&addr)!=""
+                (
+                    print %error "sd:&str_addr: &dump_val  vm:&str_addr: &elf_val - "+y.name(sd:&addr)
+                )
+                else
+                (
+                    print "sd:&str_addr: &dump_val  vm:&str_addr: &elf_val - "+y.name(sd:&addr)
+                )
+            )
+            &prev_addr=&addr
+            d.compare
+        )
+        print "--------------------------------------------------------------------------------"
+    )
+    else
+    (
+        print %attr 2 "No difference found"
+    )
+    print "Done"
+
+    return true()
+
+;===============================================================================
+;
+;
+CheckElf:
+    area.select DlgLog
+    d.clearvm
+    print
+    print "Checking if ELF matches..."
+    &elf_path=dialog.string(ElfPath)
+
+    if !file.exist(&elf_path)
+    (
+        print %error "Error: &elf_path does not exit"
+        return false()
+    )
+    ;else if !os.file.access(&elf_path,"r")
+    ;(
+    ;    print %error "Error: No read access"
+    ;    return false()
+    ;)
+
+    d.load.elf "&elf_path" /nocode
+
+    &image_info_base=0
+    &image_info_limit=0
+    if y.exist(OEM_IMAGE_UUID_STRING_AUTO_UPDATED)
+    (
+        &image_info_base=address.offset(v.address(OEM_IMAGE_UUID_STRING_AUTO_UPDATED))
+        &image_info_limit=&image_info_base+v.sizeof(OEM_IMAGE_UUID_STRING_AUTO_UPDATED)-1
+    )
+    else if y.exist(\\RPM_AAAAANAAR\RPM_IMAGE_ID)
+    (
+        &image_info_base=y.secaddress(\\RPM_AAAAANAAR\RPM_IMAGE_ID)
+        &image_info_limit=y.secend(\\RPM_AAAAANAAR\RPM_IMAGE_ID)
+    )
+    else
+    (
+        &image_info_base=address.offset(v.address(QC_IMAGE_VERSION_STRING_AUTO_UPDATED))
+        &image_info_limit=address.offset(v.address(OEM_IMAGE_VERSION_STRING_AUTO_UPDATED))+v.sizeof(OEM_IMAGE_VERSION_STRING_AUTO_UPDATED)
+    )
+
+    ; fill the memory with pattern to avoid crash when ELF for different target family was loaded
+    print "d.pattern vm:&image_info_base--&image_info_limit /Long /LongCount"
+    d.pattern vm:&image_info_base--&image_info_limit /Byte /ByteCount
+
+    print "d.load.elf &elf_path /noclear /VM"
+    d.load.elf "&elf_path" /noclear /VM
+
+    print "d.compare &image_info_base--&image_info_limit vm:&image_info_base"
+    d.compare &image_info_base--&image_info_limit vm:&image_info_base
+
+    print
+    print "RPM Loaded:"
+    if y.exist(OEM_IMAGE_UUID_STRING_AUTO_UPDATED)
+        print %attr 2 "OEM_IMAGE_UUID    : "+d.string(OEM_IMAGE_UUID_STRING_AUTO_UPDATED)
+    print %attr 2 "QC_IMAGE_VERSION  : "+d.string(QC_IMAGE_VERSION_STRING_AUTO_UPDATED)
+    print %attr 2 "IMAGE_VARIANT     : "+d.string(IMAGE_VARIANT_STRING_AUTO_UPDATED)
+    print %attr 2 "OEM_IMAGE_VERSION : "+d.string(OEM_IMAGE_VERSION_STRING_AUTO_UPDATED)
+    print
+    print "RPM ELF:"
+    if y.exist(OEM_IMAGE_UUID_STRING_AUTO_UPDATED)
+        print %attr 2 "OEM_IMAGE_UUID    : "+d.string(vm:address.offset(v.address(OEM_IMAGE_UUID_STRING_AUTO_UPDATED)))
+    print %attr 2 "QC_IMAGE_VERSION  : "+d.string(vm:address.offset(v.address(QC_IMAGE_VERSION_STRING_AUTO_UPDATED)))
+    print %attr 2 "IMAGE_VARIANT     : "+d.string(vm:address.offset(v.address(IMAGE_VARIANT_STRING_AUTO_UPDATED)))
+    print %attr 2 "OEM_IMAGE_VERSION : "+d.string(vm:address.offset(v.address(OEM_IMAGE_VERSION_STRING_AUTO_UPDATED)))
+
+    if found()
+    (
+        print
+        print %error %attr 0x85 "Error: ELF does not match"
+        return false()
+    )
+    else
+    (
+        print
+        print %attr 2 "ELF matched"
+    )
+
+    return true()
+
+;===============================================================================
+;
+;
+LoadElf:
+    area.select DlgLog
+
+    if dialog.boolean(IgnoreMismatchCb)
+    (
+        gosub CheckElf
+        entry &ret
+        if &ret==false()
+        (
+            return false()
+        )
+    )
+
+    y.d
+    print
+    print "Loading ELF..."
+
+    &elf_path=dialog.string(ElfPath)
+    &elf_path_hist=dialog.string2(ElfPathHist)
+
+    gosub SavePaths "c:\Temp\rpm_debug_elf_hist.txt" &elf_path &elf_path_hist
+    gosub LoadPaths "c:\Temp\rpm_debug_elf_hist.txt"
+
+    &lines=dialog.string(Breakpoints)
+    gosub SaveFile "c:\Temp\rpm_debug_breakpoints.cmm" "&lines"
+
+    entry &elf_path_hist
+    dialog.set ElfPathHist "" &elf_path_hist
+
+    &idx=string.scan("&elf_path","\rpm_proc\core\bsp\rpm\build\RPM_AAAAANAAR.elf",0)
+    &build_root=""
+    if &idx>=0
+    (
+        &build_root=string.mid("&elf_path",0,&idx)
+        print "d.load.elf &elf_path /nocode /strippart ""rpm_proc"" /sourcepath ""&build_root\rpm_proc"""
+        d.load.elf "&elf_path" /nocode /strippart "rpm_proc" /sourcepath "&build_root\rpm_proc"
+    )
+    else
+    (
+        print "d.load.elf &elf_path /nocode"
+        d.load.elf "&elf_path" /nocode
+    )
+    print "Done"
+
+    if dialog.boolean(RestoreCodeCb)
+    (
+        &coderam_base=address.offset(sYmbol.SECADDRESS(\\RPM_AAAAANAAR\CODE_RAM))
+        &coderam_limit=address.offset(sYmbol.SECEND(\\RPM_AAAAANAAR\CODE_RAM_DDR))
+
+        print
+        print "Restoring coderam from ELF from &coderam_base to &coderam_limit..."
+        if &idx>=0
+        (
+            print "d.load.elf &elf_path &coderam_base--&coderam_limit /noclear /strippart ""rpm_proc"" /sourcepath ""&build_root\rpm_proc"""
+            d.load.elf "&elf_path" &coderam_base--&coderam_limit /noclear /strippart "rpm_proc" /sourcepath "&build_root\rpm_proc"
+        )
+        else
+        (
+            print "d.load.elf &elf_path &coderam_base--&coderam_limit /noclear"
+            d.load.elf "&elf_path" &coderam_base--&coderam_limit /noclear
+        )
+        print "Done"
+    )
+
+    print
+    print "Setting breakpoints ..."
+    do c:\Temp\rpm_debug_breakpoints.cmm
+    print "Done"
+
+    return true()
+
+;===============================================================================
+;
+;
+SaveDumpDialog:
+    dialog
+    (
+        header "Save RPM Dump"
+
+        pos 1. 0. 10. 1.
+        text "Script Path:"
+
+        pos 11. 0. 70. 1.
+ScriptPath: hotedit ""
+        (
+            &val=string.trim(dialog.string(ScriptPath))
+            if string.length("&val")>10
+            (
+                if file.exist("&val\rpm_proc\core\bsp\rpm\scripts\rpm_dump.cmm")
+                (
+                    dialog.set ScriptPath "&val\rpm_proc\core\bsp\rpm\scripts\rpm_dump.cmm"
+                )
+            )
+        )
+
+        pos 1. 1. 10. 1.
+        text "Dump Path:"
+
+        pos 11. 1. 70. 1.
+DumpPath: edit "" ""
+
+        pos 71. 2. 10. 1.
+        defbutton "Save"
+        (
+            area.select DlgLog
+            &dump_path=dialog.string(DumpPath)
+            if "&dump_path"==""
+            (
+                print %error "Error: DumpPath is empty"
+            )
+            else if !os.dir("&dump_path")
+            (
+                print %error "Error: &dump_path does not exit"
+            )
+            ;else if !os.dir.access(&dump_path,"w")
+            ;(
+            ;    print %error "Error: No write access"
+            ;)
+            else
+            (
+                &script_path=dialog.string(ScriptPath)
+                print "do &script_path &dump_path"
+                do &script_path &dump_path
+                area.select DlgLog
+                print "Done"
+                &is_SaveDumpDialog_running=false()
+                dialog.end
+            )
+        )
+
+        close
+        (
+            &is_SaveDumpDialog_running=false()
+            dialog.end
+        )
+    )
+
+    &idx=string.scan("&script_path","\rpm_proc\core",0)
+    if "&script_path"!=""&&&idx>=0
+    (
+        dialog.set ScriptPath string.mid("&script_path",0,&idx)+"\rpm_proc\core\bsp\rpm\scripts\rpm_dump.cmm"
+    )
+    else
+    (
+        dialog.set ScriptPath "&RPM_BUILD_ROOT\rpm_proc\core\bsp\rpm\scripts\rpm_dump.cmm"
+    )
+    if "&dump_path"!=""
+        dialog.set DumpPath "&dump_path"
+
+    &is_SaveDumpDialog_running=true()
+    stop
+
+;===============================================================================
+;
+;
+NoArgScriptDialog:
+    entry &dir &script_name &stop &close_after_run
+    dialog
+    (&
+        header "&script_name"
+
+        pos 1. 0. 10. 1.
+        text "Script Path:"
+
+        pos 11. 0. 70. 1.
+ScriptPath: hotedit ""
+        (
+            &val=string.trim(dialog.string(ScriptPath))
+            if string.length("&val")>10
+            (
+                if file.exist("&val\&dir\&script_name")
+                (
+                    dialog.set ScriptPath "&val\&dir\&script_name"
+                )
+            )
+        )
+
+        pos 71. 1. 10. 1.
+        defbutton "Run"
+        (
+            &script_path=dialog.string(ScriptPath)
+            gosub NoArgRun &script_path
+            gosub NoArgFlagUpdate &script_name false()
+            if &close_after_run
+                dialog.end
+        )
+
+        close
+        (
+            gosub NoArgFlagUpdate &script_name false()
+            dialog.end
+        )
+    )
+
+    &idx=string.scan("&script_path","\rpm_proc\core",0)
+    if "&script_path"!=""&&&idx>=0
+    (
+        dialog.set ScriptPath string.mid("&script_path",0,&idx)+"\&dir\&script_name"
+    )
+    else
+    (
+        dialog.set ScriptPath "&RPM_BUILD_ROOT\&dir\&script_name"
+    )
+
+    gosub NoArgFlagUpdate &script_name true()
+
+    if &stop
+        stop
+    else
+        return
+
+NoArgRun:
+    entry &script_path
+    area.select DlgLog
+    print
+    print "do &script_path"
+    do &script_path
+    area.select DlgLog
+    print "Done"
+    return
+
+NoArgFlagUpdate:
+    entry &script_name &flag
+    if "&script_name"=="rpm_restore_from_core.cmm"
+    (
+        &is_RestoreFromCoreDialog_running=&flag
+
+        if y.exist(rpm_core_dump)
+        (
+            &script_path=dialog.string(ScriptPath)
+            &idx=string.scan("&script_path","&script_name",0)
+            &script_path=string.mid("&script_path",0,&idx)+"rpm_parse_faults.cmm"
+            gosub NoArgRun &script_path
+        )
+    )
+    else if "&script_name"=="rpm_npadump.cmm"
+    (
+        &is_NpaDumpDialog_running=&flag
+    )
+    else if "&script_name"=="rpm_m3_unstack.cmm"
+    (
+        &is_M3UnstackDialog_running=&flag
+    )
+    else if "&script_name"=="rpm_parse_faults.cmm"
+    (
+        &is_ParseFaultsDialog_running=&flag
+    )
+    else
+    (
+        print %error "Error: NoArgFlagUpdate &script_name not found"
+    )
+    return
+
+;===============================================================================
+;
+;
+DumpStackDialog:
+    dialog
+    (
+        header "Dump Stack"
+
+        pos 0. 0. 82. 4.
+        box "Dump Stack"
+
+        pos 1. 1. 10. 1.
+        text "Script Path:"
+
+        pos 11. 1. 70. 1.
+ScriptPath: hotedit ""
+        (
+            &val=string.trim(dialog.string(ScriptPath))
+            if string.length("&val")>10
+            (
+                if file.exist("&val\rpm_proc\core\bsp\rpm\scripts\rpm_dump_stack.cmm")
+                (
+                    dialog.set ScriptPath "&val\rpm_proc\core\bsp\rpm\scripts\rpm_dump_stack.cmm"
+                )
+            )
+        )
+
+        pos 1. 2. 10. 1.
+        text "Stack Range:"
+
+        pos 11. 2. 10. 1.
+StackBase: edit "" ""
+
+        pos 21. 2. 1. 1.
+        text "--"
+
+        pos 22. 2. 10. 1.
+StackLimit: edit "" ""
+
+        pos 45. 2. 14. 1.
+UseSPCb: checkbox "From SP (R13)" ""
+
+        pos 60. 2. 10. 1.
+FullDumpCb: checkbox "Full Dump" ""
+
+        pos 71. 2. 10. 1.
+        defbutton "Dump"
+        (
+            &script_path=dialog.string(ScriptPath)
+            &full_dump=0
+            if dialog.boolean(FullDumpCb)
+                &full_dump=1
+            if dialog.boolean(UseSPCb)
+                &stack_base=register(R13)-0x8
+            else
+                &stack_base=dialog.string(StackBase)
+            &stack_limit=dialog.string(StackLimit)
+            print
+            print "do &script_path &full_dump &stack_base &stack_limit"
+            do &script_path &full_dump &stack_base &stack_limit
+            screen.off
+            area.select DlgLog
+            screen
+            print "Done"
+            &is_DumpStackDialog_running=false()
+            dialog.end
+        )
+
+        pos 0. 4. 82. 3.
+        box "Restore Stack Frame"
+
+        pos 1. 5. 25. 1.
+        text "Link Register (r14) Stack Address:"
+
+        pos 26. 5. 10. 1.
+StackAddr: edit "" ""
+
+        pos 71. 5. 10. 1.
+        defbutton "Restore"
+        (
+            &script_path=dialog.string(ScriptPath)
+            &script_path=string.mid("&script_path",0,string.scan("&script_path","rpm_dump_stack.cmm",0))
+            &script_path="&script_path"+"rpm_restore_stack_frame.cmm"
+            &stack_addr=dialog.string(StackAddr)
+            print
+            print "Restoring ..."
+            do &script_path &stack_addr
+            &is_DumpStackDialog_running=false()
+            area.select DlgLog
+            print "Done"
+            dialog.end
+        )
+
+        close
+        (
+            &is_DumpStackDialog_running=false()
+            dialog.end
+        )
+    )
+    &idx=string.scan("&script_path","\rpm_proc\core",0)
+    if "&script_path"!=""&&&idx>=0
+    (
+        dialog.set ScriptPath string.mid("&script_path",0,&idx)+"\rpm_proc\core\bsp\rpm\scripts\rpm_dump_stack.cmm"
+    )
+    else
+    (
+        dialog.set ScriptPath "&RPM_BUILD_ROOT\rpm_proc\core\bsp\rpm\scripts\rpm_dump_stack.cmm"
+    )
+
+    gosub find_stack_index "RPM_STACK"
+    entry &stack_index
+
+    &addr=v.value((unsigned)rpm_image_section_array[&stack_index].section_base)
+    dialog.set StackBase "&addr"
+    &addr=v.value((unsigned)rpm_image_section_array[&stack_index].section_end)
+    dialog.set StackLimit "&addr"
+    if Register(R13)!=0
+        dialog.set UseSPCb true()
+    &is_DumpStackDialog_running=true()
+
+    stop
+
+find_stack_index:
+    entry &index
+    &i=0
+    while string.scan(v.string((rpm_image_section_name)&i),"RPM_IMAGE_SECTIONS_COUNT",0)!=0
+    (
+        &s=v.string((rpm_image_section_name)&i)
+        if string.scan("&s",&index,0)==0
+        (
+            return &i
+        )
+        &i=&i+1
+    )
+    print %error "&index not found"
+    return 0xf
+
+;===============================================================================
+;
+;
+DumpMsgRamDialog:
+    dialog
+    (
+        header "Dump MSG RAM"
+
+        pos 1. 0. 10. 1.
+        text "Script Path:"
+
+        pos 11. 0. 70. 1.
+ScriptPath: hotedit ""
+        (
+            &val=string.trim(dialog.string(ScriptPath))
+            if string.length("&val")>10
+            (
+                if file.exist("&val\rpm_proc\core\bsp\rpm\scripts\rpm_dump_msg_ram.cmm")
+                (
+                    dialog.set ScriptPath "&val\rpm_proc\core\bsp\rpm\scripts\rpm_dump_msg_ram.cmm"
+                )
+            )
+        )
+
+        pos 1. 1. 20. 1.
+Family: pulldown "--Select Family--,Honeybadger,Badger,Bear" ""
+
+        pos 21. 1. 20. 1.
+MasterId: dynpulldown "" ""
+
+        pos 71. 1. 10. 1.
+        defbutton "Parse"
+        (
+            &script_path=dialog.string(ScriptPath)
+            &family=dialog.string(Family)
+            &master_id=string.mid(dialog.string(MasterId),0,1)
+            print
+            print "do &script_path &family &master_id"
+            screen.off
+            do &script_path &family &master_id
+            screen
+            area.select DlgLog
+            print "Done"
+        )
+
+        close
+        (
+            &is_DumpMsgRamDialog_running=false()
+            dialog.end
+        )
+    )
+
+    &idx=string.scan("&script_path","\rpm_proc\core",0)
+    if "&script_path"!=""&&&idx>=0
+    (
+        dialog.set ScriptPath string.mid("&script_path",0,&idx)+"\rpm_proc\core\bsp\rpm\scripts\rpm_dump_msg_ram.cmm"
+    )
+    else
+    (
+        dialog.set ScriptPath "&RPM_BUILD_ROOT\rpm_proc\core\bsp\rpm\scripts\rpm_dump_msg_ram.cmm"
+    )
+
+    if "&family"!=""
+        dialog.set Family "&family"
+
+    &list="--Select Master--"
+    &i=0
+    while &i<v.value(rpm->num_ees)
+    (
+        &name=d.string(d:v.value(ee_client_lut[&i].name))
+        &list="&list,"+format.decimal(0,&i)+": &name"
+        &i=&i+1
+    )
+    dialog.set MasterId "--Select Master--" "&list"
+    &is_DumpMsgRamDialog_running=true()
+    stop
+
+;===============================================================================
+;
+;
+DumpResourceRequestsDialog:
+    dialog
+    (
+        header "Dump Resource Requests"
+
+        pos 1. 0. 10. 1.
+        text "Script Path:"
+
+        pos 11. 0. 70. 1.
+ScriptPath: hotedit ""
+        (
+            &val=string.trim(dialog.string(ScriptPath))
+            if string.length("&val")>10
+            (
+                if file.exist("&val\rpm_proc\core\bsp\rpm\scripts\rpm_dump_resource_request.cmm")
+                (
+                    dialog.set ScriptPath "&val\rpm_proc\core\bsp\rpm\scripts\rpm_dump_resource_request.cmm"
+                )
+            )
+        )
+
+        pos 0. 1. 58. 5.
+        box "Filter:"
+
+        pos 1. 2. 15. 1.
+        text "ResourceType (str)"
+
+        pos 16. 2. 10. 1.
+ResourceType: hotedit "*"
+        (
+            &val=dialog.string(ResourceType)
+            if string.length("&val")>4
+                dialog.set ResourceType string.mid("&val",0,4)
+        )
+
+        pos 26. 2. 30. 1.
+        text "(e.g. smp,smpa,clk,clk0... * for any)"
+
+        pos 1. 3. 15. 1.
+        text "ResourceID (digit)"
+
+        pos 16. 3. 10. 1.
+ResourceID: edit "*" ""
+
+        pos 26. 3. 20. 1.
+        text "(* for any)"
+
+        pos 1. 4. 15. 1.
+        text "Master ID"
+
+        pos 16. 4. 10. 1.
+MasterId: dynpulldown "*" ""
+
+        pos 26. 4. 20. 1.
+        text "(* for any)"
+
+        pos 60. 5. 10. 1.
+FullDumpCb: checkbox "Full Dump" ""
+
+        pos 71. 5. 10. 1.
+        defbutton "Dump"
+        (
+            &script_path=dialog.string(ScriptPath)
+            &resource_type=dialog.string(ResourceType)
+            &resource_id=dialog.string(ResourceID)
+            if "&resource_id"!="*"
+                &resource_id="&resource_id."
+            &master_id=string.mid(dialog.string(MasterId),0,1)
+            &full_dump=0
+            if dialog.boolean(FullDumpCb)
+                &full_dump=2
+            print
+            print "do &script_path &full_dump &resource_type &resource_id &master_id"
+            screen.off
+            do &script_path &full_dump &resource_type &resource_id &master_id
+            screen
+            area.select DlgLog
+            print "Done"
+            &is_DumpResourceRequestsDialog_running=false()
+            dialog.end
+        )
+
+        close
+        (
+            &is_DumpResourceRequestsDialog_running=false()
+            dialog.end
+        )
+    )
+
+    &idx=string.scan("&script_path","\rpm_proc\core",0)
+    if "&script_path"!=""&&&idx>=0
+    (
+        dialog.set ScriptPath string.mid("&script_path",0,&idx)+"\rpm_proc\core\bsp\rpm\scripts\rpm_dump_resource_request.cmm"
+    )
+    else
+    (
+        dialog.set ScriptPath "&RPM_BUILD_ROOT\rpm_proc\core\bsp\rpm\scripts\rpm_dump_resource_request.cmm"
+    )
+
+    &list="*"
+    &i=0
+    while &i<v.value(rpm->num_ees)
+    (
+        &name=d.string(d:v.value(ee_client_lut[&i].name))
+        &list="&list,"+format.decimal(0,&i)+": &name"
+        &i=&i+1
+    )
+    dialog.set MasterId "*" "&list"
+    dialog.set FullDumpCb true()
+    &is_DumpResourceRequestsDialog_running=true()
+    stop
+
+;===============================================================================
+;
+;
+EstimateDialog:
+    dialog
+    (
+        header "Dump Set Transition Estimates"
+
+        pos 1. 0. 10. 1.
+        text "Script Path:"
+
+        pos 11. 0. 70. 1.
+ScriptPath: hotedit ""
+        (
+            &val=string.trim(dialog.string(ScriptPath))
+            if string.length("&val")>10
+            (
+                if file.exist("&val\rpm_proc\core\bsp\rpm\scripts\rpm_estimate.cmm")
+                (
+                    dialog.set ScriptPath "&val\rpm_proc\core\bsp\rpm\scripts\rpm_estimate.cmm"
+                )
+            )
+        )
+
+        pos 1. 1. 10. 1.
+        text "Master ID:"
+
+        pos 11. 1. 15. 1.
+MasterId: dynpulldown "" ""
+
+        pos 71. 1. 10. 1.
+        defbutton "Dump"
+        (
+            &script_path=dialog.string(ScriptPath)
+            &master_id=string.mid(dialog.string(MasterId),0,1)
+            print
+            print "do &script_path &master_id"
+            screen.off
+            do &script_path &master_id
+            screen
+            area.select DlgLog
+            print "Done"
+            &is_EstimateDialog_running=false()
+            dialog.end
+        )
+
+        close
+        (
+            &is_EstimateDialog_running=false()
+            dialog.end
+        )
+    )
+
+    &idx=string.scan("&script_path","\rpm_proc\core",0)
+    if "&script_path"!=""&&&idx>=0
+    (
+        dialog.set ScriptPath string.mid("&script_path",0,&idx)+"\rpm_proc\core\bsp\rpm\scripts\rpm_estimate.cmm"
+    )
+    else
+    (
+        dialog.set ScriptPath "&RPM_BUILD_ROOT\rpm_proc\core\bsp\rpm\scripts\rpm_estimate.cmm"
+    )
+
+    &list="--Select Master--"
+    &i=0
+    while &i<v.value(rpm->num_ees)
+    (
+        &name=d.string(d:v.value(ee_client_lut[&i].name))
+        &list="&list,"+format.decimal(0,&i)+": &name"
+        &i=&i+1
+    )
+    dialog.set MasterId "--Select Master--" "&list"
+    &is_EstimateDialog_running=true()
+    stop
+
+;===============================================================================
+;
+;
+DumpRpmLogDialog:
+    winpos 101. 0.
+    dialog
+    (
+        header "Dump RPM Log"
+
+        pos 1. 0. 10. 1.
+        text "Script Path:"
+
+        pos 11. 0. 70. 1.
+ScriptPath: hotedit ""
+        (
+            &val=string.trim(dialog.string(ScriptPath))
+            if string.length("&val")>10
+            (
+                if file.exist("&val\rpm_proc\core\power\ulog\scripts\rpm_ulogdump.cmm")
+                (
+                    dialog.set ScriptPath "&val\rpm_proc\core\power\ulog\scripts\rpm_ulogdump.cmm"
+                )
+            )
+        )
+
+        pos 1. 1. 10. 1.
+        text "Parser Path:"
+
+        pos 11. 1. 70. 1.
+ParserPath: hotedit ""
+        (
+            &val=string.trim(dialog.string(ParserPath))
+            if string.length("&val")>10
+            (
+                if file.exist("&val\rpm_proc\core\power\rpm\debug\scripts\rpm_log_bfam.py")
+                (
+                    dialog.set ScriptPath "&val\rpm_proc\core\power\rpm\debug\scripts\rpm_log_bfam.py"
+                )
+            )
+        )
+
+
+        pos 1. 2. 10. 1.
+        text "Target:"
+
+        pos 11. 2. 5. 1.
+Target: edit "8998"
+        (
+            &target=dialog.string(Target)
+            if string.len("&target")>4
+            (
+                dialog.set Target string.mid("&target",0,4)
+            )
+        )
+
+
+        pos 1. 3. 35. 1.
+HighligntLine: checkbox "Highlight line containing keywords (csv format):"
+        (
+            if dialog.boolean(HighligntLine)
+            (
+                dialog.enable Keywords
+            )
+            else
+            (
+                dialog.disable Keywords
+            )
+        )
+
+        pos 37. 3. 44. 1.
+Keywords: edit "" ""
+
+        pos 1. 4. 50. 1.
+ShowTimeDiff: checkbox "Show time delta since reference time (blank for delta between logs):"
+        (
+            if dialog.boolean(ShowTimeDiff)
+            (
+                dialog.enable ReferenceTime
+            )
+            else
+            (
+                dialog.disable ReferenceTime
+            )
+        )
+
+        pos 52. 4. 18. 1.
+ReferenceTime: edit "" ""
+
+        pos 71. 4. 10. 1.
+        defbutton "Parse"
+        (
+            screen.off
+            area.select DlgLog
+
+            &script_path=dialog.string(ScriptPath)
+            &parser_path=dialog.string(ParserPath)
+            &target=dialog.string(Target)
+            print &target
+            print
+            print "do &script_path c:\Temp"
+            winpos 0. 28.
+            do &script_path c:\Temp
+            area.select DlgLog
+            print "Done"
+
+            print "Parsing log..."
+            screen
+
+            if file.exist(c:\Temp\rpm_log_dump_lock)
+                rm c:\Temp\rpm_log_dump_lock
+            if file.exist(c:\Temp\rpm_log.txt)
+                rm c:\Temp\rpm_log.txt
+
+            open #1 c:\Temp\rpm_log_dump_lock /create
+            close #1
+
+            &cmd="import os; os.system(r'python &parser_path -t &target -rf ""c:\Temp\RPM External Log.ulog"" > c:\Temp\rpm_log.txt'); f=open(r'c:\Temp\rpm_log.txt','r'); data=f.read(); f.close(); f=open(r'c:\Temp\rpm_log.txt','w'); f.write(data.replace('\x00',' ')); f.close(); os.remove(r'c:\Temp\rpm_log_dump_lock')"
+            ;os.hidden python -c "&cmd"
+            os.command cmd /K python -c "&cmd"
+
+            while file.exist(c:\Temp\rpm_log_dump_lock)
+            (
+                wait 0.1s
+            )
+            print "Done"
+            screen
+
+            &ref_time=0
+            if dialog.boolean(ShowTimeDiff)
+            (
+                &ref_time=dialog.string(ReferenceTime)
+                if "&ref_time"==""
+                    &ref_time=0
+            )
+            &keywords=""
+            if dialog.boolean(HighligntLine)
+                &keywords=dialog.string(Keywords)
+            gosub PrintRpmLog dialog.boolean(ShowTimeDiff) &ref_time &keywords
+
+            area.select DlgLog
+            screen
+            screen.on
+            ;&is_DumpRpmLogDialog_running=false()
+            ;dialog.end
+        )
+
+        close
+        (
+            &is_DumpRpmLogDialog_running=false()
+            dialog.end
+        )
+    )
+
+    &idx=string.scan("&script_path","\rpm_proc\core",0)
+
+    if "&script_path"!=""&&&idx>=0
+    (
+        dialog.set ScriptPath string.mid("&script_path",0,&idx)+"\rpm_proc\core\power\ulog\scripts\rpm_ulogdump.cmm"
+        dialog.set ParserPath string.mid("&script_path",0,&idx)+"\rpm_proc\core\power\rpm\debug\scripts\rpm_log_bfam.py"
+    )
+    else
+    (
+        dialog.set ScriptPath "&RPM_BUILD_ROOT\rpm_proc\core\power\ulog\scripts\rpm_ulogdump.cmm"
+        dialog.set ParserPath "&RPM_BUILD_ROOT\rpm_proc\core\power\rpm\debug\scripts\rpm_log_bfam.py"
+    )
+
+    &idx=string.scan("&elf_path","\rpm_proc\core\bsp\rpm\build\RPM_AAAAANAAR.elf",0)
+    if &idx>=0
+    (
+        &build_root=string.mid("&elf_path",0,&idx)
+        dialog.set ParserPath "&build_root\rpm_proc\core\power\rpm\debug\scripts\rpm_log_bfam.py"
+    )
+
+    dialog.disable Keywords
+    dialog.disable ReferenceTime
+
+    winpos 101. 12. 120. 40.
+    area.create RpmLog 200. 550.
+    area.view RpmLog
+    &is_DumpRpmLogDialog_running=true()
+    stop
+
+PrintRpmLog:
+    entry &show_delta_time &ref_time &keywords
+
+    local &indent_spaces
+    local &i
+    local &idx
+    local &timestamp
+    local &data
+    local &curr_indents
+    local &next_indents
+    local &attr
+
+    area.select RpmLog
+    area.view RpmLog
+    ;area.clear RpmLog
+
+    open #1 c:\Temp\rpm_log.txt /read
+
+    &indent_spaces="    "
+    &next_indents=0
+    &prev_time=0
+
+    while !file.eof(1)
+    (
+        read #1 %line &line
+        if string.scan("&line","0x",0)!=0
+        (
+            print "&line"
+        )
+        else
+        (
+            &idx=string.scan("&line",":",0)
+            &timestamp=string.mid("&line",0,&idx)
+            &data=string.trim(string.cut("&line",&idx+1))
+            &attr=""
+
+            if &show_delta_time
+            (
+                if &prev_time!=0
+                (
+                    &diff=0
+                    if &ref_time==0
+                    (
+                        &diff=convert.floattoint((&timestamp-&prev_time)/19.2)
+                    )
+                    else if &timestamp<=&ref_time
+                    (
+                        &diff=convert.floattoint((&prev_time-&ref_time)/19.2)
+                    )
+                    else
+                    (
+                        &diff=convert.floattoint((&timestamp-&ref_time)/19.2)
+                    )
+
+                    print %attr 0 "("+format.decimal(12.,&diff)+" usec)"
+                )
+
+                if &timestamp==&ref_time
+                (
+                    &attr="%attr 0x52"
+                )
+
+                &prev_time=&timestamp
+            )
+
+            if "&keywords"!=""
+            (
+                &tmp="&keywords"
+                while "&keywords"!=""
+                (
+                    &idx=string.scan("&keywords",",",0)
+                    &kw=""
+                    if &idx>=0
+                    (
+                        &kw=string.mid("&keywords",0,&idx)
+                        &keywords=string.cut("&keywords",&idx+1)
+                    )
+                    else
+                    (
+                        &kw="&keywords"
+                        &keywords=""
+                    )
+
+                    if string.scan(string.lower("&data"),string.lower("&kw"),0)>=0
+                    (
+                        &attr="%attr 0x2A"
+                        &keywords=""
+                    )
+                )
+                &keywords="&tmp"
+            )
+
+            &curr_indents=&next_indents
+
+            if string.scan("&data","abort",0)>=0||string.scan("&data","rpm_err_fatal",0)>=0||string.scan("&data","rpm_ram_log",0)>=0||string.scan("&data","rpm_reset_chip",0)>=0
+            (
+                &attr="%attr 0x85"
+                &curr_indents=0
+                &next_indents=0
+            )
+            else if string.scan("&data","rpm_ram_log",0)>=0
+            (
+                &attr="%attr 0x85"
+                &curr_indents=0
+            )
+            else if string.scan("&data","_process_request",0)>=0||string.scan("&data","_set_transition ",0)>=0||string.scan("&data","_halt_enter",0)>=0||string.scan("&data","_sleep_enter:",0)>=0||string.scan("&data","_sleep_exit:",0)>=0||string.scan("&data","init_fcn_started",0)>=0
+            (
+                &curr_indents=0
+                &next_indents=1
+            )
+            else if string.scan("&data","_xlate_request",0)>=0||string.scan("&data","_apply_request",0)>=0
+            (
+                &curr_indents=1
+                &next_indents=2
+            )
+            else if string.scan("&data","_message_response",0)>=0
+            (
+                &curr_indents=1
+                &next_indents=0
+            )
+            else if string.scan("&data","cpr_rail_isr",0)>=0
+            (
+                &curr_indents=0
+                &next_indents=1
+            )
+            else if string.scan("&data","cpr_rail_enable",0)>=0
+            (
+                &next_indents=0
+            )
+            else if string.scan("&data","rpm_halt_exit",0)>=0||string.scan("&data","_transition_complete",0)>=0||string.scan("&data","_enter_complete",0)>=0||string.scan("&data","_exit_complete",0)>=0||string.scan("&data","init_fcn_finished",0)>=0
+            (
+                &curr_indents=0
+                &next_indents=0
+            )
+            else if string.scan("&data","_message_received",0)>=0||string.scan("&data","boot_finished",0)>=0
+            (
+                &curr_indents=0
+            )
+
+            &indent=""
+            &i=0
+            while &i<&curr_indents
+            (
+                &indent="&indent_spaces&indent"
+                &i=&i+1
+            )
+
+            print &attr "&timestamp: &indent&data"
+        )
+        screen
+    )
+
+    close #1
+
+    return
+
+;===============================================================================
+;
+;
+RunHanseiDialog:
+    dialog
+    (
+        header "Hansei"
+
+        pos 1. 0. 80. 2.
+        text "Prerequisites: Python 2.7.3 and pyelftools (go/rpmdebug)"
+
+        pos 1. 2. 10. 1.
+        text "Hansei Path:"
+
+        pos 11. 2. 70. 1.
+HanseiPath: hotedit "" ""
+
+        pos 1. 3. 10. 1.
+        text "ELF Path:"
+
+        pos 11. 3. 70. 1.
+ElfPath: hotedit ""
+        (
+            &val=string.trim(dialog.string(ElfPath))
+            if string.length("&val")>10
+            (
+                if file.exist("&val\rpm_proc\core\bsp\rpm\build\RPM_AAAAANAAR.elf")
+                (
+                    dialog.set ElfPath "&val\rpm_proc\core\bsp\rpm\build\RPM_AAAAANAAR.elf"
+                )
+            )
+        )
+
+        pos 1. 4. 10. 1.
+        text "Dump Path:"
+
+        pos 11. 4. 70. 1.
+DumpPath: hotedit "" ""
+
+        pos 1. 5. 10. 1.
+        text "Output Path:"
+
+        pos 11. 5. 70. 1.
+HanseiOut: hotedit "" ""
+
+        pos 1. 6. 20. 1.
+Family: pulldown "--Select Family--,Honeybadger,Badger,Bear" ""
+
+        pos 71. 6. 10. 1.
+RunHanseiBtn: defbutton "Run"
+        (
+            gosub RunHansei
+            entry &ret
+            if &ret
+            (
+                &is_RunHanseiDialog_running=false()
+                dialog.end
+            )
+        )
+
+        close
+        (
+            &is_RunHanseiDialog_running=false()
+            dialog.end
+        )
+    )
+
+    if "&hansei_path"==""
+        &hansei_path="&RPM_BUILD_ROOT\rpm_proc\core\bsp\rpm\scripts\hansei\hansei.py"
+    dialog.set HanseiPath "&hansei_path"
+
+    if "&elf_path"!=""
+        dialog.set ElfPath "&elf_path"
+
+    if "&family"!=""
+        dialog.set Family "&family"
+
+    if "&dump_path"!=""
+        dialog.set DumpPath "&dump_path"
+
+    if "&hansei_out"==""&&"&dump_path"!=""
+        &hansei_out="&dump_path\output"
+    dialog.set HanseiOut "&hansei_out"
+
+    &is_RunHanseiDialog_running=true()
+    stop
+
+;===============================================================================
+;
+;
+RunHansei:
+    area.select DlgLog
+    &hansei_path=dialog.string(HanseiPath)
+    &hansei_out=dialog.string(HanseiOut)
+    &family=string.lower(dialog.string(Family))
+    &elf_path=dialog.string(ElfPath)
+    &dump_path=dialog.string(DumpPath)
+
+    if "&dump_path"==""
+    (
+        print %error "Error: Dump path is empty"
+        return false()
+    )
+    ;else if !os.dir.access("&dump_path","r")
+    ;(
+    ;    print %error "Error: No read access to &dump_path"
+    ;    return false()
+    ;)
+
+    if "&family"=="--select family--"
+    (
+        print %error "Error: Select family"
+        return false()
+    )
+
+    if "&elf_path"==""
+    (
+        print %error "Error: ELF path is empty"
+        return false()
+    )
+    else if !file.exist(&elf_path)
+    (
+        print %error "Error: &elf_path does not exist"
+        return false()
+    )
+    ;else if !os.file.access(&elf_path,"r")
+    ;(
+    ;    print %error "Error: No read access to &elf_path"
+    ;    return false()
+    ;)
+
+    if "&hansei_path"==""
+    (
+        print %error "Error: Hansei Path is empty"
+        return false()
+    )
+    else if !file.exist("&hansei_path")
+    (
+        print %error "Error: &hasei_path does not exist"
+        return false()
+    )
+
+    if "&hansei_out"==""
+    (
+        print %error "Error: Hansei output path is empty"
+        return false()
+    )
+    else if !os.dir("&hansei_out")
+    (
+        mkdir &hansei_out
+    )
+
+    ;if !os.dir.access("&hansei_out","w")
+    ;(
+    ;    print %error "Error: No write access to &hansei_out"
+    ;    return false()
+    ;)
+
+    ;gosub LoadDump dataram
+    ;screen
+
+    ;gosub CheckElf ; Now Hansei does the check
+    ;screen
+
+    ;entry &ret
+    ;if &ret==false()
+    ;(
+    ;    return false()
+    ;)
+
+    &script_cmd="python &hansei_path --family &family --elf &elf_path --output &hansei_out &dump_path"
+
+    open #1 &hansei_out\run_hansei.bat /Create
+    write #1 "python &hansei_path --family &family --elf &elf_path --output &hansei_out &dump_path"
+    close #1
+
+    print
+    print "Running hansei..."
+    print "&script_cmd"
+    os.command cmd /K &script_cmd
+    print "Done"
+    os.hidden explorer &hansei_out
+
+    return true()
+
+;===============================================================================
+;
+;
+GlinkDialog:
+    dialog
+    (
+        header "Test GLink"
+
+        pos 1. 0. 10. 1.
+        text "Script Path:"
+
+        pos 11. 0. 70. 1.
+ScriptPath: hotedit ""
+        (
+            &val=string.trim(dialog.string(ScriptPath))
+            if string.length("&val")>10
+            (
+                if file.exist("&val\rpm_proc\core\bsp\rpm\scripts\rpm_test_glink.cmm")
+                (
+                    dialog.set ScriptPath "&val\rpm_proc\core\bsp\rpm\scripts\rpm_test_glink.cmm"
+                )
+            )
+        )
+
+        pos 1. 2. 15. 1.
+        text "Message Type:"
+        pos 16. 2. 20. 1.
+MsgType: dynpulldown "req,cmd" ""
+
+        pos 1. 3. 15. 1.
+        text "Message ID:"
+        pos 16. 3. 20. 1.
+MsgId: edit "1" ""
+
+        pos 1. 4. 15. 1.
+        text "Set:"
+        pos 16. 4. 20. 1.
+Set: dynpulldown "0: ACTIVE_SET,1: SLEEP_SET,2: NEXT_ACTIVE_SET" ""
+
+        pos 1. 5. 15. 1.
+        text "Resource Type:"
+        pos 16. 5. 20. 1.
+RsrcType: edit "test" ""
+
+        pos 1. 6. 15. 1.
+        text "Resource ID:"
+        pos 16. 6. 20. 1.
+RsrcId: edit "0" ""
+
+        pos 1. 7. 15. 1.
+        text "KVPs [key,size,val;]:"
+        pos 16. 7. 55. 1.
+KVPs: edit "tst1,4,123;tst2,4,0xdeadbeef" ""
+
+        pos 1. 8. 15. 1.
+        text "Message Bin Path:"
+        pos 16. 8. 55. 1.
+MsgSavePath: edit "c:\temp\msg.bin" ""
+
+        pos 71. 8. 10. 1.
+        defbutton "Generate"
+        (
+            &script_path=dialog.string(ScriptPath)
+            &script_path=string.mid("&script_path",0,string.scan("&script_path","rpm_test_glink.cmm",0))
+            &script_path="&script_path"+"generate_msg_bin.py"
+            &msg_type=dialog.string(MsgType)
+            &msg_id=dialog.string(MsgId)
+            &set=string.mid(dialog.string(Set),0,1)
+            &rsrc_type=dialog.string(RsrcType)
+            &rsrc_id=dialog.string(RsrcId)
+            &kvps=dialog.string(KVPs)
+            &path=dialog.string(MsgSavePath)
+
+            &cmd="python &script_path --msg_type &msg_type --set &set --msg_id &msg_id --resource &rsrc_type,&rsrc_id --kvps &kvps --output &path"
+            print
+            print "&cmd"
+            os.command &cmd
+            print "Done"
+            dialog.set MsgLoadPath "&path"
+        )
+
+        pos 1. 10. 15. 1.
+        text "Master ID:"
+        pos 16. 10. 20. 1.
+MasterId: dynpulldown "" ""
+
+        pos 1. 11. 15. 1.
+        text "Message Bin Path:"
+        pos 16. 11. 55. 1.
+MsgLoadPath: edit "" ""
+
+        pos 71. 11. 10. 1.
+        defbutton "Send"
+        (
+            &script_path=dialog.string(ScriptPath)
+            &master_id=string.mid(dialog.string(MasterId),0,1)
+            &path=dialog.string(MsgLoadPath)
+
+            print
+            print "do &script_path &master_id &path"
+            do &script_path &master_id &path
+            area.select DlgLog
+            print "Done"
+        )
+
+        close
+        (
+            &is_GlinkDialog_running=false()
+            dialog.end
+        )
+    )
+
+    &idx=string.scan("&script_path","\rpm_proc\core",0)
+    if "&script_path"!=""&&&idx>=0
+    (
+        dialog.set ScriptPath string.mid("&script_path",0,&idx)+"\rpm_proc\core\bsp\rpm\scripts\rpm_test_glink.cmm"
+    )
+    else
+    (
+        dialog.set ScriptPath "&RPM_BUILD_ROOT\rpm_proc\core\bsp\rpm\scripts\rpm_test_glink.cmm"
+    )
+
+    &list="--Select Master--"
+    &i=0
+    while &i<v.value(rpm->num_ees)
+    (
+        &name=d.string(d:v.value(ee_client_lut[&i].name))
+        &list="&list,"+format.decimal(0,&i)+": &name"
+        &i=&i+1
+    )
+    dialog.set MasterId "--Select Master--" "&list"
+
+    dialog.set MsgType "req"
+    dialog.set Set "0: ACTIVE_SET"
+
+    &is_GlinkDialog_running=true()
+    stop
+
+;===============================================================================
+;
+;
+VmpmDialog:
+    dialog
+    (
+        header "Test VMPM"
+
+        pos 1. 0. 10. 1.
+        text "Script Path:"
+        pos 11. 0. 70. 1.
+ScriptPath: hotedit ""
+        (
+            &val=string.trim(dialog.string(ScriptPath))
+            if string.length("&val")>10
+            (
+                if file.exist("&val\rpm_proc\core\bsp\rpm\scripts\rpm_test_glink.cmm")
+                (
+                    dialog.set ScriptPath "&val\rpm_proc\core\bsp\rpm\scripts\rpm_test_glink.cmm"
+                )
+            )
+        )
+
+        pos 1. 1. 15. 1.
+        text "Master ID:"
+        pos 16. 1. 20. 1.
+MasterId: dynpulldown "" ""
+
+        pos 1. 2. 15. 1.
+        text "wakeup_time:"
+        pos 16. 2. 20. 1.
+WakeupTime: hotedit "0x0000000000000000" ""
+
+        pos 1. 3. 15. 1.
+        text "vmpm_enable:"
+        pos 16. 3. 10. 1.
+VmpmEnable1: hotedit "0x00000000" ""
+        pos 26. 3. 10. 1.
+VmpmEnable2: hotedit "0x00000000" ""
+        pos 36. 3. 10. 1.
+VmpmEnable3: hotedit "0x00000000" ""
+
+        pos 1. 4. 15. 1.
+        text "vmpm_detect_lower:"
+        pos 16. 4. 10. 1.
+VmpmDetectLower1: hotedit "0x00000000" ""
+        pos 26. 4. 10. 1.
+VmpmDetectLower2: hotedit "0x00000000" ""
+        pos 36. 4. 10. 1.
+VmpmDetectLower3: hotedit "0x00000000" ""
+
+        pos 1. 5. 15. 1.
+        text "vmpm_detect_higher:"
+        pos 16. 5. 10. 1.
+VmpmDetectHigher1: hotedit "0x00000000" ""
+        pos 26. 5. 10. 1.
+VmpmDetectHigher2: hotedit "0x00000000" ""
+        pos 36. 5. 10. 1.
+VmpmDetectHigher3: hotedit "0x00000000" ""
+
+        pos 1. 6. 15. 1.
+        text "vmpm_polarity:"
+        pos 16. 6. 10. 1.
+VmpmPolarity1: hotedit "0x00000000" ""
+        pos 26. 6. 10. 1.
+VmpmPolarity2: hotedit "0x00000000" ""
+        pos 36. 6. 10. 1.
+VmpmPolarity3: hotedit "0x00000000" ""
+
+        pos 61. 6. 10. 1.
+        defbutton "Read"
+        (
+            &master_id=string.mid(dialog.string(MasterId),0,1)
+            &script_path=dialog.string(ScriptPath)
+            print
+            print "do &script_path &master_id"
+            do &script_path &master_id
+            area.select DlgLog
+            print "Done"
+        )
+
+        pos 71. 6. 10. 1.
+        defbutton "Write"
+        (
+            &script_path=dialog.string(ScriptPath)
+            &master_id=string.mid(dialog.string(MasterId),0,1)
+            &wakeup_time=dialog.string(WakeupTime)
+            &vmpm_enables=dialog.string(VmpmEnable1)+","+dialog.string(VmpmEnable2)+","+dialog.string(VmpmEnable3)
+            &vmpm_detect_lowers=dialog.string(VmpmDetectLower1)+","+dialog.string(VmpmDetectLower2)+","+dialog.string(VmpmDetectLower3)
+            &vmpm_detect_highers=dialog.string(VmpmDetectHigher1)+","+dialog.string(VmpmDetectHigher2)+","+dialog.string(VmpmDetectHigher3)
+            &vmpm_polaritys=dialog.string(VmpmPolarity1)+","+dialog.string(VmpmPolarity2)+","+dialog.string(VmpmPolarity3)
+            print
+            print "do &script_path &master_id &wakeup_time &vmpm_enables &vmpm_detect_lowers &vmpm_detect_highers &vmpm_polaritys"
+            do &script_path &master_id &wakeup_time &vmpm_enables &vmpm_detect_lowers &vmpm_detect_highers &vmpm_polaritys
+            area.select DlgLog
+            print "Done"
+        )
+
+        close
+        (
+            &is_VmpmDialog_running=false()
+            dialog.end
+        )
+    )
+
+    &idx=string.scan("&script_path","\rpm_proc\core",0)
+    if "&script_path"!=""&&&idx>=0
+    (
+        dialog.set ScriptPath string.mid("&script_path",0,&idx)+"\rpm_proc\core\bsp\rpm\scripts\rpm_test_vmpm.cmm"
+    )
+    else
+    (
+        dialog.set ScriptPath "&RPM_BUILD_ROOT\rpm_proc\core\bsp\rpm\scripts\rpm_test_vmpm.cmm"
+    )
+
+    &list="--Select Master--"
+    &i=0
+    &num_supported_masters=v.sizeof(vmpm_masters_info)/v.sizeof(vmpm_masters_info[0])
+    while &i<&num_supported_masters
+    (
+        &name=d.string(d:v.value(ee_client_lut[&i].name))
+        &list="&list,"+format.decimal(0,&i)+": &name"
+        &i=&i+1
+    )
+    dialog.set MasterId "--Select Master--" "&list"
+
+    &is_VmpmDialog_running=true()
+    stop
+
+;===============================================================================
+;
+;
+ShowRpmLog:
+    &hansei_out=dialog.string(HanseiOut)
+
+    open #1 &hansei_out\rpm-rawts.txt /read
+    repeat
+    (
+        &line=""
+        read #1 %line &line
+        &line=string.replace("&line","\0"," ",0)
+        print "&line"
+    )
+    while !eof()
+    close #1
+
+    return
+
+;===============================================================================
+;
+;
+LoadPaths:
+    entry &filepath
+    local &lines
+
+    print
+    print "Loading history from &filepath..."
+
+    &lines=""
+    open #1 "&filepath" /read
+    while !file.eof(1)
+    (
+        read #1 %line &line
+        &line=string.trim("&line")
+        if "&line"!=""
+        (
+            if "&lines"==""
+                &lines="&line"
+            else
+                &lines="&lines,&line"
+        )
+    )
+    close #1
+
+    print "Done"
+    return "&lines"
+
+;===============================================================================
+;
+;
+SavePaths:
+    entry &filepath &cur_path &path_list
+    local &path
+    local &idx
+
+    print
+    print "Saving history from &filepath..."
+
+    open #1 "&filepath" /Create
+    write #1 "&cur_path"
+    while "&path_list"!=""
+    (
+        &idx=string.scan("&path_list",",",0)
+        &path=""
+        if &idx>=0
+        (
+            &path=string.mid("&path_list",0,&idx)
+            &path_list=string.cut("&path_list",&idx+1)
+        )
+        else
+        (
+            &path="&path_list"
+            &path_list=""
+        )
+
+        if "&path"!="&cur_path"
+        (
+            write #1 "&path"
+        )
+    )
+    close #1
+    print "Done"
+    return
+
+;===============================================================================
+;
+;
+LoadFile:
+    entry &filepath
+    local &lines
+
+    &lines=""
+    open #1 "&filepath" /read
+    while !file.eof(1)
+    (
+        read #1 %line &line
+        &line=string.trim("&line")
+        if "&line"!=""
+        (
+            if "&lines"==""
+                &lines="&line"
+            else
+                &lines="&lines"+convert.char(0x0a)+"&line"
+        )
+    )
+    close #1
+
+    return "&lines"
+
+;===============================================================================
+;
+;
+SaveFile:
+    entry &filepath &lines
+
+    open #1 "&filepath" /Create
+    write #1 &lines
+    close #1
+    return

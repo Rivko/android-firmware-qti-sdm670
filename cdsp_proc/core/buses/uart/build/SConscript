@@ -1,0 +1,162 @@
+#===============================================================================
+#
+# UART Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009-2014? by QUALCOMM, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1.c4/buses/uart/build/SConscript#1 $
+#  $DateTime: 2018/07/30 01:21:36 $
+#  $Author: pwbldsvc $
+#  $Change: 16759227 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+#  Publish protected APIs
+#-------------------------------------------------------------------------------
+
+#  There are none.
+
+#-------------------------------------------------------------------------------
+#  Figure out UART_ROOT dynamically.  Look at the usual suspects.
+#-------------------------------------------------------------------------------
+
+SRCPATH = "${BUILD_ROOT}/core/buses/uart"
+
+if not env.PathExists( SRCPATH ):
+   SRCPATH = "${BUILD_ROOT}/drivers/uart"
+
+if not env.PathExists( SRCPATH ):
+   SRCPATH = "${BUILD_ROOT}/drivers/sio"
+
+env.Replace( UART_ROOT = SRCPATH )
+
+#-------------------------------------------------------------------------------
+#  Publish Private APIs
+#-------------------------------------------------------------------------------
+
+env.PublishPrivateApi('BUSES_UART_API', [
+   "${UART_ROOT}/hal/inc",
+   "${UART_ROOT}/dal/src",
+   "${UART_ROOT}/mdd/inc",
+   "${UART_ROOT}/tal/src",
+])
+
+#-------------------------------------------------------------------------------
+#  Customizations for UART
+#-------------------------------------------------------------------------------
+
+if env['MSM_ID'] in ['8x26','8x10','8926']:
+   env.Append(CPPDEFINES = [
+      "FEATURE_FIRST_UART",
+      "UART_FIRST_UART_PHYS_DEVICE=UARTBAM3_PHYS_DEVICE",
+      "UART_FIRST_UART_DRIVER_TYPE=PIO_DRIVER",
+      "UART_FIRST_UART_PD_WAKE_ON_RX=TRUE",
+      "FEATURE_CXM_UART",
+      "UART_CXM_UART_PHYS_DEVICE=UARTCXM_PHYS_DEVICE",
+      "UART_CXM_UART_DRIVER_TYPE=PIO_DRIVER",
+   ])
+elif env['MSM_ID'] in ['9x25']:
+   env.Append(CPPDEFINES = [
+      "FEATURE_FIRST_UART",
+      "UART_FIRST_UART_PHYS_DEVICE=UARTBAM3_PHYS_DEVICE",
+      "UART_FIRST_UART_DRIVER_TYPE=PIO_DRIVER",
+      "UART_FIRST_UART_PD_WAKE_ON_RX=TRUE",
+      "FEATURE_CXM_UART",
+      "UART_CXM_UART_PHYS_DEVICE=UARTCXM_PHYS_DEVICE",
+      "UART_CXM_UART_DRIVER_TYPE=PIO_DRIVER",
+      "UART_DAL_LOG_LEVEL=DALSYS_LOGEVENT_ERROR",
+   ])
+elif env['MSM_ID'] in ['8962','8x62']:
+   env.Append(CPPDEFINES = [
+      "FEATURE_FIRST_UART",
+      "UART_FIRST_UART_PHYS_DEVICE=UARTBAM2_PHYS_DEVICE",
+      "UART_FIRST_UART_DRIVER_TYPE=PIO_DRIVER",
+      "UART_FIRST_UART_PD_WAKE_ON_RX=TRUE",
+      "FEATURE_CXM_UART",
+      "UART_CXM_UART_PHYS_DEVICE=UARTCXM_PHYS_DEVICE",
+      "UART_CXM_UART_DRIVER_TYPE=PIO_DRIVER",
+      "UART_DAL_LOG_LEVEL=DALSYS_LOGEVENT_ERROR",
+   ])
+elif env['MSM_ID'] in ['8974']:
+   env.Append(CPPDEFINES = [
+      "FEATURE_FIRST_UART",
+      "UART_FIRST_UART_PHYS_DEVICE=UARTBAM8_PHYS_DEVICE",
+      "UART_FIRST_UART_DRIVER_TYPE=PIO_DRIVER",
+      "UART_FIRST_UART_PD_WAKE_ON_RX=TRUE",
+      "FEATURE_CXM_UART",
+      "UART_CXM_UART_PHYS_DEVICE=UARTCXM_PHYS_DEVICE",
+      "UART_CXM_UART_DRIVER_TYPE=PIO_DRIVER",
+   ])
+elif env['MSM_ID'] in ['8084']:
+   env.Append(CPPDEFINES = [
+      "FEATURE_FIRST_UART",
+      "UART_FIRST_UART_PHYS_DEVICE=UARTBAM8_PHYS_DEVICE",
+      "UART_FIRST_UART_DRIVER_TYPE=PIO_DRIVER",
+      "UART_FIRST_UART_PD_WAKE_ON_RX=TRUE",
+   ])
+elif env['MSM_ID'] in ['8994']:
+   env.Append(CPPDEFINES = [
+      "FEATURE_FIRST_UART",
+      "UART_FIRST_UART_PHYS_DEVICE=UARTBAM10_PHYS_DEVICE",
+      "UART_FIRST_UART_DRIVER_TYPE=PIO_DRIVER",
+      "UART_FIRST_UART_PD_WAKE_ON_RX=TRUE",
+   ])
+elif env['MSM_ID'] in ['8996' , '8998']:
+   env.Append(CPPDEFINES = [
+      "FEATURE_FIRST_UART",
+      "UART_FIRST_UART_PHYS_DEVICE=UARTBAM3_PHYS_DEVICE",
+      "UART_FIRST_UART_DRIVER_TYPE=PIO_DRIVER",
+      "UART_FIRST_UART_PD_WAKE_ON_RX=TRUE",
+   ])
+
+
+#-------------------------------------------------------------------------------
+#  Test code initialization
+#-------------------------------------------------------------------------------
+if 'USES_RCINIT' in env:
+   RCINIT_IMG = ['CORE_MODEM', 'CORE_QDSP6_SW', 'APPS_IMAGE', 'CBSP_APPS_IMAGE']
+   if 0:
+      # Enable the UART loopback test on the first UART port
+      env.AddRCInitFunc(
+       RCINIT_IMG,
+       {
+        'sequence_group'             : 'RCINIT_GROUP_2',
+        'init_name'                  : 'uart_test_loopback',
+        'init_function'              : 'siors232test_echo_init',
+        'dependencies'               : ['sio',]
+       })
+   if 0:
+      # Enable the UART tx-source test on the first UART port
+      env.AddRCInitFunc(
+       RCINIT_IMG,
+       {
+        'sequence_group'             : 'RCINIT_GROUP_2',
+        'init_name'                  : 'uart_test_txsource',
+        'init_function'              : 'uart_test_tx_source_start',
+        'dependencies'               : ['sio',]
+       })
+
+#-------------------------------------------------------------------------------
+#  Load sub scripts
+#-------------------------------------------------------------------------------
+
+env.LoadSoftwareUnits(level=1)
+

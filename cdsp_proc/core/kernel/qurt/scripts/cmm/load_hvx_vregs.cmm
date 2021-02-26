@@ -1,0 +1,104 @@
+;=============================================================================
+;
+;                                    load_hvx_vregs.cmm
+;
+; GENERAL DESCRIPTION
+;
+; EXTERNAL FUNCTIONS
+;        None.
+;
+; INITIALIZATION AND SEQUENCING REQUIREMENTS
+;        None.
+;
+;             Copyright (c) 2013  by Qualcomm Technologies, Inc.  All Rights Reserved.
+;=============================================================================
+//
+// Load HVX vector registers
+//
+
+Area.Create IO 80. 100.
+Area.Select IO
+Area IO
+
+
+global &vregs_addr
+global &vpreds_addr
+global &vregs_val
+global &vpreds_val
+global &ssr_org_val
+global &syscfg_org_val
+
+// Read original values
+&vregs_addr=v.value(&QURTK_hvx_vregs)
+&vpreds_addr=v.value(&QURTK_hvx_vpreds)
+&ssr_org_val=r(ssr)
+&syscfg_org_val=r(syscfg)
+
+global &i
+global &j
+global &unit
+global &vreg
+global &ssr_val
+global &syscfg_val
+
+// switch to 64B mode
+&syscfg_val=&syscfg_org_val
+&syscfg_val=&syscfg_val&0xfffff7f
+r.s syscfg &syscfg_val 
+
+
+&unit=0
+while &unit<4 
+(
+   // Change HVX unit
+   &ssr_val=&ssr_org_val
+   &ssr_val=&ssr_val|0x80000000
+   &tmp=(&unit+4)<<0x1b
+   &ssr_val=&ssr_val&0xc7ffffff
+   &ssr_val=&ssr_val|&tmp
+   r.s ssr &ssr_val
+   print "unit=" &unit  "  ssr_val=" &ssr_val "  vregs_addr=" &vregs_addr "  vpreds_addr=" &vpreds_addr
+
+   // loading vector registers
+
+   &i=0
+   while &i<0x20
+   (
+      &j=0
+      while &j<0x10
+      (
+         &vregs_val=Data.long(D:&vregs_addr)
+         &vreg="v"+FORMAT.DECIMAL(0,&i)+"_"+FORMAT.DECIMAL(0,&j)
+         hvx.set &vreg  &vregs_val
+         &vregs_addr=&vregs_addr+4
+         &j=&j+1
+      )
+      &i=&i+1
+   )
+
+   // loading vector predict
+
+   &i=0
+   while &i<4
+   (
+      &j=0
+      while &j<2
+      (
+         &vpreds_val=Data.long(D:&vpreds_addr)
+         &vreg="Q"+FORMAT.DECIMAL(0,&i)+"_"+FORMAT.DECIMAL(0,&j)
+         hvx.set &vreg  &vpreds_val
+
+         &vpreds_addr=&vpreds_addr+4
+         &j=&j+1
+      ) 
+      &i=&i+1
+   ) 
+  &unit=&unit+1
+)
+
+// restore the registers
+
+r.s syscfg &syscfg_org_val 
+r.s ssr &ssr_org_val 
+Register.refresh 
+

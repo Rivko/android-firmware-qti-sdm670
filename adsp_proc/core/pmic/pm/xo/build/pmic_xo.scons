@@ -1,0 +1,103 @@
+#===============================================================================
+#
+#
+# GENERAL DESCRIPTION
+#
+# Copyright (c) 2017 Qualcomm Technologies Incorporated. All Rights Reserved
+#
+# Qualcomm Proprietary
+#
+# Export of this technology or software is regulated by the U.S. Government.
+# Diversion contrary to U.S. law prohibited.
+#
+# All ideas, data and information contained in or disclosed by
+# this document are confidential and proprietary information of
+# Qualcomm Technologies Incorporated and all rights therein are expressly reserved.
+# By accepting this material the recipient agrees that this material
+# and the information contained therein are held in confidence and in
+# trust and will not be used, copied, reproduced in whole or in part,
+# nor its contents revealed in any manner to others without the express
+# written permission of Qualcomm Technologies Incorporated.
+#
+#-------------------------------------------------------------------------------
+#
+# $Header: //components/rel/core.qdsp6/2.1/pmic/pm/xo/build/pmic_xo.scons#1 $
+# $DateTime: 2017/07/21 22:10:47 $ 
+#
+#                      EDIT HISTORY FOR FILE
+#                      
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#  
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 01/10/17   rl      Created
+#===============================================================================
+
+Import('env')
+
+LIB_NAME        = 'pmic_xo'
+IMAGE_SOURCES   = ['MODEM_MODEM','CORE_MODEM','CORE_QDSP6_SW','SBL3_BOOT_IMAGE', 'PMIC_BOOT_DRIVER','CBSP_QDSP6_SW_IMAGE', 'WCN_IMAGE', 'CBSP_WCN_IMAGE', 'CORE_WCN', 'RPM_IMAGE', 'MODEM_APPS']
+
+LIB_SRC         = 'src'
+
+from glob import glob
+
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH:  
+#-------------------------------------------------------------------------------
+SRCPATH = ".."
+
+#BUILDPATH =  image_name / processor_name, eg modem_libs / arm11 = directory where built objects stored
+env.VariantDir('${BUILDPATH}', SRCPATH , duplicate=0)
+
+    
+env.RequirePublicApi([
+    'BUSES',
+    'DAL',
+    'DEBUGTOOLS',
+    'HWENGINES',
+    'KERNEL',
+    'SERVICES',
+    'SYSTEMDRIVERS',
+    'POWER',
+    'PMIC',
+    ],
+    area='CORE')
+
+env.RequireRestrictedApi([
+    'POWER',
+    'PMIC_DEVCFG_INTERFACE',
+    ])
+        
+env.RequirePrivateApi([        
+    'PMIC_FRAMEWORK',
+    'PMIC_CONFIG',
+    'PMIC_PRM',
+    'PMIC_UTILS',
+    'PMIC_RPMH',
+    'PMIC_XO',
+    ])
+    
+LIB_SOURCES = [ ]  #empy list
+
+SOURCE_FILES = [ ] 
+
+#find all .c
+SOURCE_FILES.extend(glob(SRCPATH + '/'+LIB_SRC+'/*.c'))
+
+#find all .cpp files 
+SOURCE_FILES.extend(glob(SRCPATH + '/'+LIB_SRC+'/*.cpp'))
+
+#find all .s files
+SOURCE_FILES.extend(glob(SRCPATH + '/'+LIB_SRC+'/*.s'))
+
+
+for filename in SOURCE_FILES:
+        LIB_SOURCES.append('${BUILDPATH}/' + filename.replace(SRCPATH,''))
+
+
+env.AddLibrary(IMAGE_SOURCES, '${BUILDPATH}/'+LIB_NAME, [LIB_SOURCES])
+

@@ -1,0 +1,154 @@
+#===============================================================================
+#
+# HCP Driver
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2015 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===============================================================================
+
+Import('env')
+env = env.Clone()
+
+core_public_apis = [
+    'KERNEL',
+    'SERVICES',
+    'DEBUGTOOLS',
+    'ADSPPM',
+    'POWER',
+    'MPROC',
+    'SYSTEMDRIVERS',
+    'DEBUGTRACE',
+    'DAL',
+    'DIAG',
+    'BUSES',
+    ]
+
+platform_public_apis = [
+    'PLATFORM_LIBS',
+    'MOD_TABLE',
+    'HAPSDK',    #For VP Tests
+    'STDDEF',
+    'REMOTE',
+    ]
+    
+env.RequirePublicApi(platform_public_apis, area='platform')
+env.RequirePublicApi(core_public_apis, area='core')    
+
+TESTINC=[]
+if 'USES_TEST_SRCS' in env:
+	TESTINC=['${BUILD_ROOT}/vap/vma/fw/platform/qdsp6/hcp_rpc/build/${SHORT_BUILDPATH}',
+			'${BUILD_ROOT}/vap/vma/fw/platform/qdsp6/hcp_rpc/inc',
+			'${BUILD_ROOT}/vap/vma/fw/platform/common/test/inc',
+			]
+
+env.PublishPrivateApi('VMA',[
+    '../inc',
+    '../inc_global',
+    '${BUILD_ROOT}/platform/inc/qlist',
+    '${BUILD_ROOT}/platform/inc/a1std',
+    '${BUILD_ROOT}/vap/vma/fw/platform/common/inc',
+    '${BUILD_ROOT}/vap/vma/fw/platform/qdsp6/guestos/inc',
+    '${BUILD_ROOT}/vap/common/srm/inc',
+    '${BUILD_ROOT}/vap/vma/fw/core/inc',
+    '${BUILD_ROOT}/vap/vma/fw/core/dd',
+    '${BUILD_ROOT}/vap/vma/fw/core/hal',
+    '${BUILD_ROOT}/vap/vma/fw/core/svc',
+    '${BUILD_ROOT}/vap/vma/fw/core/osal',
+    '${BUILD_ROOT}/vap/vma/fw/core/eAlgo',
+    '${BUILD_ROOT}/vap/common/noc/core/inc',
+    '${BUILD_ROOT}/vap/ubwcdma/core/dd',
+    '${BUILD_ROOT}/core/systemdrivers/hwio/hw/sdm845',
+    '${BUILD_ROOT}/core/api/systemdrivers/hwio/sdm845',
+    '${BUILD_ROOT}/core/api/power/sleep2.0',
+] + TESTINC)   
+
+env.RequirePrivateApi('VMA')
+env.RequirePublicApi('VMA', area='vma') 
+#-------------------------------------------------------------------------------
+# Target Build Options
+#-------------------------------------------------------------------------------
+#env.Append(CCFLAGS = ' -O0')
+env.Append(CCFLAGS = ' -G0')
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/vap/vma/fw"
+LIBNAME = 'vma'
+
+env.PublishPrivateApi('VMA', "${BUILD_ROOT}/vap/vma/build")
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Add
+# env.AddUsesFlags('USES_???')
+
+#-------------------------------------------------------------------------------
+
+  
+#-------------------------------------------------------------------------------
+#VMA
+#-------------------------------------------------------------------------------        
+env.Append(CFLAGS = '-Wno-error')
+ 
+SRC = [ '${BUILDPATH}/platform/common/src/hcp_osal.c', 
+    '${BUILDPATH}/platform/common/src/hcp_hal.c',
+    '${BUILDPATH}/platform/common/src/hcp_secure.c',
+    '${BUILDPATH}/platform/qdsp6/guestos/src/hcp_utils.c', 
+    '${BUILDPATH}/platform/qdsp6/guestos/src/hcp_host.c', 
+    '${BUILDPATH}/platform/qdsp6/guestos/src/hcp_hostCb.c', 
+    '${BUILDPATH}/platform/qdsp6/guestos/src/hcp_qdi.c', 
+    '${BUILDPATH}/platform/qdsp6/guestos/src/hcp_ist.c',                     
+    '${BUILDPATH}/platform/qdsp6/guestos/src/hcp_sessCb.c',  
+    '${BUILDPATH}/core/dd/dvpDD_hqv.c',
+    '${BUILDPATH}/core/dd/dvpDD_vma.c',
+    '${BUILDPATH}/core/dd/dvpDD_pm.c',
+    '${BUILDPATH}/core/hal/dvpHal_hqv.c',
+    '${BUILDPATH}/core/svc/dvp_hqvApi.c',
+    '${BUILDPATH}/core/svc/dvp_hqvCb.c',
+    '${BUILDPATH}/core/svc/dvpSvc_app.c',
+    '${BUILDPATH}/core/svc/dvpSvc_fmt.c',
+    '${BUILDPATH}/core/svc/dvpSvc_ear.cpp',
+    '${BUILDPATH}/core/svc/dvpSvc_ltm.cpp',
+    '${BUILDPATH}/core/osal/dvpOsal_vma.c',
+    '${BUILDPATH}/core/eAlgo/ear_sw.cpp',
+    '${BUILDPATH}/core/eAlgo/ace_ltm_utils.cpp',
+    '${BUILDPATH}/core/eAlgo/ltm_utils.cpp',
+    '${BUILDPATH}/core/eAlgo/plot_ltm_utils.cpp',
+    '${BUILDPATH}/core/eAlgo/ltm_clp.cpp',
+    '${BUILDPATH}/core/eAlgo/ltm_ltm.cpp',
+    '${BUILDPATH}/core/eAlgo/ltm_hst.cpp',
+    '${BUILDPATH}/core/eAlgo/ltm_unmsk.cpp',
+    '${BUILDPATH}/core/eAlgo/nyqdet.cpp',
+]
+
+TESTSRC = [ 
+    '${BUILDPATH}/platform/common/test/src/FwTest_Server.c',
+    '${BUILDPATH}/platform/common/test/src/FwTest_Utils.c',    
+    '${BUILDPATH}/platform/qdsp6/hcp_rpc/src/hcp_rpc_imp.c',
+]
+
+if 'USES_SRM' in env:
+	env.Append(CFLAGS='-DSRM_EN=1')
+    
+if 'USES_TEST_SRCS' in env:
+	SRC += TESTSRC
+
+node=env.AddBinaryLibrary(['VMA_SW_IMAGE'], '${BUILD_PATH}'+LIBNAME, [SRC])
+if 'USES_RCINIT' in env:
+	env.AddRCInitFunc(['VMA_SW_IMAGE'],
+		{
+			'sequence_group'             : 'RCINIT_GROUP_7',	# required
+			'init_name'                  : 'hcp_hostInit',		# required
+			'init_function'              : 'hcp_hostInit',		# required
+			'dependencies'               : ['clk_regime','dalsys','npa','icbarb','sleep','smem_log','rpm','adsppm']
+		})
+
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.h'], '${BUILD_ROOT}/vap/vma'))     
+env.CleanPack(['VMA_SW_IMAGE'], CLEAN_LIST)
+

@@ -1,0 +1,81 @@
+#===============================================================================
+# Copyright (c) 2012 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===============================================================================
+Import('env')
+import os
+env = env.Clone()
+
+platform_root = '${BUILD_ROOT}/platform'
+env.Replace(ADSP_PLATFORM_ROOT = platform_root)
+
+env.RequirePublicApi([
+    'HAPSDK',
+    'PLATFORM_LIBS',
+    'STDDEF',
+    'UTILS',
+    'DLW',
+    'A1STD',
+    'REMOTE',
+    'MOD_TABLE',
+    'A1ENV',
+    'PERF',
+    'QI',
+    'QAIC',
+    'POWER_BOOST',
+    'APPS_STD',
+])
+
+env.RequireRestrictedApi([
+    'ATOMIC',
+    'QLIST',
+    'PLS',
+    'FASTRPC_SMD',
+])
+
+core_public_apis = [
+    'DEBUGTOOLS',
+    'SERVICES',
+    'KERNEL',
+    'MPROC',
+ ]
+
+env.RequirePublicApi(core_public_apis, area='core')
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${ADSP_PLATFORM_ROOT}/perf"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+env.PLRegister("perf",['PLATFORM_LIBS','SSC_SLPI_USER','FASTRPC_SHELL_IMG', 'SENSOR_IMG'])
+
+perf_SOURCES =  [
+  env.QaicSkelFromIdl("adsp_perf"),
+  '${BUILDPATH}/perf.c',
+ ]
+
+#env.Append(CPPDEFINES = 'VERIFY_PRINT_INFO')
+#env.Append(CPPDEFINES = 'VERIFY_PRINT_ERROR')
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+perf_lib = env.AddBinaryLibrary(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+    'QDSP6_PLATFORM_SW_IMAGE', 'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'CORE_QDSP6_SENSOR_SW', 'FASTRPC_SHELL_IMG', 'AVS_ADSP_USER', 'SSC_ADSP_USER'],'${BUILDPATH}/perf', perf_SOURCES)
+
+#-------------------------------------------------------------------------------
+# Load Subunits (sys)
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.cpp', '*.h'], '${ADSP_PLATFORM_ROOT}/perf'))
+for x in env.FindFiles(['perf.h'], '${ADSP_PLATFORM_ROOT}/perf'):
+    CLEAN_LIST.remove(x)
+for x in env.FindFiles(['*.c', '*.cpp','*.h'], '${ADSP_PLATFORM_ROOT}/perf/build'):
+    CLEAN_LIST.remove(x)
+
+env.CleanPack(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+    'QDSP6_PLATFORM_SW_IMAGE', 'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'CORE_QDSP6_SENSOR_SW', 'FASTRPC_SHELL_IMG', 'AVS_ADSP_USER', 'SSC_ADSP_USER'], CLEAN_LIST)

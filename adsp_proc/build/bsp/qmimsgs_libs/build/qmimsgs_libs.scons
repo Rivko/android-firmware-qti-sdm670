@@ -1,0 +1,183 @@
+#===============================================================================
+#
+# Basic skeleton image scrip
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009-2012 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/dspbuild.adsp/5.0/bsp/qmimsgs_libs/build/qmimsgs_libs.scons#2 $
+#  $DateTime: 2017/11/26 20:49:52 $
+#  $Change: 14920335 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+
+Import('env')
+import os
+
+#------------------------------------------------------------------------------
+# Init image vars 
+#------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
+# Init aliases array.
+# first alias (0th elemten in array) is always unique name, there should 
+# never be two images with the same unique name
+aliases = ['qmimsgs_libs', 'adsp_proc', 'adsp_images', 'adsp_mpd_core_images', 'adsp_spd_core_images', 'cdsp_mpd_core_images', 'cdsp_spd_core_images',
+           'msm8998_ADSP', 'msm8998_CDSP', 'sdm845_ADSP', 'sdm845_CDSP', 'sdm660_ADSP', 'sdm670_ADSP', 'sdm660_CDSP','sdm855_ADSP','sdm855_CDSP','sdm670_CDSP','sdm1000_CDSP','sdm1000_ADSP'
+          ]
+
+build_tools = ['buildspec_builder.py',
+         '${BUILD_ROOT}/core/bsp/build/scripts/mbn_builder.py',
+         '${BUILD_ROOT}/core/bsp/build/scripts/tms_builder_servreg.py',
+         '${BUILD_ROOT}/core/bsp/build/scripts/cmm_builder.py',
+         '${BUILD_ROOT}/core/bsp/build/scripts/swe_builder.py',
+         '${BUILD_ROOT}/core/bsp/build/scripts/sleep_lpr_builder.py']
+
+#------------------------------------------------------------------------------
+# Init environment variables
+env.InitImageVars(
+   alias_list=aliases,  # aliases list
+   proc='qdsp6',      # proc (depending on tool chain arm, hexago, etc)
+   config='adsp',
+   plat='qurt',           # platform (l4, blast, foo, bar, etc)
+#build_tags = ['BASIC_IMAGE_EXAMPLE'],
+   build_tags = ['QMIMSGS_ADSP' ],
+   tools = build_tools
+)
+
+#------------------------------------------------------------------------------
+# Check if we need to load this script or just bail-out
+#------------------------------------------------------------------------------
+if not env.CheckAlias():
+   Return()
+
+#---------------------------------------------------------------------------
+# Load in CBSP uses and path variables
+#---------------------------------------------------------------------------
+env.LoadToolScript('build_utils', toolpath = ['${BUILD_ROOT}/build/scripts'])
+env.InitTargetVariation()
+env.InitBuildConfig()
+env.AddUsesFlags('USES_SERVICE_REGISTRY_PLAYBOOK')
+
+if 'USES_MULTI_PD' in env:
+   env.PrintInfo("This adsp qmimsgs libs are being built for Multi PD version")
+   env.AddUsesFlags('USES_MPD')
+   env.AddUsesFlags('USES_QURTOS_IMG') #this is the flag to be used for mpd builds to compile for guest os
+   env.Append(CPPDEFINES=["MULTI_PD_BUILD"])
+else:
+   env.PrintInfo("This adsp qmimsgs libs are being built for Single PD version")
+
+#---------------------------------------------------------------------------
+# Load in the tools-set init scripts
+#---------------------------------------------------------------------------
+
+#Add ADSP Image specific linker inputs here
+env.LoadToolScript('hexagon_adsp', toolpath = ['${BUILD_ROOT}/build'])
+
+
+if 'USES_MALLOC_WRAPPER_ENABLED' in env:
+    env.Append(CFLAGS='-DMALLOC_WRAPPER ')
+	
+#---------------------------------------------------------------------------
+# Libs/Objs
+#---------------------------------------------------------------------------
+image_libs = []
+image_objs = []
+
+#---------------------------------------------------------------------------
+# Libraries Section
+#---------------------------------------------------------------------------
+
+# load QMI messages libs/objs build rules.
+if env.PathExists("${BUILD_ROOT}/qmimsgs"):
+   au_items = env.LoadAreaSoftwareUnits('qmimsgs')
+   image_libs.extend(au_items['LIBS'])
+   image_objs.extend(au_items['OBJS'])
+
+image_units = [image_objs, image_libs]
+
+#--- RCINIT Playbook Extension, Library Specific Details -------------------
+#--- SERVICE REGISTRY Playbook Extension, Library Specific Details ------------BEGIN
+#build_tags = ['CORE_QDSP6_SW', 'BUILD_TEST_MODEM', 'QDSS_EN_IMG','AVS_ADSP','VIDEO_ADSP', 'QMIMSGS_ADSP', 'CORE_ADSP',
+#              'IMAGE_TREE_VERSION_AUTO_GENERATE',
+#              'IMAGE_TREE_UUID_AUTO_GENERATE', 'CORE_ADSP_ROOT', 'ROOT_PD'
+#             ]
+build_tags = ['QMIMSGS_ADSP' ]
+SERVREG_PLAYLISTS = [ ] # NONE USED
+
+# FOR SCONS TOOL EMITTERS TO PLACE OUTPUT PROPERLY
+if not os.path.exists(env.RealPath('${SHORT_BUILDPATH}')):
+   if Execute(Mkdir(env.RealPath('${SHORT_BUILDPATH}'))):
+      raise
+
+# ONLY WHEN DNT_BUILDER_SREG SCONS TOOL LOADED
+if 'USES_SERVICE_REGISTRY' in env and 'USES_SERVICE_REGISTRY_PLAYBOOK' in env:
+
+   # NEVER POLLUTE ENV CONSTRUCTION ENVIRONMENT WHICH GETS INHERITED
+   playbook_servreg_env = env.Clone()
+
+   # PLAYLIST OUTPUT THIS LIBRARY
+   servreg_out_pl = playbook_servreg_env.RealPath('${SHORT_BUILDPATH}/servreg_playlist.pl')
+   playbook_servreg_env.AddServRegPlaylist(build_tags, servreg_out_pl)
+   playbook_servreg_env.Depends(build_tags, servreg_out_pl)
+   image_units.append(servreg_out_pl)
+
+#--- SERVICE REGISTRY Playbook Extension, Library Specific Details ------------END
+
+#------------------------------------------------------------------------------
+# Putting the image toghther
+#------------------------------------------------------------------------------
+
+if 'IMAGE_BUILD_LOCAL_FILES' in env:
+   #-------------------------------------------------------------------------
+   # Local Files
+   #-------------------------------------------------------------------------
+   
+   # this is where local files are created, for example link scripts (lcs)
+   # for qdsp6 like images, or scatter load files (scl) for amr like images.
+   local_itmes= []
+   
+   image_units += local_itmes
+      
+if 'IMAGE_BUILD_LINK' in env:
+   #-------------------------------------------------------------------------
+   # Link image
+   #-------------------------------------------------------------------------
+
+   # this is where the rule to "link" is done.
+   #image_elf = env.AddProgram("${SHORT_BUILDPATH}/${TARGET_NAME}", image_objs, LIBS=image_libs)
+   
+   # this is just to create something for testing
+   image_elf = env.ListFileBuilder("${SHORT_BUILDPATH}/${TARGET_NAME}.txt", [image_objs, image_libs], 
+         add_header=False, relative_path="${BUILD_ROOT}/build/ms", posix=True)
+   
+if 'IMAGE_BUILD_POST_LINK' in env:
+   #-------------------------------------------------------------------------
+   # Post process image
+   #-------------------------------------------------------------------------
+   
+   # this is where any aditional rules after linking are done.
+
+   #=========================================================================
+   # Define targets needed 
+   #
+   image_units += [
+      image_elf,
+   ]
+
+#=========================================================================
+# Finish up...
+env.BindAliasesToTargets(image_units)

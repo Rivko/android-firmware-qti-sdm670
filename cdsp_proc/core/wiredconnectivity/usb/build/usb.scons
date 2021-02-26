@@ -1,0 +1,121 @@
+#===============================================================================
+#
+# USB Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2016 by QUALCOMM Technologies Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1.c4/wiredconnectivity/usb/build/usb.scons#1 $
+#  $DateTime: 2018/07/30 01:21:36 $
+#  $Author: pwbldsvc $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who      what, where, why
+# --------   ---      ---------------------------------------------------------
+# 01/11/16   cheunga  Initial
+
+
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# PACK RULES
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/wiredconnectivity"
+IMAGE_SOURCES = ['CORE_Q6_ROOT','CORE_ADSP_USER','CORE_SLPI_USER']
+PACK_TOOLS  = env.FindFiles(['*'], (SRCPATH + '/usb/src'))
+env.CleanPack(IMAGE_SOURCES, PACK_TOOLS)
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/wiredconnectivity/usb/src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# External depends within CoreBSP
+#-------------------------------------------------------------------------------
+env.RequireExternalApi([
+   'DSM',
+])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'BUSES',
+   'DAL',
+   'DEBUGTOOLS',
+   'HWENGINES',
+   'MPROC',
+   'POWER',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'STORAGE',
+   'WIREDCONNECTIVITY',
+
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+env.RequirePublicApi(['TEST','COMMON'], area='QMIMSGS')
+
+#-------------------------------------------------------------------------------
+# Feature Definitions
+#-------------------------------------------------------------------------------
+env.Append(CPPDEFINES = [
+    ('USB_SCONS_VER',0x0007),
+    'FEATURE_USB_LPASS',
+    'FEATURE_USB_MINIMAL_DEBUG',
+    'FEATURE_USB_MINIMAL_DEBUG_2',
+#    'FEATURE_USB_ENABLE_RTD_LOGGING',
+#    'FEATURE_USB_INTERRUPT',
+])
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+USB_SOURCES = [
+   '${BUILDPATH}/usb_log.c', 
+   '${BUILDPATH}/usb_interrupt.c', 
+   '${BUILDPATH}/usb_memory.c', 
+   '${BUILDPATH}/usb_sync.c', 
+   '${BUILDPATH}/usb_xhcd.c', 
+   '${BUILDPATH}/usb_dci.c', 
+   '${BUILDPATH}/usb_afe.c', 
+   '${BUILDPATH}/usb_main.c', 
+   '${BUILDPATH}/usb_qmi.c', 
+   '${BUILDPATH}/usb_audio_stream_v01.c', 
+   '${BUILDPATH}/usb_diag_log.c', 
+]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+USB_RCINIT_IMG = [
+    'CORE_ADSP_USER',
+]
+
+env.AddBinaryLibrary(USB_RCINIT_IMG, '${BUILDPATH}/wiredconnectivity/usb', USB_SOURCES)
+ 
+if 'USES_RCINIT' in env:
+  env.AddRCInitFunc(
+   USB_RCINIT_IMG,
+   {
+    'sequence_group'             : 'RCINIT_GROUP_3',
+    'init_name'                  : 'usb_task',
+    'init_function'              : 'usb_main',
+    'dependencies'               : ['clk_regime', 'timer_client', 'smd']
+   })
+

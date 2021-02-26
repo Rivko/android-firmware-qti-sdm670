@@ -1,0 +1,142 @@
+#===============================================================================
+#                    Copyright 2016, 2017 Qualcomm Technologies Incorporated.
+#                           All Rights Reserved.
+#           Proprietary and Confidential - Qualcomm Technologies Incorporated/GTDR
+#===============================================================================
+# DDR_MGR_L4 Libs
+#-------------------------------------------------------------------------------
+Import('env')
+env = env.Clone()
+
+#SDM640_CHANGES
+if env['MSM_ID'] in ['640']:
+   env['MSM_ID'] = '670'
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/power/ddr_mgr"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#855au for now compiles with 855 config
+if env['MSM_ID'] == '855au': 
+  env['MSM_ID'] = '855'
+
+if env['MSM_ID'] == '845':
+   env.Append(CPPDEFINES = 'SDM845_TARGET_CONFIG')
+elif env['MSM_ID'] == '24':
+   env.Append(CPPDEFINES = 'SDX24_STUBS')
+   env.Append(CPPDEFINES = 'SDX24_TARGET_CONFIG')
+elif env['MSM_ID'] == '855':
+   env.Append(CPPDEFINES = 'SDM855_STUBS')
+   env.Append(CPPDEFINES = 'SDM855_TARGET_CONFIG')
+elif env['MSM_ID'] == '1000':
+   env.Append(CPPDEFINES = 'SDM1000_STUBS')
+   env.Append(CPPDEFINES = 'SDM1000_TARGET_CONFIG')   
+elif env['MSM_ID'] == '670':
+   env.Append(CPPDEFINES = 'SDM670_TARGET_CONFIG')
+
+#-------------------------------------------------------------------------------
+# External depends within CoreBSP
+#-------------------------------------------------------------------------------
+env.RequireExternalApi([
+])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'DEBUGTOOLS',
+   'DEBUGTRACE',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'PRODUCTS',
+   'POWER',
+   'PMIC',
+   'MPROC',
+   'RPMh',
+   'DDR_MGR',
+   
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+env.RequireProtectedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+DDR_MGR_C_SOURCES = [
+   '${BUILDPATH}/src/ddr_mgr.c',
+   '${BUILDPATH}/src/ddr_smem.c',
+   '${BUILDPATH}/src/wlan_workaround.c',
+]
+
+DDR_MGR_ARCH_SOURCES = [
+]
+
+DDR_MGR_ENTRY_SOURCES = [
+]
+
+#-------------------------------------------------------------------------------
+# QDSS SW Events
+#-------------------------------------------------------------------------------
+if 'USES_QDSS_SWE' in env:
+   QDSS_IMG = ['QDSS_EN_IMG']
+   events = [['ddr_rail_change_handler=300',    'rail_change_handler (arc: %d) (event: %d) (needs: %d) (seq_lvl: %d)'],
+             ['ddr_arc_continue_processing',    'arc_continue_processing (arc: %d) (seq_lvl: %d)'],
+             ['ddr_arc_unblock_powerstate_arc', 'arc_unblock_powerstate_prework (arc: %d)'],
+             ['ddr_arc_unblock_rm_prework',     'arc_unblock_rm_prework (arc: %d) (seq_lvl: %d)'],
+             ['ddr_voltage_sequence_done',      'voltage sequence done (arc: %d) (cur_lvl: %d) (seq_lvl: %d)'],
+             ['ddr_Running_Voltage_Seq',        'running voltage seq (idx: %d) (mask: 0x%x)'],
+             ['ddr_NOT_Running_Voltage_Seq',    'not running voltage seq (mx_pend: %d) (cx_pend: %d) (vdda_pend: %d)'],
+             ['ddr_FREQ_FSM_PROCESS_DONE',      'freq_fsm process done (next_mc: %d) (next_shub: %d) (next_state: %d)'],
+             ['ddr_Starting_Frequency_Seq',     'starting fequency seq (next_mc: %d) (next_shub: %d) (start_addr: 0x%x)'],
+             ['ddr_Frequency_Seq_complete',     'frequency seq complete (curr_mc: %d) (curr_shub: %d)'],
+             ['ddr_Flush_readdata_complete',    'llc flush readdata complete (mask: 0x%x)'],
+             ['ddr_Event_during_LLC_Flush',     'event during llc flush  (event: %d) (next: %d) (status: %d) (mask: 0x%x)'],
+             ['ddr_MAIN_LOOP_PROCESSING',       'main loop processing (signals: 0x%x)'],
+             ['ddr_DDR_MGR_ISR_FUNC',           'ddr_mgr_isr_func isr (irq: %d) (signals 0x%x)'],
+             ['ddr_GET_AOP_NEEDS',              'get_aop_needs           (arc: %d), (result: %d)'],
+             ['ddr_ARC_SEND_VOTE',              'arc_send_vote           (arc: %d), (client: %d), (level: %d)'],
+             ['ddr_INVALID_CX_VOLTAGE_SEQ',     'invalid cx voltage seq  (desired seq lvl: %d), (cx_lvl: %d)'],
+             ['ddr_VOLTAGE_DEPENDENCY_READY',   'voltage_dependency_ready (voltage_arc_status[0]: %d), (voltage_arc_status[1]: %d), (voltage_arc_status[2]: %d), (ret_val %d)'],
+             ['ddr_UNBLOCK_BCM_MC',             'unblock_bcm_mc          (current_mc_cp: %d), (ddr_bcm_mc_level: %d), (ddr_reg_mc_level: %d)'],
+             ['ddr_UNBLOCK_BCM_SHUB',           'unblock_bcm_shub        (current_shub_cp: %d), (ddr_bcm_mc_level: %d), (ddr_reg_mc_level: %d)'],
+             ['ddr_UNBLOCK_POWERSTATE_ARC',     'unblock_powerstate_arc  (current_mc_cp: %d), (ddr_rm_ack_lvl: %d), (ddr_arc_level: %d)'],
+             ['ddr_CMD_DB_MEM_TEST',            'cmd_db_memory_test      (current_mc_cp: %d), (current_shub_cp: %d)'],
+             ['ddr_CMD_DB_MEM_TEST_FAIL',       'cmd_db_memory_test_fail      (current_mc_cp: %d), (current_shub_cp: %d)'],
+             ['ddr_CMD_DB_MEM_TEST_PASS',       'cmd_db_memory_test_pass      (current_mc_cp: %d), (current_shub_cp: %d)'],
+             ['ddr_SERVICE_FAL_TCS2',           'service_fal: tcs2 used  %d'],
+             ['ddr_READDATA_TCS0_INUSE',        'readdata: tcs 0 in use  %d'],
+             ['ddr_FLUSHENTRY_TCS0_INUSE',      'flush_entry: tcs0 used  %d'],
+             ['ddr_FLUSHEXIT_TCS1_INUSE',       'flush_exit: tcs1 used   %d'],
+             ['ddr_BADRETVAL_MSG_RAM_ADDR',     'bad retval: msg_ram_get_smem_addr %d'],
+             ['ddr_SMEM_TABLE_RETURNS',         'smem_table returns (version: major: %d, minor: %d)'],
+             ['ddr_LOCAL_SWITCH_LOG_INDEX',     'local_switch_log_index  (local switch log index: %d), (index: %d), (freq_switch: %d)'],
+             ['ddr_freq_needs',                 'frequency resource state (pmic pending: %d), (mx: 0x%x), (cx: 0x%x) (vdda: 0x%x)'],
+             ['ddr_below_mol_cleared',          'below mol agg cleared by solving (resource : %d), (status : 0x%x)'],
+             ['ddr_below_mol_not_cleared',      'below mol agg not cleared by solving (resource : %d), (status : 0x%x)'],
+             ['DDRAUX_CLKPLAN_BRANCH',          'DDR_AUX Debug (GCC_CLKPLAN: %X) (SEQ_BRANCH_EVENT: %X)'],
+             ['DDRAUX_SEQUENCER_STATUS',        'DDR_AUX Debug (SEQn_STAT: %X) (SEQn_CFG: %X) (Instruction: %X) (Elapsed: %d)'],
+             ['TCS_BUSY_AT_ERROR',              'TCS %d BUSY (RSI_TCSm_STAT: %X) (RSI_TCSm_CMD0: %X) (RSI_TCSm_CMD1: %X)'],
+             ['INVESTIGATE_SHRM_FREQUENCY',     'SHRM did not respond to Frequency Cmd (TCS: %d) (RSI_TCSm_STAT: %X) (elapsed: %d)'],
+             ['INVESTIGATE_SHRM_VOLTAGE',       'SHRM did not respond to Voltage Cmd (TCS: %d) (RSI_TCSm_STAT: %X) (elapsed: %d)'],
+             ['INVESTIGATE_SHRM_FLUSH',         'SHRM did not respond to Flush Related cmd (RSI_TCSm_STAT: %X) (elapsed: %d)'],
+             ['SHRM_STATUS_AT_TIMEOUT',         'SHRM status (SPROC_STATUS: %X) (APB_DEBUG_STATUS: %X)'],			 
+			 ['ddr_WLAN', 'apply_wlan_wa (current cx: %d) (target cx: %d), (wcssaon_config: 0x%x)'],
+             ['ddr_log_event_last=360',         'placeholder for last ddr_mgr_event'],
+            ]
+   env.AddSWEInfo(QDSS_IMG, events)
+
+# Adding settings files to R-init builder
+if 'USES_RINIT_PARSER' in env:
+    env.AddRinitInfo('CORE_AOP', 
+                     {'files' : '${BUILD_ROOT}/core/power/ddr_mgr/src/target/${MSM_ID}'})
+
+env.AddLibrary(['CORE_AOP'], '${BUILDPATH}/ddr_mgr_arc.lib', DDR_MGR_C_SOURCES)
+

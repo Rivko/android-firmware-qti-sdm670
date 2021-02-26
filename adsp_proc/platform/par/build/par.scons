@@ -1,0 +1,77 @@
+#===============================================================================
+# Copyright (c) 2012 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+
+
+platform_root = '${BUILD_ROOT}/platform'
+env.Replace(ADSP_PLATFORM_ROOT = platform_root)
+
+
+APIS=[
+  'FASTRPC_PROCESS',
+  'FASTRPC_THREAD_QUEUE',
+  'FASTRPC_PORT',
+  'FASTRPC_INVOKE',
+  'FASTRPC_LOADER',
+  'PLATFORM_LIBS',
+  'MOD_TABLE',
+  'HAP_POOL',
+  'QAIC',
+  'HAPSDK',
+  'REMOTE',
+  'PLS',
+  'STDDEF',
+  'A1STD',
+  'ATOMIC',
+  'UTILS',
+  'QLIST',
+  'HAP',
+  'QI',
+  ]
+
+if 'USES_FASTRPC_SHELL_IMG' in env:
+  APIS += ['FASTRPC_HEAP']
+
+env.RequirePublicApi(APIS)
+
+env.RequireRestrictedApi(APIS)
+
+
+core_public_apis = [
+   'KERNEL',
+   ]
+
+env.RequirePublicApi(core_public_apis, area='core')
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${ADSP_PLATFORM_ROOT}/par/src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+par_SOURCES =  [
+   '${BUILDPATH}/par.c',
+   '${BUILDPATH}/HAP_sem.c',
+]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+par_lib = env.AddBinaryLibrary(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+    'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'AVS_ADSP_USER', 'SSC_SLPI_USER', 'FASTRPC_SHELL_IMG', 'SSC_ADSP_USER'],'${BUILDPATH}/par', par_SOURCES)
+#-------------------------------------------------------------------------------
+# Load Subunits (sys)
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+# Clean / pack rules
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.cpp', '*.h'], '${ADSP_PLATFORM_ROOT}/par/src'))
+
+env.CleanPack(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+     'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'SSC_SLPI_USER', 'FASTRPC_SHELL_IMG', 'SSC_ADSP_USER'], CLEAN_LIST)

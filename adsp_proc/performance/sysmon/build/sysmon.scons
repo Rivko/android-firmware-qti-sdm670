@@ -1,0 +1,413 @@
+#===============================================================================
+#
+# ADSP System Monitor
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2015 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===============================================================================
+
+Import('env')
+
+core_public_apis = [
+    'KERNEL',
+    'SERVICES',
+    'DEBUGTOOLS',
+    'ADSPPM',
+    'QDSP_PM',
+    'POWER',
+    'MPROC',
+    'SYSTEMDRIVERS',
+    'DEBUGTRACE',
+    'DAL',
+    'DIAG',
+    'BUSES',
+    ]
+
+platform_public_apis = [
+    'PLATFORM_LIBS',
+    'HAPSDK',
+    'MOD_TABLE',
+    'QAIC',
+    'STDDEF',
+    'REMOTE',
+    'QDI_PORTAL',
+    ]
+
+env.PublishPrivateApi('QDSP_SYSMON',[
+    '../inc',
+    '../inc_global',
+    ])   
+
+if env.PathExists('../inc/${IMAGE}'):
+    env.PublishPrivateApi('QDSP_SYSMON', [
+        '../inc/${IMAGE}',
+        ])
+
+if env.PathExists('../chipset/'+env['MSM_ID']+'/inc'):
+    env.PublishPrivateApi('QDSP_SYSMON', [
+        '../chipset/'+env['MSM_ID']+'/inc',
+        ])
+
+if env.PathExists('../chipset/'+env['MSM_ID']+'/${IMAGE}/inc'):
+    env.PublishPrivateApi('QDSP_SYSMON', [
+        '../chipset/'+env['MSM_ID']+'/${IMAGE}/inc',
+        ])
+
+env.RequirePublicApi(platform_public_apis, area='platform')
+env.RequirePublicApi(core_public_apis, area='core')
+env.RequireRestrictedApi('performance')
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = ".."
+LIBNAME = 'qdsp_sysmon'
+
+env.PublishPrivateApi('QDSP_SYSMON', "${BUILD_ROOT}/performance/sysmon/build")
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+#SYSMON for Q6
+#-------------------------------------------------------------------------------        
+if 'USES_ADSP_SYSMON' in env or 'USES_QDSP_SYSMON' in env:
+    env.AddUsesFlags('USES_SYSMON_QDSS')
+    env.Append(CPPDEFINES="SYSMON_QDSS")
+    if 'sdm855' in env['CHIPSET']:
+        if env.get('IMAGE')=='adsp':
+            env.Append(CPPDEFINES='SYSMON_ADSP')
+        elif env.get('IMAGE')=='cdsp':
+            env.Append(CPPDEFINES='SYSMON_CDSP')
+            env.Append(CPPDEFINES='USES_128B_AXI')
+            if 'USES_SRM' not in env:
+                env.AddUsesFlags('USES_SYSMON_VTCM_MGR')
+                env.Append(CFLAGS='-DSYSMON_VTCM_MGR')
+            else:
+                env.AddUsesFlags('USES_SYSMON_VTCM_MGR_SRM')
+                env.Append(CFLAGS='-DSYSMON_VTCM_MGR_SRM')
+            env.AddUsesFlags('USES_SYSMON_CACHE_LOCKING')
+        else:
+            env.Append(CPPDEFINES='SYSMON_SDSP')
+    if 'sdm845' in env['CHIPSET']:
+        if env.get('IMAGE')=='adsp':
+            env.AddUsesFlags('USES_SYSMON_DEVCFG')
+            env.Append(CPPDEFINES="SYSMON_DEVCFG")
+            env.Append(CPPDEFINES='SYSMON_ADSP')
+            env.AddUsesFlags('USES_SYSMON_DCVS')
+            env.AddUsesFlags('USES_SYSMON_QOS')
+            env.Append(CFLAGS='-DSYSMON_QOS_INTEGRATION=1')
+            env.Append(CFLAGS='-DSYSMON_QOS_DEBUG=0')
+            env.AddUsesFlags('USES_SYSMON_DSAT')
+            env.Append(CFLAGS='-DUSES_AUDIO_PD=1')
+        elif env.get('IMAGE')=='cdsp':
+            env.Append(CPPDEFINES='SYSMON_HFW_ONLY')
+            env.AddUsesFlags('USES_SYSMON_DEVCFG')
+            env.Append(CPPDEFINES="SYSMON_DEVCFG")
+            env.Append(CPPDEFINES='SYSMON_CDSP')
+            env.AddUsesFlags('USES_SYSMON_DCVS')
+            env.AddUsesFlags('USES_SYSMON_QOS')
+            env.Append(CFLAGS='-DSYSMON_QOS_INTEGRATION=1')
+            env.Append(CFLAGS='-DSYSMON_QOS_DEBUG=0')
+            env.AddUsesFlags('USES_BWMON_ENABLED')
+            env.Append(CFLAGS='-DSYSMON_BWMON_ENABLED')
+            env.AddUsesFlags('USES_BWMON_THROTTLE_ENABLED')
+            env.Append(CFLAGS='-DSYSMON_BWMON_THROTTLE_ENABLED')
+            if 'USES_SRM' not in env:
+                env.AddUsesFlags('USES_SYSMON_VTCM_MGR')
+                env.Append(CFLAGS='-DSYSMON_VTCM_MGR')
+            else:
+                env.AddUsesFlags('USES_SYSMON_VTCM_MGR_SRM')
+                env.Append(CFLAGS='-DSYSMON_VTCM_MGR_SRM')
+            env.AddUsesFlags('USES_SYSMON_QSM_DRIVER')
+            env.Append(CPPDEFINES='SYSMON_QSM_DRIVER')
+            env.AddUsesFlags('USES_SYSMON_HVXTHROTTLE')
+            env.Append(CFLAGS='-DSYSMON_HVXTHROTTLE')
+            env.AddUsesFlags('USES_SYSMON_CACHE_LOCKING')
+            env.AddUsesFlags('USES_SYSMON_CPU_L3_VOTING')
+            env.Append(CPPDEFINES='SYSMON_CPU_L3_VOTING')
+        else:
+            env.Append(CPPDEFINES='SYSMON_SDSP')
+            env.AddUsesFlags('USES_USLEEP_ENABLED')
+            env.Append(CFLAGS='-DUSLEEP_ENABLED=1')   
+            env.Append(CFLAGS='-DUSES_SENSORS_PD=1')
+    if 'sdm670' in env['CHIPSET']:
+        if env.get('IMAGE')=='adsp':
+            if 'USES_SYSMON_HFW_ONLY' in env:
+                env.Append(CPPDEFINES='SYSMON_HFW_ONLY')
+            env.AddUsesFlags('USES_SYSMON_DEVCFG')
+            env.Append(CPPDEFINES="SYSMON_DEVCFG")
+            env.Append(CPPDEFINES='SYSMON_ADSP')
+            env.AddUsesFlags('USES_SYSMON_DCVS')
+            env.Append(CPPDEFINES='SYSMON_DCVS_AHB_DISABLE') #Disabling AHB dcvs for SDM670
+            env.AddUsesFlags('USES_SYSMON_QOS')
+            env.Append(CFLAGS='-DSYSMON_QOS_INTEGRATION=1')
+            env.Append(CFLAGS='-DSYSMON_QOS_DEBUG=0')
+            #env.AddUsesFlags('USES_SYSMON_DSAT') #Enable this once QOS clock register is finalized
+            env.Append(CFLAGS='-DUSES_AUDIO_PD=1')
+            env.AddUsesFlags('USES_USLEEP_ENABLED')
+            env.Append(CFLAGS='-DUSLEEP_ENABLED=1')   
+            env.Append(CFLAGS='-DUSES_SENSORS_PD=1')
+        elif env.get('IMAGE')=='cdsp':
+            env.Append(CPPDEFINES='SYSMON_HFW_ONLY')
+            env.AddUsesFlags('USES_SYSMON_DEVCFG')
+            env.Append(CPPDEFINES="SYSMON_DEVCFG")
+            env.Append(CPPDEFINES='SYSMON_CDSP')
+            env.AddUsesFlags('USES_SYSMON_DCVS')
+            env.AddUsesFlags('USES_SYSMON_QOS')
+            env.Append(CFLAGS='-DSYSMON_QOS_INTEGRATION=1')
+            env.Append(CFLAGS='-DSYSMON_QOS_DEBUG=0')
+            env.AddUsesFlags('USES_BWMON_ENABLED')
+            env.Append(CFLAGS='-DSYSMON_BWMON_ENABLED')
+            env.AddUsesFlags('USES_BWMON_THROTTLE_ENABLED')
+            env.Append(CFLAGS='-DSYSMON_BWMON_THROTTLE_ENABLED')
+            if 'USES_SRM' not in env:
+                env.AddUsesFlags('USES_SYSMON_VTCM_MGR')
+                env.Append(CFLAGS='-DSYSMON_VTCM_MGR')
+            else:
+                env.AddUsesFlags('USES_SYSMON_VTCM_MGR_SRM')
+                env.Append(CFLAGS='-DSYSMON_VTCM_MGR_SRM')
+            env.AddUsesFlags('USES_SYSMON_QSM_DRIVER')
+            env.Append(CPPDEFINES='SYSMON_QSM_DRIVER')
+            env.AddUsesFlags('USES_SYSMON_HVXTHROTTLE')
+            env.Append(CFLAGS='-DSYSMON_HVXTHROTTLE')
+            env.Append(CFLAGS='-DSYSMON_THERMALTHROTTLE')
+            env.AddUsesFlags('USES_SYSMON_CACHE_LOCKING')
+            env.AddUsesFlags('USES_SYSMON_CPU_L3_VOTING')
+            env.Append(CPPDEFINES='SYSMON_CPU_L3_VOTING')
+    if 'USES_SYSMON_DCVS' in env:
+        env.Append(CFLAGS='-DSYSMON_DCVS_INTEGRATION=1')
+    SRC = [
+           '${BUILDPATH}/src/sysmon_prof.c',
+           '${BUILDPATH}/src/sysmon_qdi_srv.c',
+          ]
+    if 'USES_SYSMON_DEVCFG' in env:
+        SRC += [
+                '${BUILDPATH}/src/sysmon_devcfg_driver.c'
+               ]
+    if 'USES_SYSMON_QDSS' in env:
+        SRC += [
+                '${BUILDPATH}/src/sysmon_qdss.c',
+                '${BUILDPATH}/src/sysmon_settings.c', 
+               ]
+    if 'USES_SYSMON_DCVS' in env and 'USES_SYSMON_DEVCFG' in env:
+        SRC += [
+                '${BUILDPATH}/src/${IMAGE}/sysmon_dcvs.c',
+                '${BUILDPATH}/src/sysmon_dcvs_clients.c',
+                '${BUILDPATH}/mpd_src/dcvs_qdi_srv.c',
+                '${BUILDPATH}/src/${IMAGE}/sysmon_dcvs_adsppm.c',
+               ]
+    else:
+        SRC += [
+                '${BUILDPATH}/src/sysmon_dcvs_adsppm_stub.c',
+                '${BUILDPATH}/src/sysmon_dcvs_clients_stub.c',
+               ]
+    if 'USES_SYSMON_QOS' in env:
+        SRC += [
+                '${BUILDPATH}/src/sysmon_qos.c',
+               ]
+    if 'USES_SYSMON_HVXTHROTTLE' in env and 'USES_SYSMON_DEVCFG' in env:
+        SRC += [
+                '${BUILDPATH}/src/${IMAGE}/sysmon_hvxthrottle_srv.c',
+                '${BUILDPATH}/src/${IMAGE}/sysmon_hvxthrottle_qdsppm.c',
+               ]
+    else:
+        SRC += [
+                '${BUILDPATH}/src/sysmon_hvxthrottle_qdsppm_stub.c',
+               ]
+    if 'USES_SYSMON_DSAT' in env:
+        SRC += [
+                '${BUILDPATH}/src/sysmon_dspdsat.c',
+               ]
+    else:
+        SRC += [
+                '${BUILDPATH}/src/sysmon_dspdsat_stub.c',
+               ]
+    if 'USES_USLEEP_ENABLED' in env:
+        SRC += [
+                '${BUILDPATH}/src/sysmon_usleep.c',
+               ]
+    if 'USES_BWMON_ENABLED' in env:
+        SRC += [
+                '${BUILDPATH}/src/${IMAGE}/sysmon_bwmon.c',
+               ]
+    if 'USES_BWMON_THROTTLE_ENABLED' in env:
+        SRC += [
+                '${BUILDPATH}/src/${IMAGE}/sysmon_bwmon_throttle.c',
+               ]
+    if 'USES_SYSMON_VTCM_MGR' in env:
+        SRC += [
+                '${BUILDPATH}/mpd_src/sysmon_vtcm_mgr_client.c',
+                '${BUILDPATH}/mpd_src/sysmon_vtcm_mgr_srv.c',
+               ]
+    elif 'USES_SYSMON_VTCM_MGR_SRM' in env:
+        SRC += [
+                '${BUILDPATH}/mpd_src/sysmon_vtcm_mgr_client.c',
+               ]
+    else:
+        SRC += [
+                '${BUILDPATH}/mpd_src/sysmon_vtcm_mgr_client_stub.c',
+               ]
+    if 'USES_SYSMON_CACHE_LOCKING' in env:
+        SRC += [
+                '${BUILDPATH}/mpd_src/sysmon_cachelock_srv.c',
+                '${BUILDPATH}/mpd_src/sysmon_cachelock_client.c',
+               ]
+    else:
+        SRC += [
+                '${BUILDPATH}/mpd_src/sysmon_cachelock_client_stub.c',
+               ]
+    if 'USES_SYSMON_QSM_DRIVER' in env:
+        SRC += [
+                '${BUILDPATH}/src/${IMAGE}/sysmon_qsm.c'
+               ]
+    if 'USES_SYSMON_TEST' in env:
+        SRC += [
+                '${BUILDPATH}/test/sysmon_test.c'
+               ]
+    if 'USES_SYSMON_CPU_L3_VOTING' in env:
+        SRC += [
+                '${BUILDPATH}/src/cdsp/sysmon_cdsp_stub.c',
+                '${BUILDPATH}/src/cdsp/sysmon_cpu_l3.c',
+               ]
+    env.AddBinaryLibrary(['SYSMON_SW_IMAGE'], '${BUILDPATH}/'+LIBNAME, [SRC])
+    if 'USES_RCINIT' in env:
+        env.AddRCInitFunc(
+        ['SYSMON_SW_IMAGE'],
+        {
+             'sequence_group'             : 'RCINIT_GROUP_7',                # required
+             'init_name'                  : 'sysmon_init',                    # required
+             'init_function'              : 'sysmon_profiler_init',          # required
+             'dependencies'               : ['clk_regime','dalsys','npa','icbarb','sleep','smem_log','rpm','qdsp_pm']
+        })
+        if 'USES_SYSMON_CACHE_LOCKING' in env:
+            env.AddRCInitFunc(
+            ['SYSMON_SW_IMAGE'],
+            {
+                'sequence_group'            : 'RCINIT_GROUP_2',                # required
+                'init_name'                 : 'cache_locking_init',            # required
+                'init_function'             : 'sysmon_cachelock_init',         # required             
+            })
+        if 'USES_SYSMON_TEST' in env:
+            env.AddRCInitTask(
+            ['SYSMON_SW_IMAGE'],
+            {
+                'sequence_group'            : 'RCINIT_GROUP_7',
+                'thread_name'               : 'sysmon_test',
+                'thread_entry'              : 'sysmon_test_main',
+                'stack_size_bytes'          : '4096',
+                'thread_type'               : 'RCINIT_TASK_QURTTASK',
+                'priority_amss_order'       : 'SHARED_DRIVER_SERVICE_PRI_ORDER',
+                'cpu_affinity'              : 'REX_ANY_SMT_MASK',
+                'dependencies'              : ['clk_regime','dalsys','npa','icbarb','sleep','smem_log','rpm','qdsp_pm','sysmon_init']
+            })
+else:
+    SRC = [
+            '${BUILDPATH}/src/sysmon_adsppm_stub.c',
+            '${BUILDPATH}/src/sysmon_dcvs_adsppm_stub.c',
+            '${BUILDPATH}/src/sysmon_dcvs_clients_stub.c',
+            '${BUILDPATH}/src/sysmon_dspdsat_stub.c',
+            '${BUILDPATH}/src/sysmon_hvxthrottle_qdsppm_stub.c',
+            '${BUILDPATH}/mpd_src/sysmon_cachelock_client_stub.c',
+            '${BUILDPATH}/mpd_src/sysmon_vtcm_mgr_client_stub.c',
+           ]
+    env.AddBinaryLibrary(['SYSMON_SW_IMAGE'], '${BUILDPATH}/'+LIBNAME, [SRC])
+CLEAN_LIST=['${BUILD_ROOT}/performance/sysmon/inc/adsp_dcvs_int.h',
+            '${BUILD_ROOT}/performance/sysmon/inc/adsppm_dcvs.h',
+            '${BUILD_ROOT}/performance/sysmon/inc/sysmon_bwmon_int.h',
+            '${BUILD_ROOT}/performance/sysmon/inc/sysmon_bwmon_throttle_int.h',
+            '${BUILD_ROOT}/performance/sysmon/inc/sysmon_dcvs_adsppm_int.h',
+            '${BUILD_ROOT}/performance/sysmon/inc/sysmon_dcvs_int.h',
+            '${BUILD_ROOT}/performance/sysmon/inc/sysmon_msg.h',
+            '${BUILD_ROOT}/performance/sysmon/inc/sysmon_pmu_def.h', 
+            '${BUILD_ROOT}/performance/sysmon/inc/sysmon_prof_int.h',
+            '${BUILD_ROOT}/performance/sysmon/inc/sysmon_qdi.h',
+            '${BUILD_ROOT}/performance/sysmon/inc/sysmon_qdss.h',
+            '${BUILD_ROOT}/performance/sysmon/inc/sysmon_qos.h',
+            '${BUILD_ROOT}/performance/sysmon/inc/sysmon_settings.h',
+            '${BUILD_ROOT}/performance/sysmon/inc/sysmon_usleep_int.h',
+            '${BUILD_ROOT}/performance/sysmon/inc/sysmon_vtcmmgr_int.h']
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.h'], '${BUILD_ROOT}/performance/sysmon/src'))
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.h'], '${BUILD_ROOT}/performance/sysmon/inc/adsp'))
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.h', '*.idl'], '${BUILD_ROOT}/performance/sysmon/inc/cdsp'))
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.h'], '${BUILD_ROOT}/performance/sysmon/inc/slpi'))
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.h'], '${BUILD_ROOT}/performance/sysmon/mpd_src'))
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.h'], '${BUILD_ROOT}/performance/sysmon/test'))
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.h'], '${BUILD_ROOT}/performance/sysmon/chipset'))
+env.CleanPack(['SYSMON_SW_IMAGE'], CLEAN_LIST)
+#-------------------------------------------------------------------------------
+# DEV config setup
+#-------------------------------------------------------------------------------
+if 'USES_DEVCFG' in env:
+    env.Append(CFLAGS = '-Wno-unused-function')
+    DEVCFG_IMG = ['DAL_DEVCFG_IMG']
+    if 'USES_DEVCFG_STRICT_XML' in env:
+        env.AddDevCfgInfo(DEVCFG_IMG, 
+        {
+            '845_xml' : ['../config/845/sysmon_845_${IMAGE}_strict.xml',
+                          '${BUILDPATH}/config/845/sysmon_configdata_845_${IMAGE}.c'],
+            '670_xml' : ['../config/670/sysmon_670_${IMAGE}_strict.xml',
+                          '${BUILDPATH}/config/670/sysmon_configdata_670_${IMAGE}.c'],
+        })
+    else:
+        env.AddDevCfgInfo(DEVCFG_IMG, 
+        {
+            '845_xml' : ['${BUILD_ROOT}/performance/sysmon/config/845/sysmon_845_${IMAGE}.xml',
+                          '${BUILD_ROOT}/performance/sysmon/config/845/sysmon_configdata_845_${IMAGE}.c'],
+            '670_xml' : ['${BUILD_ROOT}/performance/sysmon/config/670/sysmon_670_${IMAGE}.xml',
+                          '${BUILD_ROOT}/performance/sysmon/config/670/sysmon_configdata_670_${IMAGE}.c'],
+        })
+if 'USES_RCINIT' in env:
+    #------------------------------------------------------------------------------
+    #   SysMon init task for Audio PD
+    #------------------------------------------------------------------------------
+    env.AddBinaryLibrary(['AVS_ADSP_USER'], '${BUILDPATH}/sysmon_avs_user', '${BUILDPATH}/src/sysmon_avs_user.c')
+    env.AddBinaryLibrary(['AVS_ADSP_USER'], '${BUILDPATH}/sysmon_marker', '${BUILDPATH}/src/sysmon_marker.c')
+    IMAGES = ['AVS_ADSP_USER']
+    env.AddRCInitFunc(
+        IMAGES,
+        {
+            'sequence_group'             : 'RCINIT_GROUP_2',
+            'init_name'                  : 'sysmon_avs_user_init',
+            'init_function'              : 'sysmon_avs_user_init',
+            'dependencies'               : ['elite_start']
+        })
+    #------------------------------------------------------------------------------
+    #   SysMon init task for Sensor PD
+    #------------------------------------------------------------------------------
+    env.AddBinaryLibrary(['CORE_QDSP6_SENSOR_SW', 'PERFORMANCE_SLPI_USER'], '${BUILDPATH}/sysmon_sensors_user', '${BUILDPATH}/src/sysmon_sensors_user.c')
+    env.AddBinaryLibrary(['CORE_QDSP6_SENSOR_SW', 'PERFORMANCE_SLPI_USER'], '${BUILDPATH}/sysmon_marker', '${BUILDPATH}/src/sysmon_marker.c')
+    env.AddRCInitFunc(
+        ['CORE_QDSP6_SENSOR_SW', 'PERFORMANCE_SLPI_USER'],
+        {
+             'sequence_group'             : 'RCINIT_GROUP_7',
+             'init_name'                  : 'sysmon_sensors_user_init',
+             'init_function'              : 'sysmon_sensors_user_init',
+        })
+#-------------------------------------------------------------------------------
+# FastRPC shell objects
+#------------------------------------------------------------------------------- 
+if env.get('IMAGE')=='cdsp':
+    env.AddBinaryLibrary(['FASTRPC_SHELL_IMG'], '${BUILDPATH}/sysmon_marker', '${BUILDPATH}/src/sysmon_marker.c')
+    if 'sdm845' in env['CHIPSET'] or 'sdm855' in env['CHIPSET'] or 'sdm670' in env['CHIPSET']:
+        SYSMON_FASTRPC_USER_SRC = [
+                                    '${BUILDPATH}/mpd_src/sysmon_vtcm_mgr_client.c',
+                                    '${BUILDPATH}/mpd_src/sysmon_cachelock_client.c',
+                                  ]
+        env.AddBinaryLibrary(['CORE_FACE_CDSP_USER'], '${BUILDPATH}/sysmon_vtcm_mgr_client', ['${BUILDPATH}/mpd_src/sysmon_vtcm_mgr_client_securepd.c'])
+        env.AddBinaryLibrary(['FASTRPC_SHELL_IMG'], '${BUILDPATH}/sysmon_fastrpc_user', SYSMON_FASTRPC_USER_SRC)
+
+#-------------------------------------------------------------------------------
+# SRM objects
+#------------------------------------------------------------------------------- 
+if 'USES_SRM' in env and env.get('IMAGE')=='cdsp':
+    if 'sdm845' in env['CHIPSET'] or 'sdm855' in env['CHIPSET'] or 'sdm670' in env['CHIPSET']:
+        SRM = [
+               '${BUILDPATH}/mpd_src/sysmon_vtcm_mgr_srm.c',
+              ]
+        SECURE_PROXY = ['${BUILDPATH}/mpd_src/secure_proxy_communication_driver.c']
+        env.AddBinaryObject(['PERFORMANCE_CDSP_SRM'], SRM)
+        env.AddBinaryObject(['PERFORMANCE_CDSP_SRM'], SECURE_PROXY)

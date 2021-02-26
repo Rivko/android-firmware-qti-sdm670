@@ -1,0 +1,136 @@
+#===============================================================================
+#                    Copyright 2010 - 2015, 2017 QUALCOMM Technologies, Incorporated.
+#                           All Rights Reserved.
+#                         QUALCOMM Proprietary/GTDR
+#===============================================================================
+# STD Libs
+#-------------------------------------------------------------------------------
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/ssg/securemsm/trustzone/qsee/mink/libstd"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'SERVICES',
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API, area='core')
+
+SSG_API = [
+    'MINK_LK',
+]
+env.RequirePublicApi(SSG_API, area = 'ssg')
+env.RequireRestrictedApi(SSG_API)
+
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = '${BUILDPATH}/src/'
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+NON_GLIBC_SOURCES = [ SRCPATH + f for f in [
+    'memscpy.c',
+    'memsmove.c',
+    'secure_memset.c',
+    'strlcat.c',
+    'strlcpy.c',
+    'timesafe_memcmp.c',
+    'timesafe_strncmp.c',
+    'wcslcat.c',
+    'wcslcpy.c',
+    'wstrlcat.c',
+    'wstrlcpy.c',
+    'wstrlen.c',
+  ]
+]
+
+LIBSTD_SOURCES =  [ SRCPATH + f for f in [
+    'abort.c',
+    'clock.c',
+    'libstd_std_scanul.c',
+    'memchr.c',
+    'memcmp.c',
+    'memcpy.c',
+    'memmove.c',
+    'memrchr.c',
+    'memset.c',
+    'printf.c',
+    'qsort.c',
+    'strcasecmp.c',
+    'strchr.c',
+    'strchrnul.c',
+    'strcmp.c',
+    'strlen.c',
+    'strncasecmp.c',
+    'strncmp.c',
+    'strnlen.c',
+    'strrchr.c',
+    'strstr.c',
+    'wstrcmp.c',
+    'wstrncmp.c',
+  ]
+]
+
+# XBL_SEC compiles required functions only due to memory size constraints
+LIBSTD_XBL_SEC_SOURCES = [ SRCPATH + f for f in [
+    'memcmp.c',
+    'memscpy.c',
+    'memset.c',
+    'secure_memset.c',
+    'strlen.c',
+  ]
+]
+
+# Uncomment this line to define key LIBSTD_TEST which builds LIBSTD test lib
+# Alternatively, define this at command line when building as a coreimage
+# build using USES_FLAGS=LIBSTD_TEST,....
+#env.Replace(LIBSTD_TEST = "yes")
+LIBSTD_TEST_SOURCES =  [
+    '${BUILDPATH}/test/libstd_test_internal.c',
+    '${BUILDPATH}/test/libstd_test_main.c',
+]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+env.AddBinaryLibrary('XBL_SEC_IMAGE', '${BUILDPATH}/libstd',  LIBSTD_XBL_SEC_SOURCES)
+
+#only build the functions not in glibc for offtarget testing
+lib_sources = NON_GLIBC_SOURCES
+if not env.OfftargetTesting():
+  lib_sources.extend(LIBSTD_SOURCES)
+
+#use relative paths when building for applib, cmnlib and teetest images
+rel_lib_sources =  [s.replace(SRCPATH,'../src/') for s in lib_sources]
+
+images = ['TZOS_IMAGE', 'MONITOR_IMAGE', 'HYPERVISOR_IMAGE','TZTESTEXEC_IMAGE','TZBSPTEST_IMAGE']
+libstd = env.AddBinaryLibrary(images, '${BUILDPATH}/libstd',  lib_sources)
+
+if 'LIBSTD_TEST' in env:
+   env.AddBinaryLibrary(images, '${BUILDPATH}/libstd_test', LIBSTD_TEST_SOURCES)
+else:
+  env.CleanPack(images, LIBSTD_TEST_SOURCES)
+
+env.Append(CPPPATH=['#../../core/api/kernel/libstd'])
+
+
+if env.IsKeyEnable(['APPLIB32_IMAGE', 'APPLIB64_IMAGE', 'CTZL_IMAGE', 'CTZL64_IMAGE',]):
+  applib_libstd = env.SecureAppLibBuilder([], rel_lib_sources, 'applib_libstd')
+  Return('applib_libstd')
+
+if env.IsKeyEnable(['TEETEST_IMAGE', 'TEETEST64_IMAGE']):
+  tee_libstd = env.SecureTEELibBuilder([], rel_lib_sources, 'tee_libstd')
+  env.Deploy(['SConscript', tee_libstd])
+  Return('tee_libstd')

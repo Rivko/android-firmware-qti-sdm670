@@ -1,0 +1,87 @@
+#===============================================================================
+#
+# Ultrasound algorithms processor gesture CAPI
+#
+# GENERAL DESCRIPTION
+#    Ultrasound algorithms processor gesture build script
+#
+# Copyright (c) 2013,2015 Qualcomm Technologies, Inc.
+# All rights reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/ultrasound.adsp/2.7/algorithms/proc/gesture/CUsGestureLib/build/CUsGestureLib.scons#3 $
+#  $DateTime: 2015/06/05 04:59:54 $
+#  $Author: pwbldsvc $
+#  $Change: 8295126 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 01-17-2013 NR     Initial version
+# 04-03-2013 NR     Stub out all ultrasound modules when USM is stubbed out
+# 04-11-2013 NR     Refinement of ultrasound scons usage.
+# 05-28-2013 NR     Implement a stub version for each CAPI
+# 10-20-2013 LD     Adapt script for gesture CAPI
+# 05-03-2015 HS     Move ultrasound outside of avs
+#===============================================================================
+Import('env')
+
+core_public_apis = [
+   'DEBUGTOOLS',
+   'SERVICES',
+   'KERNEL',
+   ]
+
+env.PublishPrivateApi('ULTRASOUND_CAPI_GESTURE_LIB',[   
+   '../inc',
+   '../../UsGestureLib/inc',
+   '${INC_ROOT}/avs/elite/qurt_elite/inc',
+   '${INC_ROOT}/avs/elite/utils/inc',
+   '${INC_ROOT}/avs/elite/module_interfaces/shared_lib_api/inc/qurt_elite',
+   '${INC_ROOT}/avs/elite/module_interfaces/shared_lib_api/inc/capi'
+   ])
+
+env.RequirePublicApi(core_public_apis, area='core')
+env.RequirePublicApi('APR', area='apr')
+env.RequirePublicApi('ULTRASOUND', area='ultrasound')
+env.RequirePublicApi('QDSP6', area='qdsp6')
+env.RequirePublicApi('AVS', area='avs')
+env.RequireProtectedApi('ULTRASOUND')
+env.RequirePrivateApi('ULTRASOUND_CAPI_GESTURE_LIB') 
+env.RequireProtectedApi('ULTRASOUND_ALGORITHMS_COMMON')
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = '..'
+LIBNAME = 'CUsGestureLib'
+
+
+#import pdb; pdb.set_trace()
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+# Generate regular source file list
+usnd_reg_sources = env.GlobSourceFiles(['src/*.cpp', 'src/*.c'], SRCPATH,posix=True)
+
+# Generate stub source file list
+# usnd_stub_sources = env.GlobSourceFiles(['stub_src/*.cpp', 'src/*.c'], SRCPATH,posix=True)
+usnd_stub_sources = []
+
+# Generate proprietary source file list
+usnd_prop_sources = []
+
+# if USM is stubbed out, all ultrasound modules should be stubbed out
+if not env.has_key('USES_ULTRASOUND_STREAM_MGR_STUB'):
+    env.AddBinaryLibrary(['ULTRASOUND_ADSP'], '${BUILDPATH}/'+LIBNAME,
+        [usnd_reg_sources, usnd_stub_sources, usnd_prop_sources])
+
+# Pack Rules: CLEAN_LIST carries list of files to be removed from the packages. Should not contain 'build' folder
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*'], '${ULTRASOUND_ROOT}/algorithms/proc/gesture/CUsGestureLib/src'))
+CLEAN_LIST.extend(env.FindFiles(['*'], '${ULTRASOUND_ROOT}/algorithms/proc/gesture/CUsGestureLib/stub_src'))
+env.CleanPack(['CORE_QDSP6_SW', 'AVS_ADSP', 'CLEANPACK_TARGET', 'ULTRASOUND_ADSP'], CLEAN_LIST)

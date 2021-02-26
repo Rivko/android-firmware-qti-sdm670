@@ -1,0 +1,160 @@
+; dog_hb_log.cmm
+;******************************************************************************
+;
+;             WATCHDOG HEARTBEAT   LOG   SCRIPT
+;
+;******************************************************************************
+;               Copyright (c) 2015 Qualcomm Technologies Incorporated.
+;                         All Rights Reserved.
+;                      QUALCOMM Proprietary
+;******************************************************************************
+;
+; This script should be used to dump the watchdog heartbeat client states from T32. 
+; This script gives the information of the starved task.
+; 
+; How to use this script
+; ----------------------
+; After breaking on T32 or after collecting ram dump, retrieve log by running
+;
+; do dog_hb_log.cmm
+;
+;============================================================================
+;
+;                        EDIT HISTORY FOR MODULE
+;
+; when         who        what, where, why
+; -------      ---        ---------------------------------------------------
+; 10/21/2015   mdayanan  Created script to collect dog_hb debug info
+;============================================================================
+
+AREA.RESET
+WINPOS 0. 0. 50% 50%
+AREA.CREATE DOGHBLOG 300. 200.
+AREA.CLEAR DOGHBLOG
+AREA.VIEW DOGHBLOG
+
+PRINT "      "
+PRINT "***************************************************************************"
+PRINT " "     
+PRINT "  W A T C H D O G   H E A R T B E A T   L O G  "
+PRINT " "      
+PRINT "***************************************************************************"     
+PRINT " "
+PRINT " "
+PRINT " "
+PRINT "LIST OF ALL CLIENTS REGISTERED AND THEIR STATE "
+PRINT " "
+
+;space = 7
+PRINT "ENTRY       DOG_HB_LIST       TASK_NAME       DOG_HB_HANDLE       DOG_HB_TYPE       CLIENT_SIG       CLIENT_MASK       DOG_HB_PING_COUNT"
+PRINT " "
+
+&dog_entry=1
+
+&dog_hb_queue=V.VALUE((*(dog_hb_internal.dog_hb_q)).link.next_ptr)
+GOSUB DOG_HB_PRINT_LIST_STATE &dog_hb_queue
+
+&dog_hb_queue=V.VALUE((*((*(dog_hb_internal.dog_hb_q)).link.next_ptr)).next_ptr)
+GOSUB DOG_HB_PRINT_LIST_STATE &dog_hb_queue
+
+&dog_hb_queue=V.VALUE((*((*((*(dog_hb_internal.dog_hb_q)).link.next_ptr)).next_ptr)).next_ptr)
+GOSUB DOG_HB_PRINT_LIST_STATE &dog_hb_queue
+
+&dog_hb_queue=V.VALUE((*((*((*((*(dog_hb_internal.dog_hb_q)).link.next_ptr)).next_ptr)).next_ptr)).next_ptr)
+GOSUB DOG_HB_PRINT_LIST_STATE &dog_hb_queue
+
+&dog_hb_queue=V.VALUE((*((*((*((*((*(dog_hb_internal.dog_hb_q)).link.next_ptr)).next_ptr)).next_ptr)).next_ptr)).next_ptr)
+GOSUB DOG_HB_PRINT_LIST_STATE &dog_hb_queue
+
+PRINT " "
+PRINT "END OF TABLE  "
+PRINT " "
+
+PRINT "OTHER DEBUG INFO"
+PRINT " "
+
+PRINT "/* T32 instructions to see the 5 lists in the queue in table format for debugging :"
+PRINT "* Entry with ping = 4 (DOG_HB_PING_ERROR_CNT + 1) is the starved task."
+PRINT " "
+PRINT "V.FCHAIN %s (*((*(((dog_hb_queue_p)(*(dog_hb_internal.dog_hb_q)).link.next_ptr))).q_ping_head)) ;(*((*(((dog_hb_queue_p)(*(dog_hb_internal.dog_hb_q)).link.next_ptr))).q_ping_head)).next "
+PRINT "V.FCHAIN %s (*((*(((dog_hb_queue_p)(*((*(dog_hb_internal.dog_hb_q)).link.next_ptr)).next_ptr))).q_ping_head)) ;(*((*(((dog_hb_queue_p)(*((*(dog_hb_internal.dog_hb_q)).link.next_ptr)).next_ptr))).q_ping_head)).next "
+PRINT "V.FCHAIN %s (*((*(((dog_hb_queue_p)(*((*((*(dog_hb_internal.dog_hb_q)).link.next_ptr)).next_ptr)).next_ptr))).q_ping_head)) ;(*((*(((dog_hb_queue_p)(*((*((*(dog_hb_internal.dog_hb_q)).link.next_ptr)).next_ptr)).next_ptr))).q_ping_head)).next "
+PRINT "V.FCHAIN %s (*((*(((dog_hb_queue_p)(*((*((*((*(dog_hb_internal.dog_hb_q)).link.next_ptr)).next_ptr)).next_ptr)).next_ptr))).q_ping_head)) ;(*((*(((dog_hb_queue_p)(*((*((*((*(dog_hb_internal.dog_hb_q)).link.next_ptr)).next_ptr)).next_ptr)).next_ptr))).q_ping_head)).next "
+PRINT "V.FCHAIN %s (*((*(((dog_hb_queue_p)(*((*((*((*((*(dog_hb_internal.dog_hb_q)).link.next_ptr)).next_ptr)).next_ptr)).next_ptr)).next_ptr))).q_ping_head)) ;(*((*(((dog_hb_queue_p)(*((*((*((*((*(dog_hb_internal.dog_hb_q)).link.next_ptr)).next_ptr)).next_ptr)).next_ptr)).next_ptr))).q_ping_head)).next "
+PRINT " "
+PRINT "*/"
+
+PRINT "/* T32 instructions to see the 5 lists in the queue in plain format for debugging :"
+PRINT "v.v %s (dog_hb_queue_p)(*(dog_hb_internal.dog_hb_q)).link.next_ptr"
+PRINT "v.v %s (dog_hb_queue_p)(*((*(dog_hb_internal.dog_hb_q)).link.next_ptr)).next_ptr"
+PRINT "v.v %s (dog_hb_queue_p)(*((*((*(dog_hb_internal.dog_hb_q)).link.next_ptr)).next_ptr)).next_ptr"
+PRINT "v.v %s (dog_hb_queue_p)(*((*((*((*(dog_hb_internal.dog_hb_q)).link.next_ptr)).next_ptr)).next_ptr)).next_ptr"
+PRINT "v.v %s (dog_hb_queue_p)(*((*((*((*((*(dog_hb_internal.dog_hb_q)).link.next_ptr)).next_ptr)).next_ptr)).next_ptr)).next_ptr"
+
+PRINT "Starved device/task will be residing in the 5th list in the queue"
+PRINT "v.v %s (dog_hb_queue_p)(*((*((*((*((*(dog_hb_internal.dog_hb_q)).link.next_ptr)).next_ptr)).next_ptr)).next_ptr)).next_ptr"
+PRINT "*/"
+
+PRINT "/* T32 instruction to look at the dog_hb_device_p info of the starved task : "
+PRINT "ERR_FATAL(DOG_HB detects starvation of task 0x%x, triage with its owner(d.dump 0x%x), device_p_curr, device_p_curr, 0);"
+PRINT " "
+PRINT "From above device_p_curr hex value (0xZZZZZZZZ) do:"
+PRINT "v.v %s (dog_hb_device_p)0xZZZZZZZZ"
+PRINT "*/"
+
+PRINT "      "
+PRINT "***************************************************************************"
+PRINT " "     
+PRINT "  E N D   O F   W A T C H D O G   H E A R T B E A T   L O G  "
+PRINT " "      
+PRINT "***************************************************************************"     
+PRINT " "
+
+END
+
+;;;;;;;;;;;;;;;;;;;;;;;;;
+; subroutines 
+;;;;;;;;;;;;;;;;;;;;;;;;;
+
+DOG_HB_PRINT_LIST_STATE:
+   ENTRY &dog_hb_curr_queue
+   &dog_hb_curr_handle=V.VALUE((*(((dog_hb_queue_p)&dog_hb_curr_queue))).q_ping_head)
+
+   WHILE (&dog_hb_curr_handle>0)
+   (
+      &dog_hb_curr_list=V.VALUE((*(((dog_hb_queue_p)&dog_hb_curr_queue))).list_num)
+      &dog_hb_curr_name=DATA.STRING(D:V.VALUE((*(((dog_hb_device_p)(&dog_hb_curr_handle)))).name))
+      &dog_hb_curr_sig_t=V.VALUE((*(((dog_hb_device_p)(&dog_hb_curr_handle)))).sig_t)
+      &dog_hb_curr_sig_p=V.VALUE((*(((dog_hb_device_p)(&dog_hb_curr_handle)))).sig_p)
+      &dog_hb_curr_sig_m=V.VALUE((*(((dog_hb_device_p)(&dog_hb_curr_handle)))).sig_m)
+      &dog_hb_curr_ping=V.VALUE((*(((dog_hb_device_p)(&dog_hb_curr_handle)))).ping)
+
+      if (&dog_hb_curr_ping==0x4)
+      (
+         PRINT %ERROR %Decimal &dog_entry " "<<(13.-STRing.LENgth("&dog_entry")) "|" 
+         PRINT %ERROR %Continue %Decimal &dog_hb_curr_list " "<<(18.-STRing.LENgth("&dog_hb_curr_list")) "|" 
+         PRINT %ERROR %Continue "&dog_hb_curr_name" " "<<(14.-STRing.LENgth("&dog_hb_curr_name")) "|" 
+         PRINT %ERROR %Continue "&dog_hb_curr_handle" " "<<(18.-STRing.LENgth("&dog_hb_curr_handle")) "|" 
+         PRINT %ERROR %Continue "&dog_hb_curr_sig_t" " "<<(16.-STRing.LENgth("&dog_hb_curr_sig_t")) "|" 
+         PRINT %ERROR %Continue "&dog_hb_curr_sig_p" " "<<(15.-STRing.LENgth("&dog_hb_curr_sig_p")) "|" 
+         PRINT %ERROR %Continue "&dog_hb_curr_sig_m" " "<<(16.-STRing.LENgth("&dog_hb_curr_sig_m")) "|" 
+         PRINT %ERROR %Continue %Decimal &dog_hb_curr_ping
+         PRINT %ERROR %Continue "  --> STARVED TASK "
+      )
+      else
+      (
+         PRINT %Decimal &dog_entry " "<<(13.-STRing.LENgth("&dog_entry")) "|" 
+         PRINT %Continue %Decimal &dog_hb_curr_list " "<<(18.-STRing.LENgth("&dog_hb_curr_list")) "|" 
+         PRINT %Continue "&dog_hb_curr_name" " "<<(14.-STRing.LENgth("&dog_hb_curr_name")) "|" 
+         PRINT %Continue "&dog_hb_curr_handle" " "<<(18.-STRing.LENgth("&dog_hb_curr_handle")) "|" 
+         PRINT %Continue "&dog_hb_curr_sig_t" " "<<(16.-STRing.LENgth("&dog_hb_curr_sig_t")) "|" 
+         PRINT %Continue "&dog_hb_curr_sig_p" " "<<(15.-STRing.LENgth("&dog_hb_curr_sig_p")) "|" 
+         PRINT %Continue "&dog_hb_curr_sig_m" " "<<(16.-STRing.LENgth("&dog_hb_curr_sig_m")) "|" 
+         PRINT %Continue %Decimal &dog_hb_curr_ping
+      )
+
+      &dog_hb_curr_handle=V.VALUE((*(((dog_hb_device_p)(&dog_hb_curr_handle)))).next)
+      &dog_entry=&dog_entry+1
+   )
+
+RETURN

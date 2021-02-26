@@ -1,0 +1,109 @@
+; rpm_dump.cmm
+; ------------------------------------------------------------------
+;
+; When to use this script 
+; -----------------------
+; This script should be used to dump the full RPM state from T32
+; when a debug session's state must be recorded for later debugging.
+;
+; What this script does
+; -----------------------
+; This script will sweep through all RPM state in decreasing order
+; of importance for debugging a "typical" issue.  It's sort of like
+; a memory dump, but as a bonus it also dumps some hardware state too.
+;
+; How to use this script
+; ----------------------
+; After after breaking, retrieve all logs by running
+;
+; do rpm_dump <dumpPath>
+;
+ENTRY &dumpPath
+
+; Trim trailing "\" if necessary
+IF string.char("&(dumpPath)", string.len("&(dumpPath)")-1)=='\'
+(
+  &dumpPath=string.cut("&(dumpPath)", -1)
+)
+
+ON ERROR GOSUB error_catch
+
+;
+; The order of this dump sequence is not necessary in the most *logical*
+; way, but rather sorted by importance for debugging.  We assume that any
+; target you attach to via JTAG is crashed and might spontaneously reboot
+; at any instant, so we dump "the good stuff" first.
+;
+
+; The current RPM registers.
+print "store &(dumpPath)\rpm_registers.cmm register"
+store "&(dumpPath)\rpm_registers.cmm" register
+
+; All of the data regions of the RPM.
+print "d.save.binary &(dumpPath)\rpm_data_ram.bin esd:0x90000++0x13FFF"
+d.save.binary "&(dumpPath)\rpm_data_ram.bin" esd:0x90000++0x13FFF
+
+; The location where all of the RPM code is stored.  This is so late because typically
+; this region is completely RO and doesn't often change (one exception: the interrupt
+; vector table must be in code RAM to lower ISR latency).
+print "d.save.binary &(dumpPath)\rpm_code_ram.bin esd:0x0++0x27FFF"
+d.save.binary "&(dumpPath)\rpm_code_ram.bin" esd:0x0++0x27FFF
+
+; All of the inter-processor communication RAM.
+print "d.save.binary &(dumpPath)\rpm_msg_ram.bin esd:0x60778000++0x6FFF"
+d.save.binary "&(dumpPath)\rpm_msg_ram.bin"  esd:0x60778000++0x6FFF
+
+; All of the Cortex-M3's internal controls (the interrupt controller, etc.)
+print "d.save.binary &(dumpPath)\rpm_scs.bin esd:0xE000E000++0xFFF"
+d.save.binary "&(dumpPath)\rpm_scs.bin"      esd:0xE000E000++0xFFF
+
+; Qualcomm's assorted RPM wrapper hardware (CSR/GPO/etc.)
+print "d.save.binary &(dumpPath)\rpm__dec.bin     esd:0x280000++0x1FFF"
+d.save.binary "&(dumpPath)\rpm__dec.bin"     esd:0x280000++0x1FFF
+print "d.save.binary &(dumpPath)\rpm__qtmr_ac.bin esd:0x282000++0xFFF"
+d.save.binary "&(dumpPath)\rpm__qtmr_ac.bin" esd:0x282000++0xFFF
+print "d.save.binary &(dumpPath)\rpm__qtmr_f0.bin esd:0x283000++0xFFF"
+d.save.binary "&(dumpPath)\rpm__qtmr_f0.bin" esd:0x283000++0xFFF
+print "d.save.binary &(dumpPath)\rpm__qtmr_f1.bin esd:0x284000++0xFFF"
+d.save.binary "&(dumpPath)\rpm__qtmr_f1.bin" esd:0x284000++0xFFF
+print "d.save.binary &(dumpPath)\rpm__mpu.bin     esd:0x286000++0x19FF"
+d.save.binary "&(dumpPath)\rpm__mpu.bin"     esd:0x286000++0x19FF
+
+
+; The MPM hardware block.  The MPM is critical to all chip sleep tasks.
+print "d.save.binary &(dumpPath)\mpm.bin esd:0x10A0000++0xFFFF"
+d.save.binary "&(dumpPath)\mpm.bin" esd:0x10A0000++0xFFFF
+
+; The main clock control block (GCC_CLK_CTL_REG).
+; This block encapsulates the most important and
+; frequently changing pieces of the general system configuration.
+print "d.save.binary &(dumpPath)\clk_ctl.bin esd:0x100000++0xAFFFF"
+d.save.binary "&(dumpPath)\clk_ctl.bin" esd:0x100000++0xAFFFF
+
+; RBCPR, a block for lowering power consumption by strategically under- or
+; over-volting the silicon based on PVT conditions.
+; *** FIXME *** not currently using CPR hardware; blocks are off for now
+;d.save.binary "&(dumpPath)\rbcpr.bin" 0x50000++0x3FFF
+;d.save.binary "&(dumpPath)\rbcpr_mx.bin" 0x54000++0x3FFF
+
+; The SPDM, which is the main sensory mechanism for implementing bus DCVS.
+; *** FIXME *** until bus DCVS goes in, block is off for now
+;d.save.binary "&(dumpPath)\spdm.bin" 0x48000++0x7FFF
+
+; Bits of the top level CSR registers.  RPM probably can't even read most of
+; these, but there may be something relevant.
+print "d.save.binary &(dumpPath)\tcsr_regs.bin esd:0x1FC0000++0x25FFF"
+d.save.binary "&(dumpPath)\tcsr_regs.bin" esd:0x1FC0000++0x25FFF
+
+; All of the Cortex-M3's private peripheral space.  Superset of the SCS.
+print "d.save.binary &(dumpPath)\rpm__ppi.bin esd:0xE0000000++0xFFFFF"
+d.save.binary "&(dumpPath)\rpm__ppi.bin" esd:0xE0000000++0xFFFFF
+
+ON ERROR
+
+ENDDO
+
+error_catch:
+  PRINT "Error Caught... Continuing..."
+  RETURN
+

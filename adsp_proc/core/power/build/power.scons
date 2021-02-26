@@ -1,0 +1,101 @@
+#===============================================================================
+#
+# POWER build script
+#
+#    Copyright (c) 2016-2017 Qualcomm Technologies, Inc. (QTI).
+#    All Rights Reserved.
+#    Qualcomm Confidential and Proprietary.
+#    Export of this technology or software is regulated by the U.S. Government.
+#    Diversion contrary to U.S. law prohibited.
+#===============================================================================
+Import('env')
+
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Convert warnings to errors 
+#-------------------------------------------------------------------------------
+# The LLVM compiler added in several dozen -Wunused-function warnings with entries
+# in device configuration.  We will suppress these warnings for the devcfg_img
+# SCons image only.
+if env.CheckAlias('devcfg_img'):
+   env.Append(CFLAGS = ' -Wno-unused-function')
+
+
+"""
+  Determine which processor the currently build is for using the
+  actively building image. There cannot be more than one of the
+  same name within a target.  Meaning, 7x30 cannot have two 
+  processors named apps.
+
+  Possible processors are:
+
+  apps - Applications
+  modem - Modem Functionality 
+  modemCtrl - Modem Controller
+  rpm - Resource Power Manager
+  lpa - Low Power Audio
+  riva - wireless connectivity
+"""
+
+target_images = [
+    (['default'],
+        {
+            'modem'   : ['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE',
+                         'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+                         'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE'],
+            'adsp'    : ['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE',
+                         'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+                         'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE',
+                         'CORE_QDSP6_SENSOR_SW', 'CORE_QDSP6_AUDIO_SW'],
+            'apps'    : ['APPS_IMAGE', 'CBSP_APPS_IMAGE'],
+            'rpm'     : ['RPM_IMAGE'],
+            'riva'    : ['WCN_IMAGE', 'CBSP_WCN_IMAGE'],
+            'sensors' : ['CORE_SPS'],
+            'sbl3'    : ['SBL3_BOOT_IMAGE'],
+        },
+    ),
+    (['8200', '8900', '9x00', '8220'],
+        {
+            'modem'     : ['QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE'],
+            'modemCtrl' : ['MODEM_IMAGE', 'CBSP_MODEM_IMAGE'],
+        },
+    ),
+]
+
+def find_image_list(hal_platform):
+    target_specific_images = [x[1] for x in target_images if hal_platform in x[0]]
+    default_images = [x[1] for x in target_images if 'default' in x[0]]
+    return (target_specific_images + default_images)[0]
+
+def determine_processor_name(env):
+  target_images = find_image_list(env['HAL_PLATFORM'])
+
+  env_var_names = set(env.gvars().keys())
+
+  for image in target_images:
+    if (env_var_names.intersection(set(target_images[image]))):
+      return image
+
+  return 'unknown'
+
+env.AddMethod(determine_processor_name, 'DetermineProcessorName')
+
+#Protected APIs are only accessible to units inside power
+power_utils_protected_apis = [
+  "${INC_ROOT}/core/power/utils/inc",
+]
+
+env.PublishProtectedApi('POWER_UTILS', power_utils_protected_apis)
+
+#Sleep protected APIs
+power_sleep_protected_apis = [
+  "${INC_ROOT}/core/power/sleep2.0/inc",
+]
+
+env.PublishProtectedApi('POWER_SLEEP', power_sleep_protected_apis)
+
+#-------------------------------------------------------------------------------
+# Load sub scripts
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()

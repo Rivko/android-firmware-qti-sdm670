@@ -1,0 +1,164 @@
+#===============================================================================
+#
+# Utils Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2014 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //source/qcom/qct/core/bsp/config/mdm9x00/main/latest/services/utils/build/SConscript#1 $
+#  $DateTime: 2009/08/03 19:02:03 $
+#  $Author: wduembeg $
+#  $Change: 986488 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 05/16/14    sm     Added TISE image support.  Note that 'USES_MSVC' and
+#                    'USES_TISE' are used to specify a subset of files from this
+#                    driver to compile for the Windows (MSVC) compiler.  Please
+#                    do not remove these definitions from this file.
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+# This is to add MSVC specific flags in the environmnent for the MSVC compiler.
+#and to override the order of the includes so that these files are seen first. 
+if 'USES_MSVC' in env:
+    env.Replace(CFLAGS= '-Dinline="__inline"')
+    env.Append(CPPDEFINES = [
+    'CUST_H=custaaaaaaaaq.h',
+    'MY_GCC_FILE=__FILE__',
+    '__FILENAME__=__FILE__',
+    ])
+    env.Append(CPPPATH = [
+    "${INC_ROOT}/hap/tise_orphans/aDSPSim/osal/inc",
+    "${INC_ROOT}/hap/tise_orphans/aDSPSim/types",
+    "${INC_ROOT}/hap/tise_orphans/aDSPSim/osal/oal/inc",
+    ])
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/services/utils/src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# External depends outside CoreBSP
+#-------------------------------------------------------------------------------
+env.RequireExternalApi([
+   'DSM',
+   'BREW',
+   'CS',
+   'MULTIMEDIA_DISPLAY',
+])
+
+#--------------------
+# Temp Badger Bringup
+#--------------------
+env.Append(CPPDEFINES=["FEATURE_QDSP6"])
+env.Append(CPPDEFINES=["FEATURE_BLAST"])
+env.Append(CPPDEFINES=["FEATURE_BADGER"])
+
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'BOOT',
+   'BUSES',
+   'DAL',
+   'DEBUGTOOLS',
+   'HAL',
+   'MPROC',
+   'SERVICES',
+   'STORAGE',
+   'SYSTEMDRIVERS',
+   'WIREDCONNECTIVITY',
+   'SECUREMSM',
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+env.PublishPrivateApi('SERVICES_UTILS', "${INC_ROOT}/core/services/utils/src")
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+UTILS_SOURCES = [
+   '${BUILDPATH}/bit.c',
+   '${BUILDPATH}/cmd.c',
+   '${BUILDPATH}/crc.c',
+   '${BUILDPATH}/intconv.c',
+   '${BUILDPATH}/list.c',
+   '${BUILDPATH}/md5c.c',
+   '${BUILDPATH}/memheap.c',
+   '${BUILDPATH}/misc.c',
+   '${BUILDPATH}/queue.c',
+   '${BUILDPATH}/qw.c',
+   '${BUILDPATH}/ran.c',   
+]
+
+UTILS_LPASS_SOURCES = [
+   '${BUILDPATH}/bit.c',
+   '${BUILDPATH}/crc.c',
+   '${BUILDPATH}/memheap.c',
+   '${BUILDPATH}/queue.c',
+   '${BUILDPATH}/qw.c',
+   '${BUILDPATH}/amssheap.c',
+   '${BUILDPATH}/amssheap_debug.c',
+]
+
+UTILS_TISE_SOURCES = [
+   '${BUILDPATH}/bit.c',
+   '${BUILDPATH}/queue.c',
+   '${BUILDPATH}/qw.c',
+]
+
+UTILS_ARM_SOURCES = [
+   '${BUILDPATH}/amssheap.c',
+]
+
+UTILS_QDSP6_SOURCES = [
+   '${BUILDPATH}/qmalloc.c'
+]
+
+UTILS_UMTS_SOURCES = [
+   '${BUILDPATH}/sys_eplmn_list.c'
+]
+
+UTILS_CPP_SOURCES = [
+   '${BUILDPATH}/memutils.cpp'
+]
+
+UTILS_A_SOURCES = [
+   '${BUILDPATH}/miscasm.s'
+]
+
+TOOLS_SOURCES =[
+   '${BUILDPATH}/crc.c',
+]
+
+# Adding the required sources to the TISE SCons Image
+if 'USES_TISE' in env:
+    env.AddLibrary(['CORE_TISE_SW'], '${BUILDPATH}/utils_tise', UTILS_TISE_SOURCES)
+
+utils_obj_lpass = env.Object([UTILS_SOURCES, UTILS_CPP_SOURCES, UTILS_A_SOURCES, UTILS_ARM_SOURCES])
+
+utils_lib_lpass = env.Library('${BUILDPATH}/utils', [utils_obj_lpass])
+
+env.AddObject(['QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'CORE_QDSP6_SENSOR_SW', 'CORE_QDSP6_AUDIO_SW'], [UTILS_LPASS_SOURCES])
+
+

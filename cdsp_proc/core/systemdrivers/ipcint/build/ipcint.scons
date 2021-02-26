@@ -1,0 +1,132 @@
+#=============================================================================
+# INTERPROCESSOR INTERRUPT LIBRARY
+#
+#=============================================================================
+# $Header: //components/rel/core.qdsp6/2.1.c4/systemdrivers/ipcint/build/ipcint.scons#1 $
+#=============================================================================
+#            Copyright 2009-2016 QUALCOMM Technologies Incorporated.
+#                           All Rights Reserved.
+#                         QUALCOMM Proprietary/GTDR
+#=============================================================================
+
+import os
+Import('env')
+env = env.Clone()
+
+#-----------------------------------------------------------------------------
+# Define paths
+#-----------------------------------------------------------------------------
+
+SRCPATH = "${BUILD_ROOT}/core/systemdrivers/ipcint"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+CBSP_API = [
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'HAL',
+   'DAL',
+
+   # Must be last due to comdef.h issues
+   'KERNEL'
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+env.PublishPrivateApi("SYSTEMDRIVERS_IPCINT", [
+ 	   "${INC_ROOT}/core/systemdrivers/ipcint/src"
+ 	])
+ 	 
+#-------------------------------------------------------------------------------
+# Define sources
+#-------------------------------------------------------------------------------
+
+IPCINT_SOURCES = [
+   '${BUILDPATH}/src/DalIPCInt.c',
+   '${BUILDPATH}/src/DalIPCIntInfo.c',
+   '${BUILDPATH}/src/DalIPCIntFwk.c',
+]
+
+UIPCINT_SOURCES = [
+   '${BUILDPATH}/src/uIPCInt.c',
+]
+
+UIPCINT_STUBS = [
+   '${BUILDPATH}/src/uIPCIntStub.c',
+]
+
+# Check if config data available for chipset and image, if not, use stub
+ipcint_config_path = os.path.join(env['INC_ROOT'],'core','systemdrivers','ipcint','hw',env['CHIPSET'],env['IMAGE'])
+if os.path.exists(ipcint_config_path):
+    IPCINT_SOURCES.append('${BUILDPATH}/hw/${CHIPSET}/${IMAGE}/DalIPCInt_ConfigData.c')
+else:
+    IPCINT_SOURCES.append('${BUILDPATH}/hw/DalIPCInt_ConfigDataStub.c')
+
+# Check if config data available for chipset and image for uimage driver, if not, use stub
+uipcint_config_path = os.path.join(env['INC_ROOT'],'core','systemdrivers','ipcint','hw',env['CHIPSET'],env['IMAGE'],'uimage')
+if os.path.exists(ipcint_config_path):
+    UIPCINT_SOURCES.append('${BUILDPATH}/hw/${CHIPSET}/${IMAGE}/uimage/uIPCInt_ConfigData.c')
+else:
+    UIPCINT_SOURCES.append('${BUILDPATH}/hw/uIPCInt_ConfigDataStub.c')
+
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+IPCINT_IMAGES = ['CORE_SLPI_ROOT','CORE_ADSP_ROOT','CORE_CDSP_ROOT','CORE_SLPI_ADSP_ROOT']
+UIPCINT_IMAGES = ['CORE_SSC_ADSP_USER','CORE_SLPI_USER']
+
+env.AddLibrary(IPCINT_IMAGES,'${BUILDPATH}/DalIPCInt', IPCINT_SOURCES)
+
+if env.IsTargetEnable(UIPCINT_IMAGES):
+  uipcintlib = env.AddLibrary(UIPCINT_IMAGES,'${BUILDPATH}/uIPCInt', UIPCINT_SOURCES)
+  if 'USES_ISLAND' in env:
+    env.AddIslandLibrary(UIPCINT_IMAGES, uipcintlib)
+
+    
+
+#-------------------------------------------------------------------------------
+# Pack out files
+#-------------------------------------------------------------------------------
+
+# Remove documentation source files
+DOCSRC_FILES = env.FindFiles(
+  ['*'],
+  '${BUILD_ROOT}/core/api/systemdrivers/docsrc/ipcint/')
+env.CleanPack(IPCINT_IMAGES, DOCSRC_FILES)
+
+#---------------------------------------------------------------------------
+# Invoke Test APP for IPCInt (currently commented out)
+#---------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
+# RCInit Dependencies
+#-------------------------------------------------------------------------------
+#env.Append(CCFLAGS = " -DIPCINT_SEND_TEST")
+#env.Append(CCFLAGS = " -DIPCINT_RECEIVE_TEST")
+
+if 'USES_RCINIT' in env:
+  RCINIT_IMG = UIPCINT_IMAGES
+  env.AddRCInitFunc(       # Code Fragment in TMC: NO
+  RCINIT_IMG,              # define TMC_RCINIT_INIT_IPCINT_TEST
+  {
+    'sequence_group'             : 'RCINIT_GROUP_0',       # required
+    'init_name'                  : 'uIPCInt',              # required
+    'init_function'              : 'uIPCInt_Init',         # required
+    'dependencies'               : ['dalsys']
+  })
+
+#---------------------------------------------------------------------------
+# Invoke document generation SConscript
+#---------------------------------------------------------------------------
+
+if os.path.exists(env['BUILD_ROOT'] + '/core/api/systemdrivers/docsrc/ipcint/SConscript') :
+  env.SConscript(
+    '${BUILD_ROOT}/core/api/systemdrivers/docsrc/ipcint/SConscript',
+    exports='env')
+

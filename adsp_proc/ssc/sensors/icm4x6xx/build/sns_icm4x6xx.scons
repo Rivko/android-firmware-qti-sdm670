@@ -1,0 +1,38 @@
+#===============================================================================
+#
+# ICM406XX sensor implementation
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2019 by Invensense Technologies, Inc.
+# All Rights Reserved.
+# Confidential and Proprietary - Invensense Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#
+#  $DateTime: 2019/11/11 03:28:22 $
+#
+#===============================================================================
+Import('env')
+import os,inspect
+
+if ('SSC_TARGET_HEXAGON_MDSP' in env['CPPDEFINES']):
+  Return()
+  
+icm4x6xx_island_enable = False
+
+if 'SNS_ISLAND_INCLUDE_ICM426XX' in env:
+  icm4x6xx_island_enable = True
+if ('SSC_TARGET_HEXAGON' in env['CPPDEFINES']) and ('SENSORS_DD_DEV_FLAG' not in env):
+    env.AddSSCSU(inspect.getfile(inspect.currentframe()),
+                 register_func_name = "sns_register_icm4x6xx",
+                 binary_lib = False,
+                 add_island_files = icm4x6xx_island_enable)
+
+if 'SENSORS_DD_DEV_FLAG' in env:
+  ME = inspect.getfile(inspect.currentframe())
+  MY_ROOT = os.path.dirname(os.path.dirname(ME))
+  REMOVE_FILES = env.FindFiles(['*.*'], MY_ROOT)
+  env.CleanPack(env['SSC_BUILD_TAGS'], REMOVE_FILES)
+

@@ -1,0 +1,83 @@
+#=============================================================================
+# CLOCK DRIVER Settings
+#
+# Target:    All
+# Processor: All
+#
+#=============================================================================
+# $Header: //components/rel/core.qdsp6/2.1/settings/systemdrivers/clock/build/clock.scons#1 $
+#=============================================================================
+#  Copyright 2017 QUALCOMM Technologies Incorporated.
+#  All Rights Reserved.
+#  QUALCOMM Proprietary/GTDR
+#=============================================================================
+
+import os
+Import('env')
+
+#-----------------------------------------------------------------------------
+# Define paths
+#-----------------------------------------------------------------------------
+
+SRCPATH = "../config"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-----------------------------------------------------------------------------
+# Define any features or compiler flags
+#-----------------------------------------------------------------------------
+# The LLVM compiler added in several dozen -Wunused-function warnings with entries
+# in device configuration.  We will suppress these warnings for the devcfg_img
+# SCons image only.
+
+env.Append(CFLAGS = ' -Wno-unused-function')
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+CBSP_API = [
+   'DAL',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(['SYSTEMDRIVERS_DALCONFIG', 'SYSTEMDRIVERS_CLOCK_RESTRICTED'])
+
+#-------------------------------------------------------------------------------
+# DEVCFG - Clock XML
+#-------------------------------------------------------------------------------
+
+if 'USES_DEVCFG' in env:
+  base_xml_path = os.getcwd() + "/../config/{CHIPSET}/ClockChipset.xml"
+  xml_path = base_xml_path.format(CHIPSET=env['CHIPSET'])
+
+  # Stub image if no chipset-specific scons file defined yet.
+  if not os.path.exists(xml_path):
+    xml_path = base_xml_path.format(CHIPSET='stub')
+
+  devcfg_name = env['MSM_ID'] + '_xml'
+  env.AddDevCfgInfo(['DAL_DEVCFG_IMG'],
+  {
+    devcfg_name: [xml_path],
+  })
+
+#-------------------------------------------------------------------------------
+# Pack out files
+#-------------------------------------------------------------------------------
+
+# Remove target config files
+ALL_CONFIG_FILES = env.FindFiles(
+  ['*'],
+  '../config/')
+STUB_CONFIG_FILES = env.FindFiles(
+  ['*'],
+  '../config/stub/')
+MY_CONFIG_FILES = env.FindFiles(
+  ['*'],
+  '../config/${CHIPSET}')
+PACK_CONFIG_FILES = list(set(ALL_CONFIG_FILES) - set(STUB_CONFIG_FILES) - set(MY_CONFIG_FILES))
+env.CleanPack(['CORE_Q6_ROOT'], PACK_CONFIG_FILES)
+

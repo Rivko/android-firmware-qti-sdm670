@@ -1,0 +1,59 @@
+;Running python script to merge logs: Jason Jiang
+;--------------------------------------------------------
+ENTRY &script_dir &op_path &outputName
+PRINT "Running Python script to merge logs..."
+
+;Error Checking:
+if "&outputName"==""
+(
+	PRINT "Error, invalid output name"
+	ENDDO
+)
+
+;The name of the merged log file
+if (OS.FILE(&op_path/&outputName))
+(
+	AREA.Create SleepDump
+	AREA.Select SleepDump
+	AREA SleepDump
+	PRINT "ERROR: Output File already exists: &op_path/&outputName"
+	PRINT "Overwritting file &op_path/&outputName"
+	rm &op_path/&outputName
+)
+
+if !(OS.DIR(&op_path))
+(
+	PRINT "ERROR: Output directory for merging does not exist. Creating..."
+	mkdir &op_path
+	if !(OS.DIR(&op_path))
+	(
+		PRINT "ERROR: Failed to create directory &op_path"
+		PRINT "ERROR: Merge aborted"
+		ENDDO
+	)
+)
+
+if !(OS.DIR(&script_dir))
+(
+	&script_dir = os.pwd()
+)
+
+cd &op_path
+
+;OS.screen opens terminal
+OS.screen python &(script_dir)/LogUtils.py merge op &outputName all "Sleep " withcore
+
+cd &script_dir
+
+&i=0
+WHILE !(OS.FILE(&op_path/&outputName))
+(
+	&i=&i+1
+	IF &i>20000
+	(
+		PRINT "Long time has elapsed. Check the output folder. Returning..."
+		ENDDO
+	)
+)
+
+PRINT "Completed Python script to merge logs."

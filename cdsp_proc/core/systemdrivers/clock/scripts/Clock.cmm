@@ -1,0 +1,1127 @@
+;============================================================================
+;  Name:
+;    CLOCK_MAIN_SCRIPT.CMM
+;
+;  Description:
+;    This script functions as the high level clock debug interface menu.
+;    It redirects users to the appropriate target specific debug script.
+
+;============================================================================
+;
+;      Copyright (c) 2012 by Qualcomm Technologies, Inc.  All Rights Reserved.
+;      QUALCOMM Proprietary and Confidential.
+;
+;============================================================================
+; $Header: //components/rel/core.qdsp6/2.1.c4/systemdrivers/clock/scripts/Clock.cmm#1 $
+; $DateTime: 2018/07/30 01:21:36 $
+; $Author: pwbldsvc $
+;============================================================================
+;
+;                        EDIT HISTORY FOR MODULE
+;
+; when       who     what, where, why
+; ---------- ---     --------------------------------------------------------
+; 05/11/2012 frv     Created.
+;============================================================================;
+
+
+;-----------------------------------------------------------------------------
+; Global variables
+;-----------------------------------------------------------------------------
+
+
+;-----------------------------------------------------------------------------
+; Local variables
+;-----------------------------------------------------------------------------
+
+; "ARGS" client ID.
+local &AID
+
+local &success
+local &clk_err
+local &clk_err
+local &choice
+local &choice_first_char
+local &target
+local &script_dir
+local &log_filename
+local &opts
+
+local &logging
+&logging=0
+
+
+; Generic top level error handler.
+on ERROR gosub
+(
+  print %ERROR "ERROR: Caught error in 'Clock.cmm'."
+  return
+)
+
+;-----------------------------------------------------------------------------
+; Apply default target if none specified when executing this script
+;-----------------------------------------------------------------------------
+
+ENTRY &target
+
+if ("&target"=="")
+(
+  &target="msm8996"
+)
+else
+(
+  gosub get_substr_ws "&target", 0.
+  entry &target
+)
+
+;-----------------------------------------------------------------------------
+; Define and display the window
+;-----------------------------------------------------------------------------
+
+; Clear any leftover history window.
+winclear clock_script_hist_window
+
+; Create the scipt areas.
+gosub area_create_list 2 CLOCK_MAIN_SCRIPT 180. 1000. CLOCK_MAIN_HIST , ,
+entry &success
+if (&success==0)
+(
+  area.select
+  print %ERROR "ERROR: Failed to create areas for Clock.cmm."
+  enddo
+)
+
+area.clear CLOCK_MAIN_SCRIPT
+
+gosub Restore_Main_Clock_Window
+gosub Display_Help
+
+;-----------------------------------------------------------------------------
+; Ensure that T32 can read the subscripts for this target.
+;-----------------------------------------------------------------------------
+
+&script_dir=OS.PPD()
+&script_dir="&script_dir\&target"
+
+if (OS.DIR.ACCESS("&script_dir", "R")==FALSE())
+(
+  print %ERROR "ERROR: Cannot read directory '&script_dir'."
+  print %ERROR "       Is '&target' the correct target?"
+  print ""
+  print "Exiting 'Clock.cmm'..."
+  print ""
+
+  gosub Exit_ClockScript NOCLEAR
+)
+
+
+;-----------------------------------------------------------------------------
+; Main Loop
+;-----------------------------------------------------------------------------
+
+do args create_client clock_main_menu CLOCK_MAIN_SCRIPT
+entry &AID
+if ("&AID"=="ARGS_ERR")
+(
+  do args get_error
+  entry &clk_err
+
+  print %ERROR "ERROR: Failed to create an ARGS client:"
+  print %ERROR "       '&clk_err'."
+  enddo
+)
+
+
+&opts="print_errors=1 nonempty_cmds=1 help_cmd=? help_sub=Display_Help"
+&opts="&opts hist_cmd=hist hist_sub=Display_Hist"
+do args set_opts &AID &opts
+entry &clk_err
+if ("&clk_err"=="ARGS_ERR")
+(
+  do args get_error
+  entry &clk_err
+
+  print %ERROR "ERROR: Failed to set ARGS options:"
+  print %ERROR "       '&clk_err'."
+
+  enddo
+)
+
+Main_Loop:
+(
+  &clk_err=""
+
+  ; If the history window is open, go ahead and update it.
+  if (WIN.EXIST("clock_script_hist_window")==TRUE())
+  (
+    gosub Display_Hist SKIP_VIEW
+  )
+
+  print ""
+  print "[Clock.cmm] Enter command ('?' for help): "
+  do args get_arg &AID
+  entry &choice
+  print ""
+
+  gosub save_window_settings clock_script_main_window
+  gosub save_window_settings clock_script_hist_window
+
+  &choice=string.lower("&choice")
+  &choice_first_char=string.char("&choice", 0)
+
+  if (&choice_first_char=='l')
+  (
+    gosub Open_Output_Log
+  )
+  else if ("&choice"=="x")
+  (
+    gosub Exit_ClockScript
+  )
+  else if ("&choice"=="wr")
+  (
+    gosub Reset_Window
+  )
+  else if ("&choice"=="1")
+  (
+    gosub Run_Subscript ClockDriver.cmm
+  )
+  else if ("&choice"=="2")
+  (
+    gosub Run_Subscript "&script_dir\testclock.cmm"
+  )
+  else if ("&choice"=="3")
+  (
+    gosub Run_Subscript "&script_dir\testpll.cmm"
+  )
+  else
+  (
+    print %ERROR "ERROR: Invalid command '&choice'. Enter '?' for help."
+  )
+
+  goto Main_Loop
+)
+
+;-----------------------------------------------------------------------------
+;
+; Clock.cmm utility sub-routines:
+;
+;-----------------------------------------------------------------------------
+
+Display_Clock_Main_Header:
+(
+  print ""
+  print ""
+  print "[-------------------------------- [&target] CLOCK MAIN MENU --------------------------------]"
+  print ""
+
+  return
+)
+
+Display_Help:
+(
+  ; If the history window is open, go ahead and update it.
+  if (WIN.EXIST("clock_script_hist_window")==TRUE())
+  (
+    gosub Display_Hist SKIP_VIEW
+  )
+
+  print ""
+  print "*** Commands ***"
+  print ""
+  print " 1             : Clock Driver Structures (ClockDriver.cmm)."
+  print " 2             : Clocks (testclock.cmm)."
+  print " 3             : PLLs (testpll.cmm)."
+  print ""
+  print " l, log [file] : Enable logging ('l' for short)."
+  print " ?             : Display this help message."
+  print " x             : Exit."
+  print " wr [all]      : Reset [all] clock script window positions/sizes."
+  print ""
+
+  return
+)
+
+;
+; Display history.
+;
+Display_Hist:
+(
+  local &skip_view
+  entry &skip_view
+
+  ; Display the help area if required.
+  if ("&skip_view"=="")
+  (
+    if (win.exist("clock_script_hist_window")==FALSE())
+    (
+      local &x_start
+      local &y_start
+      local &x_len
+      local &y_len
+
+      winclear clock_script_hist_window
+
+      ; Check if there are previously saved window settings.
+      gosub find_saved_window_settings clock_script_hist_window
+      entry &x_start &y_start &x_len &y_len
+
+      if (&x_start!=-1)
+      (
+        ; Use the previous window settings.
+        winpos &x_start &y_start &x_len &y_len 0. 0. clock_script_hist_window
+      )
+      else
+      (
+        winpos 50% 0% 40% 50% 0. 0. clock_script_hist_window
+      )
+    )
+
+    area.view CLOCK_MAIN_HIST
+    wintop clock_script_hist_window
+  )
+
+  area.clear CLOCK_MAIN_HIST
+  area.select CLOCK_MAIN_HIST
+
+  ; Print the history entries.
+  print ""
+  print "[--- [&target] Clock.cmm history: ---]"
+  print ""
+  do args print_hist &AID
+
+  ; Switch back to the main demo window.
+  area.select CLOCK_MAIN_SCRIPT
+
+  return
+)
+
+;
+; Restores the main clock script window.
+;
+Restore_Main_Clock_Window:
+(
+  local &x_start
+  local &y_start
+  local &x_len
+  local &y_len
+
+  if (WIN.EXIST("clock_script_main_window")==FALSE())
+  (
+    ; Check if there are previously saved window settings.
+    gosub find_saved_window_settings clock_script_main_window
+    entry &x_start &y_start &x_len &y_len
+
+    if (&x_start!=-1)
+    (
+      ; Use the previous window settings.
+      winpos &x_start &y_start &x_len &y_len 0. 0. clock_script_main_window
+    )
+    else
+    (
+      winpos 0. 0. 50% 90% 0. 0. clock_script_main_window
+    )
+  )
+
+  ; Ensure the main window is viewed and selected for I/O.
+  area.view CLOCK_MAIN_SCRIPT
+  area.select CLOCK_MAIN_SCRIPT
+
+  gosub Display_Clock_Main_Header
+
+  return
+)
+
+;
+; Exits the script.
+;
+Exit_ClockScript:
+(
+  local &noclear
+  entry &noclear
+
+  gosub save_window_settings clock_script_hist_window
+  gosub save_window_settings clock_script_main_window
+
+  winclear clock_script_hist_window
+  if ("&noclear"=="")
+  (
+    winclear clock_script_main_window
+  )
+
+  area.close CLOCK_MAIN_SCRIPT  ; close any open log
+
+  area.select ; select the default area
+  print "Exited [&target] 'Clock.cmm'."
+  enddo
+)
+
+;
+; Runs a subscript and restores the main clock window upon its completion.
+;
+Run_Subscript:
+(
+  local &history_displayed_pre_subscript
+  local &script
+  local &cmd_line
+  entry &script
+
+  if (win.exist("clock_script_hist_window")==TRUE())
+  (
+    &history_displayed_pre_subscript=1
+    winclear clock_script_hist_window
+  )
+  else
+  (
+    &history_displayed_pre_subscript=0
+  )
+
+  winclear clock_script_main_window
+
+  ; Invoke script in subscript mode to avoid creating a new area window.
+  (
+    on ERROR gosub
+    (
+      &clk_err="Run_Subscript"
+      print %ERROR "ERROR: Failed to launch '&script'."
+      return
+    )
+
+    ; Forward the remainder of the command line.
+    do args get_cmd_line &AID UNREAD
+    entry %LINE &cmd_line
+    do args reset_cmd_line &AID
+
+    do &script super_script_area=CLOCK_MAIN_SCRIPT &cmd_line
+  )
+
+  if ("&clk_err"!="Run_Subscript")
+  (
+    if (&history_displayed_pre_subscript!=0)
+    (
+      gosub Display_Hist
+    )
+
+    gosub Restore_Main_Clock_Window
+  )
+
+  return
+)
+
+;
+; Begins logging output to a file.
+;
+Open_Output_Log:
+(
+  ; Check if an output log is already open.
+  if (&logging==0)
+  (
+    do args set_opts &AID nonempty_cmds=0
+    print "Enter log file [c:\temp\clock.log]: "
+    do args get_arg &AID
+    entry &log_filename
+    do args set_opts &AID nonempty_cmds=1
+
+    if ("&log_filename"=="")
+    (
+      &log_filename="c:\temp\clock.log"
+    )
+    print "Logging output to '&log_filename'."
+
+    ; Open the output log.
+    (
+      ON ERROR gosub
+      (
+        print %ERROR "ERROR: Failed to open clock output log '&log_filename'."
+        &clk_err="failed_to_open_output_log"
+        return
+      )
+      &clk_err=""
+      area.open CLOCK_MAIN_SCRIPT &log_filename
+    )
+
+    if ("&clk_err"!="failed_to_open_output_log")
+    (
+      &logging=1
+    )
+  )
+  else
+  (
+    ; Does not currently support multiple output logs per single session.
+    print "Already logging output to '&log_filename'. The log will close upon 'x' exit."
+  )
+
+  return
+)
+
+;
+; Resets the clock script window(s).
+;
+Reset_Window:
+(
+  local &arg
+  local &num_unread
+
+  do args get_num_unread &AID
+  entry &num_unread
+  if (&num_unread!=0)
+  (
+    do args get_arg &AID
+    entry &arg
+    if ("&arg"=="all")
+    (
+      winclear clockdriver_hist_window
+      winclear clockdriver_main_window
+      winclear testclock_hist_window
+      winclear testclock_main_window
+      winclear testclock_help_window ; Clear window but don't need to delete settings.
+
+      winclear testpll_main_window
+
+      gosub delete_saved_window_settings_ext clockdriver_hist_window ClockDriver.cmm
+      gosub delete_saved_window_settings_ext clockdriver_main_window ClockDriver.cmm
+      gosub delete_saved_window_settings_ext testclock_hist_window testclock.cmm
+      gosub delete_saved_window_settings_ext testclock_main_window testclock.cmm
+
+      gosub delete_saved_window_settings_ext testpll_main_window testpll.cmm
+    )
+  )
+
+  winclear clock_script_hist_window
+  winclear clock_script_main_window
+
+  gosub delete_saved_window_settings clock_script_main_window
+  gosub delete_saved_window_settings clock_script_hist_window
+
+  gosub Restore_Main_Clock_Window RESET
+
+  return
+)
+
+;=============================================================================
+;
+; Generic utility sub-routines:
+;
+;   bool    try_area_create ( string area, [int cols, int rows] )
+;
+;   bool    area_create_list (
+;             int num, [string area, int cols, int rows], ... )
+;
+;   string  get_substr_ws ( string src_str, int read_idx, [flag get_idx] )
+;
+;   int[4]  extract_stored_win_dim ( string file_name, string window_name )
+;
+;   int[4]  get_window_row_col_settings (
+;             string window_name string window_area_name )
+;
+;   void    resize_window ( string win, string win_area, int x, int y )
+;
+;   bool    save_window_settings ( string window_name, [flag print_error] )
+;
+;   int[4]  find_saved_window_settings ( string window_name )
+;
+;   bool    delete_saved_window_settings (
+;             string window_name, [flag print_error] )
+;
+;   bool    delete_saved_window_settings_ext (
+;             string window, string script, [flag print_error] )
+;
+;=============================================================================
+
+;
+; bool try_area_create ( string area, [int cols, int rows] )
+;
+; Attempts to create an area (see 'area.create'). Returns non-zero if the 
+; area is successfully created. If the 'area.create' operation fails, the
+; caller may run 'area.reset' then re-try creating the area. The 'rows' and
+; 'cols' arguments can be bypassed by omitting both.
+;
+; T32 has a maximum number of concurrent areas (only 10 at the time of
+; writing this sub). Unfortunately these areas can only be deleted in bulk
+; with the highly destructive 'area.reset' (although some T32 documentation
+; incorrectly states that 'area.close <area_name>' destroys the area, it
+; doesn't--it only closes the area's output logging).
+;
+; Furthermore, areas aren't destroyed automatically upon script exit, so
+; if a user were to run multiple scripts with multiple areas they could
+; quickly exhaust the 10-area limit and then find that subsequent script
+; launches always fail, potentially with confusing error messages. This
+; utility sub is intended to mitigate this risk without having to immidiately
+; resort to running a global 'area.reset' during script initialization.
+;
+try_area_create:
+(
+  local &area_name
+  local &cols
+  local &rows
+
+  entry &area_name &cols &rows
+
+  ON ERROR gosub
+  (
+    &clk_err="try_area_create"
+    return
+  )
+
+  &clk_err=""
+  area.create &area_name &cols &rows
+
+  if ("&clk_err"=="try_area_create")
+  (
+    return 0
+  )
+  else
+  (
+    return 1
+  )
+)
+
+;
+; bool area_create_list ( int num, [string area, int cols, int rows], ... )
+;
+; Attempts to create a list of areas. Will run the global 'area.reset' command
+; upon the first failure, and return 0 upon the second failure. Otherwise
+; returns non-zero upon success.
+;
+area_create_list:
+(
+  local &success
+  local &already_failed
+  local &area_name
+  local &cols
+  local &rows
+  local &area_idx
+  local &num
+  local &input_line
+  local &line_idx
+  local &area_list_line_idx
+
+  entry %LINE &input_line
+
+  ; Get the number of areas to create.
+  gosub get_substr_ws "&input_line" 0. GET_IDX
+  entry &num &area_list_line_idx
+  if ("&num"=="")
+  (
+    print %ERROR "ERROR: area_create_list() detected invalid input: '&input_line'."
+    return 0
+  )
+
+  &already_failed=0
+
+area_create_list_process_areas:
+
+  ; Create each area.
+  &area_idx=0
+  &line_idx=&area_list_line_idx
+  while (&area_idx<&num)
+  (
+    ; Read in the area information.
+    gosub get_substr_ws "&input_line" &line_idx GET_IDX
+    entry &area_name &line_idx
+    if ("&area_name"=="")
+    (
+      goto area_create_list_too_few_args
+    )
+    gosub get_substr_ws "&input_line" &line_idx GET_IDX
+    entry &cols &line_idx
+    if ("&cols"=="")
+    (
+      goto area_create_list_too_few_args
+    )
+    gosub get_substr_ws "&input_line" &line_idx GET_IDX
+    entry &rows &line_idx
+    if ("&rows"=="")
+    (
+      goto area_create_list_too_few_args
+    )
+
+    ; Check if the row/col argument was bypassed.
+    if (("&cols"==",")||("&rows"==","))
+    (
+      ; Apply a sanity check for row/col bypass.
+      if (("&cols"!=",")||("&rows"!=","))
+      (
+        print %ERROR "ERROR: area_create_list() detected invalid row/col settings for '&area_name'."
+        print %ERROR "       Row/col must both be an integer or both be ',' (got row='&row', col='&col'). "
+        return 0
+      )
+
+      &cols=""
+      &rows=""
+    )
+
+    ; Attempt to create the area.
+    gosub try_area_create &area_name &cols &rows
+    entry &success
+
+    if (&success==0)
+    (
+      ; Already failed => infinite impending failures.
+      if (&already_failed!=0)
+      (
+        print %ERROR %Decimal "ERROR: area_create_list() failed to create &num areas."
+        return 0
+      )
+
+      ; Delete all areas and try creating the area list once more.
+      &already_failed=1
+      area.reset
+      goto area_create_list_process_areas
+    )
+
+    &area_idx=&area_idx+1
+  )
+
+  return 1
+
+area_create_list_too_few_args:
+
+  print %ERROR "ERROR: area_create_list() detected too few arguments (num_areas='&num')."
+  return 0
+)
+
+;
+; string get_substr_ws ( string src_str, int read_idx, [flag get_idx] )
+;
+; Returns a sub-string from a source string, starting from a read index and
+; ending before a ' ' whitespace terminator. If 'get_idx' flag is provided
+; and the substring is found, the index of the start of the subsequent
+; substring is also returned (-1 if there is no subsequent sub-string).
+;
+; Example: <gosub get_substr_ws "a  bc  de" 1> returns "bc" (sans quotes).
+;
+get_substr_ws:
+(
+  local &src_str
+  local &src_len
+  local &read_idx
+  local &sub_str
+  local &start_idx
+  local &get_idx
+
+  entry &src_str &read_idx &get_idx
+
+  if (&read_idx<0)
+  (
+    ; Negative read index--return empty string (and no index).
+    return
+  )
+
+  &src_len=string.length(&src_str)
+  &search_mode="!="
+
+  ; Find the start of non-whitespace segment.
+  while (&read_idx<&src_len)
+  (
+    if (string.char(&src_str, &read_idx)!=' ')
+    (
+      &start_idx=&read_idx
+      goto get_substr_ws_find_end_idx
+    )
+
+    &read_idx=&read_idx+1
+  )
+
+  ; No non-whitespace found--return empty string (and no index).
+  return
+
+get_substr_ws_find_end_idx:
+
+  ; Find the end of non-whitespace segment.
+  &read_idx=&read_idx+1
+  while (&read_idx<&src_len)
+  (
+    if (string.char(&src_str, &read_idx)==' ')
+    (
+      ; Cut out leading and trailing whitespace
+      &sub_str=string.mid(&src_str, &start_idx, &read_idx-&start_idx)
+
+      goto get_substr_ws_return_substr
+    )
+
+    &read_idx=&read_idx+1
+  )
+
+  ; No trailing white-space found--cut out any leading whitespace.
+  &sub_str=string.cut(&src_str, &start_idx)
+  &read_idx=-1
+
+get_substr_ws_return_substr:
+
+  if ("&get_idx"=="")
+  (
+    return &sub_str
+  )
+  else
+  (
+    return &sub_str &read_idx
+  )
+)
+
+;
+; int[2] extract_stored_win_dim ( string file_name,  string window_name )
+;
+; Returns the settings for the given window extracted from a previously
+; stored file. Returns -1 if the window settings aren't found.
+;
+; Returns: {x_start, y_start, x_length, y_length}
+;          (all values are in row or column units).
+;
+extract_stored_win_dim:
+(
+  local &window_name
+  local &file_name
+  local &x_start
+  local &y_start
+  local &x_len
+  local &y_len
+  local &line_in
+  local &idx
+
+  entry &file_name &window_name
+
+  &x_start=-1
+  &y_start=-1
+  &y_len=-1
+  &x_start=-1
+
+  ; Open the input file.
+  (
+    &clk_err=""
+    ON ERROR gosub
+    (
+      print %ERROR "ERROR: extract_stored_win_dim() failed to open '&file_name'."
+      &clk_err="extract_stored_win_dim"
+      return
+    )
+    OPEN #1 &file_name /Read
+  )
+
+  if ("&clk_err"=="extract_stored_win_dim")
+  (
+    goto extract_stored_win_dim_error
+  )
+
+  ; Scan the input file for "winpos ... window_name".
+  WHILE TRUE()
+  (
+    READ #1 %line &line_in
+    if (EOF()==TRUE())
+    (
+      goto extract_stored_win_dim_error
+    )
+    &line_in=string.lower("&line_in")
+
+    ; Search for 'winpos' line header and cut it out if found.
+    &idx=string.scan("&line_in", "winpos", 0)
+    if (&idx!=-1)
+    (
+      &line_in=string.cut("&line_in", &idx+6.)
+
+      ; Search for the specified window name.
+      if (string.scan("&line_in", "&window_name", 0)!=-1)
+      (
+        ; Extract the specified window's settings.
+        gosub get_substr_ws "&line_in" 0. GET_IDX
+        entry &x_start &idx
+        if ("&x_start"=="")
+        (
+          goto extract_stored_win_dim_error
+        )
+        gosub get_substr_ws "&line_in" &idx GET_IDX
+        entry &y_start &idx
+        if ("&y_start"=="")
+        (
+          goto extract_stored_win_dim_error
+        )
+        gosub get_substr_ws "&line_in" &idx GET_IDX
+        entry &x_len &idx
+        if ("&x_len"=="")
+        (
+          goto extract_stored_win_dim_error
+        )
+        gosub get_substr_ws "&line_in" &idx GET_IDX
+        entry &y_len &idx
+        if ("&y_len"=="")
+        (
+          goto extract_stored_win_dim_error
+        )
+
+        CLOSE #1
+        return &x_start &y_start &x_len &y_len
+      )
+    )
+  )
+
+extract_stored_win_dim_error:
+
+  CLOSE #1
+  return -1 -1 -1 -1
+)
+
+;
+; int[4] get_window_row_col_settings (
+;           string window_name string window_area_name )
+;
+; Returns the settings of the given active T32 window area or -1 upon failure.
+;
+; Returns: {x_start, y_start, x_length, y_length}
+;          (all values are in row or column units).
+;
+get_window_row_col_settings:
+(
+  local &window_name
+  local &window_area_name
+  local &temp_file
+  local &x_start
+  local &y_start
+  local &x_len
+  local &y_len
+
+  entry &window_name &window_area_name
+
+  ; First view the area for proper "store <temp_file> win" window storage.
+  area.view &window_area_name
+
+  ; Store the full window configuration in a temporary file.
+  (
+    &clk_err=""
+    ON ERROR gosub
+    (
+      print %ERROR "ERROR: get_window_row_col_settings() failed to generate window settings"
+      print %ERROR "       for '&window_name' (area = '&window_area_name')."
+
+      &clk_err="get_window_row_col_settings"
+      return
+    )
+    &temp_file=os.ptd()
+    &temp_file="&(temp_file)\__&(window_name)_temp.cmm"
+    store &temp_file win
+  )
+
+  ; Extract the window settings for the specific window.
+  if ("&clk_err"!="get_window_row_col_settings")
+  (
+    gosub extract_stored_win_dim &temp_file &window_name
+    entry &x_start &y_start &x_len &y_len
+
+    return &x_start &y_start &x_len &y_len
+  )
+  else
+  (
+    return -1 -1 -1 -1
+  )
+)
+
+;
+; void resize_window ( string win, string win_area, int x, int y )
+;
+; Resizes the given window. X/Y size is in raw column/row units.
+;
+; The purpose of this sub is to provide an alternative to 'winresize' because
+; that built-in command always modifies both the x and y dimension. An example
+; use case is to first set a window's height to 100% via 'winpos', then later
+; modify the window's width without modifying the 100% height.
+;
+resize_window:
+(
+  local &window
+  local &window_area
+  local &x_start_dummy
+  local &y_start_dummy
+  local &x_orig
+  local &y_orig
+  local &x_in
+  local &y_in
+
+  entry &window &window_area &x_in &y_in
+
+  if (("&x_in"==",")||("&y_in"==","))
+  (
+    gosub get_window_row_col_settings &window &window_area
+    entry &x_start_dummy &y_start_dummy &x_orig &y_orig
+
+    if ("&x_in"==",")
+    (
+      &x_in=&x_orig
+    )
+    if ("&y_in"==",")
+    (
+      &y_in=&y_orig
+    )
+  )
+
+  winresize &x_in &y_in &window
+
+  return
+)
+
+
+;
+; bool save_window_settings ( string window_name, [flag print_error] )
+;
+; Saves a script's window configuration (position + size).
+; See restore_window_settings() for the restore operation.
+; Returns non-zero if the store operation succeeded.
+;
+; This is provided as a method to allow scripts to save/restore their window
+; settings accross multiple script sessions. T32's "store <file> win" tool
+; is insufficient to do this since it will only save/restore *all* T32 windows,
+; not targeted windows.
+;
+save_window_settings:
+(
+  local &file
+  local &window_name
+  local &script_name
+  local &print_error
+
+  &clk_err=""
+  ON ERROR gosub
+  (
+    &clk_err="save_window_settings"
+    return
+  )
+
+  entry &window_name &print_error
+
+  ; Store the full window configuration in a file under the temporary directory.
+  &script_name=os.ppf()
+  &script_name=os.file.name("&script_name")
+
+  &file=os.ptd()
+  &file="&(file)\__&(script_name)_&(window_name)_dim.cmm"
+  store &file win
+
+  if ("&clk_err"=="save_window_settings")
+  (
+    if ("&print_error"!="")
+    (
+      print %ERROR "ERROR: save_window_settings() failed to store settings for '&window_name'."
+    )
+    return 0
+  )
+  else
+  (
+    return 1
+  )
+)
+
+;
+; int[4] find_saved_window_settings ( string window_name )
+;
+; Returns the settings for the given window extracted from a previously
+; save. Returns -1 if the window settings aren't found.
+;
+; Returns: {x_start, y_start, x_length, y_length}
+;          (all values are in row or column units).
+;
+; This is provided as a method to allow scripts to save/restore their window
+; settings accross multiple script sessions. T32's "store <file> win" tool
+; is insufficient to do this since it will only save/restore *all* T32 windows,
+; not targeted windows.
+;
+find_saved_window_settings:
+(
+  local &x_start
+  local &y_start
+  local &x_len
+  local &y_len
+  local &window_name
+  local &file
+  local &script_name
+
+  entry &window_name
+
+  ; Check if the window's saved settings file exists.
+  &script_name=os.ppf()
+  &script_name=os.file.name("&script_name")
+
+  &file=os.ptd()
+  &file="&(file)\__&(script_name)_&(window_name)_dim.cmm"
+  if (os.file.access("&file", "R")==FALSE())
+  (
+    return -1 -1 -1 -1
+  )
+
+  ; Search for previously saved settings for this window.
+  gosub extract_stored_win_dim &file &window_name
+  entry &x_start &y_start &x_len &y_len
+
+  return &x_start &y_start &x_len &y_len
+)
+
+;
+; bool delete_saved_window_settings ( string window_name, [flag print_error] )
+;
+; Deletes a window settings file.
+;
+delete_saved_window_settings:
+(
+  local &success
+  local &file
+  local &script_name
+  local &window_name
+  local &print_error
+
+  entry &window_name &print_error
+
+  ; Check if the window's saved settings file exists.
+  &script_name=os.ppf()
+  &script_name=os.file.name("&script_name")
+
+  &file=os.ptd()
+  &file="&(file)\__&(script_name)_&(window_name)_dim.cmm"
+  if (os.file.access("&file", "W")==TRUE())
+  (
+    ; Delete the file.
+    del &file
+    &success=1
+  )
+  else
+  (
+    if ("&print_error"!="")
+    (
+      print %ERROR "ERROR: delete_saved_window_settings() failed to delete window settings for '&window_name'."
+    )
+    &success=0
+  )
+
+  return &success
+)
+
+;
+; bool delete_saved_window_settings_ext ( string window, string script, [flag print_error] )
+;
+; Deletes a window settings file.
+;
+delete_saved_window_settings_ext:
+(
+  local &success
+  local &file
+  local &script_name
+  local &window_name
+  local &print_error
+
+  entry &window_name &script_name &print_error
+
+  &file=os.ptd()
+  &file="&(file)\__&(script_name)_&(window_name)_dim.cmm"
+  if (os.file.access("&file", "W")==TRUE())
+  (
+    ; Delete the file.
+    del &file
+    &success=1
+  )
+  else
+  (
+    if ("&print_error"!="")
+    (
+      print %ERROR "ERROR: delete_saved_window_settings() failed to delete window settings for '&window_name'."
+    )
+    &success=0
+  )
+
+  return &success
+)
+

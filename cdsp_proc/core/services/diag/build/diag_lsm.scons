@@ -1,0 +1,185 @@
+#===============================================================================
+#
+# Diag_Lsm Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2014-2017 by QUALCOMM Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: $
+#  $DateTime: 2010/02/25 18:33:40 $
+#  $Author: sgownipa $
+#  $Change: 1194317 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#12/22/17     is     Move LSM test code to new file and add island buffering test code
+#11/29/17     gn     Fixed issue with USES_CORE_PIC flag to enable DIAG_UIMAGE_MODE 
+#02/21/17     ph     Tag DIAG ID header to all the diag packets sent out.
+#10/13/17     bs     Disable diag uimage mode for CoreUserPic
+#06/12/17     sp     Add support for microULog debug capability
+#06/08/17     gn     Added support for diag services to uImage
+#10/24/16     gn     Changes to support common PW for ADSP, CDSP and SLPI
+#04/28/15     vk     Added Diag_LSM_Init function's dependency
+#11/14/14    jtm/vk  Added files needed for MPD optimization
+#10/09/14     rs     Updated scons api's
+#08/20/14     sl     Minor fix for Audio PD support
+#07/06/14     ph     Added support for Diag over STM
+#05/16/14     sm     Added TISE image support.  Note that 'USES_MSVC' and
+#                    'USES_TISE' are used to specify a subset of files from this
+#                    driver to compile for the Windows (MSVC) compiler.  Please
+#                    do not remove these definitions from this file.
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+# This is to remove any -Werror declarations in the environmnent for the MSVC
+# compiler.
+if 'USES_MSVC' in env:
+    env.Replace(CFLAGS="")
+    
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/services/diag"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+# TISE requires some additional definitions.
+if 'USES_TISE' and 'USES_MSVC' in env:
+    env.Append(CPPDEFINES=['CUSTOMER_H'])
+    env.Append(CPPDEFINES=['DIAG_SIO_SUPPORT'])
+    env.Append(CPPDEFINES=['DIAG_SMDL_SUPPORT'])
+
+env.Append(CPPDEFINES=['MSG_BT_SSID_DFLT=MSG_SSID_DIAG']) 
+env.Append(CPPDEFINES=['FEATURE_DIAG_8K_QDSP6'])
+env.Append(CPPDEFINES=['FEATURE_ALIGNED_QWORD'])
+env.Append(CPPDEFINES=['MEMHEAP_ASSERT_NONE'])
+env.Append(CPPDEFINES=['DIAG_MP'])
+env.Append(CPPDEFINES=['FEATURE_SMD'])
+env.Append(CPPDEFINES=['DIAG_QDSP6_APPS_PROC']) # Common define for ADSP, CDSP and SLPI
+env.Append(CPPDEFINES=['DIAG_C_STRING'])
+env.Append(CPPDEFINES=['DIAG_MP_SLAVE_LAST'])
+env.Append(CPPDEFINES=['FEATURE_SAVE_TRACE_ON_BY_DEFAULT'])
+
+if env.has_key('ADSP_PROC'):
+   env.Append(CPPDEFINES=['DIAG_IMAGE_QDSP6_PROC']) 
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'BOOT',
+   'BUSES',
+   'DAL',
+   'DEBUGTOOLS',
+   'DEBUGTRACE',
+   'HAL',
+   'HWENGINES',
+   'MPROC',
+   'POWER',
+   'SERVICES',
+   'STORAGE',
+   'SYSTEMDRIVERS',
+   'WIREDCONNECTIVITY',
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',   
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+# Set this flag to True to compile in Diag over STM support
+# If False, diag_stm.c file will not be compiled and the feature will be disabled
+diag_stm_support=True
+
+if diag_stm_support==True:
+   env.Append(CPPDEFINES=["FEATURE_DIAG_STM"])
+
+# If ISLAND feature is enabled in the environment, define DIAG_UIMAGE_MODE which will be used to featurize
+# UIMAGE specific code
+if 'USES_ISLAND' in env and 'USES_CORE_PIC' not in env:
+   env.Append(CPPDEFINES=["DIAG_UIMAGE_MODE"])
+   #We don't support island functions with '-fstack-protector'
+   if "-fstack-protector" in env['HEXAGON_STKPRO']:
+      env.Replace(HEXAGON_STKPRO = "")
+	  
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+DIAG_LSM_SOURCES = [
+ '${BUILDPATH}/LSM/qurt/src/Diag_LSM.c',
+ '${BUILDPATH}/LSM/qurt/src/Diag_LSM_test.c',
+ '${BUILDPATH}/LSM/qurt/src/Diag_LSM_Msg.c',
+ '${BUILDPATH}/LSM/qurt/src/Diag_LSM_Log.c',
+ '${BUILDPATH}/LSM/qurt/src/Diag_LSM_Event.c',
+ '${BUILDPATH}/LSM/qurt/src/Diag_LSM_Pkt.c',
+ '${BUILDPATH}/LSM/qurt/src/DiagSvc_Malloc.c',
+ '${BUILDPATH}/LSM/qurt/src/diagstub.c',
+ '${BUILDPATH}/LSM/qurt/src/Diag_LSM_Qdi_Wrapper.c',
+ '${BUILDPATH}/LSM/qurt/src/Diag_LSM_stm.c',
+ '${BUILDPATH}/LSM/f3_trace/src/Diag_LSM_F3_Trace.c',
+ '${BUILDPATH}/LSM/qurt/src/diagbuf_mpd.c', 
+ '${BUILDPATH}/LSM/common/src/diagbuf_mpd_common.c',
+ '${BUILDPATH}/LSM/common/src/diag_pd_common.c',
+]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+ 
+if 'USES_SENSOR_IMG' in env:
+  env.AddLibrary(['CORE_QDSP6_SENSOR_SW'], '${BUILDPATH}/diag/lsm', DIAG_LSM_SOURCES)
+  env.Append(CPPDEFINES=['USER_PD_STRESS_TEST_CMD_CODE = DIAGDIAG_SENSOR_TEST_CMD_F']) 
+  env.Append(CPPDEFINES=['USER_PD_V2_TEST_CMD_CODE = DIAGDIAG_V2_SENSOR_TEST_CMD_F'])
+  
+if 'USES_AUDIO_IMG' in env:
+  env.AddLibrary(['CORE_QDSP6_AUDIO_SW'], '${BUILDPATH}/diag/lsm', DIAG_LSM_SOURCES)
+  env.Append(CPPDEFINES=['USER_PD_STRESS_TEST_CMD_CODE = DIAGDIAG_AUDIO_TEST_CMD_F']) 
+  env.Append(CPPDEFINES=['USER_PD_V2_TEST_CMD_CODE = DIAGDIAG_V2_AUDIO_TEST_CMD_F'])
+
+# To add stress test to new PD add the following lines
+#if '<NEW_PD_FLAG>' in env:
+#env.Append(CPPDEFINES=['DIAG_LSM_<NEW_PD_NAME>_IMG'])
+
+if 'USES_SENSOR_IMG' in env:  
+   RCINIT_INIT_SENSORPD_INIT = {
+     'sequence_group'             : 'RCINIT_GROUP_0',          # required
+     'init_name'                  : 'diag',                    # required
+     'init_function'              : 'Diag_LSM_Init',           # required
+     'dependencies'               : ['timer_client','osal']
+   }
+
+   if 'USES_RCINIT' in env:
+      env.AddRCInitFunc( 'CORE_QDSP6_SENSOR_SW', RCINIT_INIT_SENSORPD_INIT )
+
+if 'USES_AUDIO_IMG' in env:  
+   RCINIT_INIT_AUDIOPD_INIT = {
+     'sequence_group'             : 'RCINIT_GROUP_0',          # required
+     'init_name'                  : 'diag',                    # required
+     'init_function'              : 'Diag_LSM_Init',           # required
+     'dependencies'               : ['timer_client','osal']
+   }
+
+   if 'USES_RCINIT' in env:
+      env.AddRCInitFunc( 'CORE_QDSP6_AUDIO_SW', RCINIT_INIT_AUDIOPD_INIT )
+
+# Adding the required sources to the TISE SCons Image
+if 'USES_TISE' in env:
+    DIAG_LSM_TISE_SOURCES = DIAG_LSM_SOURCES
+    DIAG_LSM_TISE_SOURCES.remove('${BUILDPATH}/LSM/qurt/src/Diag_LSM_Qdi_Wrapper.c')
+    env.AddLibrary(['CORE_TISE_SW'], '${BUILDPATH}/diag_lsm_tise', DIAG_LSM_TISE_SOURCES)
+#--------------------------------------------------------------------------------
+# Enable this to remove compile optimizations (for debugging)
+# DO NOT leave enabled when checking in file
+#--------------------------------------------------------------------------------
+#env.Replace(HEXAGONCC_OPT = "-O0")

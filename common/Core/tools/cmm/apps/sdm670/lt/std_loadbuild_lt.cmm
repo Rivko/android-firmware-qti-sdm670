@@ -1,0 +1,115 @@
+//============================================================================
+//  Name:                                                                     
+//    std_loadbuild_lt.cmm 
+//
+//  Description:                                                              
+//    LT Specific Build loading script
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who     		what, where, why
+// --------   ---     		---------------------------------------------------------
+// 06/20/2013 AJCheriyan    Created for Tizen
+// 10/01/2012 AJCheriyan	Removed SDI image loading for good (needs boot support)
+// 09/13/2012 AJCheriyan	Added SDI image loading (add partition.xml changes)
+// 09/07/2012 AJCheriyan	Removed SDI image loading (revert partition.xml changes )
+// 09/02/2012 AJCheriyan	Added SDI image loading
+// 08/08/2012 AJCheriyan	Fixed issue with paths for mjsdload
+// 07/19/2012 AJCheriyan    Created for B-family 
+
+// ARG0 - Load option - Supported : ERASEONLY, LOADCOMMON, LOADFULL
+ENTRY &ARG0
+
+LOCAL &CWD &SEARCHPATHS
+
+MAIN:
+	// We have checked for all the intercom sessions at this point and we don't need any error
+	// Save the argument
+	&LOAD_OPTION="&ARG0"
+
+	// Switch to the tools directory
+	&CWD=OS.PWD()
+
+	// Erase only
+	IF (("&ARG0"=="ERASEONLY")||("&ARG0"=="LOADCOMMON")||("&ARG0"=="LOADFULL"))
+	(
+		// Only erase the chip and exit
+		CD.DO &BOOT_BUILDROOT/boot_images/core/storage/tools/jsdcc/mjsdload ERASE
+	)
+
+	// Load common images
+	IF (("&ARG0"=="LOADCOMMON")||("&ARG0"=="LOADFULL"))
+	(
+		// Check for all the common images 
+
+		// Check for the presence of all the binaries
+		// Not needed because meta-build should have populated all this information
+		// SBL, TZ, RPM, APPSBL, SDI
+		do std_utils FILEXIST FATALEXIT &BOOT_BUILDROOT/&BOOT_BINARY
+		do std_utils FILEXIST FATALEXIT &RPM_BUILDROOT/&RPM_BINARY
+		do std_utils FILEXIST FATALEXIT &APPS_BUILDROOT/&APPSBOOT_BINARY
+		do std_utils FILEXIST FATALEXIT &TZ_BUILDROOT/&TZ_BINARY
+
+		// Now flash them all one by one 
+		// Flash the partition table
+		&SEARCHPATHS="&METASCRIPTSDIR/../../build"
+		CD.DO &BOOT_BUILDROOT/boot_images/core/storage/tools/jsdcc/mjsdload LOAD searchpaths=&SEARCHPATHS xml=rawprogram0.xml files=gpt_main0.bin,gpt_backup0.bin
+	
+		// Apply the disk patches
+		&SEARCHPATHS="&METASCRIPTSDIR/../../build"
+		CD.DO &BOOT_BUILDROOT/boot_images/core/storage/tools/jsdcc/mjsdload PATCH searchpaths=&SEARCHPATHS xml=patch0.xml
+
+		// SBL
+		&SEARCHPATHS="&METASCRIPTSDIR/../../build,"+OS.FILE.PATH(&BOOT_BUILDROOT/&BOOT_BINARY)
+		CD.DO &BOOT_BUILDROOT/boot_images/core/storage/tools/jsdcc/mjsdload LOAD searchpaths=&SEARCHPATHS xml=rawprogram0.xml files=sbl1.mbn
+		// TZ
+		&SEARCHPATHS="&METASCRIPTSDIR/../../build,"+OS.FILE.PATH(&TZ_BUILDROOT/&TZ_BINARY)
+		CD.DO &BOOT_BUILDROOT/boot_images/core/storage/tools/jsdcc/mjsdload LOAD searchpaths=&SEARCHPATHS xml=rawprogram0.xml files=tz.mbn
+		// RPM
+		&SEARCHPATHS="&METASCRIPTSDIR/../../build,"+OS.FILE.PATH(&RPM_BUILDROOT/&RPM_BINARY)
+		CD.DO &BOOT_BUILDROOT/boot_images/core/storage/tools/jsdcc/mjsdload LOAD searchpaths=&SEARCHPATHS xml=rawprogram0.xml files=rpm.mbn
+
+	)
+	// Load HLOS images
+	IF ("&LOAD_OPTION"=="LOADFULL")
+	(
+		// Apps Bootloader
+		&SEARCHPATHS="&METASCRIPTSDIR/../../build,"+OS.FILE.PATH(&APPS_BUILDROOT/&APPSBOOT_BINARY)
+		CD.DO &BOOT_BUILDROOT/boot_images/core/storage/tools/jsdcc/mjsdload LOAD searchpaths=&SEARCHPATHS xml=rawprogram0.xml files=emmc_appsboot.mbn
+
+		// Change the active partition. This is needed only if the user flashes an HLOS that needs
+		// a different partition
+		CD.DO &BOOT_BUILDROOT/boot_images/core/storage/tools/jsdcc/mjsdload 9 activeboot=0
+
+   		// Call the script to fastboot the remaining images
+		OS.COMMAND cmd /k python &METASCRIPTSDIR/../../build/fastboot_all.py --ap=&APPS_BUILDROOT --pf=&PRODUCT_FLAVOR
+		
+	)
+
+	// Return to the old directory
+	CD &CWD
+
+	GOTO EXIT
+
+
+FATALEXIT:
+	END
+
+EXIT:
+	ENDDO
+
+
+
+	
+	
+	
+
+		
+

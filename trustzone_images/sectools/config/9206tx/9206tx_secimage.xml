@@ -1,0 +1,278 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+===============================================================================
+
+  Copyright (c) 2013-2017 Qualcomm Technologies, Inc.
+  All Rights Reserved.
+  Confidential and Proprietary - Qualcomm Technologies, Inc.
+
+===============================================================================
+-->
+
+<tns:secimage xmlns:tns="http://www.qualcomm.com/secimage"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.qualcomm.com/secimage ../xsd/secimage.xsd">
+    <!--This is for MDM9206 - See the comments below to update file name and paths to be used
+        depending on whether this is TX or LE variant -->
+    <metadata>
+        <chipset>9206tx</chipset>
+        <version>2.0</version>
+    </metadata>
+
+    <!--
+       See documentation on general_properties below.
+    -->
+    <general_properties>
+        <selected_signer>local</selected_signer>
+        <selected_encryptor></selected_encryptor>
+        <selected_cert_config>qti_presigned_certs</selected_cert_config>
+        <cass_capability>secboot_sha2_root</cass_capability>
+
+        <key_size>2048</key_size>
+        <exponent>65537</exponent>
+
+        <mrc_index>0</mrc_index>
+        <num_root_certs>1</num_root_certs>
+
+        <!-- MDM9206: 0x009730E1 -->
+        <msm_part>0x009730E1</msm_part>
+        <oem_id>0x0000</oem_id>
+        <model_id>0x0000</model_id>
+        <debug>nop</debug>
+
+        <max_cert_size>2048</max_cert_size>
+        <num_certs_in_certchain>3</num_certs_in_certchain>
+    </general_properties>
+
+    <!--
+        ***general_properties***
+
+        The default properties for all images. These properties may be overridden
+        per image in the 'images' section below as needed.
+
+        Supported signer are:
+        local: use local signer with test keys
+        csms: generate tosign file for csms upload (first run)
+              package csms output zip to form signed image (second run)
+        cass: use cass signer with production key
+
+        Supported encryptor are:
+        ssd_encryption: legacy encryption for OTA, supports MBN and ELF images.
+        unified_encryption_2_0: supports ELF images. Image must be signed to encrypt
+
+        Capability selected the signing key used. Currently,
+        the following two capabilities are supported. OEM IDs
+        are restricted to 0 or 1.
+
+        OEM may obtain additional capabilities from CASS support.
+
+        secboot_sha2_root : Use SHA256 signed root cert.
+                            Same as the CSMS SHA256 signed root cert.
+        secboot_sha1_root : Use SHA1 signed root cert.
+                            Same as the CSMS SHA1 signed root cert.
+
+        If SHA256 is selected, the PK_HASH_IN_FUSE needs to be blown,
+        and the ROOT CERT HASH below needs to be blown in OEM PK HASH:
+        7be49b72f9e4337223ccb84d6eccca4e61ce16e3602ac2008cb18b75babe6d09
+
+        msm_part: jtag_id for signing. (in hex)
+        oem_id: oem_id for signing. (in hex)
+        model_id: model_id for signing. (in hex)
+        debug: debug_id for signing. (in hex)
+        exponent: exponent value used in attestation key generation.
+
+        max_cert_size: Maximum size (in bytes) of one certificate.
+        key_size: Size (in bits) of the key used for signing.
+        num_certs_in_certchain: Number of certificates in the certificate chain.
+        num_root_certs: Number of root certificates in the certificate chain.
+    -->
+
+    <parsegen>
+        <!--
+        Parsegen information by default will be read from parsegen_config.xml.
+        Additional image_id's can be included here or existing image_id's may be overwritten
+        to be generated with the default image_ids.
+        -->
+    </parsegen>
+
+    <!-- Signing configurations used by secimage. -->
+    <signing>
+        <signer_attributes>
+            <!--
+                Use of CASS signer will require additional license agreement
+                and contract. Hardware token is required for access.
+            -->
+            <cass_signer_attributes>
+                <!--
+                    keystore_type: PKCS11 (hardware token)
+                    token_password: User will be prompted if password
+                                    is an empty string
+                    token_driver_home: Safenet driver location
+                -->
+                <user_identity>
+                    <keystore_type>PKCS11</keystore_type>
+                    <token_password></token_password>
+                    <token_driver_home>
+                        <windows>C:/WINDOWS/SYSTEM32/eTpkcs11.dll</windows>
+                        <linux>/usr/lib/libeTPkcs11.so</linux>
+                    </token_driver_home>
+                </user_identity>
+            </cass_signer_attributes>
+        </signer_attributes>
+    </signing>
+
+    <data_provisioning>
+        <base_path>./../../resources/data_prov_assets/</base_path>
+    </data_provisioning>
+
+    <post_process>
+        <pil_splitter>$(META_BUILD)/common/tools/misc/pil-splitter.py</pil_splitter>
+    </post_process>
+
+    <images_list>
+        <image sign_id="sbl1_nand" name="sbl1.mbn" image_type="elf_preamble">
+            <general_properties_overrides>
+                <sw_id>0x0000000000000000</sw_id>
+                <!--
+                <crash_dump>disable</crash_dump>
+                -->
+            </general_properties_overrides>
+            <meta_build_location>$(FILE_TYPE:download_file, ATTR:cmm_file_var, VAR:BOOT_BINARY)</meta_build_location>
+        </image>
+
+        <!-- 9x06 TX and LE use different paths and names. Change below entry accordingly.
+             Note:L 9x06 TX has NPRG9x06.mbn and path is different    -->
+        <image sign_id="NPRG" name="NPRG9x06.mbn" image_type="elf_has_ht">
+            <general_properties_overrides>
+                <sw_id>0x0000000000000003</sw_id>
+            </general_properties_overrides>
+            <meta_build_location>$(BUILD_PATH:boot)/boot_images/build/ms/bin/9x06/nand/NPRG9x06.mbn</meta_build_location>
+        </image>
+        <!-- 9x06 TX and LE use different paths and names. Change below entry accordingly.
+             Note:L 9x06 TX has NPRG9x06.mbn and path is different    -->
+        <image sign_id="ENPRG" name="ENPRG9x06.mbn" image_type="elf_has_ht">
+            <general_properties_overrides>
+                <sw_id>0x0000000000000003</sw_id>
+            </general_properties_overrides>
+            <meta_build_location>$(BUILD_PATH:boot)/boot_images/build/ms/bin/9x06/nand/ENPRG9x06.mbn</meta_build_location>
+        </image>
+
+        <image sign_id="vip" name="DigestsToSign.bin.mbn" image_type="mbn_40b">
+            <general_properties_overrides>
+                <sw_id>0x0000000000000003</sw_id>
+            </general_properties_overrides>
+        </image>
+
+         <!-- 9x06 TX and LE use different paths and names. Change below entry accordingly.
+         Note:L 9x06 TX has NPRG9x06.mbn and path is different    -->
+        <image sign_id="prog_nand_firehose" name="prog_nand_firehose_9x07.mbn" image_type="elf_has_ht">
+            <general_properties_overrides>
+                <sw_id>0x0000000000000003</sw_id>
+            </general_properties_overrides>
+            <meta_build_location>$(BUILD_PATH:boot)/boot_images/build/ms/bin/9x06/nand/prog_nand_firehose_9x06.mbn</meta_build_location>
+        </image>
+
+        <!-- 9x06 TX and LE use different paths and names. Change below entry accordingly.
+        Note:L 9x06 TX has NPRG9x06.mbn and path is different    -->
+        <image sign_id="validated_nand_firehose" name="validated_nand_firehose_9x07.mbn" image_type="elf_has_ht">
+            <general_properties_overrides>
+                <sw_id>0x0000000000000003</sw_id>
+            </general_properties_overrides>
+            <meta_build_location>$(BUILD_PATH:boot)/boot_images/build/ms/bin/9x06/nand/validated_nand_firehose_9x06.mbn</meta_build_location>
+        </image>
+
+        <image sign_id="tz" name="tz.mbn" image_type="elf_has_ht">
+            <general_properties_overrides>
+                <sw_id>0x0000000000000007</sw_id>
+            </general_properties_overrides>
+            <meta_build_location>$(FILE_TYPE:download_file, ATTR:cmm_file_var, VAR:TZ_BINARY)</meta_build_location>
+        </image>
+
+        <!-- apps.mbn is needed for MDM9x06TX -->
+        <image sign_id="apps" name="apps.mbn" image_type="elf_has_ht">
+            <general_properties_overrides>
+                <sw_id>0x0000000000000009</sw_id>
+            </general_properties_overrides>
+            <meta_build_location>$(FILE_TYPE:download_file, ATTR:cmm_file_var, VAR:APSS_BINARY)</meta_build_location>
+        </image>
+        <!-- devcfg.mbn is applicable only if available TZ build -->
+        <image sign_id="devcfg" name="devcfg.mbn" image_type="elf_has_ht">
+            <general_properties_overrides>
+                <sw_id>0x0000000000000005</sw_id>
+            </general_properties_overrides>
+            <meta_build_location>$(FILE_TYPE:download_file, ATTR:cmm_file_var, VAR:DEVCFG_BINARY)</meta_build_location>
+        </image>
+        <!-- smplap32.mbn is applicable only if available TZ build -->
+        <image sign_id="sampleapp32" name="smplap32.mbn" image_type="elf_has_ht">
+            <general_properties_overrides>
+                <sw_id>0x000000000000000C</sw_id>
+                <app_id>0x0000000000000111</app_id>
+            </general_properties_overrides>
+            <pil_split>true</pil_split>
+            <meta_build_location>$(BUILD_PATH:tz)/trustzone_images/build/ms/bin/OAQAANBA/smplap32.mbn</meta_build_location>
+        </image>
+        <!-- smplap64.mbn is applicable only if available TZ build -->
+        <image sign_id="sampleapp64" name="smplap64.mbn" image_type="elf_has_ht">
+            <general_properties_overrides>
+                <sw_id>0x000000000000000C</sw_id>
+                <app_id>0x0000000000000111</app_id>
+            </general_properties_overrides>
+            <pil_split>true</pil_split>
+            <meta_build_location>$(BUILD_PATH:tz)/trustzone_images/build/ms/bin/OAQAANBA/smplap64.mbn</meta_build_location>
+        </image>
+        <!-- cmnlib.mbn is applicable only if available TZ build -->
+        <image sign_id="cmnlib" name="cmnlib.mbn" image_type="elf_has_ht">
+            <general_properties_overrides>
+                <sw_id>0x000000000000001F</sw_id>
+                <app_id>0x0000000000000555</app_id>
+            </general_properties_overrides>
+            <pil_split>true</pil_split>
+            <meta_build_location>$(BUILD_PATH:tz)/trustzone_images/build/ms/bin/OAQAANBA/cmnlib.mbn</meta_build_location>
+        </image>
+        <!-- cmnlib64.mbn is applicable only if available TZ build -->
+        <image sign_id="cmnlib64" name="cmnlib64.mbn" image_type="elf_has_ht">
+            <general_properties_overrides>
+                <sw_id>0x000000000000001F</sw_id>
+                <app_id>0x0000000000000555</app_id>
+            </general_properties_overrides>
+            <pil_split>true</pil_split>
+            <meta_build_location>$(BUILD_PATH:tz)/trustzone_images/build/ms/bin/OAQAANBA/cmnlib64.mbn</meta_build_location>
+        </image>
+
+        <image sign_id="rpm" name="rpm.mbn" image_type="elf_has_ht">
+            <general_properties_overrides>
+                <sw_id>0x000000000000000A</sw_id>
+            </general_properties_overrides>
+            <meta_build_location>$(FILE_TYPE:download_file, ATTR:cmm_file_var, VAR:RPM_BINARY)</meta_build_location>
+        </image>
+
+        <image sign_id="mba" name="mba.mbn" image_type="elf_has_ht">
+            <general_properties_overrides>
+                <sw_id>0x0000000000000001</sw_id>
+            </general_properties_overrides>
+            <pil_split>true</pil_split>
+            <meta_build_location>$(FILE_TYPE:download_file, ATTR:cmm_file_var, VAR:MBA_BINARY)</meta_build_location>
+        </image>
+
+        <image sign_id="modem" name="qdsp6sw.mbn" image_type="elf_has_ht" output_file_name="modem.mbn">
+            <general_properties_overrides>
+                <sw_id>0x0000000000000002</sw_id>
+            </general_properties_overrides>
+            <pil_split>true</pil_split>
+            <meta_build_location>$(FILE_TYPE:download_file, ATTR:cmm_file_var, VAR:MPSS_BINARY)</meta_build_location>
+        </image>
+
+        <image sign_id="mcfg_hw" name="mcfg_hw.mbn" image_type="elf_has_ht">
+            <general_properties_overrides>
+                <sw_id>0x0000000000000002</sw_id>
+            </general_properties_overrides>
+        </image>
+
+        <image sign_id="mcfg_sw" name="mcfg_sw.mbn" image_type="elf_has_ht">
+            <general_properties_overrides>
+                <sw_id>0x0000000000000002</sw_id>
+            </general_properties_overrides>
+        </image>
+    </images_list>
+
+</tns:secimage>

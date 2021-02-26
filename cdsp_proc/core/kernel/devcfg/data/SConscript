@@ -1,0 +1,53 @@
+#===============================================================================
+# GENERAL DESCRIPTION
+#     DevCfg Artifacts build script
+##
+# Copyright (c) 2011,2014-16 by Qualcomm Technologies Inc.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===================================================================================
+Import('env')
+import os, glob
+env = env.Clone()
+
+env.Append(BUILDPATH = '/data')
+env.VariantDir('${BUILDPATH}', "src", duplicate=0) 
+env.Tool('devcfgHwInfo_builder', toolpath = ['${DEVCFG_SCRIPTS}'])
+
+#-------------------------------------------------------------------------------
+# Devcfg Image dependent parameters
+#-------------------------------------------------------------------------------
+config = env.get('DEVCFG')
+
+#-------------------------------------------------------------------------------
+# Build Devcfg Artifacts
+#-------------------------------------------------------------------------------
+return_list = []
+
+# Get devcfg xml_tag-list
+devcfg_xml_tag_list = config.devcfgXMLTagList
+
+# Create one master xml file per xml_tag
+for xml_tag in devcfg_xml_tag_list:
+    (devcfgLib, masterxml) = env.buildDevcfgData(xml_tag)
+    env.AddOEMLibrary(config.devcfgImgBuildTag, devcfgLib)
+    
+# Create DevCfgSegInfo.c file
+devcfg_params = env.GenerateDevcfgImgHdr(['${BUILDPATH}/DevCfg_ImgParams.h'],None)
+DevCfgSegInfo_src = env.DevcfgPropInfoBuilder(['${BUILDPATH}/DevCfgSegInfo_${MSM_ID}_'+config.targetImg+'.c'], ['${DEVCFG_SYSAPI}/PlatformInfoDefs.h'], CONFIG=config.targetImg)
+DevCfgSegInfo_obj = env.AddObject(config.devcfgImgBuildTag, DevCfgSegInfo_src[0])
+env.Depends(DevCfgSegInfo_obj,devcfg_params)
+return_list += DevCfgSegInfo_obj
+
+#-------------------------------------------------------------------------------
+# DalModDir.c file
+#-------------------------------------------------------------------------------
+#Get devcfg XML tag-list
+devcfg_xml_tag_list = config.devcfgXMLTagList
+target_img = config.targetImg
+config_str = env.get('MSM_ID') + '_' + target_img
+DalModDir = env.DALModDirSrcBuilder('${BUILDPATH}/DalModDir.c', [masterxml], CONFIG=config_str)
+devcfg_obj   = env.AddObject(config.devcfgImgBuildTag, DalModDir[0].path)
+return_list += devcfg_obj
+
+Return('return_list')

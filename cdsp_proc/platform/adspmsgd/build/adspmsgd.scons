@@ -1,0 +1,77 @@
+#===============================================================================
+# Copyright (c) 2013-2014 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+platform_root = '${BUILD_ROOT}/platform'
+env.Replace(ADSP_PLATFORM_ROOT = platform_root)
+
+env.RequirePublicApi([
+ 'ADSPMSGD',
+ 'HAPSDK',
+ 'PLATFORM_LIBS',
+ 'STDDEF',
+ 'MOD_TABLE',
+ 'QAIC',
+ 'REMOTE',
+ 'UTILS',
+ 'A1STD',
+ 'QAIC',
+ 'RPCMEM',
+ ])
+
+env.RequireRestrictedApi([
+ 'ADSPMSGD',
+ 'APPS_MEM',
+ 'FASTRPC_PROCESS',
+ 'ATOMIC',
+ 'STDDEF',
+ 'HAP_UTILS',
+ 'QAIC',
+ 'QLIST',
+ ])
+
+
+core_public_apis = [
+   'KERNEL',
+   ]
+
+env.RequirePublicApi(core_public_apis, area='core')
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${ADSP_PLATFORM_ROOT}/adspmsgd/src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+env.PublishPrivateApi('ADSPMSGD_PRIVATE', "${BUILD_ROOT}/platform/adspmsgd/inc")
+env.RequirePrivateApi('ADSPMSGD_PRIVATE')
+
+# Register as static library
+env.PLRegisterDefault("adspmsgd", 2, ['FASTRPC_SHELL_IMG','AVS_ADSP_USER','PLATFORM_LIBS'])
+
+ADSPMSGD_SOURCES =  [
+    env.AddQaicHeaderDep('${BUILDPATH}/adspmsgd_adsp.c', ["adspmsgd_adsp", "apps_mem", "adspmsgd_apps"]),
+    env.QaicSkelFromIdl("adspmsgd_adsp"),
+    env.QaicSkelFromIdl("adspmsgd_adsp1"),
+    env.QaicStubFromIdl("adspmsgd_apps"),
+]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+adspmsgd_lib = env.AddBinaryLibrary(['FASTRPC_SHELL_IMG','AVS_ADSP_USER','QDSP6_SW_IMAGE'],'${BUILDPATH}/adspmsgd', ADSPMSGD_SOURCES)
+
+#-------------------------------------------------------------------------------
+# Load Subunits (sys)
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+#Clean and pack rules
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*.h', '*.S', '*.c', '*.cpp'], '${ADSP_PLATFORM_ROOT}/adspmsgd/src'))
+CLEAN_LIST.extend(env.FindFiles(['*.h', '*.S', '*.c', '*.cpp'], '${ADSP_PLATFORM_ROOT}/adspmsgd/inc'))
+env.CleanPack(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE','QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE'], CLEAN_LIST)

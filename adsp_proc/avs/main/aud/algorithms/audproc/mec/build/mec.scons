@@ -1,0 +1,75 @@
+#===============================================================================
+#
+# AVS AU
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2016 Qualcomm Technologies, Inc.  All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#
+# $Header:
+# $DateTime:
+# $Author:
+# $Change:
+#                      EDIT HISTORY FOR FILE
+#
+# This section contains comments describing changes made to the module.
+# Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     -----------------------------------------------------------
+#
+#===============================================================================
+Import('env')
+
+    
+LIBNAME = 'mec_module'
+
+items = env.GetSoftwareUnits()
+
+x = items.get('LIBS')
+
+avs_reg_sources = []
+avs_stub_sources = []
+avs_prop_sources = list(x)
+
+for i in x:
+    print i.name
+    if i.name == 'capi_v2_mec.lib':
+        avs_reg_sources.append(i)
+        avs_prop_sources.remove(i)
+    if "_stub" in i.name:
+        avs_stub_sources.append(i)
+        avs_prop_sources.remove(i)
+
+core_public_apis = [
+    'DEBUGTOOLS',
+    'SERVICES',
+    'KERNEL',
+]
+
+env.RequirePublicApi(core_public_apis, area='core')
+env.RequireRestrictedApi(['SHARED_LIBRARY_INC_PATHS'])
+
+platform_public_apis = [
+    'STDDEF', # AEEDef
+    'HAPSDK', # HAP_debug, farf etc
+]
+
+# This has to be the last include command, so that the Elite_CAPI.h and Elite_APPI.h are not overridden
+env.RequirePublicApi(platform_public_apis, area='platform')
+
+## for shared libraries
+
+if 'USES_AVS_SHARED_LIBS' in env:
+    SRCPATH = '..'
+    env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+    env.AddAvsSharedLibrary(['AVS_SHARED'], '${BUILDPATH}/'+LIBNAME,
+                            [avs_reg_sources, avs_stub_sources, avs_prop_sources], build_type='MOD')
+else:
+    if 'USES_AVS_LIBRARY_BUILDER' in env:
+        env.AddAvsLibrary(['AVS_ADSP', 'AVS_ADSP_USER'], '${BUILDPATH}/'+LIBNAME,
+                          [avs_reg_sources, avs_stub_sources, avs_prop_sources], 'MOD')

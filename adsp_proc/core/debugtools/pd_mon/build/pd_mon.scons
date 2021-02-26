@@ -1,0 +1,202 @@
+# vi: tw=128 ts=3 sw=3 et
+# @file pd_mon.scons
+# @brief This file contains the API details for the Protection Domain Monitor, API 1.0
+#===============================================================================
+# NOTE: The @brief description above does not appear in the PDF.
+# The tms_mainpage.dox file contains the group/module descriptions that
+# are displayed in the output PDF generated using Doxygen and LaTeX. To
+# edit or update any of the group/module text in the PDF, edit the
+# tms_mainpage.dox file or contact Tech Pubs.
+#===============================================================================
+#===============================================================================
+# Copyright (c) 2015-2018 by Qualcomm Technologies, Inc.  All Rights Reserved.
+# Qualcomm Confidential and Proprietary
+#===============================================================================
+#===============================================================================
+# Edit History
+# $Header: //components/rel/core.qdsp6/2.1/debugtools/pd_mon/build/pd_mon.scons#3 $
+# $DateTime: 2018/03/28 02:13:17 $
+# $Change: 15791480 $
+# $Author: pwbldsvc $
+#===============================================================================
+
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+
+env.VariantDir('${BUILDPATH}', '../src', duplicate=0)
+
+#-------------------------------------------------------------------------------
+# External Dependency
+#-------------------------------------------------------------------------------
+
+#env.RequireExternalApi([
+#   'XYZ',
+#])
+
+#-------------------------------------------------------------------------------
+# CFLAGS
+#-------------------------------------------------------------------------------
+if 'USES_PD_RESTARTABLE' in env:
+   env.Append(CFLAGS = "-DCHECK_ENABLE_PDRESTART")
+
+VERSION_IMG = [
+   'IMAGE_TREE_VERSION_AUTO_GENERATE',
+]
+
+if env.IsTargetEnable(VERSION_IMG):
+   env.Append(CFLAGS = "-DADD_ROOT_PD_IMAGE_VER")
+
+#-------------------------------------------------------------------------------
+# Internal Dependency
+#-------------------------------------------------------------------------------
+
+env.RequirePublicApi([
+   'DAL',
+   'TMS',
+   'DEBUGTOOLS', # alias to TMS
+   'DEBUGTRACE',
+   'SERVICES',
+   'STORAGE',
+   'SYSTEMDRIVERS',
+   'KERNEL', # needs to be last (also contains wrong comdef.h)
+])
+
+env.RequireRestrictedApi([
+   'TMS_RESTRICTED',
+   'DEBUGTOOLS', # alias to TMS
+])
+
+#-------------------------------------------------------------------------------
+# Sources
+#-------------------------------------------------------------------------------
+
+PD_MON_ROOT = [
+   '${BUILDPATH}/pd_dump.c',
+   '${BUILDPATH}/pd_elf.c',
+   '${BUILDPATH}/pd_mon.c',
+   '${BUILDPATH}/pd_mon_internal.c',
+   '${BUILDPATH}/pd_mon_restart_dalcfg.c',
+   '${BUILDPATH}/pd_mon_pd_restart_config.c',
+   '${BUILDPATH}/pd_mon_dump_dalcfg.c',
+   '${BUILDPATH}/pd_mon_pd_dump_config.c',
+]
+
+PD_MON_USER = [
+   '${BUILDPATH}/pd_dump_user.c',
+   '${BUILDPATH}/pd_mon_user.c',
+   '${BUILDPATH}/pd_mon_internal_user.c',
+]
+
+#-------------------------------------------------------------------------------
+# Libraries
+#-------------------------------------------------------------------------------
+
+PD_MON_ROOT_IMG = [
+   'CORE_ROOT_PD',               # Domain(Root)
+   'CORE_QDSP6_SW',
+   'CORE_ADSP_ROOT',
+   'CORE_SLPI_ROOT',
+   'CORE_CDSP_ROOT'
+]
+
+PD_MON_USER_IMG = [
+   'CORE_USER_PD',               # Domain(User)
+   'CORE_ADSP_USER',
+   'CORE_SLPI_USER'
+   'CORE_QDSP6_AUDIO_SW', 
+   'CORE_SSC_SLPI_USER'
+]
+
+env.AddLibrary(PD_MON_ROOT_IMG, '${BUILDPATH}/pd_mon_root', PD_MON_ROOT)
+env.AddBinaryLibrary(PD_MON_ROOT_IMG, '${BUILDPATH}/pd_mon_root_sec', '${BUILDPATH}/pd_dump_security.c')
+
+env.AddLibrary(PD_MON_USER_IMG, '${BUILDPATH}/pd_mon_user', PD_MON_USER)
+
+#Choose based on chip:
+PD_MON_NO_SHIP_SOURCES = [
+  '${BUILDPATH}/pd_dump_security_hal_sdx20m.h',
+  '${BUILDPATH}/pd_dump_security_hal_sdm845.h',
+  '${BUILDPATH}/pd_dump_security_hal_sdm670.h',
+]
+
+if env.get('CHIPSET').startswith('mdm') or env.get('CHIPSET').startswith('sdx'):
+   env.Append(CPPDEFINES=["MDM_PROC"])
+elif not (env.get('CHIPSET').startswith('msm') or env.get('CHIPSET').startswith('sdm')):
+   env.PrintWarning("PD_MON UNKNOWN CHIPSET: " + env.get('CHIPSET'))
+    
+env.CleanPack(PD_MON_ROOT_IMG,   PD_MON_NO_SHIP_SOURCES)
+
+
+#-------------------------------------------------------------------------------
+# Task Provisioning Information
+#-------------------------------------------------------------------------------
+
+if 'USES_RCINIT' in env:
+
+ env.AddRCInitFunc(
+  PD_MON_ROOT_IMG,
+  {
+   'sequence_group'             : 'RCINIT_GROUP_0',
+   'init_name'                  : 'pd_dump_root',
+   'init_function'              : 'pd_dump_host_init',
+   # Dependency PD_QURT Drivers
+   'dependencies'               : [ 'dev_allsig', 'dev_anysig', 'dev_barrer', 'dev_cond', 'dev_pmutex', 'dev_sem', ]
+  })
+
+ env.AddRCInitFunc(
+  PD_MON_ROOT_IMG,
+  {
+   'sequence_group'             : 'RCINIT_GROUP_0',
+   'init_name'                  : 'pd_mon_root',
+   'init_function'              : 'pd_mon_host_init',
+   'dependencies'               : [ 'pd_dump_root', ]
+  })
+
+ # Prerequsite Dependency in USER Protection Domain is that
+ # GROUP_0/GROUP_1 from ROOT has already initialized. This means that
+ # a USER Protection Domain must not attempt to spawn before GROUP_1
+ # as the services in the ROOT to support it may not have initialized.
+
+ env.AddRCInitFunc(
+  PD_MON_USER_IMG,
+  {
+   'sequence_group'             : 'RCINIT_GROUP_0',
+   'init_name'                  : 'pd_mon_user',
+   'init_function'              : 'pd_mon_user_init',
+   'dependencies'               : [ 'pd_mon_root', ] # Only Relevant *in* ROOT+USER Configs; Ignored in USER
+  })
+
+#-------------------------------------------------------------------------------
+# Tracer Software Events
+#-------------------------------------------------------------------------------
+
+PD_MON_SWE_EVENTS = [
+   [ 'PD_DUMP_SWE_R',          'PD_DUMP Relse        %x %x', 'T' ], # Release
+   [ 'PD_DUMP_SWE_E',          'PD_DUMP Error        %x %x', 'T' ], # Error
+   [ 'PD_DUMP_SWE_I',          'PD_DUMP Init         %x %x', 'T' ], # Initialize
+   [ 'PD_DUMP_SWE_D',          'PD_DUMP Dest         %x %x', 'T' ], # Destroy
+   [ 'PD_DUMP_SWE_EDB',        'PD_DUMP DumpBeg      %x %x', 'T' ], # Elf Dump Begin
+   [ 'PD_DUMP_SWE_EDE',        'PD_DUMP DumpEnd      %x %x', 'T' ], # Elf Dump End
+   [ 'PD_DUMP_SWE_EC',         'PD_DUMP EnableChk    %x %x', 'T' ], # Enable Check
+   [ 'PD_DUMP_SWE_RC',         'PD_DUMP ReadCount    %x %x', 'T' ], # Read Count
+   [ 'PD_DUMP_SWE_WC',         'PD_DUMP WriteCount   %x %x', 'T' ], # Write Count
+   [ 'PD_DUMP_SWE_OE',         'PD_DUMP OpenElf      %x %x', 'T' ], # Open Elf
+   [ 'PD_DUMP_SWE_HI',         'PD_DUMP HdrInit      %x %x', 'T' ], # Headers Initialize
+   [ 'PD_DUMP_SWE_HIE',        'PD_DUMP HdrInitError %x %x', 'T' ], # Headers Initialize
+   [ 'PD_DUMP_SWE_HPE',        'PD_DUMP HdrPrgError  %x %x', 'T' ], # Headers Initialize
+   [ 'PD_DUMP_SWE_HSE',        'PD_DUMP HdrSecError  %x %x', 'T' ], # Headers Initialize
+   [ 'PD_DUMP_SWE_HOE',        'PD_DUMP HdrOffError  %x %x', 'T' ], # Headers Initialize
+   [ 'PD_DUMP_SWE_WE',         'PD_DUMP WriteElf     %x %x', 'T' ], # Headers Write
+   [ 'PD_DUMP_SWE_HD',         'PD_DUMP HdrDest      %x %x', 'T' ], # Headers Destroy
+   [ 'PD_DUMP_SWE_CE',         'PD_DUMP CloseElf     %x %x', 'T' ], # Close Elf
+]
+
+if 'USES_QDSS_SWE' in env and len(PD_MON_SWE_EVENTS) != 0:
+   env.Append(CPPDEFINES = ['PD_MON_TRACER_SWEVT'])
+   env.Append(CPPPATH = ['${BUILD_ROOT}/core/debugtools/pd_mon/build/${BUILDPATH}'])
+   env.SWEBuilder(['${BUILD_ROOT}/core/debugtools/pd_mon/build/${BUILDPATH}/pd_mon_tracer_swe.h'], None)
+   env.AddSWEInfo(PD_MON_ROOT_IMG, PD_MON_SWE_EVENTS)

@@ -1,0 +1,69 @@
+#===============================================================================
+# Copyright (c) 2012 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+platform_root = '${BUILD_ROOT}/platform'
+env.Replace(ADSP_PLATFORM_ROOT = platform_root)
+
+env.RequirePublicApi([
+    'PLATFORM_LIBS',
+    'STDDEF',
+    'UTILS',
+    'A1STD',
+    'REMOTE',
+    'MOD_TABLE',
+    'QAIC',
+    'HAPSDK',
+])
+
+env.RequireRestrictedApi([
+    'ATOMIC',
+    'REMOTECTL',
+])
+
+core_public_apis = [
+     'DEBUGTOOLS',
+     'KERNEL',
+     'POWER',
+     'SERVICES',
+ ]
+
+env.RequirePublicApi(core_public_apis, area='core')
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${ADSP_PLATFORM_ROOT}/remotectl"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+env.PublishPrivateApi('REMOTECTL_PRIVATE',
+    '${BUILD_ROOT}/platform/remotectl/build',
+)
+env.RequirePrivateApi('REMOTECTL_PRIVATE')
+
+REMOTECTL_SOURCES =  [
+     '${BUILDPATH}/remotectl_hexagon.c',
+     env.QaicSkelFromIdl("remotectl"),
+]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+remotectl_lib = env.AddBinaryLibrary(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE',
+      'QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'CORE_QDSP6_SENSOR_SW', 'FASTRPC_SHELL_IMG','AVS_ADSP_USER'],'${BUILDPATH}/remotectl', REMOTECTL_SOURCES)
+
+#-------------------------------------------------------------------------------
+# Load Subunits (sys)
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+#Clean and pack rules
+CLEAN_LIST=[]
+CLEAN_LIST.extend(env.FindFiles(['*.c', '*.cpp'], '${ADSP_PLATFORM_ROOT}/remotectl'))
+for x in env.FindFiles(['*.c', '*.cpp'], '${ADSP_PLATFORM_ROOT}/remotectl/build'):
+      CLEAN_LIST.remove(x)
+env.CleanPack(['SINGLE_IMAGE', 'CBSP_SINGLE_IMAGE', 'MODEM_IMAGE', 'CBSP_MODEM_IMAGE','QDSP6_SW_IMAGE', 'CBSP_QDSP6_SW_IMAGE', 'CORE_QDSP6_SENSOR_SW', 'FASTRPC_SHELL_IMG','AVS_ADSP_USER'], CLEAN_LIST)
+

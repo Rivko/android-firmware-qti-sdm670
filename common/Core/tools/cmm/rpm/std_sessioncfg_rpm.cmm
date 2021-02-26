@@ -1,0 +1,271 @@
+//============================================================================
+//  Name:                                                                     
+//    std_sessioncfg_rpm.cmm 
+//
+//  Description:                                                              
+//    Script to setup sub-system level features
+//                                                                            
+// Copyright (c) 2012 - 2016 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who             what, where, why
+// --------   ---             ---------------------------------------------------------
+// 05/02/2016 JBILLING        Internal/external menu scripts
+// 04/15/2016 JBILLING        Transition to one menu file
+// 03/28/2016 JBILLING        Added bringup tool logic
+// 02/16/2016 JBILLING        Added RPM_BUILDID and context script searching
+// 09/12/2012 AJCheriyan      Reset the menu
+// 07/10/2012 AJCheriyan      Created for B-family 
+//
+
+//**************************************************
+//                  Declarations 
+//**************************************************
+LOCAL &ArgumentLine
+LOCAL &UTILITY &Remainder
+LOCAL &targetprocessor
+
+
+
+//**************************************************
+//                  Arguments Passed 
+//**************************************************
+ENTRY %LINE &ArgumentLine
+
+
+//**************************************************
+//                  Local Variables
+//**************************************************
+LOCAL &local_image &local_IMAGE &local_HWBLOCKNAME
+&local_image="rpm"
+&local_IMAGE="RPM"
+&local_HWBLOCKNAME="&RPM_HW_BLOCK_NAME"
+//Note that &RPM_HW_BLOCK_NAME is defined in DAP_RPM.cmm
+//**************************************************
+//                  Basic Options Check
+//**************************************************
+
+
+
+    &SUBROUTINE="MAIN"
+    LOCAL &rvalue
+    // This should be created by some top level script. The setupenv for each proc would
+    // set this up
+     AREA.SELECT
+    // Call the required utility
+    GOSUB &SUBROUTINE &ArgumentLine
+    ENTRY %LINE &rvalue
+
+    GOSUB EXIT &rvalue
+
+
+
+
+
+//**************************************************
+//
+// @Function: MAIN
+// @Description : Main logic of the script
+//
+//**************************************************
+MAIN:
+
+    LOCAL &Option &Target &Image &buildroot &Processor_Root_Name &buildid
+    ENTRY &Option &Target &Image &buildroot &Processor_Root_Name &buildid
+
+    LOCAL &FILE
+
+    // Clear the windows
+    //WINCLEAR
+    //Clear out the current menu
+    MENU.RESET
+    
+    do std_versionchecker
+
+    IF "&Target"==""
+    &Target="&CHIPSET"
+    IF "&Target"==""
+    (
+        do std_fatalexit SYSTEM "Error! std_sessioncfg_&local_image - CHISPET not defined"
+    )
+    
+    IF "&Option"=="INIT"
+    (
+        do std_setupenv.cmm
+    )
+    
+    GOSUB GENERAL_HW_SPECIFIC_MENU_SETUP &Target
+    
+    
+    ////////////////////////////////////////////////////////////////////////////////////////////
+    //      If we were called from a specific image, then load up context from that image
+    GOSUB LOADBUILDCONTEXT &Image &buildroot &Processor_Root_Name &buildid
+    
+    
+    ///////////////////////////////////////////////
+    //      Finally, the general stuff that we want to show up after all other menu items
+    //setup core apps options
+    IF ("&T32PROP"!="sim")
+    (
+        LOCAL &commandscript
+        //&commandscript="std_commands_"+"&local_image"+".men"
+        //DO std_utils EXECUTESCRIPT EXIT &METASCRIPTSDIR/&local_image/&commandscript
+        
+        &commandscript="std_commands_"+"&local_image"+"_"+"&CHIPSET"+".men"
+        DO std_utils EXECUTESCRIPT EXIT &METASCRIPTSDIR/&local_image/&CHIPSET/&commandscript
+    ) 
+    
+    //Clear out all the stuff on screen
+    
+    IF "&Option"=="INIT"
+    (
+        WINCLEAR
+        //Display help menus
+        LOCAL &menuscript1 &menuscript2
+        &menuscript1="std_rootcmm_menu_"+"&local_HWBLOCKNAME"+"_internal"+".cmm"
+        &menuscript2="std_rootcmm_menu_"+"&local_HWBLOCKNAME"+"_external"+".cmm"
+        IF FILE.EXIST("&METATOOLSDIR/&Target/&menuscript1")
+        (
+            do std_utils EXECUTESCRIPT EXIT &METATOOLSDIR/&Target/&menuscript1 HELP
+        )
+        ELSE
+        (
+            do std_utils EXECUTESCRIPT EXIT &METATOOLSDIR/&Target/&menuscript2 HELP
+        )
+        
+        
+        /////////////////////Init scripts/////////////////////////
+        do std_debug_rpm AOP_POWER_OPTIONS
+        
+        do std_versionchecker
+    )
+    
+    
+    RETURN SUCCESS
+    
+    
+
+///////////////////////////////////////////////
+//      General setup 
+//      This is image/sw independent
+//      Scripts that are focused on hardware should be here
+///////////////////////////////////////////////////
+GENERAL_HW_SPECIFIC_MENU_SETUP:
+    // Do common environment setup
+    
+    LOCAL &menuscript1 &menuscript2
+    &menuscript1="std_rootcmm_menu_"+"&local_HWBLOCKNAME"+"_internal"+".cmm"
+    &menuscript2="std_rootcmm_menu_"+"&local_HWBLOCKNAME"+"_external"+".cmm"
+    //Set up the hardware specific menu
+    IF FILE.EXIST("&METATOOLSDIR/&Target/&menuscript1")
+    (
+        
+        do std_utils EXECUTESCRIPT EXIT &METATOOLSDIR/&Target/&menuscript1 CREATEMENU
+
+        do std_utils EXECUTESCRIPT EXIT &METATOOLSDIR/&Target/&menuscript1 ADDMENUBUTTONS
+    )
+    ELSE IF FILE.EXIST("&METATOOLSDIR/&Target/&menuscript2")
+    (
+        do std_utils EXECUTESCRIPT EXIT &METATOOLSDIR/&Target/&menuscript2 CREATEMENU
+
+        do std_utils EXECUTESCRIPT EXIT &METATOOLSDIR/&Target/&menuscript2 ADDMENUBUTTONS
+    )
+    ELSE
+    (
+        //WINPOS 0. 0. 80. 3.
+        //AREA
+        //PRINT " "
+        //PRINT "Warning - could not find menu script for &local_HWBLOCKNAME"
+        //PRINT " "
+    )
+    
+    RETURN
+    
+    
+    
+///////////////////////////////////////////////
+//      Image specific setup 
+//      This is image/sw DEPENDENT
+//      Scripts that are focused on software should be here
+///////////////////////////////////////////////////
+//IMAGE_SPECIFIC_MENU_SETUP:
+//    LOCAL &Target &Image
+//    ENTRY &Target &Image
+    
+///////////////////////////////////////////////
+//
+//      LOADBUILDCONTEXT
+//          Loads context information from specific image build
+//
+//
+///////////////////////////////////////////////
+LOADBUILDCONTEXT:
+    LOCAL &image &buildroot &Processor_Root_Name &buildid
+    ENTRY &image &buildroot &Processor_Root_Name &buildid
+    //If this is being called from a loadsyms directory
+    IF (OS.DIR("&buildroot"))&&("&Processor_Root_Name"!="")&&("&buildid"!="")
+    (
+            // Now processor specific setup
+            // Build should be populated already
+            IF ("&buildroot"!="")
+            (
+                LOCAL &scriptpath
+                IF OS.DIR("&buildroot/&Processor_Root_Name/core/products/scripts/&buildid")&&("&buildid"!="")
+                (
+                    &scriptpath="&buildroot/&Processor_Root_Name/core/products/scripts/&buildid"
+                )
+                ELSE
+                (
+                    do std_utils GET_SCRIPT_PATH EXIT &buildroot/&Processor_Root_Name/core/products/scripts std_extensions.cmm
+                    ENTRY &scriptpath
+                )
+
+                IF (!OS.DIR("&scriptpath"))||("&scriptpath"=="")
+                (
+                    PRINT %ERROR "Warning! Could not find context menu scripts for this image! (std_extensions, std_toolsconfig etc.)"
+                )
+                ELSE
+                (
+                    // Load the extensions for the system
+                    do std_utils EXECUTESCRIPT EXIT &scriptpath/std_extensions.cmm
+                    // Load the relative path info for the build
+                    do std_utils EXECUTESCRIPT EXIT &scriptpath/std_toolsconfig.cmm
+                    // Program the menus for general debugging
+                    do std_utils EXECUTESCRIPT EXIT &scriptpath/std_scripts.men
+                )
+            )
+    )
+    
+    RETURN SUCCESS
+
+EXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    ENDDO &rvalue
+    
+
+
+FATALEXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    IF STRING.SCAN("&FAILUREKEYWORD","FAILUREKEYWORD",0)==-1
+    (
+        do std_fatalexit SYSTEM "&FAILUREKEYWORD - &rvalue"
+    )
+    ELSE
+    (
+        do std_fatalexit SYSTEM "&rvalue"
+    )
+
+    
+//Should never get here
+    END
+    
+
+

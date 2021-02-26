@@ -1,0 +1,126 @@
+#===============================================================================
+#
+# GENERAL DESCRIPTION
+#    QUP Access Control Settings
+#
+# Copyright (c) 2017 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 06/09/17   sm      Adding in temporary stub support for Hana.
+# 05/12/17   MJS     Initial version.
+#
+#===============================================================================
+import os
+Import('env')
+
+if env['MSM_ID'] not in ['24', '670', '845', '855', '1000', '640']:
+   Return()
+   
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+env = env.Clone()
+env.Append(CPPDEFINES = ["FEATURE_LIBRARY_ONLY"])   
+SRCPATH = "../src"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+if "USES_DEPLOY_BUILDER" in env:
+   env.Deploy(['../interface/QupACCommonIds.h',
+               '../build/qupac_hoya_settings.api',
+               '../build/qupac_hoya_settings.scons'])
+
+excel_parse_script_tool = '${BUILD_ROOT}/ssg/securemsm/accesscontrol/tools/deviceinfoconfig_gen.py'
+env.LoadToolScript(excel_parse_script_tool)
+
+
+def get_path(path, is_dir=False):
+  """Safely applies chipset fallbacks to the given path (including variant dirs)"""
+  if is_dir:
+    scons_node = env.Dir(path)
+  else:
+    scons_node = env.File(path)
+  resolved_path = str(scons_node.srcnode())
+  if os.path.exists(resolved_path):
+    return path
+  # all unimplemented hoya chipsets currently derive from sdm845
+  # alternative logic goes here
+  chipset = 'sdm845'
+  msm_id = '845'
+  new_path = path.replace("${CHIPSET}", chipset).replace("${MSM_ID}", msm_id)
+  if chipset != env["CHIPSET"]:
+    env.PrintWarning("Fallback: {} -> {}".format(path, new_path))
+  return new_path
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_APIS = [
+   'DAL',
+   'SYSTEMDRIVERS',
+   'KERNEL',
+   'SERVICES',
+   'BUSES'
+]
+
+env.RequirePublicApi(CBSP_APIS, area='core')
+env.RequireRestrictedApi(CBSP_APIS)
+
+SSG_APIS = [
+   'AC',
+   'SECUREMSM'
+]
+
+env.RequirePublicApi(SSG_APIS, area='ssg')
+
+#---------------------------------------------------------------------------
+# Access Control Config
+#---------------------------------------------------------------------------
+#Make sure you point it to the right source folder
+AC_DEVICE_INFO_CSV_FILE_PATH = env.RealPath(get_path('../config/${MSM_ID}/QUPAC_regions.csv')) 
+
+#In future, will not need to add the destination path 
+AC_DEVICE_INFO_C_FILE_PATH = env.RealPath('${BUILDPATH}/${MSM_ID}/QUPAC_regions.c')
+AC_DEVICE_INFO_XML_FILE_PATH = env.RealPath('${BUILDPATH}/${MSM_ID}/QUPAC_regions.xml')
+
+env.AddACDeviceInfo([AC_DEVICE_INFO_C_FILE_PATH,AC_DEVICE_INFO_XML_FILE_PATH],[AC_DEVICE_INFO_CSV_FILE_PATH])
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+qupac_access_xml  = get_path("../config/${MSM_ID}/QUPAC_Access.xml")
+qupac_access_c    = get_path("../config/${MSM_ID}/QUPAC_Access.c")
+qupac_private_xml = get_path("../config/${MSM_ID}/QUPAC_Private.xml")
+qupac_private_c   = get_path("../config/${MSM_ID}/QUPAC_Private.c")
+
+if "USES_DEPLOY_BUILDER" in env:
+   env.Deploy([qupac_access_xml,qupac_access_c])
+
+#---------------------------------------------------------------------------
+# Device Config
+# Add access xml to both TZ & HYP
+#---------------------------------------------------------------------------
+if 'USES_DEVCFG' in env:
+   DEVCFG_IMG = ['DAL_DEVCFG_OEM_QSEE_IMG', 'DAL_DEVCFG_OEM_HYP_IMG']
+   env.AddDevCfgInfo(DEVCFG_IMG, 
+   {
+      'devcfg_xml' : [qupac_access_xml,
+                      qupac_access_c]
+   })
+   DEVCFG_IMG = ['DAL_DEVCFG_IMG', 'DAL_DEVCFG_QSEE_IMG', 'DAL_DEVCFG_HYP_IMG']
+   env.AddDevCfgInfo(DEVCFG_IMG, 
+   {
+      'devcfg_xml' : [qupac_private_xml,
+                      qupac_private_c]
+   })
+

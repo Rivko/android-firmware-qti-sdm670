@@ -1,0 +1,5425 @@
+; ============================================================================
+;
+;  PMICDashBoard.cmm
+;
+;  Script to display different PMIC Peripheral's status.
+;
+;  Execution:
+;    do PMICDashBoard.cmm
+;
+;  ====================================================================
+;
+;  Copyright (c) 2013-2017 QUALCOMM Technologies Incorporated.  All Rights Reserved.
+;  QUALCOMM Proprietary and Confidential.
+;
+;  ====================================================================
+;
+;  $Header: //components/rel/core.glue/1.2/tools/tools/systemdrivers/pmic/hoya/PMICDashBoard.cmm#6 $
+;  $DateTime: 2017/12/06 11:10:22 $
+;  $Author: pwbldsvc $
+;
+; ============================================================================
+;
+
+;-----------------------------------------------------------------------------
+; Default bus access mode and owner
+;-----------------------------------------------------------------------------
+
+local &SPMIOwnerChannel
+&SPMIOwnerChannel=3  ; LPASS Channel by default
+
+local &BusAccessMode
+&BusAccessMode="EZAXI"
+
+local &CurrentDir
+&CurrentDir=OS.PWD()
+
+local &PmicIoScript
+&PmicIoScript="&CurrentDir"+"\pmic_io.cmm"
+
+local &PM_SPMI_CFG_TARGET
+&PM_SPMI_CFG_TARGET=""
+
+;-----------------------------------------------------------------------------
+; REV ID PERIPHERAL TYPE AND SUBTYPES (VERSION DETECTION)
+;-----------------------------------------------------------------------------
+
+LOCAL &PM_REVID_PERIPH_TYPE_QC_PMIC
+&PM_REVID_PERIPH_TYPE_QC_PMIC=0x51
+
+LOCAL &PM_REVID_PERIPH_SUBTYPES_MAX_NUM
+&PM_REVID_PERIPH_SUBTYPES_MAX_NUM=45.
+
+VAR.NEW char[&PM_REVID_PERIPH_SUBTYPES_MAX_NUM][10] \RevidPeriphSubtypeNamesArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_REVID_PERIPH_SUBTYPES_MAX_NUM
+	VAR.SET \RevidPeriphSubtypeNamesArr[\i++]="UNKNOWN"
+
+VAR.SET \RevidPeriphSubtypeNamesArr[1]="PM8941"
+VAR.SET \RevidPeriphSubtypeNamesArr[2]="PM8841"
+VAR.SET \RevidPeriphSubtypeNamesArr[3]="PMD9607"
+VAR.SET \RevidPeriphSubtypeNamesArr[4]="PM8026"
+VAR.SET \RevidPeriphSubtypeNamesArr[5]="PM8110"
+VAR.SET \RevidPeriphSubtypeNamesArr[6]="PMA8084"
+VAR.SET \RevidPeriphSubtypeNamesArr[7]="PMI8962"
+VAR.SET \RevidPeriphSubtypeNamesArr[8]="PMD9645"
+VAR.SET \RevidPeriphSubtypeNamesArr[9]="PM8994"
+VAR.SET \RevidPeriphSubtypeNamesArr[10]="PMI8994"
+VAR.SET \RevidPeriphSubtypeNamesArr[11]="PM8916"
+VAR.SET \RevidPeriphSubtypeNamesArr[12]="PM8004"
+VAR.SET \RevidPeriphSubtypeNamesArr[13]="PM8909"
+VAR.SET \RevidPeriphSubtypeNamesArr[14]="PM2433"
+VAR.SET \RevidPeriphSubtypeNamesArr[15]="PMD9655"
+VAR.SET \RevidPeriphSubtypeNamesArr[16]="PM8950"
+VAR.SET \RevidPeriphSubtypeNamesArr[17]="PMI8950"
+VAR.SET \RevidPeriphSubtypeNamesArr[18]="PMK8001"
+VAR.SET \RevidPeriphSubtypeNamesArr[19]="PMI8996"
+VAR.SET \RevidPeriphSubtypeNamesArr[20]="PM8998"
+VAR.SET \RevidPeriphSubtypeNamesArr[21]="PMI8998"
+VAR.SET \RevidPeriphSubtypeNamesArr[22]="PM8953"
+VAR.SET \RevidPeriphSubtypeNamesArr[23]="SMB1380"
+VAR.SET \RevidPeriphSubtypeNamesArr[24]="PM8005"
+VAR.SET \RevidPeriphSubtypeNamesArr[25]="PM8937"
+VAR.SET \RevidPeriphSubtypeNamesArr[26]="PM660L"
+VAR.SET \RevidPeriphSubtypeNamesArr[27]="PM660"
+VAR.SET \RevidPeriphSubtypeNamesArr[28]="SMB1355"
+VAR.SET \RevidPeriphSubtypeNamesArr[30]="PM855"
+VAR.SET \RevidPeriphSubtypeNamesArr[31]="PM855L"
+VAR.SET \RevidPeriphSubtypeNamesArr[32]="PM855B"
+VAR.SET \RevidPeriphSubtypeNamesArr[33]="PMK8002"
+VAR.SET \RevidPeriphSubtypeNamesArr[34]="PMX24"
+VAR.SET \RevidPeriphSubtypeNamesArr[37]="NEBULA"
+VAR.SET \RevidPeriphSubtypeNamesArr[38]="PM855P"
+VAR.SET \RevidPeriphSubtypeNamesArr[39]="PM855A"
+
+
+
+LOCAL &PM_MAX_NUM_PMICS &PM_MAX_NUM_SLAVE_IDS
+&PM_MAX_NUM_SLAVE_IDS=14.
+&PM_MAX_NUM_PMICS=7.
+
+VAR.NEW char[&PM_MAX_NUM_PMICS] \PmicModelTypeValueArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_MAX_NUM_PMICS
+	VAR.SET \PmicModelTypeValueArr[\i++]=0
+
+VAR.NEW int[&PM_MAX_NUM_PMICS] \PmicSlaveIdArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_MAX_NUM_PMICS
+	VAR.SET \PmicSlaveIdArr[\i++]=0
+
+VAR.NEW char[&PM_MAX_NUM_PMICS] \PmicModelSubTypeValueArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_MAX_NUM_PMICS
+	VAR.SET \PmicModelSubTypeValueArr[\i++]=0
+
+VAR.NEW int[&PM_MAX_NUM_PMICS] \PmicAllLayerRevArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_MAX_NUM_PMICS
+	VAR.SET \PmicAllLayerRevArr[\i++]=0
+
+VAR.NEW int[&PM_MAX_NUM_PMICS] \PmicMetalRevArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_MAX_NUM_PMICS
+	VAR.SET \PmicMetalRevArr[\i++]=0
+
+VAR.NEW char[&PM_MAX_NUM_PMICS][2] \PmicIndexNameArr
+
+VAR.SET \PmicIndexNameArr[0]="A"
+VAR.SET \PmicIndexNameArr[1]="B"
+VAR.SET \PmicIndexNameArr[2]="C"
+VAR.SET \PmicIndexNameArr[3]="D"
+VAR.SET \PmicIndexNameArr[4]="E"
+VAR.SET \PmicIndexNameArr[5]="F"
+VAR.SET \PmicIndexNameArr[6]="G"
+
+LOCAL &PM_VERSION_DETECT_FLAG
+&PM_VERSION_DETECT_FLAG=0
+
+;-----------------------------------------------------------------------------
+; PERIPHERAL TYPES AND BASE ADDRESSES
+;-----------------------------------------------------------------------------
+
+LOCAL &PM_CLOCK_PERIPH_TYPE &PM_MPP_PERIPH_TYPE
+LOCAL &PM_GPIO_PERIPH_TYPE &PM_SMPS_HF_PERIPH_TYPE
+LOCAL &PM_SMPS_FTS_PERIPH_TYPE &PM_LDO_PERIPH_TYPE
+LOCAL &PM_VS_PERIPH_TYPE &PM_BOOST_PERIPH_TYPE
+LOCAL &PM_SMPS_ULT_PERIPH_TYPE &PM_LDO_ULT_PERIPH_TYPE
+LOCAL &PM_BOOST_BYP_PERIPH_TYPE &PM_BOB_PERIPH_TYPE
+
+&PM_CLOCK_PERIPH_TYPE=0x6
+&PM_MPP_PERIPH_TYPE=0x11
+&PM_GPIO_PERIPH_TYPE=0x10
+&PM_SMPS_HF_PERIPH_TYPE=0x3
+&PM_SMPS_FTS_PERIPH_TYPE=0x1C
+&PM_SMPS_ULT_PERIPH_TYPE=0x22
+&PM_LDO_PERIPH_TYPE=0x4
+&PM_LDO_ULT_PERIPH_TYPE=0x21
+&PM_VS_PERIPH_TYPE=0x5
+&PM_BOOST_PERIPH_TYPE=0x1B
+&PM_BOOST_BYP_PERIPH_TYPE=0x1F
+&PM_BOB_PERIPH_TYPE=0x29
+
+LOCAL &PM_CLOCK_PERIPH_BASE_ADDR &PM_MPP_PERIPH_BASE_ADDR
+LOCAL &PM_GPIO_PERIPH_BASE_ADDR &PM_SMPS_HF_PERIPH_BASE_ADDR
+LOCAL &PM_SMPS_FTS_PERIPH_BASE_ADDR &PM_LDO_PERIPH_BASE_ADDR
+LOCAL &PM_VS_PERIPH_BASE_ADDR &PM_BOOST_PERIPH_BASE_ADDR
+LOCAL &PM_BOOST_BYP_PERIPH_BASE_ADDR &PM_BOB_PERIPH_BASE_ADDR
+
+&PM_CLOCK_PERIPH_BASE_ADDR=0x5000
+&PM_MPP_PERIPH_BASE_ADDR=0xA000
+&PM_GPIO_PERIPH_BASE_ADDR=0xC000
+&PM_SMPS_PERIPH_BASE_ADDR=0x11400
+&PM_LDO_PERIPH_BASE_ADDR=0x14000
+&PM_VS_PERIPH_BASE_ADDR=0x18000
+&PM_BOOST_PERIPH_BASE_ADDR=0x1A000
+&PM_BOOST_BYP_PERIPH_BASE_ADDR=0x1A200
+&PM_BOB_PERIPH_BASE_ADDR=0x1A000
+
+LOCAL &PM_CLOCK_XO_PERIPH_BASE_ADDR &PM_CLOCK_BB_PERIPH_BASE_ADDR
+LOCAL &PM_CLOCK_RF_PERIPH_BASE_ADDR &PM_CLOCK_DIST_PERIPH_BASE_ADDR
+LOCAL &PM_CLOCK_SLEEP_PERIPH_BASE_ADDR &PM_CLOCK_DIV_PERIPH_BASE_ADDR
+
+&PM_CLOCK_XO_PERIPH_BASE_ADDR=0x5000
+&PM_CLOCK_BB_PERIPH_BASE_ADDR=0x5100
+&PM_CLOCK_RF_PERIPH_BASE_ADDR=0x5400
+&PM_CLOCK_LN_BB_PERIPH_BASE_ADDR=0x5800
+&PM_CLOCK_DIST_PERIPH_BASE_ADDR=0x5900
+&PM_CLOCK_SLEEP_PERIPH_BASE_ADDR=0x5A00
+&PM_CLOCK_DIV_PERIPH_BASE_ADDR=0x5B00
+
+;-----------------------------------------------------------------------------
+; PERIPHERAL INTERNAL INDEXES AND BASE ADDRESSES
+;-----------------------------------------------------------------------------
+
+LOCAL &PM_CLOCK_PERIPH_INTERNAL_INDEX &PM_MPP_PERIPH_INTERNAL_INDEX
+LOCAL &PM_GPIO_PERIPH_INTERNAL_INDEX &PM_SMPS_PERIPH_INTERNAL_INDEX
+LOCAL &PM_LDO_PERIPH_INTERNAL_INDEX &PM_VS_PERIPH_INTERNAL_INDEX
+LOCAL &PM_BOOST_PERIPH_INTERNAL_INDEX &PM_BOOST_BYP_PERIPH_INTERNAL_INDEX &PM_BOB_PERIPH_INTERNAL_INDEX
+LOCAL &PM_UNKNOWN_PERIPH_INTERNAL_INDEX &PM_PERIPH_INTERNAL_MAX_NUM
+
+&PM_UNKNOWN_PERIPH_INTERNAL_INDEX=0.
+&PM_CLOCK_PERIPH_INTERNAL_INDEX=1.
+&PM_MPP_PERIPH_INTERNAL_INDEX=2.
+&PM_GPIO_PERIPH_INTERNAL_INDEX=3.
+&PM_SMPS_PERIPH_INTERNAL_INDEX=4.
+&PM_LDO_PERIPH_INTERNAL_INDEX=5.
+&PM_VS_PERIPH_INTERNAL_INDEX=6.
+&PM_BOOST_PERIPH_INTERNAL_INDEX=7.
+&PM_BOOST_BYP_PERIPH_INTERNAL_INDEX=8.
+&PM_BOB_PERIPH_INTERNAL_INDEX=9.
+&PM_PERIPH_INTERNAL_MAX_NUM=10.
+
+VAR.NEW int[&PM_PERIPH_INTERNAL_MAX_NUM] \PeriphBaseAddrArr
+
+VAR.SET \PeriphBaseAddrArr[&PM_UNKNOWN_PERIPH_INTERNAL_INDEX]=0
+VAR.SET \PeriphBaseAddrArr[&PM_CLOCK_PERIPH_INTERNAL_INDEX]=&PM_CLOCK_PERIPH_BASE_ADDR
+VAR.SET \PeriphBaseAddrArr[&PM_MPP_PERIPH_INTERNAL_INDEX]=&PM_MPP_PERIPH_BASE_ADDR
+VAR.SET \PeriphBaseAddrArr[&PM_GPIO_PERIPH_INTERNAL_INDEX]=&PM_GPIO_PERIPH_BASE_ADDR
+VAR.SET \PeriphBaseAddrArr[&PM_SMPS_PERIPH_INTERNAL_INDEX]=&PM_SMPS_PERIPH_BASE_ADDR
+VAR.SET \PeriphBaseAddrArr[&PM_LDO_PERIPH_INTERNAL_INDEX]=&PM_LDO_PERIPH_BASE_ADDR
+VAR.SET \PeriphBaseAddrArr[&PM_VS_PERIPH_INTERNAL_INDEX]=&PM_VS_PERIPH_BASE_ADDR
+VAR.SET \PeriphBaseAddrArr[&PM_BOOST_PERIPH_INTERNAL_INDEX]=&PM_BOOST_PERIPH_BASE_ADDR
+VAR.SET \PeriphBaseAddrArr[&PM_BOOST_BYP_PERIPH_INTERNAL_INDEX]=&PM_BOOST_BYP_PERIPH_BASE_ADDR
+VAR.SET \PeriphBaseAddrArr[&PM_BOB_PERIPH_INTERNAL_INDEX]=&PM_BOB_PERIPH_BASE_ADDR
+
+VAR.NEW char[&PM_PERIPH_INTERNAL_MAX_NUM][10] \PeriphNamesArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_PERIPH_INTERNAL_MAX_NUM
+	VAR.SET \PeriphNamesArr[\i++]="UNKNOWN"
+
+VAR.SET \PeriphNamesArr[&PM_CLOCK_PERIPH_INTERNAL_INDEX]="CLOCK"
+VAR.SET \PeriphNamesArr[&PM_MPP_PERIPH_INTERNAL_INDEX]="MPP"
+VAR.SET \PeriphNamesArr[&PM_GPIO_PERIPH_INTERNAL_INDEX]="GPIO"
+VAR.SET \PeriphNamesArr[&PM_SMPS_PERIPH_INTERNAL_INDEX]="SMPS"
+VAR.SET \PeriphNamesArr[&PM_LDO_PERIPH_INTERNAL_INDEX]="LDO"
+VAR.SET \PeriphNamesArr[&PM_VS_PERIPH_INTERNAL_INDEX]="VS"
+VAR.SET \PeriphNamesArr[&PM_BOOST_PERIPH_INTERNAL_INDEX]="BOOST"
+VAR.SET \PeriphNamesArr[&PM_BOOST_BYP_PERIPH_INTERNAL_INDEX]="BOOST_BYP"
+VAR.SET \PeriphNamesArr[&PM_BOB_PERIPH_INTERNAL_INDEX]="BOB"
+
+;-----------------------------------------------------------------------------
+; CLOCK PERIPHERAL SUBTYPES
+;-----------------------------------------------------------------------------
+
+LOCAL &PM_CLOCK_PERIPH_SUBTYPES_MAX_NUM
+&PM_CLOCK_PERIPH_SUBTYPES_MAX_NUM=15.
+
+VAR.NEW char[&PM_CLOCK_PERIPH_SUBTYPES_MAX_NUM][20] \ClockPeriphSubtypeNamesArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_CLOCK_PERIPH_SUBTYPES_MAX_NUM
+	VAR.SET \ClockPeriphSubtypeNamesArr[\i++]="UNKNOWN"
+
+VAR.SET \ClockPeriphSubtypeNamesArr[1]="XO_CORE"
+VAR.SET \ClockPeriphSubtypeNamesArr[2]="CLK_DIST"
+VAR.SET \ClockPeriphSubtypeNamesArr[3]="XO_CORE_38P4MHZ"
+VAR.SET \ClockPeriphSubtypeNamesArr[8]="BB_CLK"
+VAR.SET \ClockPeriphSubtypeNamesArr[9]="RF_CLK"
+VAR.SET \ClockPeriphSubtypeNamesArr[10]="DIFF_CLK"
+VAR.SET \ClockPeriphSubtypeNamesArr[11]="DIV_CLK"
+VAR.SET \ClockPeriphSubtypeNamesArr[12]="SLEEP_CLK1"
+VAR.SET \ClockPeriphSubtypeNamesArr[14]="CAL_RC2"
+
+;-----------------------------------------------------------------------------
+; MPP PERIPHERAL SUBTYPES
+;-----------------------------------------------------------------------------
+
+LOCAL &PM_MPP_PERIPH_SUBTYPES_MAX_NUM
+&PM_MPP_PERIPH_SUBTYPES_MAX_NUM=16.
+
+VAR.NEW char[&PM_MPP_PERIPH_SUBTYPES_MAX_NUM][20] \MppPeriphSubtypeNamesArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_MPP_PERIPH_SUBTYPES_MAX_NUM
+	VAR.SET \MppPeriphSubtypeNamesArr[\i++]="UNKNOWN"
+
+VAR.SET \MppPeriphSubtypeNamesArr[3]="MPP_4CH_SINK"
+VAR.SET \MppPeriphSubtypeNamesArr[4]="ULT_MPP_4CH_SINK"
+VAR.SET \MppPeriphSubtypeNamesArr[5]="MPP_4CH_AOUT"
+VAR.SET \MppPeriphSubtypeNamesArr[6]="ULT_MPP_4CH_AOUT"
+VAR.SET \MppPeriphSubtypeNamesArr[7]="MPP_4CH_AOUT_SINK"
+VAR.SET \MppPeriphSubtypeNamesArr[11]="MPP_8CH_SINK"
+VAR.SET \MppPeriphSubtypeNamesArr[13]="MPP_8CH_AOUT"
+VAR.SET \MppPeriphSubtypeNamesArr[15]="MPP_8CH_AOUT_SINK"
+
+;-----------------------------------------------------------------------------
+; GPIO PERIPHERAL SUBTYPES
+;-----------------------------------------------------------------------------
+
+LOCAL &PM_GPIO_PERIPH_SUBTYPES_MAX_NUM
+&PM_GPIO_PERIPH_SUBTYPES_MAX_NUM=18.
+
+VAR.NEW char[&PM_GPIO_PERIPH_SUBTYPES_MAX_NUM][20] \GpioPeriphSubtypeNamesArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_GPIO_PERIPH_SUBTYPES_MAX_NUM
+	VAR.SET \GpioPeriphSubtypeNamesArr[\i++]="UNKNOWN"
+
+VAR.SET \GpioPeriphSubtypeNamesArr[1]="GPIO_4CH"
+VAR.SET \GpioPeriphSubtypeNamesArr[5]="GPIOC_4CH"
+VAR.SET \GpioPeriphSubtypeNamesArr[9]="GPIO_8CH"
+VAR.SET \GpioPeriphSubtypeNamesArr[13]="GPIOC_8CH"
+VAR.SET \GpioPeriphSubtypeNamesArr[16]="GPIO_LV"
+VAR.SET \GpioPeriphSubtypeNamesArr[17]="GPIO_MV"
+
+;-----------------------------------------------------------------------------
+; SMPS HF PERIPHERAL SUBTYPES
+;-----------------------------------------------------------------------------
+
+LOCAL &PM_SMPS_HF_PERIPH_SUBTYPES_MAX_NUM
+&PM_SMPS_HF_PERIPH_SUBTYPES_MAX_NUM=11.
+
+VAR.NEW char[&PM_SMPS_HF_PERIPH_SUBTYPES_MAX_NUM][20] \SmpsHfPeriphSubtypeNamesArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_SMPS_HF_PERIPH_SUBTYPES_MAX_NUM
+	VAR.SET \SmpsHfPeriphSubtypeNamesArr[\i++]="UNKNOWN"
+
+VAR.SET \SmpsHfPeriphSubtypeNamesArr[1]="HF_PS1X"
+VAR.SET \SmpsHfPeriphSubtypeNamesArr[2]="HF_PS2X"
+VAR.SET \SmpsHfPeriphSubtypeNamesArr[3]="HF_PS3X"
+VAR.SET \SmpsHfPeriphSubtypeNamesArr[6]="HF_PS6X"
+VAR.SET \SmpsHfPeriphSubtypeNamesArr[8]="HF_GP_CTL"
+VAR.SET \SmpsHfPeriphSubtypeNamesArr[9]="HF_RF_CTL"
+VAR.SET \SmpsHfPeriphSubtypeNamesArr[10]="HF_VPWM_CTL"
+
+VAR.NEW int[2] \SmpsHfPeriphVminNamesArr
+
+VAR.SET \SmpsHfPeriphVminNamesArr[0]=375000
+VAR.SET \SmpsHfPeriphVminNamesArr[1]=1550000
+
+VAR.NEW int[2] \SmpsHfPeriphVstepNamesArr
+
+VAR.SET \SmpsHfPeriphVstepNamesArr[0]=12500
+VAR.SET \SmpsHfPeriphVstepNamesArr[1]=25000
+
+;-----------------------------------------------------------------------------
+; SMPS FTS PERIPHERAL SUBTYPES
+;-----------------------------------------------------------------------------
+
+LOCAL &PM_SMPS_FTS_PERIPH_SUBTYPES_MAX_NUM
+&PM_SMPS_FTS_PERIPH_SUBTYPES_MAX_NUM=14.
+
+VAR.NEW char[&PM_SMPS_FTS_PERIPH_SUBTYPES_MAX_NUM][20] \SmpsFtsPeriphSubtypeNamesArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_SMPS_FTS_PERIPH_SUBTYPES_MAX_NUM
+	VAR.SET \SmpsFtsPeriphSubtypeNamesArr[\i++]="UNKNOWN"
+
+VAR.SET \SmpsFtsPeriphSubtypeNamesArr[1]="FTS_PS1X"
+VAR.SET \SmpsFtsPeriphSubtypeNamesArr[2]="FTS_PS0p5X"
+VAR.SET \SmpsFtsPeriphSubtypeNamesArr[3]="FTS2p5_PS"
+VAR.SET \SmpsFtsPeriphSubtypeNamesArr[8]="FTS_CTL"
+VAR.SET \SmpsFtsPeriphSubtypeNamesArr[9]="FTS2p5_CTL"
+VAR.SET \SmpsFtsPeriphSubtypeNamesArr[10]="FTS426_CTL"
+VAR.SET \SmpsFtsPeriphSubtypeNamesArr[11]="FTS510_CTL"
+
+VAR.NEW int[2] \SmpsFtsPeriphVminNamesArr
+
+VAR.SET \SmpsFtsPeriphVminNamesArr[0]=0
+VAR.SET \SmpsFtsPeriphVminNamesArr[1]=0
+
+VAR.NEW int[2] \SmpsFtsPeriphVstepNamesArr
+
+VAR.SET \SmpsFtsPeriphVstepNamesArr[0]=5000
+VAR.SET \SmpsFtsPeriphVstepNamesArr[1]=10000
+
+VAR.NEW int[2] \SmpsFts2p5PeriphVminNamesArr
+
+VAR.SET \SmpsFts2p5PeriphVminNamesArr[0]=80000
+VAR.SET \SmpsFts2p5PeriphVminNamesArr[1]=160000
+
+VAR.NEW int[2] \SmpsFts2p5PeriphVstepNamesArr
+
+VAR.SET \SmpsFts2p5PeriphVstepNamesArr[0]=5000
+VAR.SET \SmpsFts2p5PeriphVstepNamesArr[1]=10000
+
+;-----------------------------------------------------------------------------
+; SMPS ULT PERIPHERAL SUBTYPES
+;-----------------------------------------------------------------------------
+
+LOCAL &PM_SMPS_ULT_PERIPH_SUBTYPES_MAX_NUM
+&PM_SMPS_ULT_PERIPH_SUBTYPES_MAX_NUM=17.
+
+VAR.NEW char[&PM_SMPS_ULT_PERIPH_SUBTYPES_MAX_NUM][20] \SmpsUltPeriphSubtypeNamesArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_SMPS_ULT_PERIPH_SUBTYPES_MAX_NUM
+	VAR.SET \SmpsUltPeriphSubtypeNamesArr[\i++]="UNKNOWN"
+
+VAR.SET \SmpsUltPeriphSubtypeNamesArr[1]="ULT_BUCK_PS_LV2p5A"
+VAR.SET \SmpsUltPeriphSubtypeNamesArr[2]="ULT_BUCK_PS_LV3p0A"
+VAR.SET \SmpsUltPeriphSubtypeNamesArr[3]="ULT_BUCK_PS_LV1p8A"
+VAR.SET \SmpsUltPeriphSubtypeNamesArr[4]="ULT_BUCK_PS_MV1p5A"
+VAR.SET \SmpsUltPeriphSubtypeNamesArr[5]="ULT_BUCK_PS_MV2p5A"
+VAR.SET \SmpsUltPeriphSubtypeNamesArr[13]="ULT_BUCK_CTL_LV"
+VAR.SET \SmpsUltPeriphSubtypeNamesArr[14]="ULT_BUCK_CTL2"
+VAR.SET \SmpsUltPeriphSubtypeNamesArr[15]="ULT_BUCK_CTL3"
+VAR.SET \SmpsUltPeriphSubtypeNamesArr[16]="ULT_BUCK_CTL_MV"
+
+VAR.NEW int[2] \SmpsUlt1PeriphVminNamesArr
+
+VAR.SET \SmpsUlt1PeriphVminNamesArr[0]=375000
+VAR.SET \SmpsUlt1PeriphVminNamesArr[1]=750000
+
+VAR.NEW int[2] \SmpsUlt1PeriphVstepNamesArr
+
+VAR.SET \SmpsUlt1PeriphVstepNamesArr[0]=12500
+VAR.SET \SmpsUlt1PeriphVstepNamesArr[1]=25000
+
+VAR.NEW int[1] \SmpsUlt4PeriphVminNamesArr
+
+VAR.SET \SmpsUlt4PeriphVminNamesArr[0]=1550000
+
+VAR.NEW int[1] \SmpsUlt4PeriphVstepNamesArr
+
+VAR.SET \SmpsUlt4PeriphVstepNamesArr[0]=25000
+
+;-----------------------------------------------------------------------------
+; LDO PERIPHERAL SUBTYPES
+;-----------------------------------------------------------------------------
+
+LOCAL &PM_LDO_PERIPH_SUBTYPES_MAX_NUM
+&PM_LDO_PERIPH_SUBTYPES_MAX_NUM=130.
+
+VAR.NEW char[&PM_LDO_PERIPH_SUBTYPES_MAX_NUM][20] \LdoPeriphSubtypeNamesArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_LDO_PERIPH_SUBTYPES_MAX_NUM
+	VAR.SET \LdoPeriphSubtypeNamesArr[\i++]="UNKNOWN"
+
+VAR.SET \LdoPeriphSubtypeNamesArr[1]="LDO_N50"
+VAR.SET \LdoPeriphSubtypeNamesArr[2]="LDO_N150"
+VAR.SET \LdoPeriphSubtypeNamesArr[3]="LDO_N300"
+VAR.SET \LdoPeriphSubtypeNamesArr[4]="LDO_N600"
+VAR.SET \LdoPeriphSubtypeNamesArr[5]="LDO_N1200"
+VAR.SET \LdoPeriphSubtypeNamesArr[6]="LDO_N600_STEPPER"
+VAR.SET \LdoPeriphSubtypeNamesArr[7]="LDO_N1200_STEPPER"
+VAR.SET \LdoPeriphSubtypeNamesArr[8]="LDO_P50"
+VAR.SET \LdoPeriphSubtypeNamesArr[9]="LDO_P150"
+VAR.SET \LdoPeriphSubtypeNamesArr[10]="LDO_P300"
+VAR.SET \LdoPeriphSubtypeNamesArr[11]="LDO_P600"
+VAR.SET \LdoPeriphSubtypeNamesArr[12]="LDO_P1200"
+VAR.SET \LdoPeriphSubtypeNamesArr[16]="LN_LDO"
+VAR.SET \LdoPeriphSubtypeNamesArr[24]="USB_LDO"
+VAR.SET \LdoPeriphSubtypeNamesArr[40]="LV_P50"
+VAR.SET \LdoPeriphSubtypeNamesArr[41]="LV_P150"
+VAR.SET \LdoPeriphSubtypeNamesArr[42]="LV_P300"
+VAR.SET \LdoPeriphSubtypeNamesArr[43]="LV_P600"
+VAR.SET \LdoPeriphSubtypeNamesArr[44]="LV_P1200"
+VAR.SET \LdoPeriphSubtypeNamesArr[48]="HT_N300_STEPPER"
+VAR.SET \LdoPeriphSubtypeNamesArr[49]="HT_N600_STEPPER"
+VAR.SET \LdoPeriphSubtypeNamesArr[50]="HT_N1200_STEPPER"
+VAR.SET \LdoPeriphSubtypeNamesArr[52]="HT_P50"
+VAR.SET \LdoPeriphSubtypeNamesArr[53]="HT_P150"
+VAR.SET \LdoPeriphSubtypeNamesArr[54]="HT_P300"
+VAR.SET \LdoPeriphSubtypeNamesArr[55]="HT_P600"
+VAR.SET \LdoPeriphSubtypeNamesArr[56]="HT_P1200"
+VAR.SET \LdoPeriphSubtypeNamesArr[58]="HT_LV_P50"
+VAR.SET \LdoPeriphSubtypeNamesArr[59]="HT_LV_P150"
+VAR.SET \LdoPeriphSubtypeNamesArr[60]="HT_LV_P300"
+VAR.SET \LdoPeriphSubtypeNamesArr[61]="HT_LV_P600"
+VAR.SET \LdoPeriphSubtypeNamesArr[62]="HT_LV_P1200"
+VAR.SET \LdoPeriphSubtypeNamesArr[64]="HT_P50_SP"
+VAR.SET \LdoPeriphSubtypeNamesArr[66]="440_N300_STEPPER"
+VAR.SET \LdoPeriphSubtypeNamesArr[67]="440_N600_STEPPER"
+VAR.SET \LdoPeriphSubtypeNamesArr[68]="440_N1200_STEPPER"
+VAR.SET \LdoPeriphSubtypeNamesArr[70]="440_P50"
+VAR.SET \LdoPeriphSubtypeNamesArr[71]="440_P150"
+VAR.SET \LdoPeriphSubtypeNamesArr[72]="440_P300"
+VAR.SET \LdoPeriphSubtypeNamesArr[73]="440_P600"
+VAR.SET \LdoPeriphSubtypeNamesArr[74]="440_P1200"
+VAR.SET \LdoPeriphSubtypeNamesArr[76]="440_LV_P50"
+VAR.SET \LdoPeriphSubtypeNamesArr[77]="440_LV_P150"
+VAR.SET \LdoPeriphSubtypeNamesArr[78]="440_LV_P300"
+VAR.SET \LdoPeriphSubtypeNamesArr[79]="440_LV_P600"
+VAR.SET \LdoPeriphSubtypeNamesArr[80]="440_LV_P1200"
+VAR.SET \LdoPeriphSubtypeNamesArr[83]="500_N300_100"
+VAR.SET \LdoPeriphSubtypeNamesArr[84]="500_N600_100"
+VAR.SET \LdoPeriphSubtypeNamesArr[85]="500_N1200_100"
+VAR.SET \LdoPeriphSubtypeNamesArr[86]="500_N300_160"
+VAR.SET \LdoPeriphSubtypeNamesArr[87]="500_N600_160"
+VAR.SET \LdoPeriphSubtypeNamesArr[88]="500_N1200_160"
+VAR.SET \LdoPeriphSubtypeNamesArr[89]="500_LV_P50_100"
+VAR.SET \LdoPeriphSubtypeNamesArr[90]="500_LV_P150_100"
+VAR.SET \LdoPeriphSubtypeNamesArr[91]="500_LV_P300_100"
+VAR.SET \LdoPeriphSubtypeNamesArr[92]="500_LV_P600_100"
+VAR.SET \LdoPeriphSubtypeNamesArr[93]="500_LV_P1200_100"
+VAR.SET \LdoPeriphSubtypeNamesArr[94]="500_LV_P50_160"
+VAR.SET \LdoPeriphSubtypeNamesArr[95]="500_LV_P150_160"
+VAR.SET \LdoPeriphSubtypeNamesArr[96]="500_LV_P300_160"
+VAR.SET \LdoPeriphSubtypeNamesArr[97]="500_LV_P600_160"
+VAR.SET \LdoPeriphSubtypeNamesArr[98]="500_LV_P1200_160"
+VAR.SET \LdoPeriphSubtypeNamesArr[99]="500_MV_P50_500"
+VAR.SET \LdoPeriphSubtypeNamesArr[100]="500_MV_P150_500"
+VAR.SET \LdoPeriphSubtypeNamesArr[101]="500_MV_P300_500"
+VAR.SET \LdoPeriphSubtypeNamesArr[102]="500_MV_P600_500"
+VAR.SET \LdoPeriphSubtypeNamesArr[106]="510_N300_100"
+VAR.SET \LdoPeriphSubtypeNamesArr[107]="510_N600_100"
+VAR.SET \LdoPeriphSubtypeNamesArr[108]="510_N1200_100"
+VAR.SET \LdoPeriphSubtypeNamesArr[109]="510_N300_160"
+VAR.SET \LdoPeriphSubtypeNamesArr[110]="510_N600_160"
+VAR.SET \LdoPeriphSubtypeNamesArr[111]="510_N1200_160"
+VAR.SET \LdoPeriphSubtypeNamesArr[112]="510_LV_P50_100"
+VAR.SET \LdoPeriphSubtypeNamesArr[113]="510_LV_P150_100"
+VAR.SET \LdoPeriphSubtypeNamesArr[114]="510_LV_P300_100"
+VAR.SET \LdoPeriphSubtypeNamesArr[115]="510_LV_P600_100"
+VAR.SET \LdoPeriphSubtypeNamesArr[116]="510_LV_P1200_100"
+VAR.SET \LdoPeriphSubtypeNamesArr[117]="510_LV_P50_160"
+VAR.SET \LdoPeriphSubtypeNamesArr[118]="510_LV_P150_160"
+VAR.SET \LdoPeriphSubtypeNamesArr[119]="510_LV_P300_160"
+VAR.SET \LdoPeriphSubtypeNamesArr[120]="510_LV_P600_160"
+VAR.SET \LdoPeriphSubtypeNamesArr[121]="510_LV_P1200_160"
+VAR.SET \LdoPeriphSubtypeNamesArr[122]="510_MV_P50_500"
+VAR.SET \LdoPeriphSubtypeNamesArr[123]="510_MV_P150_500"
+VAR.SET \LdoPeriphSubtypeNamesArr[124]="510_MV_P300_500"
+VAR.SET \LdoPeriphSubtypeNamesArr[125]="510_MV_P600_500"
+VAR.SET \LdoPeriphSubtypeNamesArr[126]="510_MV_P300_VIB"
+
+VAR.NEW int[3] \LdoN1200PeriphVminNamesArr
+
+VAR.SET \LdoN1200PeriphVminNamesArr[0]=375000
+VAR.SET \LdoN1200PeriphVminNamesArr[1]=375000
+VAR.SET \LdoN1200PeriphVminNamesArr[2]=750000
+
+VAR.NEW int[3] \LdoN1200PeriphVstepNamesArr
+
+VAR.SET \LdoN1200PeriphVstepNamesArr[0]=12500
+VAR.SET \LdoN1200PeriphVstepNamesArr[1]=12500
+VAR.SET \LdoN1200PeriphVstepNamesArr[2]=12500
+
+VAR.NEW int[3] \LdoN600PeriphVminNamesArr
+
+VAR.SET \LdoN600PeriphVminNamesArr[0]=0
+VAR.SET \LdoN600PeriphVminNamesArr[1]=375000
+VAR.SET \LdoN600PeriphVminNamesArr[2]=750000
+
+VAR.NEW int[3] \LdoN600PeriphVstepNamesArr
+
+VAR.SET \LdoN600PeriphVstepNamesArr[0]=0
+VAR.SET \LdoN600PeriphVstepNamesArr[1]=12500
+VAR.SET \LdoN600PeriphVstepNamesArr[2]=12500
+
+VAR.NEW int[5] \LdoPMOSPeriphVminNamesArr
+
+VAR.SET \LdoPMOSPeriphVminNamesArr[0]=0
+VAR.SET \LdoPMOSPeriphVminNamesArr[1]=0
+VAR.SET \LdoPMOSPeriphVminNamesArr[2]=750000
+VAR.SET \LdoPMOSPeriphVminNamesArr[3]=1500000
+VAR.SET \LdoPMOSPeriphVminNamesArr[4]=1750000
+
+VAR.NEW int[5] \LdoPMOSPeriphVstepNamesArr
+
+VAR.SET \LdoPMOSPeriphVstepNamesArr[0]=0
+VAR.SET \LdoPMOSPeriphVstepNamesArr[1]=0
+VAR.SET \LdoPMOSPeriphVstepNamesArr[2]=12500
+VAR.SET \LdoPMOSPeriphVstepNamesArr[3]=25000
+VAR.SET \LdoPMOSPeriphVstepNamesArr[4]=50000
+
+VAR.NEW int[2] \LdoLNPeriphVminNamesArr
+
+VAR.SET \LdoLNPeriphVminNamesArr[0]=1380000
+VAR.SET \LdoLNPeriphVminNamesArr[1]=690000
+
+VAR.NEW int[2] \LdoLNPeriphVstepNamesArr
+
+VAR.SET \LdoLNPeriphVstepNamesArr[0]=120000
+VAR.SET \LdoLNPeriphVstepNamesArr[1]=60000
+
+VAR.NEW int[3] \LdoNMOSPeriphVminNamesArr
+
+VAR.SET \LdoNMOSPeriphVminNamesArr[0]=0
+VAR.SET \LdoNMOSPeriphVminNamesArr[1]=0
+VAR.SET \LdoNMOSPeriphVminNamesArr[2]=750000
+
+VAR.NEW int[3] \LdoNMOSPeriphVstepNamesArr
+
+VAR.SET \LdoNMOSPeriphVstepNamesArr[0]=0
+VAR.SET \LdoNMOSPeriphVstepNamesArr[1]=0
+VAR.SET \LdoNMOSPeriphVstepNamesArr[2]=12500
+
+;-----------------------------------------------------------------------------
+; LDO ULT PERIPHERAL SUBTYPES
+;-----------------------------------------------------------------------------
+
+LOCAL &PM_LDO_ULT_PERIPH_SUBTYPES_MAX_NUM
+&PM_LDO_ULT_PERIPH_SUBTYPES_MAX_NUM=46.
+
+VAR.NEW char[&PM_LDO_ULT_PERIPH_SUBTYPES_MAX_NUM][20] \LdoUltPeriphSubtypeNamesArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_LDO_ULT_PERIPH_SUBTYPES_MAX_NUM
+	VAR.SET \LdoUltPeriphSubtypeNamesArr[\i++]="UNKNOWN"
+
+VAR.SET \LdoUltPeriphSubtypeNamesArr[1]="LDO_N50"
+VAR.SET \LdoUltPeriphSubtypeNamesArr[2]="LDO_N150"
+VAR.SET \LdoUltPeriphSubtypeNamesArr[3]="LDO_N300"
+VAR.SET \LdoUltPeriphSubtypeNamesArr[4]="LDO_N600"
+VAR.SET \LdoUltPeriphSubtypeNamesArr[5]="LDO_N1200"
+VAR.SET \LdoUltPeriphSubtypeNamesArr[6]="LDO_N600_STEPPER"
+VAR.SET \LdoUltPeriphSubtypeNamesArr[7]="LDO_N1200_STEPPER"
+VAR.SET \LdoUltPeriphSubtypeNamesArr[8]="LDO_P50"
+VAR.SET \LdoUltPeriphSubtypeNamesArr[9]="LDO_P150"
+VAR.SET \LdoUltPeriphSubtypeNamesArr[10]="LDO_P300"
+VAR.SET \LdoUltPeriphSubtypeNamesArr[11]="LDO_P600"
+VAR.SET \LdoUltPeriphSubtypeNamesArr[12]="LDO_P1200"
+VAR.SET \LdoUltPeriphSubtypeNamesArr[20]="LDO_N900_STEPPER"
+VAR.SET \LdoUltPeriphSubtypeNamesArr[21]="LDO_N300_STEPPER"
+VAR.SET \LdoUltPeriphSubtypeNamesArr[40]="LV_P50"
+VAR.SET \LdoUltPeriphSubtypeNamesArr[41]="LV_P150"
+VAR.SET \LdoUltPeriphSubtypeNamesArr[42]="LV_P300"
+VAR.SET \LdoUltPeriphSubtypeNamesArr[43]="LV_P600"
+VAR.SET \LdoUltPeriphSubtypeNamesArr[44]="LV_P1200"
+VAR.SET \LdoUltPeriphSubtypeNamesArr[45]="LV_P450"
+
+VAR.NEW int[1] \LdoUltPMOSPeriphVminNamesArr
+
+VAR.SET \LdoUltPMOSPeriphVminNamesArr[0]=1750000
+
+VAR.NEW int[1] \LdoUltPMOSPeriphVstepNamesArr
+
+VAR.SET \LdoUltPMOSPeriphVstepNamesArr[0]=12500
+
+VAR.NEW int[1] \LdoUltNMOSPeriphVminNamesArr
+
+VAR.SET \LdoUltNMOSPeriphVminNamesArr[0]=375000
+
+VAR.NEW int[1] \LdoUltNMOSPeriphVstepNamesArr
+
+VAR.SET \LdoUltNMOSPeriphVstepNamesArr[0]=12500
+
+;-----------------------------------------------------------------------------
+; VS PERIPHERAL SUBTYPES
+;-----------------------------------------------------------------------------
+
+LOCAL &PM_VS_PERIPH_SUBTYPES_MAX_NUM
+&PM_VS_PERIPH_SUBTYPES_MAX_NUM=18.
+
+VAR.NEW char[&PM_VS_PERIPH_SUBTYPES_MAX_NUM][20] \VsPeriphSubtypeNamesArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_VS_PERIPH_SUBTYPES_MAX_NUM
+	VAR.SET \VsPeriphSubtypeNamesArr[\i++]="UNKNOWN"
+
+VAR.SET \VsPeriphSubtypeNamesArr[1]="VS_LV100"
+VAR.SET \VsPeriphSubtypeNamesArr[2]="VS_LV300"
+VAR.SET \VsPeriphSubtypeNamesArr[8]="VS_MV300"
+VAR.SET \VsPeriphSubtypeNamesArr[9]="VS_MV500"
+VAR.SET \VsPeriphSubtypeNamesArr[16]="VS_HDMI"
+VAR.SET \VsPeriphSubtypeNamesArr[17]="VS_OTG"
+
+;-----------------------------------------------------------------------------
+; BOOST PERIPHERAL SUBTYPES
+;-----------------------------------------------------------------------------
+
+LOCAL &PM_BOOST_PERIPH_SUBTYPES_MAX_NUM
+&PM_BOOST_PERIPH_SUBTYPES_MAX_NUM=2
+
+VAR.NEW char[&PM_BOOST_PERIPH_SUBTYPES_MAX_NUM][20] \BoostPeriphSubtypeNamesArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_BOOST_PERIPH_SUBTYPES_MAX_NUM
+	VAR.SET \BoostPeriphSubtypeNamesArr[\i++]="UNKNOWN"
+
+VAR.SET \BoostPeriphSubtypeNamesArr[1]="5V_BOOST"
+
+VAR.NEW int[1] \BoostPeriphVminNamesArr
+
+VAR.SET \BoostPeriphVminNamesArr[0]=4000000
+
+VAR.NEW int[1] \BoostPeriphVstepNamesArr
+
+VAR.SET \BoostPeriphVstepNamesArr[0]=50000
+
+;-----------------------------------------------------------------------------
+; BOOST BYPASS PERIPHERAL SUBTYPES
+;-----------------------------------------------------------------------------
+
+LOCAL &PM_BOOST_BYP_PERIPH_SUBTYPES_MAX_NUM
+&PM_BOOST_BYP_PERIPH_SUBTYPES_MAX_NUM=2
+
+VAR.NEW char[&PM_BOOST_BYP_PERIPH_SUBTYPES_MAX_NUM][20] \BoostBypPeriphSubtypeNamesArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_BOOST_BYP_PERIPH_SUBTYPES_MAX_NUM
+	VAR.SET \BoostBypPeriphSubtypeNamesArr[\i++]="UNKNOWN"
+
+VAR.SET \BoostBypPeriphSubtypeNamesArr[1]="BB_2A_NO_SCP"
+
+VAR.NEW int[1] \BoostBypPeriphVminNamesArr
+
+VAR.SET \BoostBypPeriphVminNamesArr[0]=2500000
+
+VAR.NEW int[1] \BoostBypPeriphVstepNamesArr
+
+VAR.SET \BoostBypPeriphVstepNamesArr[0]=50000
+
+;-----------------------------------------------------------------------------
+; BOB PERIPHERAL SUBTYPES
+;-----------------------------------------------------------------------------
+
+LOCAL &PM_BOB_PERIPH_SUBTYPES_MAX_NUM
+&PM_BOB_PERIPH_SUBTYPES_MAX_NUM=4.
+
+VAR.NEW char[&PM_BOB_PERIPH_SUBTYPES_MAX_NUM][20] \BobPeriphSubtypeNamesArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_BOB_PERIPH_SUBTYPES_MAX_NUM
+	VAR.SET \BobPeriphSubtypeNamesArr[\i++]="UNKNOWN"
+
+VAR.SET \BobPeriphSubtypeNamesArr[3]="BOB_CONFIG"
+
+;-----------------------------------------------------------------------------
+; PERIPHERAL RUN TIME VARIABLES 
+;-----------------------------------------------------------------------------
+
+LOCAL &PM_PERIPH_RUNTIME_MAX_NUM &PM_PERIPH_RUNTIME_INDEX
+&PM_PERIPH_RUNTIME_MAX_NUM=10.
+&PM_PERIPH_RUNTIME_INDEX=0.
+
+VAR.NEW char[&PM_PERIPH_RUNTIME_MAX_NUM][25] \PeriphDataNamesArr
+
+VAR.SET \PeriphDataNamesArr[0]="PERIPHERAL_NAME_DATA1"
+VAR.SET \PeriphDataNamesArr[1]="PERIPHERAL_NAME_DATA2"
+VAR.SET \PeriphDataNamesArr[2]="PERIPHERAL_NAME_DATA3"
+VAR.SET \PeriphDataNamesArr[3]="PERIPHERAL_NAME_DATA4"
+VAR.SET \PeriphDataNamesArr[4]="PERIPHERAL_NAME_DATA5"
+VAR.SET \PeriphDataNamesArr[5]="PERIPHERAL_NAME_DATA6"
+VAR.SET \PeriphDataNamesArr[6]="PERIPHERAL_NAME_DATA7"
+VAR.SET \PeriphDataNamesArr[7]="PERIPHERAL_NAME_DATA8"
+VAR.SET \PeriphDataNamesArr[8]="PERIPHERAL_NAME_DATA9"
+VAR.SET \PeriphDataNamesArr[9]="PERIPHERAL_NAME_DATA10"
+
+VAR.NEW char[&PM_PERIPH_RUNTIME_MAX_NUM][25] \Status1DataNamesArr
+
+VAR.SET \Status1DataNamesArr[0]="STATUS1_DATA1"
+VAR.SET \Status1DataNamesArr[1]="STATUS1_DATA2"
+VAR.SET \Status1DataNamesArr[2]="STATUS1_DATA3"
+VAR.SET \Status1DataNamesArr[3]="STATUS1_DATA4"
+VAR.SET \Status1DataNamesArr[4]="STATUS1_DATA5"
+VAR.SET \Status1DataNamesArr[5]="STATUS1_DATA6"
+VAR.SET \Status1DataNamesArr[6]="STATUS1_DATA7"
+VAR.SET \Status1DataNamesArr[7]="STATUS1_DATA8"
+VAR.SET \Status1DataNamesArr[8]="STATUS1_DATA9"
+VAR.SET \Status1DataNamesArr[9]="STATUS1_DATA10"
+
+VAR.NEW char[&PM_PERIPH_RUNTIME_MAX_NUM][25] \Status2DataNamesArr
+
+VAR.SET \Status2DataNamesArr[0]="STATUS2_DATA1"
+VAR.SET \Status2DataNamesArr[1]="STATUS2_DATA2"
+VAR.SET \Status2DataNamesArr[2]="STATUS2_DATA3"
+VAR.SET \Status2DataNamesArr[3]="STATUS2_DATA4"
+VAR.SET \Status2DataNamesArr[4]="STATUS2_DATA5"
+VAR.SET \Status2DataNamesArr[5]="STATUS2_DATA6"
+VAR.SET \Status2DataNamesArr[6]="STATUS2_DATA7"
+VAR.SET \Status2DataNamesArr[7]="STATUS2_DATA8"
+VAR.SET \Status2DataNamesArr[8]="STATUS2_DATA9"
+VAR.SET \Status2DataNamesArr[9]="STATUS2_DATA10"
+
+VAR.NEW char[&PM_PERIPH_RUNTIME_MAX_NUM][25] \Status3DataNamesArr
+
+VAR.SET \Status3DataNamesArr[0]="STATUS3_DATA1"
+VAR.SET \Status3DataNamesArr[1]="STATUS3_DATA2"
+VAR.SET \Status3DataNamesArr[2]="STATUS3_DATA3"
+VAR.SET \Status3DataNamesArr[3]="STATUS3_DATA4"
+VAR.SET \Status3DataNamesArr[4]="STATUS3_DATA5"
+VAR.SET \Status3DataNamesArr[5]="STATUS3_DATA6"
+VAR.SET \Status3DataNamesArr[6]="STATUS3_DATA7"
+VAR.SET \Status3DataNamesArr[7]="STATUS3_DATA8"
+VAR.SET \Status3DataNamesArr[8]="STATUS3_DATA9"
+VAR.SET \Status3DataNamesArr[9]="STATUS3_DATA10"
+
+VAR.NEW char[&PM_PERIPH_RUNTIME_MAX_NUM][25] \Status4DataNamesArr
+
+VAR.SET \Status4DataNamesArr[0]="STATUS4_DATA1"
+VAR.SET \Status4DataNamesArr[1]="STATUS4_DATA2"
+VAR.SET \Status4DataNamesArr[2]="STATUS4_DATA3"
+VAR.SET \Status4DataNamesArr[3]="STATUS4_DATA4"
+VAR.SET \Status4DataNamesArr[4]="STATUS4_DATA5"
+VAR.SET \Status4DataNamesArr[5]="STATUS4_DATA6"
+VAR.SET \Status4DataNamesArr[6]="STATUS4_DATA7"
+VAR.SET \Status4DataNamesArr[7]="STATUS4_DATA8"
+VAR.SET \Status4DataNamesArr[8]="STATUS4_DATA9"
+VAR.SET \Status4DataNamesArr[9]="STATUS4_DATA10"
+
+VAR.NEW char[&PM_PERIPH_RUNTIME_MAX_NUM][25] \Status5DataNamesArr
+
+VAR.SET \Status5DataNamesArr[0]="STATUS5_DATA1"
+VAR.SET \Status5DataNamesArr[1]="STATUS5_DATA2"
+VAR.SET \Status5DataNamesArr[2]="STATUS5_DATA3"
+VAR.SET \Status5DataNamesArr[3]="STATUS5_DATA4"
+VAR.SET \Status5DataNamesArr[4]="STATUS5_DATA5"
+VAR.SET \Status5DataNamesArr[5]="STATUS5_DATA6"
+VAR.SET \Status5DataNamesArr[6]="STATUS5_DATA7"
+VAR.SET \Status5DataNamesArr[7]="STATUS5_DATA8"
+VAR.SET \Status5DataNamesArr[8]="STATUS5_DATA9"
+VAR.SET \Status5DataNamesArr[9]="STATUS5_DATA10"
+
+VAR.NEW char[&PM_PERIPH_RUNTIME_MAX_NUM][25] \Status6DataNamesArr
+
+VAR.SET \Status6DataNamesArr[0]="STATUS6_DATA1"
+VAR.SET \Status6DataNamesArr[1]="STATUS6_DATA2"
+VAR.SET \Status6DataNamesArr[2]="STATUS6_DATA3"
+VAR.SET \Status6DataNamesArr[3]="STATUS6_DATA4"
+VAR.SET \Status6DataNamesArr[4]="STATUS6_DATA5"
+VAR.SET \Status6DataNamesArr[5]="STATUS6_DATA6"
+VAR.SET \Status6DataNamesArr[6]="STATUS6_DATA7"
+VAR.SET \Status6DataNamesArr[7]="STATUS6_DATA8"
+VAR.SET \Status6DataNamesArr[8]="STATUS6_DATA9"
+VAR.SET \Status6DataNamesArr[9]="STATUS6_DATA10"
+
+VAR.NEW char[&PM_PERIPH_RUNTIME_MAX_NUM][25] \Status7DataNamesArr
+
+VAR.SET \Status7DataNamesArr[0]="STATUS7_DATA1"
+VAR.SET \Status7DataNamesArr[1]="STATUS7_DATA2"
+VAR.SET \Status7DataNamesArr[2]="STATUS7_DATA3"
+VAR.SET \Status7DataNamesArr[3]="STATUS7_DATA4"
+VAR.SET \Status7DataNamesArr[4]="STATUS7_DATA5"
+VAR.SET \Status7DataNamesArr[5]="STATUS7_DATA6"
+VAR.SET \Status7DataNamesArr[6]="STATUS7_DATA7"
+VAR.SET \Status7DataNamesArr[7]="STATUS7_DATA8"
+VAR.SET \Status7DataNamesArr[8]="STATUS7_DATA9"
+VAR.SET \Status7DataNamesArr[9]="STATUS7_DATA10"
+
+VAR.NEW char[&PM_PERIPH_RUNTIME_MAX_NUM][25] \Status8DataNamesArr
+
+VAR.SET \Status8DataNamesArr[0]="STATUS8_DATA1"
+VAR.SET \Status8DataNamesArr[1]="STATUS8_DATA2"
+VAR.SET \Status8DataNamesArr[2]="STATUS8_DATA3"
+VAR.SET \Status8DataNamesArr[3]="STATUS8_DATA4"
+VAR.SET \Status8DataNamesArr[4]="STATUS8_DATA5"
+VAR.SET \Status8DataNamesArr[5]="STATUS8_DATA6"
+VAR.SET \Status8DataNamesArr[6]="STATUS8_DATA7"
+VAR.SET \Status8DataNamesArr[7]="STATUS8_DATA8"
+VAR.SET \Status8DataNamesArr[8]="STATUS8_DATA9"
+VAR.SET \Status8DataNamesArr[9]="STATUS8_DATA10"
+
+VAR.NEW int[&PM_PERIPH_RUNTIME_MAX_NUM] \PeriphRuntimePmicIndexArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_PERIPH_RUNTIME_MAX_NUM
+	VAR.SET \PeriphRuntimePmicIndexArr[\i++]=0
+
+VAR.NEW int[&PM_PERIPH_RUNTIME_MAX_NUM] \PeriphRuntimeInternalIndexArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_PERIPH_RUNTIME_MAX_NUM
+	VAR.SET \PeriphRuntimeInternalIndexArr[\i++]=&PM_UNKNOWN_PERIPH_INTERNAL_INDEX
+
+VAR.NEW int[&PM_PERIPH_RUNTIME_MAX_NUM] \PeriphRuntimeTypesArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_PERIPH_RUNTIME_MAX_NUM
+	VAR.SET \PeriphRuntimeTypesArr[\i++]=0
+
+VAR.NEW int[&PM_PERIPH_RUNTIME_MAX_NUM] \PeriphRuntimeSubTypesArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_PERIPH_RUNTIME_MAX_NUM
+	VAR.SET \PeriphRuntimeSubTypesArr[\i++]=0
+
+VAR.NEW int[&PM_PERIPH_RUNTIME_MAX_NUM] \PeriphRuntimeBaseAddrArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_PERIPH_RUNTIME_MAX_NUM
+	VAR.SET \PeriphRuntimeBaseAddrArr[\i++]=0
+
+LOCAL &PM_GPIO_MPP_PERIPH_RUNTIME_MAX_NUM &PM_PERIPH_RUNTIME_INDEX
+&PM_GPIO_MPP_PERIPH_RUNTIME_MAX_NUM=5.
+&PM_GPIO_MPP_PERIPH_RUNTIME_INDEX=0.
+
+VAR.NEW char[&PM_GPIO_MPP_PERIPH_RUNTIME_MAX_NUM][25] \GpioMppPeriphDataNamesArr
+
+VAR.SET \GpioMppPeriphDataNamesArr[0]="GPIO_MPP_NAME_DATA1"
+VAR.SET \GpioMppPeriphDataNamesArr[1]="GPIO_MPP_NAME_DATA2"
+VAR.SET \GpioMppPeriphDataNamesArr[2]="GPIO_MPP_NAME_DATA3"
+VAR.SET \GpioMppPeriphDataNamesArr[3]="GPIO_MPP_NAME_DATA4"
+VAR.SET \GpioMppPeriphDataNamesArr[4]="GPIO_MPP_NAME_DATA5"
+
+VAR.NEW char[&PM_GPIO_MPP_PERIPH_RUNTIME_MAX_NUM][25] \GpioMppStatus1DataNamesArr
+
+VAR.SET \GpioMppStatus1DataNamesArr[0]="GPIO_MPP_STATUS1_DATA1"
+VAR.SET \GpioMppStatus1DataNamesArr[1]="GPIO_MPP_STATUS1_DATA2"
+VAR.SET \GpioMppStatus1DataNamesArr[2]="GPIO_MPP_STATUS1_DATA3"
+VAR.SET \GpioMppStatus1DataNamesArr[3]="GPIO_MPP_STATUS1_DATA4"
+VAR.SET \GpioMppStatus1DataNamesArr[4]="GPIO_MPP_STATUS1_DATA5"
+
+VAR.NEW char[&PM_GPIO_MPP_PERIPH_RUNTIME_MAX_NUM][25] \GpioMppStatus2DataNamesArr
+
+VAR.SET \GpioMppStatus2DataNamesArr[0]="GPIO_MPP_STATUS2_DATA1"
+VAR.SET \GpioMppStatus2DataNamesArr[1]="GPIO_MPP_STATUS2_DATA2"
+VAR.SET \GpioMppStatus2DataNamesArr[2]="GPIO_MPP_STATUS2_DATA3"
+VAR.SET \GpioMppStatus2DataNamesArr[3]="GPIO_MPP_STATUS2_DATA4"
+VAR.SET \GpioMppStatus2DataNamesArr[4]="GPIO_MPP_STATUS2_DATA5"
+
+VAR.NEW char[&PM_GPIO_MPP_PERIPH_RUNTIME_MAX_NUM][25] \GpioMppStatus3DataNamesArr
+
+VAR.SET \GpioMppStatus3DataNamesArr[0]="GPIO_MPP_STATUS3_DATA1"
+VAR.SET \GpioMppStatus3DataNamesArr[1]="GPIO_MPP_STATUS3_DATA2"
+VAR.SET \GpioMppStatus3DataNamesArr[2]="GPIO_MPP_STATUS3_DATA3"
+VAR.SET \GpioMppStatus3DataNamesArr[3]="GPIO_MPP_STATUS3_DATA4"
+VAR.SET \GpioMppStatus3DataNamesArr[4]="GPIO_MPP_STATUS3_DATA5"
+
+VAR.NEW char[&PM_GPIO_MPP_PERIPH_RUNTIME_MAX_NUM][25] \GpioMppStatus4DataNamesArr
+
+VAR.SET \GpioMppStatus4DataNamesArr[0]="GPIO_MPP_STATUS4_DATA1"
+VAR.SET \GpioMppStatus4DataNamesArr[1]="GPIO_MPP_STATUS4_DATA2"
+VAR.SET \GpioMppStatus4DataNamesArr[2]="GPIO_MPP_STATUS4_DATA3"
+VAR.SET \GpioMppStatus4DataNamesArr[3]="GPIO_MPP_STATUS4_DATA4"
+VAR.SET \GpioMppStatus4DataNamesArr[4]="GPIO_MPP_STATUS4_DATA5"
+
+VAR.NEW char[&PM_GPIO_MPP_PERIPH_RUNTIME_MAX_NUM][25] \GpioMppStatus5DataNamesArr
+
+VAR.SET \GpioMppStatus5DataNamesArr[0]="GPIO_MPP_STATUS5_DATA1"
+VAR.SET \GpioMppStatus5DataNamesArr[1]="GPIO_MPP_STATUS5_DATA2"
+VAR.SET \GpioMppStatus5DataNamesArr[2]="GPIO_MPP_STATUS5_DATA3"
+VAR.SET \GpioMppStatus5DataNamesArr[3]="GPIO_MPP_STATUS5_DATA4"
+VAR.SET \GpioMppStatus5DataNamesArr[4]="GPIO_MPP_STATUS5_DATA5"
+
+VAR.NEW char[&PM_GPIO_MPP_PERIPH_RUNTIME_MAX_NUM][25] \GpioMppStatus6DataNamesArr
+
+VAR.SET \GpioMppStatus6DataNamesArr[0]="GPIO_MPP_STATUS6_DATA1"
+VAR.SET \GpioMppStatus6DataNamesArr[1]="GPIO_MPP_STATUS6_DATA2"
+VAR.SET \GpioMppStatus6DataNamesArr[2]="GPIO_MPP_STATUS6_DATA3"
+VAR.SET \GpioMppStatus6DataNamesArr[3]="GPIO_MPP_STATUS6_DATA4"
+VAR.SET \GpioMppStatus6DataNamesArr[4]="GPIO_MPP_STATUS6_DATA5"
+
+VAR.NEW char[&PM_GPIO_MPP_PERIPH_RUNTIME_MAX_NUM][25] \GpioMppStatus7DataNamesArr
+
+VAR.SET \GpioMppStatus7DataNamesArr[0]="GPIO_MPP_STATUS7_DATA1"
+VAR.SET \GpioMppStatus7DataNamesArr[1]="GPIO_MPP_STATUS7_DATA2"
+VAR.SET \GpioMppStatus7DataNamesArr[2]="GPIO_MPP_STATUS7_DATA3"
+VAR.SET \GpioMppStatus7DataNamesArr[3]="GPIO_MPP_STATUS7_DATA4"
+VAR.SET \GpioMppStatus7DataNamesArr[4]="GPIO_MPP_STATUS7_DATA5"
+
+VAR.NEW char[&PM_GPIO_MPP_PERIPH_RUNTIME_MAX_NUM][25] \GpioMppStatus8DataNamesArr
+
+VAR.SET \GpioMppStatus8DataNamesArr[0]="GPIO_MPP_STATUS8_DATA1"
+VAR.SET \GpioMppStatus8DataNamesArr[1]="GPIO_MPP_STATUS8_DATA2"
+VAR.SET \GpioMppStatus8DataNamesArr[2]="GPIO_MPP_STATUS8_DATA3"
+VAR.SET \GpioMppStatus8DataNamesArr[3]="GPIO_MPP_STATUS8_DATA4"
+VAR.SET \GpioMppStatus8DataNamesArr[4]="GPIO_MPP_STATUS8_DATA5"
+
+VAR.NEW int[&PM_GPIO_MPP_PERIPH_RUNTIME_MAX_NUM] \GpioMppPeriphRuntimePmicIndexArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_GPIO_MPP_PERIPH_RUNTIME_MAX_NUM
+	VAR.SET \GpioMppPeriphRuntimePmicIndexArr[\i++]=0
+
+VAR.NEW int[&PM_GPIO_MPP_PERIPH_RUNTIME_MAX_NUM] \GpioMppPeriphRuntimeInternalIndexArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_GPIO_MPP_PERIPH_RUNTIME_MAX_NUM
+	VAR.SET \GpioMppPeriphRuntimeInternalIndexArr[\i++]=&PM_UNKNOWN_PERIPH_INTERNAL_INDEX
+
+VAR.NEW int[&PM_GPIO_MPP_PERIPH_RUNTIME_MAX_NUM] \GpioMppPeriphRuntimeTypesArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_GPIO_MPP_PERIPH_RUNTIME_MAX_NUM
+	VAR.SET \GpioMppPeriphRuntimeTypesArr[\i++]=0
+
+VAR.NEW int[&PM_GPIO_MPP_PERIPH_RUNTIME_MAX_NUM] \GpioMppPeriphRuntimeSubTypesArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_GPIO_MPP_PERIPH_RUNTIME_MAX_NUM
+	VAR.SET \GpioMppPeriphRuntimeSubTypesArr[\i++]=0
+
+VAR.NEW int[&PM_GPIO_MPP_PERIPH_RUNTIME_MAX_NUM] \GpioMppPeriphRuntimeBaseAddrArr
+
+VAR.NEW int \i
+VAR.SET \i=0
+VAR.WHILE \i<&PM_GPIO_MPP_PERIPH_RUNTIME_MAX_NUM
+	VAR.SET \GpioMppPeriphRuntimeBaseAddrArr[\i++]=0
+
+;-----------------------------------------------------------------------------
+; PMIC ERROR FLAG TYPES
+;-----------------------------------------------------------------------------
+
+LOCAL &PM_ERR_SUCCESS &PM_ERR_FAILURE
+
+&PM_ERR_SUCCESS=0
+&PM_ERR_FAILURE=1
+
+AREA.SELECT A000
+AREA.CLEAR A000
+
+;-----------------------------------------------------------------------------
+; Create the dialog
+;-----------------------------------------------------------------------------
+DIALOG
+(
+  HEADER "PMIC Dashboard"
+   
+  POS 0. 0. 50. 7.
+  BOX "PMIC INFO"
+  
+  POS 1. 1. 6. 1.
+  PMICA_TXT: TEXT "PMIC A:"
+  POS 6.5 1. 23. 1.
+  PMICA_DATA: DYNTEXT ""
+  
+  POS 30. 1. 5.5 1.
+  PMICB_TXT: TEXT "PMIC B:"
+  POS 35.5 1. 13.5 1.
+  PMICB_DATA: DYNTEXT ""
+  
+
+  POS 1. 3. 6. 1.
+  PMICC_TXT: TEXT "PMIC C:"
+  POS 6.5 3. 13.5 1.
+  PMICC_DATA: DYNTEXT ""
+  
+  POS 30. 3. 5.5 1.
+  PMICD_TXT: TEXT "PMIC D:"
+  POS 35.5 3. 13.5 1.
+  PMICD_DATA: DYNTEXT ""
+  
+  POS 4. 5. 15. 1.
+  DEFBUTTON "Get PMIC Info" 
+  (
+    &BusAccessMode=DIALOG.STRING(ACCESS_MODE_PD)
+    GOSUB SetOwnerChannel DIALOG.STRING(OWNER_PD)
+
+    GOSUB PmicInfoDisplay
+
+    AREA.SELECT A000
+    AREA.CLEAR A000
+  )
+   
+  POS 28. 5. 15. 1.
+  DEFBUTTON "Get SBL_OTP Ver" 
+  (
+    &BusAccessMode=DIALOG.STRING(ACCESS_MODE_PD)
+    GOSUB SetOwnerChannel DIALOG.STRING(OWNER_PD)
+
+    GOSUB PmicOtpSblVerDisplay
+
+    AREA.SELECT A000
+    AREA.CLEAR A000
+  )
+
+  POS 51. 0. 75. 7.
+  BOX "PON REASONS"
+  
+  POS 52. 1.5 15. 1.
+  PON_REASON_TXT: TEXT "PowerON Reason:"
+  POS 68. 1.5 20. 1.
+  PON_REASON_DATA: DYNTEXT ""
+  
+  POS 52. 3. 15. 1.
+  POFF_REASON_TXT: TEXT "PowerOFF Reason:"
+  POS 68. 3. 20. 1.
+  POFF_REASON_DATA: DYNTEXT ""
+  
+  POS 89. 1.5 15. 1.
+  WARMRESET_REASON_TXT: TEXT "WarmReset Reason:"
+  POS 105. 1.5 20. 1.
+  WARMRESET_REASON_DATA: DYNTEXT ""
+  
+  POS 89. 3. 15. 1.
+  STAGE3_FAULT_REASON_TXT: TEXT "Stage3/Fault Reason:"
+  POS 105. 3. 20. 1.
+  STAGE3_FAULT_REASON_DATA: DYNTEXT ""
+
+  
+  POS 70. 5. 17. 1.
+  DEFBUTTON "Get PON Reasons" 
+  (
+    &ponDeviceIndex=0
+
+    &BusAccessMode=DIALOG.STRING(ACCESS_MODE_PD)
+
+    GOSUB SetOwnerChannel DIALOG.STRING(OWNER_PD)
+
+    IF DIALOG.STRING(PMIC_INDEX_PD)=="PMIC B"
+    (
+      &ponDeviceIndex=1
+    )
+    ELSE IF DIALOG.STRING(PMIC_INDEX_PD)=="PMIC C"
+    (
+      &ponDeviceIndex=2
+    )
+    ELSE IF DIALOG.STRING(PMIC_INDEX_PD)=="PMIC D"
+    (
+      &ponDeviceIndex=3
+    )
+    ELSE IF DIALOG.STRING(PMIC_INDEX_PD)=="PMIC E"
+    (
+      &ponDeviceIndex=4
+    )
+    ELSE IF DIALOG.STRING(PMIC_INDEX_PD)=="PMIC F"
+    (
+      &ponDeviceIndex=5
+    )
+    ELSE IF DIALOG.STRING(PMIC_INDEX_PD)=="PMIC G"
+    (
+      &ponDeviceIndex=6
+    )
+    ELSE
+    (
+      &ponDeviceIndex=0
+    )
+
+    GOSUB PonReasons &ponDeviceIndex
+
+    AREA.SELECT A000
+    AREA.CLEAR A000
+  )
+   
+  POS 0. 7. 120. 9.
+  BOX "Select Peripheral"
+  
+  POS 1. 8.5 12. 1.
+  PMIC_INDEX_TXT: TEXT "PMIC:"
+  POS 1. 10. 12. 1.
+  PMIC_INDEX_PD: PULLDOWN "PMIC A,PMIC B,PMIC C,PMIC D,PMIC E,PMIC F,PMIC G"
+  (
+  )
+  
+  POS 15. 8.5 12. 1.
+  PERIPHERAL_NAME_TXT: TEXT "PeripheralName:"
+  POS 15. 10. 12. 1.
+  PERIPHERAL_NAME_PD: PULLDOWN "CLOCK,MPP,GPIO,SMPS,LDO,VS,BOOST,BOOST_BYP,BOB"
+  (
+  )
+  
+  POS 28. 8.5 12. 1.
+  PERIPHERAL_INDEX_TXT: TEXT "PeripheralIndex:"
+  POS 28. 10. 12. 1.
+  PERIPHERAL_INDEX_PD: PULLDOWN "1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40"
+  (
+  )
+
+  POS 42. 8.5 9. 1.
+  OWNER_TXT: TEXT "Owner:"
+  POS 42. 10. 9. 1.
+  OWNER_PD: PULLDOWN "DEFAULT,AOP"
+  (
+  )
+
+  POS 53. 8.5 9. 1.
+  ACCESS_MODE_TXT: TEXT "AccessMode:"
+  POS 53. 10. 9. 1.
+  ACCESS_MODE_PD: PULLDOWN "EZAXI,A"
+  (
+  )
+  
+  POS 64. 10. 6. 1.
+  DEFBUTTON "Help?" 
+  (  
+    WINPOS 0% 50% 68% 55% 0. 0. W001
+    AREA.CREATE PMICHelp
+    AREA.VIEW PMICHelp
+    AREA.SELECT PMICHelp
+    AREA.CLEAR PMICHelp
+    PRINT "ACCESS MODE:EZAXI,OWNER:DEFAULT -> ON ANY T32 WINDOW (FOR RELIABLE STATUS DATA WITHOUT BREAKING THE T32)"
+    PRINT ""
+    PRINT "ACCESS MODE:A, OWNER:AOP -> ON AOP T32 WINDOW (IN SLEEP IF CX COLLAPSED OR RETENTION WITH BREAKING THE T32)"
+    PRINT "----------------------------------------------------------------------------------------------------------------------------"
+    PRINT "CLOCKS INFO:"
+    PRINT ""
+    PRINT "CLOCK1   --> XO_CORE"
+    PRINT "CLOCK2   --> BB_CLK1 or LN_BB_CLK1"
+    PRINT "CLOCK3   --> BB_CLK2 or LN_BB_CLK2"
+    PRINT "CLOCK4   --> BB_CLK3 or LN_BB_CLK3"
+    PRINT "CLOCK5   --> RF_CLK1"
+    PRINT "CLOCK6   --> RF_CLK2"
+    PRINT "CLOCK7   --> RF_CLK3"
+    PRINT "CLOCK8   --> RF_CLK4"
+    PRINT "CLOCK9   --> LN_BB_CLK"
+    PRINT "CLOCK10  --> CLK_DIST"
+    PRINT "CLOCK11  --> SLP_CLK1"
+    PRINT "CLOCK12  --> DIV_CLK1"
+    PRINT "CLOCK13  --> DIV_CLK2"
+    PRINT "CLOCK14  --> DIV_CLK3"
+  )
+  
+  POS 1. 12. 15. 1.
+  DEFBUTTON "Get Peripheral Info" 
+  (
+    GOSUB ValidateParameters
+    ENTRY &pmicIndex &periphInternalIndex &periphIndex
+
+    GOSUB PeripheralInfoRead &pmicIndex &periphInternalIndex &periphIndex
+    ENTRY &periphStatus &periphTypeData &periphSubTypeData &periphBaseAddr
+  )
+  
+  POS 18. 12. 13. 1.
+  DEFBUTTON "Add Peripheral" 
+  (
+    GOSUB ValidateParameters
+    ENTRY &pmicIndex &periphInternalIndex &periphIndex
+
+    GOSUB PeripheralInfoRead &pmicIndex &periphInternalIndex &periphIndex
+    ENTRY &periphStatus &periphTypeData &periphSubTypeData &periphBaseAddr
+
+    IF (&periphStatus==&PM_ERR_SUCCESS)
+    (
+      GOSUB AddPeripheral &pmicIndex &periphInternalIndex &periphIndex &periphTypeData &periphSubTypeData &periphBaseAddr
+      GOSUB GetStatus
+    )
+
+    AREA.SELECT A000
+    AREA.CLEAR A000 
+  )
+  
+  POS 33. 12. 20. 1.
+  DEFBUTTON "Remove PowerRails/Clocks" 
+  (
+    &periphInternalIndex=&PM_SMPS_PERIPH_INTERNAL_INDEX
+
+    GOSUB RemovePeripheral &periphInternalIndex
+
+    AREA.SELECT A000
+    AREA.CLEAR A000
+  )
+  
+  POS 55. 12. 15. 1.
+  DEFBUTTON "Remove GPIOs/MPPs" 
+  (
+    &periphInternalIndex=&PM_GPIO_PERIPH_INTERNAL_INDEX
+
+    GOSUB RemovePeripheral &periphInternalIndex
+
+    AREA.SELECT A000
+    AREA.CLEAR A000
+  )
+  
+  POS 1. 14. 12. 1.
+  DEFBUTTON "Get Status" 
+  (
+    &BusAccessMode=DIALOG.STRING(ACCESS_MODE_PD)
+    GOSUB SetOwnerChannel DIALOG.STRING(OWNER_PD)
+
+    GOSUB GetStatus
+  )
+  
+  POS 14. 14. 9. 1.
+  STATUS_TXT: TEXT "Read Status:"
+  POS 23.5 14. 8. 1.
+  STATUS_DATA1: DYNTEXT ""
+  
+  POS 32. 14. 14. 1.
+  SPMI_CFG_TARGET_TXT: TEXT "TARGET(Optional):"
+  POS 46.15 14. 7. 1.
+  SPMI_CFG_TARGET_PD: DYNPULLDOWN ",845,24" "GOSUB SpmiCfgUpdateTarget"
+  (
+  )
+   
+  POS 72. 8. 45. 7.5
+  BOX "Peripheral Info"
+  
+  POS 73. 9. 20. 1.
+  PERIPHERAL_TYPE_TXT: TEXT "PeripheralType:"
+  POS 94. 9. 20. 1.
+  PERIPHERAL_TYPE_DATA: DYNTEXT ""
+  
+  POS 73. 10.5 20. 1.
+  PERIPHERAL_SUBTYPE_TXT: TEXT "PeripheralSubType:"
+  POS 94. 10.5 20. 1.
+  PERIPHERAL_SUBTYPE_DATA: DYNTEXT ""
+  
+  POS 73. 12. 20. 1.
+  PERIPHERAL_BASEADDR_TXT: TEXT "PeripheralBaseAddress:"
+  POS 94. 12. 20. 1.
+  PERIPHERAL_BASEADDR_DATA: DYNTEXT ""
+  
+  POS 73. 13.5 20. 1.
+  PERIPHERAL_STATUS_TXT: TEXT "PeripheralStatus:"
+  POS 94. 13.5 20. 1.
+  PERIPHERAL_STATUS_DATA: DYNTEXT ""
+   
+  POS 0. 16. 126. 20.
+  BOX ""
+
+  POS 0. 16. 14. 20.
+  BOX ""
+
+  POS 14. 16. 14. 20.
+  BOX ""
+
+  POS 28. 16. 14. 20.
+  BOX ""
+
+  POS 42. 16. 14. 20.
+  BOX ""
+
+  POS 56. 16. 14. 20.
+  BOX ""
+
+  POS 70. 16. 14. 20.
+  BOX ""
+
+  POS 84. 16. 14. 20.
+  BOX ""
+
+  POS 98. 16. 14. 20.
+  BOX ""
+
+  POS 112. 16. 14. 20.
+  BOX ""
+
+  POS 0. 16. 126. 3.
+  BOX ""
+  
+  POS 1. 17. 12. 1.
+  PERIPHERAL_NAME_TXT: TEXT "PowerRails/Clocks"
+  POS 1. 19.5 12. 1.
+  PERIPHERAL_NAME_DATA1: DYNTEXT ""
+  POS 1. 21. 12. 1.
+  PERIPHERAL_NAME_DATA2: DYNTEXT ""
+  POS 1. 22.5 12. 1.
+  PERIPHERAL_NAME_DATA3: DYNTEXT ""
+  POS 1. 24. 12. 1.
+  PERIPHERAL_NAME_DATA4: DYNTEXT ""
+  POS 1. 25.5 12. 1.
+  PERIPHERAL_NAME_DATA5: DYNTEXT ""
+  POS 1. 27. 12. 1.
+  PERIPHERAL_NAME_DATA6: DYNTEXT ""
+  POS 1. 28.5 12. 1.
+  PERIPHERAL_NAME_DATA7: DYNTEXT ""
+  POS 1. 30. 12. 1.
+  PERIPHERAL_NAME_DATA8: DYNTEXT ""
+  POS 1. 31.5 12. 1.
+  PERIPHERAL_NAME_DATA9: DYNTEXT ""
+  POS 1. 33. 12. 1.
+  PERIPHERAL_NAME_DATA10: DYNTEXT ""
+  POS 1. 34.5 12. 1.
+  
+  POS 15. 17. 12. 1.
+  STATUS1_TXT: TEXT "CLK/VREG_OK"
+  POS 15. 19.5 12. 1.
+  STATUS1_DATA1: DYNTEXT ""
+  POS 15. 21. 12. 1.
+  STATUS1_DATA2: DYNTEXT ""
+  POS 15. 22.5 12. 1.
+  STATUS1_DATA3: DYNTEXT ""
+  POS 15. 24. 12. 1.
+  STATUS1_DATA4: DYNTEXT ""
+  POS 15. 25.5 12. 1.
+  STATUS1_DATA5: DYNTEXT ""
+  POS 15. 27. 12. 1.
+  STATUS1_DATA6: DYNTEXT ""
+  POS 15. 28.5 12. 1.
+  STATUS1_DATA7: DYNTEXT ""
+  POS 15. 30. 12. 1.
+  STATUS1_DATA8: DYNTEXT ""
+  POS 15. 31.5 12. 1.
+  STATUS1_DATA9: DYNTEXT ""
+  POS 15. 33. 12. 1.
+  STATUS1_DATA10: DYNTEXT ""
+  POS 15. 34.5 12. 1.
+  
+  POS 29. 17. 12. 1.
+  STATUS2_TXT: TEXT "SWEnable Status"
+  POS 29. 19.5 12. 1.
+  STATUS2_DATA1: DYNTEXT ""
+  POS 29. 21. 12. 1.
+  STATUS2_DATA2: DYNTEXT ""
+  POS 29. 22.5 12. 1.
+  STATUS2_DATA3: DYNTEXT ""
+  POS 29. 24. 12. 1.
+  STATUS2_DATA4: DYNTEXT ""
+  POS 29. 25.5 12. 1.
+  STATUS2_DATA5: DYNTEXT ""
+  POS 29. 27. 12. 1.
+  STATUS2_DATA6: DYNTEXT ""
+  POS 29. 28.5 12. 1.
+  STATUS2_DATA7: DYNTEXT ""
+  POS 29. 30. 12. 1.
+  STATUS2_DATA8: DYNTEXT ""
+  POS 29. 31.5 12. 1.
+  STATUS2_DATA9: DYNTEXT ""
+  POS 29. 33. 12. 1.
+  STATUS2_DATA10: DYNTEXT ""
+  POS 29. 34.5 12. 1.
+  
+  POS 43. 17. 12. 1.
+  STATUS3_TXT: TEXT "PinCtrl Status"
+  POS 43. 19.5 12. 1.
+  STATUS3_DATA1: DYNTEXT ""
+  POS 43. 21. 12. 1.
+  STATUS3_DATA2: DYNTEXT ""
+  POS 43. 22.5 12. 1.
+  STATUS3_DATA3: DYNTEXT ""
+  POS 43. 24. 12. 1.
+  STATUS3_DATA4: DYNTEXT ""
+  POS 43. 25.5 12. 1.
+  STATUS3_DATA5: DYNTEXT ""
+  POS 43. 27. 12. 1.
+  STATUS3_DATA6: DYNTEXT ""
+  POS 43. 28.5 12. 1.
+  STATUS3_DATA7: DYNTEXT ""
+  POS 43. 30. 12. 1.
+  STATUS3_DATA8: DYNTEXT ""
+  POS 43. 31.5 12. 1.
+  STATUS3_DATA9: DYNTEXT ""
+  POS 43. 33. 12. 1.
+  STATUS3_DATA10: DYNTEXT ""
+  POS 43. 34.5 12. 1.
+  
+  POS 57. 17. 12. 1.
+  STATUS4_TXT: TEXT "Mode"
+  POS 57. 19.5 12. 1.
+  STATUS4_DATA1: DYNTEXT ""
+  POS 57. 21. 12. 1.
+  STATUS4_DATA2: DYNTEXT ""
+  POS 57. 22.5 12. 1.
+  STATUS4_DATA3: DYNTEXT ""
+  POS 57. 24. 12. 1.
+  STATUS4_DATA4: DYNTEXT ""
+  POS 57. 25.5 12. 1.
+  STATUS4_DATA5: DYNTEXT ""
+  POS 57. 27. 12. 1.
+  STATUS4_DATA6: DYNTEXT ""
+  POS 57. 28.5 12. 1.
+  STATUS4_DATA7: DYNTEXT ""
+  POS 57. 30. 12. 1.
+  STATUS4_DATA8: DYNTEXT ""
+  POS 57. 31.5 12. 1.
+  STATUS4_DATA9: DYNTEXT ""
+  POS 57. 33. 12. 1.
+  STATUS4_DATA10: DYNTEXT ""
+  POS 57. 34.5 12. 1.
+  
+  POS 71. 17. 12. 1.
+  STATUS5_TXT: TEXT "Mode(PinCtrl)"
+  POS 71. 19.5 12. 1.
+  STATUS5_DATA1: DYNTEXT ""
+  POS 71. 21. 12. 1.
+  STATUS5_DATA2: DYNTEXT ""
+  POS 71. 22.5 12. 1.
+  STATUS5_DATA3: DYNTEXT ""
+  POS 71. 24. 12. 1.
+  STATUS5_DATA4: DYNTEXT ""
+  POS 71. 25.5 12. 1.
+  STATUS5_DATA5: DYNTEXT ""
+  POS 71. 27. 12. 1.
+  STATUS5_DATA6: DYNTEXT ""
+  POS 71. 28.5 12. 1.
+  STATUS5_DATA7: DYNTEXT ""
+  POS 71. 30. 12. 1.
+  STATUS5_DATA8: DYNTEXT ""
+  POS 71. 31.5 12. 1.
+  STATUS5_DATA9: DYNTEXT ""
+  POS 71. 33. 12. 1.
+  STATUS5_DATA10: DYNTEXT ""
+  POS 71. 34.5 12. 1.
+  
+  POS 85. 17. 12. 1.
+  STATUS6_TXT: TEXT "Volt(uV)"
+  POS 85. 19.5 12. 1.
+  STATUS6_DATA1: DYNTEXT ""
+  POS 85. 21. 12. 1.
+  STATUS6_DATA2: DYNTEXT ""
+  POS 85. 22.5 12. 1.
+  STATUS6_DATA3: DYNTEXT ""
+  POS 85. 24. 12. 1.
+  STATUS6_DATA4: DYNTEXT ""
+  POS 85. 25.5 12. 1.
+  STATUS6_DATA5: DYNTEXT ""
+  POS 85. 27. 12. 1.
+  STATUS6_DATA6: DYNTEXT ""
+  POS 85. 28.5 12. 1.
+  STATUS6_DATA7: DYNTEXT ""
+  POS 85. 30. 12. 1.
+  STATUS6_DATA8: DYNTEXT ""
+  POS 85. 31.5 12. 1.
+  STATUS6_DATA9: DYNTEXT ""
+  POS 85. 33. 12. 1.
+  STATUS6_DATA10: DYNTEXT ""
+  POS 85. 34.5 12. 1.
+  
+  POS 99. 17. 12. 1.
+  STATUS7_TXT: TEXT "VsetValid(uV)"
+  POS 99. 19.5 12. 1.
+  STATUS7_DATA1: DYNTEXT ""
+  POS 99. 21. 12. 1.
+  STATUS7_DATA2: DYNTEXT ""
+  POS 99. 22.5 12. 1.
+  STATUS7_DATA3: DYNTEXT ""
+  POS 99. 24. 12. 1.
+  STATUS7_DATA4: DYNTEXT ""
+  POS 99. 25.5 12. 1.
+  STATUS7_DATA5: DYNTEXT ""
+  POS 99. 27. 12. 1.
+  STATUS7_DATA6: DYNTEXT ""
+  POS 99. 28.5 12. 1.
+  STATUS7_DATA7: DYNTEXT ""
+  POS 99. 30. 12. 1.
+  STATUS7_DATA8: DYNTEXT ""
+  POS 99. 31.5 12. 1.
+  STATUS7_DATA9: DYNTEXT ""
+  POS 99. 33. 12. 1.
+  STATUS7_DATA10: DYNTEXT ""
+  POS 99. 34.5 12. 1.
+  
+  POS 113. 17. 12. 1.
+  STATUS8_TXT: TEXT "Customized"
+  POS 113. 19.5 12. 1.
+  STATUS8_DATA1: DYNTEXT ""
+  POS 113. 21. 12. 1.
+  STATUS8_DATA2: DYNTEXT ""
+  POS 113. 22.5 12. 1.
+  STATUS8_DATA3: DYNTEXT ""
+  POS 113. 24. 12. 1.
+  STATUS8_DATA4: DYNTEXT ""
+  POS 113. 25.5 12. 1.
+  STATUS8_DATA5: DYNTEXT ""
+  POS 113. 27. 12. 1.
+  STATUS8_DATA6: DYNTEXT ""
+  POS 113. 28.5 12. 1.
+  STATUS8_DATA7: DYNTEXT ""
+  POS 113. 30. 12. 1.
+  STATUS8_DATA8: DYNTEXT ""
+  POS 113. 31.5 12. 1.
+  STATUS8_DATA9: DYNTEXT ""
+  POS 113. 33. 12. 1.
+  STATUS8_DATA10: DYNTEXT ""
+  POS 113. 34.5 12. 1.
+   
+  POS 0. 36. 126. 11.
+  BOX ""
+
+  POS 0. 36. 14. 11.
+  BOX ""
+
+  POS 14. 36. 14. 11.
+  BOX ""
+
+  POS 28. 36. 14. 11.
+  BOX ""
+
+  POS 42. 36. 14. 11.
+  BOX ""
+
+  POS 56. 36. 14. 11.
+  BOX ""
+
+  POS 70. 36. 14. 11.
+  BOX ""
+
+  POS 84. 36. 14. 11.
+  BOX ""
+
+  POS 98. 36. 14. 11.
+  BOX ""
+
+  POS 112. 36. 14. 11.
+  BOX ""
+
+  POS 0. 36. 126. 3.
+  BOX ""
+  
+  POS 1. 37. 12. 1.
+  GPIO_MPP_NAME_TXT: TEXT "GPIOs/MPPs"
+  POS 1. 38.5 12. 1.
+  GPIO_MPP_NAME_DATA1: DYNTEXT ""
+  POS 1. 40. 12. 1.
+  GPIO_MPP_NAME_DATA2: DYNTEXT ""
+  POS 1. 41.5 12. 1.
+  GPIO_MPP_NAME_DATA3: DYNTEXT ""
+  POS 1. 43. 12. 1.
+  GPIO_MPP_NAME_DATA4: DYNTEXT ""
+  POS 1. 44.5 12. 1.
+  GPIO_MPP_NAME_DATA5: DYNTEXT ""
+  POS 1. 46. 12. 1.
+  
+  POS 15. 37. 12. 1.
+  GPIO_MPP_STATUS1_TXT: TEXT "GPIO/MPP_OK"
+  POS 15. 38.5 12. 1.
+  GPIO_MPP_STATUS1_DATA1: DYNTEXT ""
+  POS 15. 40. 12. 1.
+  GPIO_MPP_STATUS1_DATA2: DYNTEXT ""
+  POS 15. 41.5 12. 1.
+  GPIO_MPP_STATUS1_DATA3: DYNTEXT ""
+  POS 15. 43. 12. 1.
+  GPIO_MPP_STATUS1_DATA4: DYNTEXT ""
+  POS 15. 44.5 12. 1.
+  GPIO_MPP_STATUS1_DATA5: DYNTEXT ""
+  POS 15. 46. 12. 1.
+  
+  POS 29. 37. 12. 1.
+  GPIO_MPP_STATUS2_TXT: TEXT "SWEnable Status"
+  POS 29. 38.5 12. 1.
+  GPIO_MPP_STATUS2_DATA1: DYNTEXT ""
+  POS 29. 40. 12. 1.
+  GPIO_MPP_STATUS2_DATA2: DYNTEXT ""
+  POS 29. 41.5 12. 1.
+  GPIO_MPP_STATUS2_DATA3: DYNTEXT ""
+  POS 29. 43. 12. 1.
+  GPIO_MPP_STATUS2_DATA4: DYNTEXT ""
+  POS 29. 44.5 12. 1.
+  GPIO_MPP_STATUS2_DATA5: DYNTEXT ""
+  POS 29. 46. 12. 1.
+  
+  POS 43. 37. 12. 1.
+  GPIO_MPP_STATUS3_TXT: TEXT "Mode"
+  POS 43. 38.5 12. 1.
+  GPIO_MPP_STATUS3_DATA1: DYNTEXT ""
+  POS 43. 40. 12. 1.
+  GPIO_MPP_STATUS3_DATA2: DYNTEXT ""
+  POS 43. 41.5 12. 1.
+  GPIO_MPP_STATUS3_DATA3: DYNTEXT ""
+  POS 43. 43. 12. 1.
+  GPIO_MPP_STATUS3_DATA4: DYNTEXT ""
+  POS 43. 44.5 12. 1.
+  GPIO_MPP_STATUS3_DATA5: DYNTEXT ""
+  POS 43. 46. 12. 1.
+  
+  POS 57. 37. 12. 1.
+  GPIO_MPP_STATUS4_TXT: TEXT "ModeConfig"
+  POS 57. 38.5 12. 1.
+  GPIO_MPP_STATUS4_DATA1: DYNTEXT ""
+  POS 57. 40. 12. 1.
+  GPIO_MPP_STATUS4_DATA2: DYNTEXT ""
+  POS 57. 41.5 12. 1.
+  GPIO_MPP_STATUS4_DATA3: DYNTEXT ""
+  POS 57. 43. 12. 1.
+  GPIO_MPP_STATUS4_DATA4: DYNTEXT ""
+  POS 57. 44.5 12. 1.
+  GPIO_MPP_STATUS4_DATA5: DYNTEXT ""
+  POS 57. 46. 12. 1.
+  
+  POS 71. 37. 12. 1.
+  GPIO_MPP_STATUS5_TXT: TEXT "InputVal"
+  POS 71. 38.5 12. 1.
+  GPIO_MPP_STATUS5_DATA1: DYNTEXT ""
+  POS 71. 40. 12. 1.
+  GPIO_MPP_STATUS5_DATA2: DYNTEXT ""
+  POS 71. 41.5 12. 1.
+  GPIO_MPP_STATUS5_DATA3: DYNTEXT ""
+  POS 71. 43. 12. 1.
+  GPIO_MPP_STATUS5_DATA4: DYNTEXT ""
+  POS 71. 44.5 12. 1.
+  GPIO_MPP_STATUS5_DATA5: DYNTEXT ""
+  POS 71. 46. 12. 1.
+  
+  POS 85. 37. 12. 1.
+  GPIO_MPP_STATUS6_TXT: TEXT "Supply"
+  POS 85. 38.5 12. 1.
+  GPIO_MPP_STATUS6_DATA1: DYNTEXT ""
+  POS 85. 40. 12. 1.
+  GPIO_MPP_STATUS6_DATA2: DYNTEXT ""
+  POS 85. 41.5 12. 1.
+  GPIO_MPP_STATUS6_DATA3: DYNTEXT ""
+  POS 85. 43. 12. 1.
+  GPIO_MPP_STATUS6_DATA4: DYNTEXT ""
+  POS 85. 44.5 12. 1.
+  GPIO_MPP_STATUS6_DATA5: DYNTEXT ""
+  POS 85. 46. 12. 1.
+  
+  POS 99. 37. 12. 1.
+  GPIO_MPP_STATUS7_TXT: TEXT "Pull"
+  POS 99. 38.5 12. 1.
+  GPIO_MPP_STATUS7_DATA1: DYNTEXT ""
+  POS 99. 40. 12. 1.
+  GPIO_MPP_STATUS7_DATA2: DYNTEXT ""
+  POS 99. 41.5 12. 1.
+  GPIO_MPP_STATUS7_DATA3: DYNTEXT ""
+  POS 99. 43. 12. 1.
+  GPIO_MPP_STATUS7_DATA4: DYNTEXT ""
+  POS 99. 44.5 12. 1.
+  GPIO_MPP_STATUS7_DATA5: DYNTEXT ""
+  POS 99. 46. 12. 1.
+  
+  POS 113. 37. 12. 1.
+  GPIO_MPP_STATUS8_TXT: TEXT "OutputDriveStr"
+  POS 113. 38.5 12. 1.
+  GPIO_MPP_STATUS8_DATA1: DYNTEXT ""
+  POS 113. 40. 12. 1.
+  GPIO_MPP_STATUS8_DATA2: DYNTEXT ""
+  POS 113. 41.5 12. 1.
+  GPIO_MPP_STATUS8_DATA3: DYNTEXT ""
+  POS 113. 43. 12. 1.
+  GPIO_MPP_STATUS8_DATA4: DYNTEXT ""
+  POS 113. 44.5 12. 1.
+  GPIO_MPP_STATUS8_DATA5: DYNTEXT ""
+  POS 113. 46. 12. 1.
+  
+  POS 1. 47. 12. 1.
+  DEFBUTTON "Get Status" 
+  (
+    &BusAccessMode=DIALOG.STRING(ACCESS_MODE_PD)
+    GOSUB SetOwnerChannel DIALOG.STRING(OWNER_PD)
+
+    GOSUB GetStatus
+  )
+  
+  POS 15. 47. 10. 1.
+  STATUS_TXT: TEXT "Read Status:"
+  POS 25.5 47. 10. 1.
+  STATUS_DATA2: DYNTEXT ""
+
+  POS 37. 47. 12. 1.
+  BUTTON "Close" "JUMPTO winclose"
+  CLOSE "JUMPTO winclose"
+)
+STOP
+
+winclose:
+DIALOG.END
+ENDDO
+
+
+;=============================================================================
+;=============================================================================
+; SUBROUTINES
+;=============================================================================
+;=============================================================================
+
+;=============================================================================
+; SUB: ValidateParameters
+;=============================================================================
+
+ValidateParameters:
+  &pmicIndex=0
+  &periphIndex=0
+  &periphInternalIndex=&PM_UNKNOWN_PERIPH_INTERNAL_INDEX
+
+  &BusAccessMode=DIALOG.STRING(ACCESS_MODE_PD)
+
+  GOSUB SetOwnerChannel DIALOG.STRING(OWNER_PD)
+
+  IF DIALOG.STRING(PMIC_INDEX_PD)=="PMIC B"
+  (
+    &pmicIndex=1
+  )
+  ELSE IF DIALOG.STRING(PMIC_INDEX_PD)=="PMIC C"
+  (
+    &pmicIndex=2
+  )
+  ELSE IF DIALOG.STRING(PMIC_INDEX_PD)=="PMIC D"
+  (
+    &pmicIndex=3
+  )
+  ELSE IF DIALOG.STRING(PMIC_INDEX_PD)=="PMIC E"
+  (
+    &pmicIndex=4
+  )
+  ELSE IF DIALOG.STRING(PMIC_INDEX_PD)=="PMIC F"
+  (
+    &pmicIndex=5
+  )
+  ELSE IF DIALOG.STRING(PMIC_INDEX_PD)=="PMIC G"
+  (
+    &pmicIndex=6
+  )
+  ELSE
+  (
+    &pmicIndex=0
+  )
+
+  &periphIndex=DIALOG.STRING(PERIPHERAL_INDEX_PD)+"."
+
+  IF DIALOG.STRING(PERIPHERAL_NAME_PD)=="CLOCK"
+  (
+    &periphInternalIndex=&PM_CLOCK_PERIPH_INTERNAL_INDEX
+  )
+  ELSE IF DIALOG.STRING(PERIPHERAL_NAME_PD)=="MPP"
+  (
+    &periphInternalIndex=&PM_MPP_PERIPH_INTERNAL_INDEX
+  )
+  ELSE IF DIALOG.STRING(PERIPHERAL_NAME_PD)=="GPIO"
+  (
+    &periphInternalIndex=&PM_GPIO_PERIPH_INTERNAL_INDEX
+  )
+  ELSE IF DIALOG.STRING(PERIPHERAL_NAME_PD)=="SMPS"
+  (
+    &periphInternalIndex=&PM_SMPS_PERIPH_INTERNAL_INDEX
+  )
+  ELSE IF DIALOG.STRING(PERIPHERAL_NAME_PD)=="LDO"
+  (
+    &periphInternalIndex=&PM_LDO_PERIPH_INTERNAL_INDEX
+  )
+  ELSE IF DIALOG.STRING(PERIPHERAL_NAME_PD)=="VS"
+  (
+    &periphInternalIndex=&PM_VS_PERIPH_INTERNAL_INDEX
+  )
+  ELSE IF DIALOG.STRING(PERIPHERAL_NAME_PD)=="BOOST"
+  (
+    &periphInternalIndex=&PM_BOOST_PERIPH_INTERNAL_INDEX
+  )
+  ELSE IF DIALOG.STRING(PERIPHERAL_NAME_PD)=="BOOST_BYP"
+  (
+    &periphInternalIndex=&PM_BOOST_BYP_PERIPH_INTERNAL_INDEX
+  )
+  ELSE IF DIALOG.STRING(PERIPHERAL_NAME_PD)=="BOB"
+  (
+    &periphInternalIndex=&PM_BOB_PERIPH_INTERNAL_INDEX
+  )
+  ELSE
+  (
+    &periphInternalIndex=&PM_UNKNOWN_PERIPH_INTERNAL_INDEX
+  )
+
+  RETURN &pmicIndex &periphInternalIndex &periphIndex
+
+;=============================================================================
+; SUB: PonReasons
+;=============================================================================
+
+PonReasons:
+
+  ENTRY &ponDeviceIndex
+
+  &ponBaseAddr=0x800
+  &ponSubtypeAddr=&ponBaseAddr+0x05
+  &ponReason1Addr=&ponBaseAddr+0x08
+  &warmresetReason1Addr=&ponBaseAddr+0x0A
+  &warmresetReason2Addr=&ponBaseAddr+0x0B
+  &poffReason1Addr=&ponBaseAddr+0x0C
+  &poffReason2Addr=&ponBaseAddr+0x0D
+  &ponReason1Data=0
+  &warmresetReason1Data=0
+  &warmresetReason2Data=0
+  &poffReason1Data=0
+  &poffReason2Data=0
+  &ponReasonStr="NONE"
+  &warmresetReasonStr="NONE"
+  &poffReasonStr="NONE"
+  &stage3FaultReasonStr="NONE"
+  &mask=0
+  &reasonIndex=0
+
+  &onReasonAddr=&ponBaseAddr+0xC4
+  &offReasonAddr=&ponBaseAddr+0xC7
+  &faultReason1Addr=&ponBaseAddr+0xC8
+  &faultReason2Addr=&ponBaseAddr+0xC9
+  &stage3ReasonAddr=&ponBaseAddr+0xCA
+  &onReasonData=0
+  &offReasonData=0
+  &faultReason1Data=0
+  &faultReason2Data=0
+  &stage3ReasonData=0
+  &onReasonStr="NONE"
+  &offReasonStr="NONE"
+  &stage3FaultReasonStr="NONE"
+  &stage3ReasonStr="NONE"
+
+  IF (&PM_VERSION_DETECT_FLAG==0)
+  (
+    GOSUB PmicVersionDetection
+  )
+
+  GOSUB PMICRead &ponSubtypeAddr &ponDeviceIndex
+  ENTRY &status &ponSubtypeData
+  IF (&ponSubtypeData>=0x4)
+  (
+    &ponReason1Addr=&ponBaseAddr+0xC0
+    &warmresetReason1Addr=&ponBaseAddr+0xC2
+    &poffReason1Addr=&ponBaseAddr+0xC5
+  )
+
+  VAR.NEW char[8][11] \ponReason1Arr
+
+  VAR.SET \ponReason1Arr[0]="HARD_RESET"
+  VAR.SET \ponReason1Arr[1]="SMPL"
+  VAR.SET \ponReason1Arr[2]="RTC"
+  VAR.SET \ponReason1Arr[3]="DC_CHG"
+  VAR.SET \ponReason1Arr[4]="USB_CHG"
+  VAR.SET \ponReason1Arr[5]="PON1"
+  VAR.SET \ponReason1Arr[6]="CBLPWR_N"
+  VAR.SET \ponReason1Arr[7]="KPDPWR_N"
+
+  VAR.NEW char[8][17] \warmresetReason1Arr
+
+  VAR.SET \warmresetReason1Arr[0]="SOFTWARE"
+  VAR.SET \warmresetReason1Arr[1]="PS_HOLD"
+  VAR.SET \warmresetReason1Arr[2]="PMIC_WDOG"
+  VAR.SET \warmresetReason1Arr[3]="GP1(KPDRES1)"
+  VAR.SET \warmresetReason1Arr[4]="GP2(KPDRES2)"
+  VAR.SET \warmresetReason1Arr[5]="KPDPWR_AND_RESIN"
+  VAR.SET \warmresetReason1Arr[6]="RESIN_N"
+  VAR.SET \warmresetReason1Arr[7]="KPDPWR_N"
+
+  VAR.NEW char[8][10] \warmresetReason2Arr
+
+  VAR.SET \warmresetReason2Arr[0]="NONE"
+  VAR.SET \warmresetReason2Arr[1]="NONE"
+  VAR.SET \warmresetReason2Arr[2]="NONE"
+  VAR.SET \warmresetReason2Arr[3]="NONE"
+  VAR.SET \warmresetReason2Arr[4]="TFT"
+  VAR.SET \warmresetReason2Arr[5]="NONE"
+  VAR.SET \warmresetReason2Arr[6]="NONE"
+  VAR.SET \warmresetReason2Arr[7]="NONE"
+
+  VAR.NEW char[8][17] \poffReason1Arr
+
+  VAR.SET \poffReason1Arr[0]="SOFTWARE"
+  VAR.SET \poffReason1Arr[1]="PS_HOLD"
+  VAR.SET \poffReason1Arr[2]="PMIC_WDOG"
+  VAR.SET \poffReason1Arr[3]="GP1(KPDRES1)"
+  VAR.SET \poffReason1Arr[4]="GP2(KPDRES2)"
+  VAR.SET \poffReason1Arr[5]="KPDPWR_AND_RESIN"
+  VAR.SET \poffReason1Arr[6]="RESIN_N"
+  VAR.SET \poffReason1Arr[7]="KPDPWR_N"
+
+  VAR.NEW char[8][10] \poffReason2Arr
+
+  VAR.SET \poffReason2Arr[0]="NONE"
+  VAR.SET \poffReason2Arr[1]="NONE"
+  VAR.SET \poffReason2Arr[2]="NONE"
+  VAR.SET \poffReason2Arr[3]="CHARGER"
+  VAR.SET \poffReason2Arr[4]="TFT"
+  VAR.SET \poffReason2Arr[5]="UVLO"
+  VAR.SET \poffReason2Arr[6]="OTST3"
+  VAR.SET \poffReason2Arr[7]="STAGE3"
+
+  VAR.NEW char[8][17] \faultReason1Arr
+
+  VAR.SET \faultReason1Arr[0]="GP_FAULT0"
+  VAR.SET \faultReason1Arr[1]="GP_FAULT1"
+  VAR.SET \faultReason1Arr[2]="GP_FAULT2"
+  VAR.SET \faultReason1Arr[3]="GP_FAULT3"
+  VAR.SET \faultReason1Arr[4]="MBG_FAULT"
+  VAR.SET \faultReason1Arr[5]="OVLO"
+  VAR.SET \faultReason1Arr[6]="UVLO"
+  VAR.SET \faultReason1Arr[7]="AVDD_RB"
+
+  VAR.NEW char[8][10] \faultReason2Arr
+
+  VAR.SET \faultReason2Arr[0]="NONE"
+  VAR.SET \faultReason2Arr[1]="NONE"
+  VAR.SET \faultReason2Arr[2]="NONE"
+  VAR.SET \faultReason2Arr[3]="FAULT_N"
+  VAR.SET \faultReason2Arr[4]="PBS_WATCHDOG"
+  VAR.SET \faultReason2Arr[5]="PBS_NACK"
+  VAR.SET \faultReason2Arr[6]="RESTART_PON"
+  VAR.SET \faultReason2Arr[7]="OTST3"
+
+  VAR.NEW char[8][10] \stage3ReasonArr
+
+  VAR.SET \stage3ReasonArr[0]="NONE"
+  VAR.SET \stage3ReasonArr[1]="NONE"
+  VAR.SET \stage3ReasonArr[2]="NONE"
+  VAR.SET \stage3ReasonArr[3]="NONE"
+  VAR.SET \stage3ReasonArr[4]="FAULT_N"
+  VAR.SET \stage3ReasonArr[5]="PBS_WATCHDOG"
+  VAR.SET \stage3ReasonArr[6]="PBS_NACK"
+  VAR.SET \stage3ReasonArr[7]="KPDPWR_ANDOR_RESIN"
+
+  DIALOG.SET PON_REASON_DATA ""
+  DIALOG.SET WARMRESET_REASON_DATA ""
+  DIALOG.SET POFF_REASON_DATA ""
+  DIALOG.SET STAGE3_FAULT_REASON_DATA ""
+
+  &mask=0x01
+  &reasonIndex=0
+
+  GOSUB PMICRead &ponReason1Addr &ponDeviceIndex
+  ENTRY &status &ponReason1Data
+  IF (&status!=0)
+  (
+    WHILE ((&mask<=0x80)&&(&reasonIndex<=0x7))
+    (
+      IF (((&ponReason1Data)&(&mask))!=0)
+      (
+        IF (VAR.STRING(\ponReason1Arr[&reasonIndex])!="NONE")
+        (
+          IF ("&ponReasonStr"=="NONE")
+          (
+            &ponReasonStr=VAR.STRING(\ponReason1Arr[&reasonIndex])
+          )
+          ELSE
+          (
+            &ponReasonStr="&ponReasonStr"+","+VAR.STRING(\ponReason1Arr[&reasonIndex])
+          )
+        )
+      )
+      &mask=((&mask)<<1)
+      &reasonIndex=&reasonIndex+1
+    )
+  )
+
+  &mask=0x01
+  &reasonIndex=0
+
+  GOSUB PMICRead &warmresetReason1Addr &ponDeviceIndex
+  ENTRY &status &warmresetReason1Data
+  IF (&status!=0)
+  (
+    WHILE ((&mask<=0x80)&&(&reasonIndex<=0x7))
+    (
+      IF (((&warmresetReason1Data)&(&mask))!=0)
+      (
+        IF (VAR.STRING(\warmresetReason1Arr[&reasonIndex])!="NONE")
+        (
+          IF ("&warmresetReasonStr"=="NONE")
+          (
+            &warmresetReasonStr=VAR.STRING(\warmresetReason1Arr[&reasonIndex])
+          )
+          ELSE
+          (
+            &warmresetReasonStr="&warmresetReasonStr"+","+VAR.STRING(\warmresetReason1Arr[&reasonIndex])
+          )
+        )
+      )
+      &mask=((&mask)<<1)
+      &reasonIndex=&reasonIndex+1
+    )
+  )
+
+  IF (&ponSubtypeData<0x4)
+  (
+    &mask=0x01
+    &reasonIndex=0
+
+    GOSUB PMICRead &warmresetReason2Addr &ponDeviceIndex
+    ENTRY &status &warmresetReason2Data
+    IF (&status!=0)
+    (
+      WHILE ((&mask<=0x80)&&(&reasonIndex<=0x7))
+      (
+        IF (((&warmresetReason2Data)&(&mask))!=0)
+        (
+          IF (VAR.STRING(\warmresetReason2Arr[&reasonIndex])!="NONE")
+          (
+            IF ("&warmresetReasonStr"=="NONE")
+            (
+              &warmresetReasonStr=VAR.STRING(\warmresetReason2Arr[&reasonIndex])
+            )
+            ELSE
+            (
+              &warmresetReasonStr="&warmresetReasonStr"+","+VAR.STRING(\warmresetReason2Arr[&reasonIndex])
+            )
+          )
+        )
+        &mask=((&mask)<<1)
+        &reasonIndex=&reasonIndex+1
+      )
+    )
+  )
+
+  &mask=0x01
+  &reasonIndex=0
+
+  GOSUB PMICRead &poffReason1Addr &ponDeviceIndex
+  ENTRY &status &poffReason1Data
+  IF (&status!=0)
+  (
+    WHILE ((&mask<=0x80)&&(&reasonIndex<=0x7))
+    (
+      IF (((&poffReason1Data)&(&mask))!=0)
+      (
+        IF (VAR.STRING(\poffReason1Arr[&reasonIndex])!="NONE")
+        (
+          IF ("&poffReasonStr"=="NONE")
+          (
+            &poffReasonStr=VAR.STRING(\poffReason1Arr[&reasonIndex])
+          )
+          ELSE
+          (
+            &poffReasonStr="&poffReasonStr"+","+VAR.STRING(\poffReason1Arr[&reasonIndex])
+          )
+        )
+      )
+      &mask=((&mask)<<1)
+      &reasonIndex=&reasonIndex+1
+    )
+  )
+
+  IF (&ponSubtypeData<0x4)
+  (
+    &mask=0x01
+    &reasonIndex=0
+
+    GOSUB PMICRead &poffReason2Addr &ponDeviceIndex
+    ENTRY &status &poffReason2Data
+    IF (&status!=0)
+    (
+      WHILE ((&mask<=0x80)&&(&reasonIndex<=0x7))
+      (
+        IF (((&poffReason2Data)&(&mask))!=0)
+        (
+          IF (VAR.STRING(\poffReason2Arr[&reasonIndex])!="NONE")
+          (
+            IF ("&poffReasonStr"=="NONE")
+            (
+              &poffReasonStr=VAR.STRING(\poffReason2Arr[&reasonIndex])
+            )
+            ELSE
+            (
+              &poffReasonStr="&poffReasonStr"+","+VAR.STRING(\poffReason2Arr[&reasonIndex])
+            )
+          )
+        )
+        &mask=((&mask)<<1)
+        &reasonIndex=&reasonIndex+1
+      )
+    )
+  )
+
+  IF (&ponSubtypeData>=0x4)
+  (
+
+    GOSUB PMICRead &onReasonAddr &ponDeviceIndex
+    ENTRY &status &onReasonData
+    IF (&status!=0)
+    (
+      IF ((&onReasonData&0x40)!=0)
+      (
+        &ponReasonStr="WARM_RESET"
+      )
+      ELSE IF ((&onReasonData&0x80)!=0)
+      (
+        &warmresetReasonStr="NONE"
+      )
+    )
+
+    GOSUB PMICRead &offReasonAddr &ponDeviceIndex
+    ENTRY &status &offReasonData
+    IF (&status!=0)
+    (
+      IF ((&offReasonData&0x80)==0)
+      (
+        IF ((&offReasonData&0x04)!=0)
+        (
+          &poffReasonStr="RAW_XVDD_RB"
+        )
+        ELSE IF ((&offReasonData&0x08)!=0)
+        (
+          &poffReasonStr="RAW_DVDD_RB"
+        )
+        ELSE IF ((&offReasonData&0x10)!=0)
+        (
+          &poffReasonStr="IMM_XVDD_SDN"
+        )
+        ELSE IF ((&offReasonData&0x40)!=0)
+        (
+          &poffReasonStr="FAULT"
+        )
+        ELSE IF ((&offReasonData&0x20)!=0)
+        (
+          &poffReasonStr="STAGE3"
+        )
+      )
+    )
+
+    IF ((&offReasonData&0x40)!=0)
+    (
+      &mask=0x01
+      &reasonIndex=0
+
+      GOSUB PMICRead &faultReason1Addr &ponDeviceIndex
+      ENTRY &status &faultReason1Data
+      IF (&status!=0)
+      (
+        WHILE ((&mask<=0x80)&&(&reasonIndex<=0x7))
+        (
+          IF (((&faultReason1Data)&(&mask))!=0)
+          (
+            IF (VAR.STRING(\faultReason1Arr[&reasonIndex])!="NONE")
+            (
+              IF ("&stage3FaultReasonStr"=="NONE")
+              (
+                &stage3FaultReasonStr=VAR.STRING(\faultReason1Arr[&reasonIndex])
+              )
+              ELSE
+              (
+                &stage3FaultReasonStr="&stage3FaultReasonStr"+","+VAR.STRING(\faultReason1Arr[&reasonIndex])
+              )
+            )
+          )
+          &mask=((&mask)<<1)
+          &reasonIndex=&reasonIndex+1
+        )
+      )
+    
+      &mask=0x01
+      &reasonIndex=0
+
+      GOSUB PMICRead &faultReason2Addr &ponDeviceIndex
+      ENTRY &status &faultReason2Data
+      IF (&status!=0)
+      (
+        WHILE ((&mask<=0x80)&&(&reasonIndex<=0x7))
+        (
+          IF (((&faultReason2Data)&(&mask))!=0)
+          (
+            IF (VAR.STRING(\faultReason2Arr[&reasonIndex])!="NONE")
+            (
+              IF ("&stage3FaultReasonStr"=="NONE")
+              (
+                &stage3FaultReasonStr=VAR.STRING(\faultReason2Arr[&reasonIndex])
+              )
+              ELSE
+              (
+                &stage3FaultReasonStr="&stage3FaultReasonStr"+","+VAR.STRING(\faultReason2Arr[&reasonIndex])
+              )
+            )
+          )
+          &mask=((&mask)<<1)
+          &reasonIndex=&reasonIndex+1
+        )
+      )
+    )
+    ELSE IF ((&offReasonData&0x20)!=0)
+    (
+      &mask=0x01
+      &reasonIndex=0
+
+      GOSUB PMICRead &stage3ReasonAddr &ponDeviceIndex
+      ENTRY &status &stage3ReasonData
+      IF (&status!=0)
+      (
+        WHILE ((&mask<=0x80)&&(&reasonIndex<=0x7))
+        (
+          IF (((&stage3ReasonData)&(&mask))!=0)
+          (
+            IF (VAR.STRING(\stage3ReasonArr[&reasonIndex])!="NONE")
+            (
+              IF ("&stage3FaultReasonStr"=="NONE")
+              (
+                &stage3FaultReasonStr=VAR.STRING(\stage3ReasonArr[&reasonIndex])
+              )
+              ELSE
+              (
+                &stage3FaultReasonStr="&stage3FaultReasonStr"+","+VAR.STRING(\stage3ReasonArr[&reasonIndex])
+              )
+            )
+          )
+          &mask=((&mask)<<1)
+          &reasonIndex=&reasonIndex+1
+        )
+      )
+    )
+  )
+
+  &mask=0x01
+  &reasonIndex=0
+
+  DIALOG.SET PON_REASON_DATA "&ponReasonStr"
+  DIALOG.SET WARMRESET_REASON_DATA "&warmresetReasonStr"
+  DIALOG.SET POFF_REASON_DATA "&poffReasonStr"
+  DIALOG.SET STAGE3_FAULT_REASON_DATA "&stage3FaultReasonStr"
+
+  RETURN
+
+;=============================================================================
+; SUB: PmicInfoDisplay
+;=============================================================================
+
+PmicInfoDisplay:
+
+  &periphStatus=&PM_ERR_SUCCESS
+  &pmicaModelValue=0
+  &pmicbModelValue=0
+  &pmiccModelValue=0
+  &pmicdModelValue=0
+  &pmicaModeStr=""
+  &pmicbModelStr=""
+  &pmiccModelStr=""
+  &pmicdModelStr=""
+  &pmicaRevStr=""
+  &pmicbRevStr=""
+  &pmiccRevStr=""
+  &pmicdRevStr=""
+
+  DIALOG.SET PMICA_DATA ""
+  DIALOG.SET PMICB_DATA ""
+  DIALOG.SET PMICC_DATA ""
+  DIALOG.SET PMICD_DATA ""
+
+  GOSUB PmicVersionDetectionFlagCheck
+
+  &pmicaModelValue=VAR.VALUE(\PmicModelSubTypeValueArr[0])
+  &pmicbModelValue=VAR.VALUE(\PmicModelSubTypeValueArr[1])
+  &pmiccModelValue=VAR.VALUE(\PmicModelSubTypeValueArr[2])
+  &pmicdModelValue=VAR.VALUE(\PmicModelSubTypeValueArr[3])
+
+  &pmicaModelStr=VAR.STRING(\RevidPeriphSubtypeNamesArr[&pmicaModelValue])
+  &pmicaRevStr=" v"+FORMAT.DECIMAL(0,VAR.VALUE(\PmicAllLayerRevArr[0]))+"."+FORMAT.DECIMAL(0,VAR.VALUE(\PmicMetalRevArr[0]))
+
+  DIALOG.SET PMICA_DATA "&pmicaModelStr"+"&pmicaRevStr"
+
+  IF (&pmicbModelValue!=0)
+  (
+    &pmicbModelStr=VAR.STRING(\RevidPeriphSubtypeNamesArr[&pmicbModelValue])
+    &pmicbRevStr=" v"+FORMAT.DECIMAL(0,VAR.VALUE(\PmicAllLayerRevArr[1]))+"."+FORMAT.DECIMAL(0,VAR.VALUE(\PmicMetalRevArr[1]))
+    DIALOG.SET PMICB_DATA "&pmicbModelStr"+"&pmicbRevStr"
+  )
+  ELSE
+  (
+    DIALOG.SET PMICB_DATA "NONE"
+  )
+
+  IF (&pmiccModelValue!=0)
+  (
+    &pmiccModelStr=VAR.STRING(\RevidPeriphSubtypeNamesArr[&pmiccModelValue])
+    &pmiccRevStr=" v"+FORMAT.DECIMAL(0,VAR.VALUE(\PmicAllLayerRevArr[2]))+"."+FORMAT.DECIMAL(0,VAR.VALUE(\PmicMetalRevArr[2]))
+    DIALOG.SET PMICC_DATA "&pmiccModelStr"+"&pmiccRevStr"
+  )
+  ELSE
+  (
+    DIALOG.SET PMICC_DATA "NONE"
+  )
+
+  IF (&pmicdModelValue!=0)
+  (
+    &pmicdModelStr=VAR.STRING(\RevidPeriphSubtypeNamesArr[&pmicdModelValue])
+    &pmicdRevStr=" v"+FORMAT.DECIMAL(0,VAR.VALUE(\PmicAllLayerRevArr[3]))+"."+FORMAT.DECIMAL(0,VAR.VALUE(\PmicMetalRevArr[3]))
+    DIALOG.SET PMICD_DATA "&pmicdModelStr"+"&pmicdRevStr"
+  )
+  ELSE
+  (
+    DIALOG.SET PMICD_DATA "NONE"
+  )
+
+  RETURN
+
+
+;=============================================================================
+; SUB: PmicOtpSblVerDisplay
+;=============================================================================
+
+PmicOtpSblVerDisplay:
+
+  &pmicOtpSblSeqData=""
+  &primaryDeviceIndex=0
+  DIALOG.SET PMICA_DATA ""
+  DIALOG.SET PMICB_DATA ""
+  DIALOG.SET PMICC_DATA ""
+  DIALOG.SET PMICD_DATA ""
+
+  
+  IF (&PM_VERSION_DETECT_FLAG==0)
+  (
+    GOSUB PmicVersionDetection
+  )
+ 
+  &pmicaModelValue=VAR.VALUE(\PmicModelSubTypeValueArr[0])
+  &pmicbModelValue=VAR.VALUE(\PmicModelSubTypeValueArr[1])
+  &pmiccModelValue=VAR.VALUE(\PmicModelSubTypeValueArr[2])
+  &pmicdModelValue=VAR.VALUE(\PmicModelSubTypeValueArr[3])
+ 
+  IF (&pmicaModelValue!=0)
+   (
+     GOSUB PmicOtpSblRead &primaryDeviceIndex
+     ENTRY &pmicOtpSblSeqData
+     DIALOG.SET PMICA_DATA "&pmicOtpSblSeqData"
+   )
+   ELSE
+   (
+      DIALOG.SET PMICA_DATA "NONE"
+   )
+   
+
+  IF (&pmicbModelValue!=0)
+  (
+     GOSUB PmicOtpSblRead (&primaryDeviceIndex+1)
+     ENTRY &pmicOtpSblSeqData
+     DIALOG.SET PMICB_DATA "&pmicOtpSblSeqData"
+
+  )
+  ELSE
+  (
+    DIALOG.SET PMICB_DATA "NONE"
+  )
+
+  IF (&pmiccModelValue!=0)
+  (
+     GOSUB PmicOtpSblRead (&primaryDeviceIndex+2)
+     ENTRY &pmicOtpSblSeqData
+     DIALOG.SET PMICC_DATA "&pmicOtpSblSeqData"
+
+  )
+  ELSE
+  (
+    DIALOG.SET PMICC_DATA "NONE"
+  )
+
+  IF (&pmicdModelValue!=0)
+  (
+    
+     GOSUB PmicOtpSblRead (&primaryDeviceIndex+3)
+     ENTRY &pmicOtpSblSeqData
+     DIALOG.SET PMICD_DATA "&pmicOtpSblSeqData"
+
+  )
+  ELSE
+  (
+    DIALOG.SET PMICD_DATA "NONE"
+  )
+  RETURN
+
+;=============================================================================
+; SUB: PmicOtpSblRead
+;=============================================================================
+
+PmicOtpSblRead:
+
+  ENTRY &pmicOtpIndex
+  &otpStatus=&PM_ERR_SUCCESS
+  &otpData=0
+  &pmicSblSeqAddr=0x150
+  &pmicOtpAddr=0x160
+  &PmicOtpSblData=""
+
+  IF (&pmicOtpIndex==0)
+  (
+    GOSUB PMICRead (&pmicSblSeqAddr+1) &pmicOtpIndex
+    ENTRY &otpStatus &otpData
+    &PmicOtpSblData= "Sbl:b"+"&otpData"
+    GOSUB PMICRead &pmicSblSeqAddr &pmicOtpIndex
+    ENTRY &otpStatus &otpData
+    &PmicOtpSblData= "&PmicOtpSblData"+"_v"+"&otpData,"
+  )
+  GOSUB PMICRead &pmicOtpAddr &pmicOtpIndex
+  ENTRY &otpStatus &otpData
+  &PmicOtpSblData= "&PmicOtpSblData"+"Otp:b"+"&otpData"
+  GOSUB PMICRead (&pmicOtpAddr+1) &pmicOtpIndex
+  ENTRY &otpStatus &otpData
+  &PmicOtpSblData= "&PmicOtpSblData"+"_v"+"&otpData"
+  
+  RETURN &PmicOtpSblData
+
+;=============================================================================
+; SUB: PmicVersionDetectionFlagCheck
+;=============================================================================
+
+PmicVersionDetectionFlagCheck:
+
+  &periphStatus=&PM_ERR_SUCCESS
+  &pmicTypeValue=0
+  &pmicSubTypeValue=0
+  &pmicSubTypeValue=0
+  &pmicAllLayerValue=0
+  &pmicMetalValue=0
+  &pmicVersionIndex=0
+
+  IF (&PM_VERSION_DETECT_FLAG==0)
+  (
+    GOSUB PmicVersionDetection
+  )
+  ELSE
+  (
+    WHILE (&pmicVersionIndex<&PM_MAX_NUM_PMICS)
+    (
+      GOSUB PmicInfoRead &pmicVersionIndex
+      ENTRY &periphStatus &pmicTypeValue &pmicSubTypeValue &pmicAllLayerValue &pmicMetalValue
+
+      IF (&pmicTypeValue!=VAR.VALUE(\PmicModelTypeValueArr[&pmicVersionIndex]))
+      (
+        GOSUB PmicVersionDetection
+      )
+      ELSE IF (&pmicSubTypeValue!=VAR.VALUE(\PmicModelSubTypeValueArr[&pmicVersionIndex]))
+      (
+        GOSUB PmicVersionDetection
+      )
+      ELSE IF (&pmicAllLayerValue!=VAR.VALUE(\PmicAllLayerRevArr[&pmicVersionIndex]))
+      (
+        GOSUB PmicVersionDetection
+      )
+      ELSE IF (&pmicMetalValue!=VAR.VALUE(\PmicMetalRevArr[&pmicVersionIndex]))
+      (
+        GOSUB PmicVersionDetection
+      )
+
+      &pmicVersionIndex=&pmicVersionIndex+1
+    )
+  )
+
+  RETURN
+
+;=============================================================================
+; SUB: PmicVersionDetection
+;=============================================================================
+
+PmicVersionDetection:
+
+  local &spmi_target &spmi_status
+
+  &verPeriphStatus=&PM_ERR_SUCCESS
+  &verPeriphBaseAddr=0x100
+  &verPeriphTypeAddr=&verPeriphBaseAddr+0x04
+  &verPeriphTypeData=0
+  &verPeriphTypeStatus=0
+  &verSlaveId=0
+  &verDeviceIndex=0
+
+  IF (!STATE.RUN()&&(SYSTEM.MODE()<=0x5))
+  (
+    sys.m.a
+  )
+
+  WHILE (&verSlaveId<=&PM_MAX_NUM_SLAVE_IDS)
+  (
+    IF (&verDeviceIndex<&PM_MAX_NUM_PMICS)
+    (
+      do &PmicIoScript read &SPMIOwnerChannel &BusAccessMode &verSlaveId &verPeriphTypeAddr
+      ENTRY &verPeriphTypeStatus &verPeriphTypeData
+
+      IF ((&verSlaveId==0x0)&&(&verPeriphTypeStatus==0xFF))
+      (
+        &spmi_target="&PM_SPMI_CFG_TARGET"
+
+        IF ("&spmi_target"!="")
+        (
+          do &PmicIoScript config &spmi_target
+          entry &spmi_status
+          IF (&spmi_status==1)
+          (
+            do &PmicIoScript read &SPMIOwnerChannel &BusAccessMode &verSlaveId &verPeriphTypeAddr
+            ENTRY &verPeriphTypeStatus &verPeriphTypeData
+          )
+        )
+        ELSE
+        (
+          DIALOG.OK "Select TARGET to initialize spmi!"
+        )
+      )
+
+      IF ((&verPeriphTypeStatus!=0)&&(&verPeriphTypeData!=0)&&(&verPeriphTypeData==&PM_REVID_PERIPH_TYPE_QC_PMIC))
+      (
+        VAR.SET \PmicModelTypeValueArr[&verDeviceIndex]=&verPeriphTypeData
+        VAR.SET \PmicSlaveIdArr[&verDeviceIndex]=&verSlaveId
+        GOSUB PmicInfoRead &verDeviceIndex
+        ENTRY &verPeriphStatus &revidTypeData &revidSubTypeData &allLayerRevData &metalRevData
+
+        VAR.SET \PmicModelSubTypeValueArr[&verDeviceIndex]=&revidSubTypeData
+        VAR.SET \PmicAllLayerRevArr[&verDeviceIndex]=&allLayerRevData
+        VAR.SET \PmicMetalRevArr[&verDeviceIndex]=&metalRevData
+      )
+    )
+
+    &verDeviceIndex=&verDeviceIndex+1
+    &verSlaveId=&verSlaveId+2
+  )
+
+  IF ((&verPeriphStatus==&PM_ERR_SUCCESS)&&(VAR.VALUE(\PmicModelTypeValueArr[0])==&PM_REVID_PERIPH_TYPE_QC_PMIC))
+  (
+    &PM_VERSION_DETECT_FLAG=1
+  )
+
+  RETURN
+
+;=============================================================================
+; SUB: PmicInfoRead
+;=============================================================================
+
+PmicInfoRead:
+
+  ENTRY &pmicDeviceIndex 
+
+  &pmicInfoReadStatus=&PM_ERR_SUCCESS
+  &revidBaseAddr=0x100
+  &allLayerRevAddr=0
+  &metalRevAddr=0
+  &revidTypeAddr=0
+  &revidSubTypeAddr=0
+  &allLayerRevData=0
+  &metalRevData=0
+  &revidTypeData=0
+  &revidSubTypeData=0
+
+  &revidTypeAddr=&revidBaseAddr+0x04
+  GOSUB PMICRead &revidTypeAddr &pmicDeviceIndex
+  ENTRY &status &revidTypeData
+  IF ((&status!=0)&&(&revidTypeData==&PM_REVID_PERIPH_TYPE_QC_PMIC))
+  (
+    &revidSubTypeAddr=&revidBaseAddr+0x05
+    GOSUB PMICRead &revidSubTypeAddr &pmicDeviceIndex
+    ENTRY &status &revidSubTypeData
+    IF ((&status!=0)&&(&revidSubTypeData!=0)&&(&revidSubTypeData<&PM_REVID_PERIPH_SUBTYPES_MAX_NUM))
+    (
+      &allLayerRevAddr=&revidBaseAddr+0x03
+      GOSUB PMICRead &allLayerRevAddr &pmicDeviceIndex
+      ENTRY &status &allLayerRevData
+      IF (&status!=0)
+      (
+        IF (&revidSubTypeData!=1)
+        (
+          IF (&allLayerRevData<1)
+          (
+            &allLayerRevData=&allLayerRevData+1
+          )
+        )
+        ELSE
+        (
+          IF (&allLayerRevData<2)
+          (
+            &allLayerRevData=&allLayerRevData+1
+          )
+        )
+      )
+      ELSE
+      (
+        &pmicInfoReadStatus=&PM_ERR_FAILURE
+      )
+
+      &metalRevAddr=&revidBaseAddr+0x02
+      GOSUB PMICRead &metalRevAddr &pmicDeviceIndex
+      ENTRY &status &metalRevData
+      IF (&status==0)
+      (
+        &pmicInfoReadStatus=&PM_ERR_FAILURE
+      )
+    )
+    ELSE
+    (
+      &pmicInfoReadStatus=&PM_ERR_FAILURE
+    )
+  )
+  ELSE
+  (
+    &pmicInfoReadStatus=&PM_ERR_FAILURE
+  )
+
+  IF (&pmicInfoReadStatus!=&PM_ERR_SUCCESS)
+  (
+    &allLayerRevData=0
+    &metalRevData=0
+    &revidTypeData=0
+    &revidSubTypeData=0
+  )
+
+  RETURN &pmicInfoReadStatus &revidTypeData &revidSubTypeData &allLayerRevData &metalRevData
+
+;=============================================================================
+; SUB: PeripheralInfoRead
+;=============================================================================
+
+PeripheralInfoRead:
+
+  ENTRY &pmicIndex &periphInternalIndex &periphIndex
+
+  &periphInfoReadStatus=&PM_ERR_SUCCESS
+  &periphBaseAddr=0
+  &periphTypeAddr=0
+  &periphTypeData=0
+  &periphSubTypeAddr=0
+  &periphSubTypeData=0
+  &periphOffset=0x100
+
+  DIALOG.SET PERIPHERAL_TYPE_DATA ""
+  DIALOG.SET PERIPHERAL_SUBTYPE_DATA ""
+  DIALOG.SET PERIPHERAL_BASEADDR_DATA ""
+  DIALOG.SET PERIPHERAL_STATUS_DATA ""
+
+  IF (&PM_VERSION_DETECT_FLAG==0)
+  (
+    GOSUB PmicVersionDetection
+  )
+
+  IF (&periphInternalIndex==&PM_SMPS_PERIPH_INTERNAL_INDEX)
+  (
+    &periphOffset=0x300
+
+    IF ((VAR.VALUE(\PmicModelSubTypeValueArr[&pmicIndex])==8)&&(VAR.VALUE(\PmicAllLayerRevArr[&pmicIndex])==1)&&(&periphIndex>3))
+    (
+      &periphIndex=&periphIndex+1
+    )
+  )
+
+  IF (&periphInternalIndex==&PM_UNKNOWN_PERIPH_INTERNAL_INDEX)
+  (
+    &periphInfoReadStatus=&PM_ERR_FAILURE
+  )
+  ELSE
+  (
+    &periphBaseAddr=VAR.VALUE(\PeriphBaseAddrArr[&periphInternalIndex])+((&periphIndex-1)*&periphOffset)
+    &periphTypeAddr=&periphBaseAddr+0x04
+    GOSUB PMICRead &periphTypeAddr &pmicIndex
+    ENTRY &status &periphTypeData
+    IF ((&status==0)||(&periphTypeData==0))
+    (
+      &periphInfoReadStatus=&PM_ERR_FAILURE
+    )
+    ELSE
+    (
+      &periphSubTypeAddr=&periphBaseAddr+0x05
+      GOSUB PMICRead &periphSubTypeAddr &pmicIndex
+      ENTRY &status &periphSubTypeData
+      IF ((&status==0)||(&periphSubTypeData==0))
+      (
+        &periphInfoReadStatus=&PM_ERR_FAILURE
+      )
+    )
+  )
+
+  IF (&periphInfoReadStatus==&PM_ERR_SUCCESS)
+  (
+    GOSUB PeripheralInfoDisplay &pmicIndex &periphInternalIndex &periphTypeData &periphSubTypeData &periphBaseAddr
+    ENTRY &periphInfoReadStatus
+    IF (&periphInfoReadStatus==&PM_ERR_SUCCESS)
+    (
+      DIALOG.SET PERIPHERAL_STATUS_DATA "Valid Peripheral"
+    )
+    ELSE
+    (
+      DIALOG.SET PERIPHERAL_STATUS_DATA "Invalid Peripheral"
+    )
+  )
+  ELSE
+  (
+    DIALOG.SET PERIPHERAL_STATUS_DATA "Invalid Peripheral"
+  )
+
+  IF (&periphInternalIndex==&PM_SMPS_PERIPH_INTERNAL_INDEX)
+  (
+    IF ((VAR.VALUE(\PmicModelSubTypeValueArr[&pmicIndex])==8)&&(VAR.VALUE(\PmicAllLayerRevArr[&pmicIndex])==1)&&(&periphIndex>3))
+    (
+      &periphIndex=&periphIndex-1
+    )
+  )
+
+  RETURN &periphInfoReadStatus &periphTypeData &periphSubTypeData &periphBaseAddr
+
+;=============================================================================
+; SUB: PeripheralInfoDisplay
+;=============================================================================
+
+PeripheralInfoDisplay:
+
+  ENTRY  &pmicIndex &periphInternalIndex &periphTypeData &periphSubTypeData &periphBaseAddr
+
+  &periphInfoDisplayStatus=&PM_ERR_SUCCESS
+  &index=0.
+
+  IF (&periphInternalIndex==&PM_CLOCK_PERIPH_INTERNAL_INDEX)
+  (
+    IF (&periphTypeData==&PM_CLOCK_PERIPH_TYPE)
+    (
+      DIALOG.SET PERIPHERAL_TYPE_DATA "CLOCK"
+      IF (&periphSubTypeData>=&PM_CLOCK_PERIPH_SUBTYPES_MAX_NUM)
+      (
+        DIALOG.SET PERIPHERAL_SUBTYPE_DATA ""
+      )
+      ELSE
+      (
+        IF ((&periphBaseAddr>=&PM_CLOCK_BB_PERIPH_BASE_ADDR)&&(&periphBaseAddr<&PM_CLOCK_RF_PERIPH_BASE_ADDR))
+        (
+          &index=(((&periphBaseAddr-&PM_CLOCK_BB_PERIPH_BASE_ADDR)/0x100)+1)
+          IF ((VAR.VALUE(\PmicModelSubTypeValueArr[&pmicIndex])==8)&&(&index==2))
+          (
+            DIALOG.SET PERIPHERAL_SUBTYPE_DATA "LN_"+VAR.STRING(\ClockPeriphSubtypeNamesArr[&periphSubTypeData])
+          )
+          ELSE
+          (
+            DIALOG.SET PERIPHERAL_SUBTYPE_DATA VAR.STRING(\ClockPeriphSubtypeNamesArr[&periphSubTypeData])+FORMAT.DECIMAL(0,&index)
+          )
+        )
+        ELSE IF ((&periphBaseAddr>=&PM_CLOCK_RF_PERIPH_BASE_ADDR)&&(&periphBaseAddr<&PM_CLOCK_LN_BB_PERIPH_BASE_ADDR))
+        (
+          &index=(((&periphBaseAddr-&PM_CLOCK_RF_PERIPH_BASE_ADDR)/0x100)+1)
+          DIALOG.SET PERIPHERAL_SUBTYPE_DATA VAR.STRING(\ClockPeriphSubtypeNamesArr[&periphSubTypeData])+FORMAT.DECIMAL(0,&index)
+        )
+        ELSE IF ((&periphBaseAddr>=&PM_CLOCK_LN_BB_PERIPH_BASE_ADDR)&&(&periphBaseAddr<&PM_CLOCK_DIST_PERIPH_BASE_ADDR))
+        (
+          DIALOG.SET PERIPHERAL_SUBTYPE_DATA "LN_"+VAR.STRING(\ClockPeriphSubtypeNamesArr[&periphSubTypeData])
+        )
+        ELSE IF (&periphBaseAddr>=&PM_CLOCK_DIV_PERIPH_BASE_ADDR)
+        (
+          &index=(((&periphBaseAddr-&PM_CLOCK_DIV_PERIPH_BASE_ADDR)/0x100)+1)
+          DIALOG.SET PERIPHERAL_SUBTYPE_DATA VAR.STRING(\ClockPeriphSubtypeNamesArr[&periphSubTypeData])+FORMAT.DECIMAL(0,&index)
+        )
+        ELSE
+        (
+          DIALOG.SET PERIPHERAL_SUBTYPE_DATA VAR.STRING(\ClockPeriphSubtypeNamesArr[&periphSubTypeData])
+        )
+      )
+    ) 
+    ELSE
+    (
+      &periphInfoDisplayStatus=&PM_ERR_FAILURE
+    )
+  )
+  ELSE IF (&periphInternalIndex==&PM_MPP_PERIPH_INTERNAL_INDEX)
+  (
+    IF (&periphTypeData==&PM_MPP_PERIPH_TYPE)
+    (
+      DIALOG.SET PERIPHERAL_TYPE_DATA "MPP"
+      IF (&periphSubTypeData>=&PM_MPP_PERIPH_SUBTYPES_MAX_NUM)
+      (
+        DIALOG.SET PERIPHERAL_SUBTYPE_DATA ""
+      )
+      ELSE
+      (
+        DIALOG.SET PERIPHERAL_SUBTYPE_DATA VAR.STRING(\MppPeriphSubtypeNamesArr[&periphSubTypeData])
+      )
+    ) 
+    ELSE
+    (
+      &periphInfoDisplayStatus=&PM_ERR_FAILURE
+    )
+  )
+  ELSE IF (&periphInternalIndex==&PM_GPIO_PERIPH_INTERNAL_INDEX)
+  (
+    IF (&periphTypeData==&PM_GPIO_PERIPH_TYPE)
+    (
+      DIALOG.SET PERIPHERAL_TYPE_DATA "GPIO"
+      IF (&periphSubTypeData>=&PM_GPIO_PERIPH_SUBTYPES_MAX_NUM)
+      (
+        DIALOG.SET PERIPHERAL_SUBTYPE_DATA ""
+      )
+      ELSE
+      (
+        DIALOG.SET PERIPHERAL_SUBTYPE_DATA VAR.STRING(\GpioPeriphSubtypeNamesArr[&periphSubTypeData])
+      )
+    ) 
+    ELSE
+    (
+      &periphInfoDisplayStatus=&PM_ERR_FAILURE
+    )
+  )
+  ELSE IF (&periphInternalIndex==&PM_SMPS_PERIPH_INTERNAL_INDEX)
+  (
+    IF (&periphTypeData==&PM_SMPS_HF_PERIPH_TYPE)
+    (
+      DIALOG.SET PERIPHERAL_TYPE_DATA "HF_BUCK"
+      IF (&periphSubTypeData>=&PM_SMPS_HF_PERIPH_SUBTYPES_MAX_NUM)
+      (
+        DIALOG.SET PERIPHERAL_SUBTYPE_DATA ""
+      )
+      ELSE
+      (
+        DIALOG.SET PERIPHERAL_SUBTYPE_DATA VAR.STRING(\SmpsHfPeriphSubtypeNamesArr[&periphSubTypeData])
+      )
+    )
+    ELSE IF (&periphTypeData==&PM_SMPS_FTS_PERIPH_TYPE)
+    (
+      DIALOG.SET PERIPHERAL_TYPE_DATA "FTS"
+      IF (&periphSubTypeData>=&PM_SMPS_FTS_PERIPH_SUBTYPES_MAX_NUM)
+      (
+        DIALOG.SET PERIPHERAL_SUBTYPE_DATA ""
+      )
+      ELSE
+      (
+        DIALOG.SET PERIPHERAL_SUBTYPE_DATA VAR.STRING(\SmpsFtsPeriphSubtypeNamesArr[&periphSubTypeData])
+      )
+    )
+    ELSE IF (&periphTypeData==&PM_SMPS_ULT_PERIPH_TYPE)
+    (
+      DIALOG.SET PERIPHERAL_TYPE_DATA "ULT_BUCK"
+      IF (&periphSubTypeData>=&PM_SMPS_ULT_PERIPH_SUBTYPES_MAX_NUM)
+      (
+        DIALOG.SET PERIPHERAL_SUBTYPE_DATA ""
+      )
+      ELSE
+      (
+        DIALOG.SET PERIPHERAL_SUBTYPE_DATA VAR.STRING(\SmpsUltPeriphSubtypeNamesArr[&periphSubTypeData])
+      )
+    ) 
+    ELSE
+    (
+      &periphInfoDisplayStatus=&PM_ERR_FAILURE
+    )
+  )
+  ELSE IF (&periphInternalIndex==&PM_LDO_PERIPH_INTERNAL_INDEX)
+  (
+    IF (&periphTypeData==&PM_LDO_PERIPH_TYPE)
+    (
+      DIALOG.SET PERIPHERAL_TYPE_DATA "LDO"
+      IF (&periphSubTypeData>=&PM_LDO_PERIPH_SUBTYPES_MAX_NUM)
+      (
+        DIALOG.SET PERIPHERAL_SUBTYPE_DATA ""
+      )
+      ELSE
+      (
+        DIALOG.SET PERIPHERAL_SUBTYPE_DATA VAR.STRING(\LdoPeriphSubtypeNamesArr[&periphSubTypeData])
+      )
+    ) 
+    ELSE 
+    IF (&periphTypeData==&PM_LDO_ULT_PERIPH_TYPE)
+    (
+      DIALOG.SET PERIPHERAL_TYPE_DATA "LDO"
+      IF (&periphSubTypeData>=&PM_LDO_ULT_PERIPH_SUBTYPES_MAX_NUM)
+      (
+        DIALOG.SET PERIPHERAL_SUBTYPE_DATA ""
+      )
+      ELSE
+      (
+        DIALOG.SET PERIPHERAL_SUBTYPE_DATA VAR.STRING(\LdoUltPeriphSubtypeNamesArr[&periphSubTypeData])
+      )
+    ) 
+    ELSE
+    (
+      &periphInfoDisplayStatus=&PM_ERR_FAILURE
+    )
+  )
+  ELSE IF (&periphInternalIndex==&PM_VS_PERIPH_INTERNAL_INDEX)
+  (
+    IF (&periphTypeData==&PM_VS_PERIPH_TYPE)
+    (
+      DIALOG.SET PERIPHERAL_TYPE_DATA "VS"
+      IF (&periphSubTypeData>=&PM_VS_PERIPH_SUBTYPES_MAX_NUM)
+      (
+        DIALOG.SET PERIPHERAL_SUBTYPE_DATA ""
+      )
+      ELSE
+      (
+        DIALOG.SET PERIPHERAL_SUBTYPE_DATA VAR.STRING(\VsPeriphSubtypeNamesArr[&periphSubTypeData])
+      )
+    ) 
+    ELSE
+    (
+      &periphInfoDisplayStatus=&PM_ERR_FAILURE
+    )
+  )
+  ELSE IF (&periphInternalIndex==&PM_BOOST_PERIPH_INTERNAL_INDEX)
+  (
+    IF (&periphTypeData==&PM_BOOST_PERIPH_TYPE)
+    (
+      DIALOG.SET PERIPHERAL_TYPE_DATA "BOOST"
+      IF (&periphSubTypeData>=&PM_BOOST_PERIPH_SUBTYPES_MAX_NUM)
+      (
+        DIALOG.SET PERIPHERAL_SUBTYPE_DATA ""
+      )
+      ELSE
+      (
+        DIALOG.SET PERIPHERAL_SUBTYPE_DATA VAR.STRING(\BoostPeriphSubtypeNamesArr[&periphSubTypeData])
+      )
+    ) 
+    ELSE
+    (
+      &periphInfoDisplayStatus=&PM_ERR_FAILURE
+    )
+  )
+  ELSE IF (&periphInternalIndex==&PM_BOOST_BYP_PERIPH_INTERNAL_INDEX)
+  (
+    IF (&periphTypeData==&PM_BOOST_BYP_PERIPH_TYPE)
+    (
+      DIALOG.SET PERIPHERAL_TYPE_DATA "BOOST_BYP"
+      IF (&periphSubTypeData>=&PM_BOOST_BYP_PERIPH_SUBTYPES_MAX_NUM)
+      (
+        DIALOG.SET PERIPHERAL_SUBTYPE_DATA ""
+      )
+      ELSE
+      (
+        DIALOG.SET PERIPHERAL_SUBTYPE_DATA VAR.STRING(\BoostBypPeriphSubtypeNamesArr[&periphSubTypeData])
+      )
+    ) 
+    ELSE
+    (
+      &periphInfoDisplayStatus=&PM_ERR_FAILURE
+    )
+  )
+  ELSE IF (&periphInternalIndex==&PM_BOB_PERIPH_INTERNAL_INDEX)
+  (
+    IF (&periphTypeData==&PM_BOB_PERIPH_TYPE)
+    (
+      DIALOG.SET PERIPHERAL_TYPE_DATA "BOB"
+      IF (&periphSubTypeData>=&PM_BOB_PERIPH_SUBTYPES_MAX_NUM)
+      (
+        DIALOG.SET PERIPHERAL_SUBTYPE_DATA ""
+      )
+      ELSE
+      (
+        DIALOG.SET PERIPHERAL_SUBTYPE_DATA VAR.STRING(\BobPeriphSubtypeNamesArr[&periphSubTypeData])
+      )
+    ) 
+    ELSE
+    (
+      &periphInfoDisplayStatus=&PM_ERR_FAILURE
+    )
+  )
+  ELSE
+  (
+    &periphInfoDisplayStatus=&PM_ERR_FAILURE
+  )
+
+  IF (&periphInfoDisplayStatus==&PM_ERR_SUCCESS)
+  (
+    DIALOG.SET PERIPHERAL_BASEADDR_DATA "0x"+FORMAT.HEX(8, &periphBaseAddr) 
+  )
+
+  RETURN &periphInfoDisplayStatus
+
+;=============================================================================
+; SUB: AddPeripheral
+;=============================================================================
+
+AddPeripheral:
+
+  ENTRY &pmicIndex &periphInternalIndex &periphIndex &periphTypeData &periphSubTypeData &periphBaseAddr
+
+  &periphDataName=""
+  &periphName=""
+
+  IF ((&periphInternalIndex==&PM_GPIO_PERIPH_INTERNAL_INDEX)||(&periphInternalIndex==&PM_MPP_PERIPH_INTERNAL_INDEX))
+  (
+    IF ((&PM_GPIO_MPP_PERIPH_RUNTIME_INDEX>=0)&&(&PM_GPIO_MPP_PERIPH_RUNTIME_INDEX<&PM_GPIO_MPP_PERIPH_RUNTIME_MAX_NUM))
+    (
+      &periphDataName=VAR.STRING(\GpioMppPeriphDataNamesArr[&PM_GPIO_MPP_PERIPH_RUNTIME_INDEX])
+
+      &periphName=VAR.STRING(\PeriphNamesArr[&periphInternalIndex])+FORMAT.DECIMAL(0,&periphIndex)+VAR.STRING(\PmicIndexNameArr[&pmicIndex])
+
+      DIALOG.SET &periphDataName "&periphName"
+
+      VAR.SET \GpioMppPeriphRuntimePmicIndexArr[&PM_GPIO_MPP_PERIPH_RUNTIME_INDEX]=&pmicIndex
+
+      VAR.SET \GpioMppPeriphRuntimeInternalIndexArr[&PM_GPIO_MPP_PERIPH_RUNTIME_INDEX]=&periphInternalIndex
+
+      VAR.SET \GpioMppPeriphRuntimeTypesArr[&PM_GPIO_MPP_PERIPH_RUNTIME_INDEX]=&periphTypeData
+
+      VAR.SET \GpioMppPeriphRuntimeSubTypesArr[&PM_GPIO_MPP_PERIPH_RUNTIME_INDEX]=&periphSubTypeData
+
+      VAR.SET \GpioMppPeriphRuntimeBaseAddrArr[&PM_GPIO_MPP_PERIPH_RUNTIME_INDEX]=&periphBaseAddr
+
+      &PM_GPIO_MPP_PERIPH_RUNTIME_INDEX=&PM_GPIO_MPP_PERIPH_RUNTIME_INDEX+1.
+    )
+  )
+  ELSE
+  (
+    IF ((&PM_PERIPH_RUNTIME_INDEX>=0)&&(&PM_PERIPH_RUNTIME_INDEX<&PM_PERIPH_RUNTIME_MAX_NUM))
+    (
+      &periphDataName=VAR.STRING(\PeriphDataNamesArr[&PM_PERIPH_RUNTIME_INDEX])
+
+      &periphName=VAR.STRING(\PeriphNamesArr[&periphInternalIndex])+FORMAT.DECIMAL(0,&periphIndex)+VAR.STRING(\PmicIndexNameArr[&pmicIndex])
+
+      DIALOG.SET &periphDataName "&periphName"
+
+      VAR.SET \PeriphRuntimePmicIndexArr[&PM_PERIPH_RUNTIME_INDEX]=&pmicIndex
+
+      VAR.SET \PeriphRuntimeInternalIndexArr[&PM_PERIPH_RUNTIME_INDEX]=&periphInternalIndex
+
+      VAR.SET \PeriphRuntimeTypesArr[&PM_PERIPH_RUNTIME_INDEX]=&periphTypeData
+
+      VAR.SET \PeriphRuntimeSubTypesArr[&PM_PERIPH_RUNTIME_INDEX]=&periphSubTypeData
+
+      VAR.SET \PeriphRuntimeBaseAddrArr[&PM_PERIPH_RUNTIME_INDEX]=&periphBaseAddr
+
+      &PM_PERIPH_RUNTIME_INDEX=&PM_PERIPH_RUNTIME_INDEX+1.
+    )
+  )
+
+  RETURN
+
+;=============================================================================
+; SUB: RemovePeripheral
+;=============================================================================
+
+RemovePeripheral:
+
+  ENTRY &periphInternalIndex
+
+  &status1DataName=""
+  &status2DataName=""
+  &status3DataName=""
+  &status4DataName=""
+  &status5DataName=""
+  &status6DataName=""
+  &status7DataName=""
+  &status8DataName=""
+
+  IF ((&periphInternalIndex==&PM_GPIO_PERIPH_INTERNAL_INDEX)||(&periphInternalIndex==&PM_MPP_PERIPH_INTERNAL_INDEX))
+  (
+    IF ((&PM_GPIO_MPP_PERIPH_RUNTIME_INDEX>0)&&(&PM_GPIO_MPP_PERIPH_RUNTIME_INDEX<=&PM_GPIO_MPP_PERIPH_RUNTIME_MAX_NUM))
+    (
+      &PM_GPIO_MPP_PERIPH_RUNTIME_INDEX=&PM_GPIO_MPP_PERIPH_RUNTIME_INDEX-1.
+
+      VAR.SET \GpioMppPeriphRuntimePmicIndexArr[&PM_GPIO_MPP_PERIPH_RUNTIME_INDEX]=0
+
+      VAR.SET \GpioMppPeriphRuntimeInternalIndexArr[&PM_GPIO_MPP_PERIPH_RUNTIME_INDEX]=&PM_UNKNOWN_PERIPH_INTERNAL_INDEX
+
+      VAR.SET \GpioMppPeriphRuntimeTypesArr[&PM_GPIO_MPP_PERIPH_RUNTIME_INDEX]=0
+
+      VAR.SET \GpioMppPeriphRuntimeSubTypesArr[&PM_GPIO_MPP_PERIPH_RUNTIME_INDEX]=0
+
+      VAR.SET \GpioMppPeriphRuntimeBaseAddrArr[&PM_GPIO_MPP_PERIPH_RUNTIME_INDEX]=0
+
+      &periphDataName=VAR.STRING(\GpioMppPeriphDataNamesArr[&PM_GPIO_MPP_PERIPH_RUNTIME_INDEX])
+
+      DIALOG.SET &periphDataName ""
+
+      &status1DataName=VAR.STRING(\GpioMppStatus1DataNamesArr[&PM_GPIO_MPP_PERIPH_RUNTIME_INDEX])
+      &status2DataName=VAR.STRING(\GpioMppStatus2DataNamesArr[&PM_GPIO_MPP_PERIPH_RUNTIME_INDEX])
+      &status3DataName=VAR.STRING(\GpioMppStatus3DataNamesArr[&PM_GPIO_MPP_PERIPH_RUNTIME_INDEX])
+      &status4DataName=VAR.STRING(\GpioMppStatus4DataNamesArr[&PM_GPIO_MPP_PERIPH_RUNTIME_INDEX])
+      &status5DataName=VAR.STRING(\GpioMppStatus5DataNamesArr[&PM_GPIO_MPP_PERIPH_RUNTIME_INDEX])
+      &status6DataName=VAR.STRING(\GpioMppStatus6DataNamesArr[&PM_GPIO_MPP_PERIPH_RUNTIME_INDEX])
+      &status7DataName=VAR.STRING(\GpioMppStatus7DataNamesArr[&PM_GPIO_MPP_PERIPH_RUNTIME_INDEX])
+      &status8DataName=VAR.STRING(\GpioMppStatus8DataNamesArr[&PM_GPIO_MPP_PERIPH_RUNTIME_INDEX])
+
+      DIALOG.SET &status1DataName ""
+      DIALOG.SET &status2DataName ""
+      DIALOG.SET &status3DataName ""
+      DIALOG.SET &status4DataName ""
+      DIALOG.SET &status5DataName ""
+      DIALOG.SET &status6DataName ""
+      DIALOG.SET &status7DataName ""
+      DIALOG.SET &status8DataName ""
+    )
+  )
+  ELSE
+  (
+    IF ((&PM_PERIPH_RUNTIME_INDEX>0)&&(&PM_PERIPH_RUNTIME_INDEX<=&PM_PERIPH_RUNTIME_MAX_NUM))
+    (
+      &PM_PERIPH_RUNTIME_INDEX=&PM_PERIPH_RUNTIME_INDEX-1.
+
+      VAR.SET \PeriphRuntimePmicIndexArr[&PM_PERIPH_RUNTIME_INDEX]=0
+
+      VAR.SET \PeriphRuntimeInternalIndexArr[&PM_PERIPH_RUNTIME_INDEX]=&PM_UNKNOWN_PERIPH_INTERNAL_INDEX
+
+      VAR.SET \PeriphRuntimeTypesArr[&PM_PERIPH_RUNTIME_INDEX]=0
+
+      VAR.SET \PeriphRuntimeSubTypesArr[&PM_PERIPH_RUNTIME_INDEX]=0
+
+      VAR.SET \PeriphRuntimeBaseAddrArr[&PM_PERIPH_RUNTIME_INDEX]=0
+
+      &periphDataName=VAR.STRING(\PeriphDataNamesArr[&PM_PERIPH_RUNTIME_INDEX])
+
+      DIALOG.SET &periphDataName ""
+
+      &status1DataName=VAR.STRING(\Status1DataNamesArr[&PM_PERIPH_RUNTIME_INDEX])
+      &status2DataName=VAR.STRING(\Status2DataNamesArr[&PM_PERIPH_RUNTIME_INDEX])
+      &status3DataName=VAR.STRING(\Status3DataNamesArr[&PM_PERIPH_RUNTIME_INDEX])
+      &status4DataName=VAR.STRING(\Status4DataNamesArr[&PM_PERIPH_RUNTIME_INDEX])
+      &status5DataName=VAR.STRING(\Status5DataNamesArr[&PM_PERIPH_RUNTIME_INDEX])
+      &status6DataName=VAR.STRING(\Status6DataNamesArr[&PM_PERIPH_RUNTIME_INDEX])
+      &status7DataName=VAR.STRING(\Status7DataNamesArr[&PM_PERIPH_RUNTIME_INDEX])
+      &status8DataName=VAR.STRING(\Status8DataNamesArr[&PM_PERIPH_RUNTIME_INDEX])
+
+      DIALOG.SET &status1DataName ""
+      DIALOG.SET &status2DataName ""
+      DIALOG.SET &status3DataName ""
+      DIALOG.SET &status4DataName ""
+      DIALOG.SET &status5DataName ""
+      DIALOG.SET &status6DataName ""
+      DIALOG.SET &status7DataName ""
+      DIALOG.SET &status8DataName ""
+    )
+  )
+
+  RETURN
+
+;=============================================================================
+; SUB: GetStatus
+;=============================================================================
+
+GetStatus:
+  &periphStatus=&PM_ERR_SUCCESS
+  &pmicIndex=0
+  &periphInternalIndex=&PM_UNKNOWN_PERIPH_INTERNAL_INDEX
+  &periphTypeData=0
+  &periphSubTypeData=0
+  &periphBaseAddr=0
+  &runtimeCount=0.
+
+  WHILE &runtimeCount<&PM_PERIPH_RUNTIME_MAX_NUM
+  (
+    &periphInternalIndex=VAR.VALUE(\PeriphRuntimeInternalIndexArr[&runtimeCount])
+    IF &periphInternalIndex!=&PM_UNKNOWN_PERIPH_INTERNAL_INDEX
+    (
+      &pmicIndex=VAR.VALUE(\PeriphRuntimePmicIndexArr[&runtimeCount])
+      &periphTypeData=VAR.VALUE(\PeriphRuntimeTypesArr[&runtimeCount])
+      &periphSubTypeData=VAR.VALUE(\PeriphRuntimeSubTypesArr[&runtimeCount])
+      &periphBaseAddr=VAR.VALUE(\PeriphRuntimeBaseAddrArr[&runtimeCount])
+
+      GOSUB GetPeriphStatus &pmicIndex &periphInternalIndex &periphTypeData &periphSubTypeData &periphBaseAddr &runtimeCount
+      ENTRY &periphStatus
+    )
+    &runtimeCount=&runtimeCount+1.
+  )
+
+  &periphStatus=&PM_ERR_SUCCESS
+  &pmicIndex=0
+  &periphInternalIndex=&PM_UNKNOWN_PERIPH_INTERNAL_INDEX
+  &periphTypeData=0
+  &periphSubTypeData=0
+  &periphBaseAddr=0
+  &runtimeCount=0.
+
+  WHILE &runtimeCount<&PM_GPIO_MPP_PERIPH_RUNTIME_MAX_NUM
+  (
+    &periphInternalIndex=VAR.VALUE(\GpioMppPeriphRuntimeInternalIndexArr[&runtimeCount])
+    IF &periphInternalIndex!=&PM_UNKNOWN_PERIPH_INTERNAL_INDEX
+    (
+      &pmicIndex=VAR.VALUE(\GpioMppPeriphRuntimePmicIndexArr[&runtimeCount])
+      &periphTypeData=VAR.VALUE(\GpioMppPeriphRuntimeTypesArr[&runtimeCount])
+      &periphSubTypeData=VAR.VALUE(\GpioMppPeriphRuntimeSubTypesArr[&runtimeCount])
+      &periphBaseAddr=VAR.VALUE(\GpioMppPeriphRuntimeBaseAddrArr[&runtimeCount])
+
+      GOSUB GetPeriphStatus &pmicIndex &periphInternalIndex &periphTypeData &periphSubTypeData &periphBaseAddr &runtimeCount
+      ENTRY &periphStatus
+    )
+    &runtimeCount=&runtimeCount+1.
+  )
+
+  RETURN
+
+;=============================================================================
+; SUB: GetPeriphStatus
+;=============================================================================
+
+GetPeriphStatus:
+
+  ENTRY &pmicIndex &periphInternalIndex &periphTypeData &periphSubTypeData &periphBaseAddr &runtimeCount
+
+  &periphStatus=&PM_ERR_SUCCESS
+  &status1="NONE"
+  &status2="NONE"
+  &status3="NONE"
+  &status4="NONE"
+  &status5="NONE"
+  &status6="NONE"
+  &status7="NONE"
+  &status8="NONE"
+
+  IF (&periphInternalIndex==&PM_CLOCK_PERIPH_INTERNAL_INDEX)
+  (
+    GOSUB GetClockStatus &pmicIndex &periphTypeData &periphSubTypeData &periphBaseAddr
+    ENTRY &periphStatus &status1 &status2 &status3 &status8
+  )
+  ELSE IF (&periphInternalIndex==&PM_MPP_PERIPH_INTERNAL_INDEX)
+  (
+    GOSUB GetMppStatus &pmicIndex &periphTypeData &periphSubTypeData &periphBaseAddr
+    ENTRY &periphStatus &status1 &status2 &status3 &status4 &status5 &status6 &status7
+  )
+  ELSE IF (&periphInternalIndex==&PM_GPIO_PERIPH_INTERNAL_INDEX)
+  (
+    GOSUB GetGpioStatus &pmicIndex &periphTypeData &periphSubTypeData &periphBaseAddr
+    ENTRY &periphStatus &status1 &status2 &status3 &status4 &status5 &status6 &status7 &status8
+  )
+  ELSE
+  (
+    GOSUB GetPowerRailStatus &pmicIndex &periphTypeData &periphSubTypeData &periphBaseAddr
+    ENTRY &periphStatus &status1 &status2 &status3 &status4 &status5 &status6 &status7 &status8
+  )
+
+  GOSUB PeriphStatusDisplay &periphStatus &runtimeCount &status1 &status2 &status3 &status4 &status5 &status6 &status7 &status8
+
+  RETURN &periphStatus
+
+;=============================================================================
+; SUB: PeriphStatusDisplay
+;=============================================================================
+
+PeriphStatusDisplay:
+
+  ENTRY &periphStatus &runtimeCount &status1 &status2 &status3 &status4 &status5 &status6 &status7 &status8
+
+  &status1DataName=""
+  &status2DataName=""
+  &status3DataName=""
+  &status4DataName=""
+  &status5DataName=""
+  &status6DataName=""
+  &status7DataName=""
+  &status8DataName=""
+
+  &periphName=""
+
+  IF ((&periphInternalIndex==&PM_GPIO_PERIPH_INTERNAL_INDEX)||(&periphInternalIndex==&PM_MPP_PERIPH_INTERNAL_INDEX))
+  (
+    &status1DataName=VAR.STRING(\GpioMppStatus1DataNamesArr[&runtimeCount])
+    &status2DataName=VAR.STRING(\GpioMppStatus2DataNamesArr[&runtimeCount])
+    &status3DataName=VAR.STRING(\GpioMppStatus3DataNamesArr[&runtimeCount])
+    &status4DataName=VAR.STRING(\GpioMppStatus4DataNamesArr[&runtimeCount])
+    &status5DataName=VAR.STRING(\GpioMppStatus5DataNamesArr[&runtimeCount])
+    &status6DataName=VAR.STRING(\GpioMppStatus6DataNamesArr[&runtimeCount])
+    &status7DataName=VAR.STRING(\GpioMppStatus7DataNamesArr[&runtimeCount])
+    &status8DataName=VAR.STRING(\GpioMppStatus8DataNamesArr[&runtimeCount])
+  )
+  ELSE
+  (
+    &status1DataName=VAR.STRING(\Status1DataNamesArr[&runtimeCount])
+    &status2DataName=VAR.STRING(\Status2DataNamesArr[&runtimeCount])
+    &status3DataName=VAR.STRING(\Status3DataNamesArr[&runtimeCount])
+    &status4DataName=VAR.STRING(\Status4DataNamesArr[&runtimeCount])
+    &status5DataName=VAR.STRING(\Status5DataNamesArr[&runtimeCount])
+    &status6DataName=VAR.STRING(\Status6DataNamesArr[&runtimeCount])
+    &status7DataName=VAR.STRING(\Status7DataNamesArr[&runtimeCount])
+    &status8DataName=VAR.STRING(\Status8DataNamesArr[&runtimeCount])
+  )
+
+  DIALOG.SET STATUS_DATA1 ""
+  DIALOG.SET STATUS_DATA2 ""
+
+  DIALOG.SET &status1DataName ""
+  DIALOG.SET &status2DataName ""
+  DIALOG.SET &status3DataName ""
+  DIALOG.SET &status4DataName ""
+  DIALOG.SET &status5DataName ""
+  DIALOG.SET &status6DataName ""
+  DIALOG.SET &status7DataName ""
+  DIALOG.SET &status8DataName ""
+
+  IF (&periphStatus==&PM_ERR_SUCCESS)
+  (
+    IF ("&status1"!="NONE")
+    (
+      DIALOG.SET &status1DataName "&status1"
+    )
+    ELSE
+    (
+      DIALOG.SET &status1DataName "-"
+    )
+
+    IF ("&status2"!="NONE")
+    (
+      DIALOG.SET &status2DataName "&status2"
+    )
+    ELSE
+    (
+      DIALOG.SET &status2DataName "-"
+    )
+
+    IF ("&status3"!="NONE")
+    (
+      DIALOG.SET &status3DataName "&status3"
+    )
+    ELSE
+    (
+      DIALOG.SET &status3DataName "-"
+    )
+
+    IF ("&status4"!="NONE")
+    (
+      DIALOG.SET &status4DataName "&status4"
+    )
+    ELSE
+    (
+      DIALOG.SET &status4DataName "-"
+    )
+
+    IF ("&status5"!="NONE")
+    (
+      DIALOG.SET &status5DataName "&status5"
+    )
+    ELSE
+    (
+      DIALOG.SET &status5DataName "-"
+    )
+
+    IF ("&status6"!="NONE")
+    (
+      DIALOG.SET &status6DataName "&status6"
+    )
+    ELSE
+    (
+      DIALOG.SET &status6DataName "-"
+    )
+
+    IF ("&status7"!="NONE")
+    (
+      DIALOG.SET &status7DataName "&status7"
+    )
+    ELSE
+    (
+      DIALOG.SET &status7DataName "-"
+    )
+
+    IF ("&status8"!="NONE")
+    (
+      DIALOG.SET &status8DataName "&status8"
+    )
+    ELSE
+    (
+      DIALOG.SET &status8DataName "-"
+    )
+
+    DIALOG.SET STATUS_DATA1 "SUCCESS!"
+    DIALOG.SET STATUS_DATA2 "SUCCESS!"
+  )
+  ELSE
+  (
+    DIALOG.SET &status1DataName "-"
+    DIALOG.SET &status2DataName "-"
+    DIALOG.SET &status3DataName "-"
+    DIALOG.SET &status4DataName "-"
+    DIALOG.SET &status5DataName "-"
+    DIALOG.SET &status6DataName "-"
+    DIALOG.SET &status7DataName "-"
+    DIALOG.SET &status8DataName "-"
+    DIALOG.SET STATUS_DATA1 "ERROR!"
+    DIALOG.SET STATUS_DATA2 "ERROR!"
+  )
+
+  RETURN
+
+;=============================================================================
+; SUB: GetClockStatus
+;=============================================================================
+
+GetClockStatus:
+
+  ENTRY &pmicIndex &periphTypeData &periphSubTypeData &periphBaseAddr
+
+  &periphStatus=&PM_ERR_SUCCESS
+  &enableStatus="NONE"
+  &swEnableStatus="NONE"
+  &pinCtrlStatus="NONE"
+  &customStatus="NONE"
+  &statusAddr=&periphBaseAddr+0x08
+  &divCtlAddr=&periphBaseAddr+0x43
+  &drvCtlAddr=&periphBaseAddr+0x44
+  &enCtlAddr=&periphBaseAddr+0x46
+  &pinCtlAddr=&periphBaseAddr+0x47
+  &xoAdjAddr=&periphBaseAddr+0x5C
+  &data=0
+
+  IF ((&periphTypeData==0)||(&periphSubTypeData==0))
+  (
+    &periphStatus=&PM_ERR_FAILURE
+  )
+  ELSE IF (&periphSubTypeData==0xE)
+  (
+    &periphStatus=&PM_ERR_SUCCESS
+  )
+  ELSE
+  (
+    GOSUB PMICRead &statusAddr &pmicIndex
+    ENTRY &status &data
+    IF (&status!=0)
+    (
+      IF ((&data&0x80)==0)
+      (
+        &enableStatus="OFF"
+      )
+      ELSE
+      (
+        &enableStatus="ON"
+      )
+
+      IF (&periphSubTypeData==0xC)
+      (
+        IF ((&data&0x07)==0)
+        (
+          &customStatus="SlpClkSrc:32KHzXO"
+        )
+        ELSE IF ((&data&0x07)==0x1)
+        (
+          &customStatus="SlpClkSrc:Ext32KHzClk"
+        )
+        ELSE IF ((&data&0x07)==0x2)
+        (
+          &customStatus="SlpClkSrc:CalRC"
+        )
+        ELSE IF ((&data&0x07)==0x3)
+        (
+          &customStatus="SlpClkSrc:32KHzLFRC"
+        )
+        ELSE IF ((&data&0x07)==0x4)
+        (
+          &customStatus="SlpClkSrc:19.2MHzRC"
+        )
+        ELSE IF ((&data&0x07)==0x5)
+        (
+          &customStatus="SlpClkSrc:SysXO"
+        )
+        ELSE
+        (
+          &customStatus="NONE"
+        )
+      )
+    )
+    ELSE
+    (
+      &periphStatus=&PM_ERR_FAILURE
+    )
+
+    GOSUB PMICRead &enCtlAddr &pmicIndex
+    ENTRY &status &data
+    IF (&status!=0)
+    (
+      IF ((&data&0x80)!=0)
+      (
+        &swEnableStatus="ON"
+      )
+      ELSE
+      (
+        &swEnableStatus="OFF"
+      )
+
+      IF ((&periphSubTypeData==0x8)||(&periphSubTypeData==0x9)||(&periphSubTypeData==0x2)||(&periphSubTypeData==0xB))
+      (
+        IF ((&data&0x01)!=0)
+        (
+          &pinCtrlStatus="ON"
+        )
+        ELSE
+        (
+          &pinCtrlStatus="OFF"
+        )
+      )
+    )
+    ELSE
+    (
+      &periphStatus=&PM_ERR_FAILURE
+    )
+
+    GOSUB PMICRead &pinCtlAddr &pmicIndex
+    ENTRY &status &data
+    IF (&status!=0)
+    (
+      IF ((&periphSubTypeData==0x8)||(&periphSubTypeData==0x9))
+      (
+        IF ((&data&0x01)!=0)
+        (
+          &pinCtrlStatus="ON"
+        )
+      )
+    )
+    ELSE
+    (
+      &periphStatus=&PM_ERR_FAILURE
+    )
+
+    IF ((&periphSubTypeData==0x8)||(&periphSubTypeData==0x9)||(&periphSubTypeData==0xA))
+    (
+      GOSUB PMICRead &drvCtlAddr &pmicIndex
+      ENTRY &status &data
+      IF (&status!=0)
+      (
+        &data=(&data&0x03)
+        IF (&data==0)
+        (
+          &customStatus="DrvStr:1X"
+        )
+        ELSE IF (&data==0x1)
+        (
+          &customStatus="DrvStr:2X"
+        )
+        ELSE IF (&data==0x2)
+        (
+          &customStatus="DrvStr:3X"
+        )
+        ELSE IF (&data==0x3)
+        (
+          &customStatus="DrvStr:4X"
+        )
+      )
+      ELSE
+      (
+        &periphStatus=&PM_ERR_FAILURE
+      )
+    )
+    ELSE IF (&periphSubTypeData==0xB)
+    (
+      GOSUB PMICRead &divCtlAddr &pmicIndex
+      ENTRY &status &data
+      IF (&status!=0)
+      (
+        &data=(&data&0x07)
+        IF (&data==0)
+        (
+          &customStatus="DivFactor:XO/1"
+        )
+        ELSE IF (&data==0x1)
+        (
+          &customStatus="DivFactor:XO/1"
+        )
+        ELSE IF (&data==0x2)
+        (
+          &customStatus="DivFactor:XO/2"
+        )
+        ELSE IF (&data==0x3)
+        (
+          &customStatus="DivFactor:XO/4"
+        )
+        ELSE IF (&data==0x4)
+        (
+          &customStatus="DivFactor:XO/8"
+        )
+        ELSE IF (&data==0x5)
+        (
+          &customStatus="DivFactor:XO/16"
+        )
+        ELSE IF (&data==0x6)
+        (
+          &customStatus="DivFactor:XO/32"
+        )
+        ELSE IF (&data==0x7)
+        (
+          &customStatus="DivFactor:XO/64"
+        )
+        ELSE
+        (
+          &customStatus="NONE"
+        )
+      )
+      ELSE
+      (
+        &periphStatus=&PM_ERR_FAILURE
+      )
+    )
+    ELSE IF ((&periphSubTypeData==0x1)||(&periphSubTypeData==0x3))
+    (
+      GOSUB PMICRead &xoAdjAddr &pmicIndex
+      ENTRY &status &data
+      IF (&status!=0)
+      (
+        &data=(&data&0x3F)
+        &customStatus="XO_TRIM:&data"
+      )
+      ELSE
+      (
+        &periphStatus=&PM_ERR_FAILURE
+      )
+    )
+  )
+
+  RETURN &periphStatus &enableStatus &swEnableStatus &pinCtrlStatus &customStatus
+
+;=============================================================================
+; SUB: GetPowerRailStatus
+;=============================================================================
+
+GetPowerRailStatus:
+
+  ENTRY &pmicIndex &periphTypeData &periphSubTypeData &periphBaseAddr
+
+  &periphStatus=&PM_ERR_SUCCESS
+  &enableStatus="NONE"
+  &swEnableStatus="NONE"
+  &pinCtrlStatus="NONE"
+  &voltStatus="NONE"
+  &vsetValidStatus="NONE"
+  &modePrimStatus="NONE"
+  &modeSecStatus="NONE"
+  &customStatus="NONE"
+  &verAddr=&periphBaseAddr+0x01
+  &statusAddr=&periphBaseAddr+0x08
+  &volCtl1Addr=&periphBaseAddr+0x40
+  &volCtl2Addr=&periphBaseAddr+0x41
+  &pinVoltAddr=&periphBaseAddr+0x42
+  &vsetLbAddr=&periphBaseAddr+0x40
+  &vsetUbAddr=&periphBaseAddr+0x41
+  &vsetValidLbAddr=&periphBaseAddr+0x42
+  &vsetValidUbAddr=&periphBaseAddr+0x43
+  &modePrimAddr=&periphBaseAddr+0x45
+  &modeSecAddr=&periphBaseAddr+0x49
+  &enCtlAddr=&periphBaseAddr+0x46
+  &pinCtlAddr=&periphBaseAddr+0x47
+  &freqClkAddr=&periphBaseAddr+0x200+0x50
+  &data=0
+  &modeData=0
+  &pinData=0
+  &range=0
+  &vmin=0
+  &vstep=0
+  &vset=0
+  &vsetLb=0
+  &vsetUb=0
+  &voltage=0
+  &pinvoltage=0
+  &freq=0
+  &isPeriphUnifiedRegFlag=0
+  &isPeriphNewLdoFlag=0
+  &isPeriphNewBuckFlag=0
+
+  IF ((&periphTypeData==0)||(&periphSubTypeData==0))
+  (
+    &periphStatus=&PM_ERR_FAILURE
+  )
+  ELSE
+  (
+    IF ((&periphTypeData==&PM_LDO_PERIPH_TYPE)&&(&periphSubTypeData>=0x30))
+    (
+      &isPeriphUnifiedRegFlag=0x1
+
+      IF (&periphSubTypeData>=0x53)
+      (
+        &isPeriphNewLdoFlag=0x1
+      )
+    )
+    ELSE IF ((&periphTypeData==&PM_SMPS_HF_PERIPH_TYPE)&&(&periphSubTypeData>=0xA))
+    (
+      &isPeriphUnifiedRegFlag=0x1
+      &isPeriphNewBuckFlag=0x1
+
+      IF (&periphSubTypeData==0xA)
+      (
+        GOSUB PMICRead &verAddr &pmicIndex
+        ENTRY &status &data
+        IF (&data<0x3)
+        (
+          &isPeriphNewBuckFlag=0x0
+        )
+      )
+    )
+    ELSE IF ((&periphTypeData==&PM_SMPS_FTS_PERIPH_TYPE)&&(&periphSubTypeData>=0xA))
+    (
+      &isPeriphUnifiedRegFlag=0x1
+      IF (&periphSubTypeData>=0xB)
+      (
+        &isPeriphNewBuckFlag=0x1
+      )
+    )
+    ELSE IF (&periphTypeData==&PM_BOB_PERIPH_TYPE)
+    (
+      &isPeriphUnifiedRegFlag=0x1
+    )
+
+    GOSUB PMICRead &statusAddr &pmicIndex
+    ENTRY &status &data
+    IF (&status!=0)
+    (
+      IF ((&data&0x80)==0)
+      (
+        &enableStatus="OFF"
+      )
+      ELSE
+      (
+        &enableStatus="ON"
+      )
+      IF (&isPeriphUnifiedRegFlag==0x1)&&(&periphTypeData!=&PM_BOB_PERIPH_TYPE)
+      (
+        IF ((&isPeriphNewBuckFlag!=0x1)&&(&isPeriphNewLdoFlag!=0x1))
+        (
+          IF ((&data&0x10)!=0)
+          (
+            &customStatus="NPM_TRUE"
+          )
+          ELSE
+          (
+            &customStatus="NPM_FALSE"
+          )
+        )
+        ELSE
+        (
+          IF ((&data&0x3)==0x3)
+          (
+            &customStatus="NPM_TRUE"
+          )
+          ELSE IF ((&data&0x3)==0x2)
+          (
+            &customStatus="LPM_TRUE"
+          )
+          ELSE IF ((&data&0x3)==0x1)
+          (
+            &customStatus="RET_TRUE"
+          )
+          ELSE
+          (
+            &customStatus="NONE"
+          )
+        )
+      )
+      ELSE IF (((&periphTypeData==&PM_LDO_PERIPH_TYPE)||(&periphTypeData==&PM_LDO_ULT_PERIPH_TYPE))&&(&periphSubTypeData!=0x10))
+      (
+        IF ((&data&0x02)!=0)
+        (
+          &customStatus="NPM_TRUE"
+        )
+        ELSE
+        (
+          &customStatus="NPM_FALSE"
+        )
+      )
+    )
+    ELSE
+    (
+      &periphStatus=&PM_ERR_FAILURE
+    )
+
+    GOSUB PMICRead &enCtlAddr &pmicIndex
+    ENTRY &status &data
+    IF (&status!=0)
+    (
+      IF ((&data&0x80)!=0)
+      (
+        &swEnableStatus="ON"
+      )
+      ELSE
+      (
+        &swEnableStatus="OFF"
+      )
+
+      IF (&isPeriphUnifiedRegFlag==0x1)&&(&periphTypeData!=&PM_BOB_PERIPH_TYPE)
+      (
+        GOSUB PMICRead &pinCtlAddr &pmicIndex
+        ENTRY &status &pinData
+        IF (&status==0)
+        (
+          &periphStatus=&PM_ERR_FAILURE
+        )
+      )
+      ELSE
+      (
+        &pinData=&data
+      )
+      IF ((&pinData&0x0F)!=0)
+      (
+        &pinCtrlStatus="HW_EN("
+        IF ((&pinData&0x01)!=0)
+        (
+          &pinCtrlStatus="&pinCtrlStatus"+"0,"
+        )
+        IF ((&pinData&0x02)!=0)
+        (
+          &pinCtrlStatus="&pinCtrlStatus"+"1,"
+        )
+        IF ((&pinData&0x04)!=0)
+        (
+          &pinCtrlStatus="&pinCtrlStatus"+"2,"
+        )
+        IF ((&pinData&0x08)!=0)
+        (
+          IF (&isPeriphUnifiedRegFlag==0x1)
+          (
+            &pinCtrlStatus="&pinCtrlStatus"+"AWAKE"
+          )
+          ELSE
+          (
+            &pinCtrlStatus="&pinCtrlStatus"+"3"
+          )
+        )
+        &pinCtrlStatus="&pinCtrlStatus"+")"
+      )
+      ELSE
+      (
+        &pinCtrlStatus="OFF"
+      )
+    )
+    ELSE
+    (
+      &periphStatus=&PM_ERR_FAILURE
+    )
+
+    IF (&periphTypeData!=&PM_BOOST_PERIPH_TYPE)
+    (
+      GOSUB PMICRead &modePrimAddr &pmicIndex
+      ENTRY &status &data
+      IF (&status!=0)
+      (
+        IF (&isPeriphUnifiedRegFlag==0x1)&&(&periphTypeData!=&PM_BOB_PERIPH_TYPE)
+        (
+          IF (&data==0x7)
+          (
+            &modePrimStatus="NPM"
+          )
+          ELSE IF ((&data==0x6)&&(&periphTypeData!=&PM_LDO_PERIPH_TYPE))
+          (
+            IF (&isPeriphNewBuckFlag!=0x1)
+            (
+              &modePrimStatus="AUTO"
+            )
+            ELSE
+            (
+              &modePrimStatus="AUTO_LPM"
+            )
+          )
+          ELSE IF (&data==0x5)
+          (
+            IF ((&isPeriphNewBuckFlag!=0x1)&&(&isPeriphNewLdoFlag!=0x1))
+            (
+              &modePrimStatus="LPM"
+            )
+            ELSE IF (&isPeriphNewBuckFlag==0x1)
+            (
+              &modePrimStatus="AUTO_RM"
+            )
+            ELSE
+            (
+              &modePrimStatus="NPM(U)"
+            )
+          )
+          ELSE IF (&data==0x4)
+          (
+            IF ((&isPeriphNewBuckFlag!=0x1)&&(&isPeriphNewLdoFlag!=0x1))
+            (
+              &modePrimStatus="RETENTION"
+            )
+            ELSE
+            (
+              &modePrimStatus="LPM"
+            )
+          )
+          ELSE IF ((&data==0x3)&&(&periphTypeData==&PM_LDO_PERIPH_TYPE))
+          (
+            &modePrimStatus="BYPASS"
+          )
+          ELSE IF ((&data==0x2)&&(&periphTypeData==&PM_LDO_PERIPH_TYPE))
+          (
+            &modePrimStatus="ACT_BYPASS_NPM"
+          )
+          ELSE IF ((&data==0x1)&&(&periphTypeData==&PM_LDO_PERIPH_TYPE))
+          (
+            &modePrimStatus="ACT_BYPASS_LPM"
+          )
+          ELSE
+          (
+            &modePrimStatus="NPM(U)"
+          )
+
+          GOSUB PMICRead &pinCtlAddr &pmicIndex
+          ENTRY &status &pinData
+          IF (&status==0)
+          (
+            &periphStatus=&PM_ERR_FAILURE
+          )
+
+          &pinData=&pinData>>4
+
+          IF ((&pinData&0x0F)!=0)
+          (
+            GOSUB PMICRead &modeSecAddr &pmicIndex
+            ENTRY &status &modeData
+            IF (&status==0)
+            (
+              &periphStatus=&PM_ERR_FAILURE
+            )
+            IF (&modeData==0x7)
+            (
+              &modePrimStatus="NPM"
+            )
+            ELSE IF ((&modeData==0x6)&&(&periphTypeData!=&PM_LDO_PERIPH_TYPE))
+            (
+              IF (&isPeriphNewBuckFlag!=0x1)
+              (
+                &modePrimStatus="AUTO"
+              )
+              ELSE
+              (
+                &modePrimStatus="AUTO_LPM"
+              )
+            )
+            ELSE IF (&modeData==0x5)
+            (
+              IF ((&isPeriphNewBuckFlag!=0x1)&&(&isPeriphNewLdoFlag!=0x1))
+              (
+                &modePrimStatus="LPM"
+              )
+              ELSE IF (&isPeriphNewBuckFlag==0x1)
+              (
+                &modePrimStatus="AUTO_RM"
+              )
+              ELSE
+              (
+                &modePrimStatus="NPM(U)"
+              )
+            )
+            ELSE IF (&modeData==0x4)
+            (
+              IF ((&isPeriphNewBuckFlag!=0x1)&&(&isPeriphNewLdoFlag!=0x1))
+              (
+                &modePrimStatus="RET"
+              )
+              ELSE
+              (
+                &modePrimStatus="LPM"
+              )
+            )
+            ELSE IF ((&modeData==0x3)&&(&periphTypeData==&PM_LDO_PERIPH_TYPE))
+            (
+              &modeSecStatus="BYP"
+            )
+            ELSE IF ((&modeData==0x2)&&(&periphTypeData==&PM_LDO_PERIPH_TYPE))
+            (
+              &modeSecStatus="ACTBYPN"
+            )
+            ELSE IF ((&modeData==0x1)&&(&periphTypeData==&PM_LDO_PERIPH_TYPE))
+            (
+              &modeSecStatus="ACTBYPL"
+            )
+            ELSE
+            (
+              &modeSecStatus="NPM"
+            )
+            &modeSecStatus="&modeSecStatus"+"_EN("
+            IF ((&pinData&0x01)!=0)
+            (
+              &modeSecStatus="&modeSecStatus"+"0,"
+            )
+            IF ((&pinData&0x02)!=0)
+            (
+              &modeSecStatus="&modeSecStatus"+"1,"
+            )
+            IF ((&pinData&0x04)!=0)
+            (
+              &modeSecStatus="&modeSecStatus"+"2,"
+            )
+            IF ((&pinData&0x08)!=0)
+            (
+              &modeSecStatus="&modeSecStatus"+"AWAKE"
+            )
+            &modeSecStatus="&modeSecStatus"+")"
+          )
+        )
+        ELSE IF ((&periphTypeData==&PM_LDO_PERIPH_TYPE)||(&periphTypeData==&PM_LDO_ULT_PERIPH_TYPE))
+        (
+          IF ((&data&0x20)!=0)
+          (
+            &modePrimStatus="BYPASS"
+          )
+          ELSE IF ((&data&0x80)!=0)
+          (
+            &modePrimStatus="NPM"
+          )
+          ELSE IF ((&data&0x10)!=0)
+          (
+            &modePrimStatus="FW_PMIC_AWAKE"
+          )
+          ELSE
+          (
+            &modePrimStatus="LPM"
+          )
+
+          IF ((&data&0x0F)!=0)
+          (
+            &modeSecStatus="NPM_HW_EN"
+            IF ((&data&0x01)!=0)
+            (
+              &modeSecStatus="&modeSecStatus"+"0,"
+            )
+            IF ((&data&0x02)!=0)
+            (
+              &modeSecStatus="&modeSecStatus"+"1,"
+            )
+            IF ((&data&0x04)!=0)
+            (
+              &modeSecStatus="&modeSecStatus"+"2,"
+            )
+            IF ((&data&0x08)!=0)
+            (
+              &modeSecStatus="&modeSecStatus"+"3"
+            )
+          )
+        )
+        ELSE IF (&periphTypeData==&PM_BOOST_BYP_PERIPH_TYPE)
+        (
+          IF ((&data&0x80)!=0)
+          (
+            &modePrimStatus="AUTO_BOOST"
+          )
+          ELSE
+          (
+            &modePrimStatus="FORCED_BYPASS"
+          )
+        )
+        ELSE IF (&periphTypeData==&PM_BOB_PERIPH_TYPE)
+        (
+          IF (&data==0x3)
+          (
+            &modePrimStatus="FPWM"
+          )
+          ELSE IF (&data==0x2)
+          (
+            &modePrimStatus="AUTO"
+          )
+          ELSE IF (&data==0x1)
+          (
+            &modePrimStatus="FPFM"
+          )
+          ELSE IF (&data==0x0)
+          (
+            &modePrimStatus="PASS"
+          )
+        )
+        ELSE
+        (
+          IF ((&data&0x80)!=0)
+          (
+            &modePrimStatus="NPM"
+          )
+          ELSE IF ((&data&0x40)!=0)
+          (
+            &modePrimStatus="AUTO"
+          )
+          ELSE IF ((&data&0x10)!=0)
+          (
+            &modePrimStatus="FW_PMIC_AWAKE"
+          )
+          ELSE
+          (
+            &modePrimStatus="LPM"
+          )
+
+          IF ((&data&0x0F)!=0)
+          (
+            &modeSecStatus="NPM_FW_HW_EN"
+            IF ((&data&0x01)!=0)
+            (
+              &modeSecStatus="&modeSecStatus"+"0,"
+            )
+            IF ((&data&0x02)!=0)
+            (
+              &modeSecStatus="&modeSecStatus"+"1,"
+            )
+            IF ((&data&0x04)!=0)
+            (
+              &modeSecStatus="&modeSecStatus"+"2,"
+            )
+            IF ((&data&0x08)!=0)
+            (
+              &modeSecStatus="&modeSecStatus"+"3"
+            )
+          )
+        )
+      )
+      ELSE
+      (
+        &periphStatus=&PM_ERR_FAILURE
+      )
+    )
+
+    IF (&isPeriphUnifiedRegFlag==0x1)
+    (
+      GOSUB PMICRead &vsetLbAddr &pmicIndex
+      ENTRY &status &vsetLb
+      GOSUB PMICRead &vsetUbAddr &pmicIndex
+      ENTRY &status &vsetUb
+      IF (&status!=0)
+      (
+        &vmin=0
+        &vstep=1000.
+        &vset=((&vsetUb<<8)|(&vsetLb))
+        &voltage=&vmin+(&vset*&vstep)
+        &voltStatus=FORMAT.DECIMAL(0,&voltage)
+      )
+      GOSUB PMICRead &vsetValidLbAddr &pmicIndex
+      ENTRY &status &vsetLb
+      GOSUB PMICRead &vsetValidUbAddr &pmicIndex
+      ENTRY &status &vsetUb
+      IF (&status!=0)
+      (
+        &vmin=0
+        &vstep=1000.
+        &vset=((&vsetUb<<8)|(&vsetLb))
+        &voltage=&vmin+(&vset*&vstep)
+        &vsetValidStatus=FORMAT.DECIMAL(0,&voltage)
+      )
+    )
+    ELSE
+    (
+      GOSUB PMICRead &volCtl2Addr &pmicIndex
+      ENTRY &status &vset
+      IF (&status!=0)
+      (
+        &range=0
+
+        IF (&periphTypeData==&PM_SMPS_HF_PERIPH_TYPE)
+        (
+          GOSUB PMICRead &volCtl1Addr &pmicIndex
+          ENTRY &status &range
+          IF ((&status!=0)&&(&range<=1))
+          (
+            &vmin=VAR.VALUE(\SmpsHfPeriphVminNamesArr[&range])
+            &vstep=VAR.VALUE(\SmpsHfPeriphVstepNamesArr[&range])
+            &voltage=&vmin+(&vset*&vstep)
+            &voltStatus=FORMAT.DECIMAL(0,&voltage)
+          )
+        )
+        ELSE IF (&periphTypeData==&PM_SMPS_FTS_PERIPH_TYPE)
+        (
+          GOSUB PMICRead &volCtl1Addr &pmicIndex
+          ENTRY &status &range
+          IF (&periphSubTypeData==0x8)
+          (
+            IF ((&status!=0)&&(&range<=1))
+            (
+              &vmin=VAR.VALUE(\SmpsFtsPeriphVminNamesArr[&range])
+              &vstep=VAR.VALUE(\SmpsFtsPeriphVstepNamesArr[&range])
+              &voltage=&vmin+(&vset*&vstep)
+              &voltStatus=FORMAT.DECIMAL(0,&voltage)
+            )
+          )
+          ELSE IF (&periphSubTypeData==0x9)
+          (
+            IF ((&status!=0)&&(&range<=1))
+            (
+              &vmin=VAR.VALUE(\SmpsFts2p5PeriphVminNamesArr[&range])
+              &vstep=VAR.VALUE(\SmpsFts2p5PeriphVstepNamesArr[&range])
+              &voltage=&vmin+(&vset*&vstep)
+              &voltStatus=FORMAT.DECIMAL(0,&voltage)
+            )
+          )
+          ELSE
+          (
+            &voltStatus="NONE"
+          )
+        )
+        ELSE IF (&periphTypeData==&PM_SMPS_ULT_PERIPH_TYPE)
+        (
+          IF ((&periphSubTypeData==0xD)||(&periphSubTypeData==0xE)||(&periphSubTypeData==0xF))
+          (
+            IF ((&vset&0x60)==0x60)
+            (
+              &range=1
+              &vset=&vset&0x1F
+            )
+            ELSE
+            (
+              &range=0
+            )
+
+            &vmin=VAR.VALUE(\SmpsUlt1PeriphVminNamesArr[&range])
+            &vstep=VAR.VALUE(\SmpsUlt1PeriphVstepNamesArr[&range])
+            &voltage=&vmin+(&vset*&vstep)
+            &voltStatus=FORMAT.DECIMAL(0,&voltage)
+          )
+          ELSE IF (&periphSubTypeData==0x10)
+          (
+            &range=0
+            &vmin=VAR.VALUE(\SmpsUlt4PeriphVminNamesArr[&range])
+            &vstep=VAR.VALUE(\SmpsUlt4PeriphVstepNamesArr[&range])
+            &voltage=&vmin+(&vset*&vstep)
+            &voltStatus=FORMAT.DECIMAL(0,&voltage)
+          )
+          ELSE
+          (
+            &voltStatus="NONE"
+          )
+        )
+        ELSE IF (&periphTypeData==&PM_BOOST_PERIPH_TYPE)
+        (
+          &range=0
+          &vmin=VAR.VALUE(\BoostPeriphVminNamesArr[&range])
+          &vstep=VAR.VALUE(\BoostPeriphVstepNamesArr[&range])
+          &voltage=&vmin+(&vset*&vstep)
+          &voltStatus=FORMAT.DECIMAL(0,&voltage)
+        )
+        ELSE IF (&periphTypeData==&PM_BOOST_BYP_PERIPH_TYPE)
+        (
+          &range=0
+          &vmin=VAR.VALUE(\BoostBypPeriphVminNamesArr[&range])
+          &vstep=VAR.VALUE(\BoostBypPeriphVstepNamesArr[&range])
+          &voltage=&vmin+(&vset*&vstep)
+          &voltStatus=FORMAT.DECIMAL(0,&voltage)
+        )
+        ELSE IF (&periphTypeData==&PM_LDO_PERIPH_TYPE)
+        (
+          GOSUB PMICRead &volCtl1Addr &pmicIndex
+          ENTRY &status &range
+          IF ((&periphSubTypeData==0x1)||(&periphSubTypeData==0x2)||(&periphSubTypeData==0x3))
+          (
+            IF ((&status!=0)&&(&range<=2))
+            (
+              &vmin=VAR.VALUE(\LdoNMOSPeriphVminNamesArr[&range])
+              &vstep=VAR.VALUE(\LdoNMOSPeriphVstepNamesArr[&range])
+              &voltage=&vmin+(&vset*&vstep)
+              &voltStatus=FORMAT.DECIMAL(0,&voltage)
+            )
+          )
+          ELSE IF ((&periphSubTypeData==0x5)||(&periphSubTypeData==0x7))
+          (
+            IF ((&status!=0)&&(&range<=2))
+            (
+              &vmin=VAR.VALUE(\LdoN1200PeriphVminNamesArr[&range])
+              &vstep=VAR.VALUE(\LdoN1200PeriphVstepNamesArr[&range])
+              &voltage=&vmin+(&vset*&vstep)
+              &voltStatus=FORMAT.DECIMAL(0,&voltage)
+            )
+          )
+          ELSE IF ((&periphSubTypeData==0x4)||(&periphSubTypeData==0x6))
+          (
+            IF ((&status!=0)&&(&range<=2))
+            (
+              &vmin=VAR.VALUE(\LdoN600PeriphVminNamesArr[&range])
+              &vstep=VAR.VALUE(\LdoN600PeriphVstepNamesArr[&range])
+              &voltage=&vmin+(&vset*&vstep)
+              &voltStatus=FORMAT.DECIMAL(0,&voltage)
+            )
+          )
+          ELSE IF (((&periphSubTypeData>=0x8)&&(&periphSubTypeData<=0xC))||((&periphSubTypeData>=0x28)&&(&periphSubTypeData<=0x2C)))
+          (
+            IF ((&status!=0)&&(&range<=4))
+            (
+              &vmin=VAR.VALUE(\LdoPMOSPeriphVminNamesArr[&range])
+              &vstep=VAR.VALUE(\LdoPMOSPeriphVstepNamesArr[&range])
+              &voltage=&vmin+(&vset*&vstep)
+              &voltStatus=FORMAT.DECIMAL(0,&voltage)
+            )
+          )
+          ELSE IF ((&periphSubTypeData==0x10)||(&periphSubTypeData==0x18))
+          (
+            IF ((&status!=0)&&(&range<=1))
+            (
+              &vmin=VAR.VALUE(\LdoLNPeriphVminNamesArr[&range])
+              &vstep=VAR.VALUE(\LdoLNPeriphVstepNamesArr[&range])
+              &voltage=&vmin+(&vset*&vstep)
+              &voltStatus=FORMAT.DECIMAL(0,&voltage)
+            )
+          )
+          ELSE
+          (
+            &voltStatus="NONE"
+          )
+        )
+        ELSE IF (&periphTypeData==&PM_LDO_ULT_PERIPH_TYPE)
+        (
+          &range=0
+          IF (((&periphSubTypeData>=0x1)&&(&periphSubTypeData<=0x7))||(&periphSubTypeData==0x15)||(&periphSubTypeData==0x14))
+          (
+            &vmin=VAR.VALUE(\LdoUltNMOSPeriphVminNamesArr[&range])
+            &vstep=VAR.VALUE(\LdoUltNMOSPeriphVstepNamesArr[&range])
+            &voltage=&vmin+(&vset*&vstep)
+            &voltStatus=FORMAT.DECIMAL(0,&voltage)
+          )
+          ELSE IF (((&periphSubTypeData>=0x8)&&(&periphSubTypeData<=0xC))||((&periphSubTypeData>=0x28)&&(&periphSubTypeData<=0x2D)))
+          (
+            &vmin=VAR.VALUE(\LdoUltPMOSPeriphVminNamesArr[&range])
+            &vstep=VAR.VALUE(\LdoUltPMOSPeriphVstepNamesArr[&range])
+            &voltage=&vmin+(&vset*&vstep)
+            &voltStatus=FORMAT.DECIMAL(0,&voltage)
+          )
+          ELSE
+          (
+            &voltStatus="NONE"
+          )
+        )
+        ELSE
+        (
+          &voltStatus="NONE"
+        )
+      )
+      ELSE
+      (
+        &voltStatus="NONE"
+      )
+    )
+
+    IF ((&periphTypeData==&PM_SMPS_HF_PERIPH_TYPE)||(&periphTypeData==&PM_SMPS_FTS_PERIPH_TYPE)||(&periphTypeData==&PM_SMPS_ULT_PERIPH_TYPE))
+    (
+      GOSUB PMICRead &freqClkAddr &pmicIndex
+      ENTRY &status &data
+      IF (&status!=0)
+      (
+        &data=(&data&0x1F)
+        &freq=(19200.)/(&data+0x1)
+        ;&customStatus="Freq:"+FORMAT.DECIMAL(0,&freq)+"KHz"
+      )
+      ELSE
+      (
+        &periphStatus=&PM_ERR_FAILURE
+      )
+    )
+
+    IF (&periphTypeData==&PM_BOOST_BYP_PERIPH_TYPE)
+    (
+      GOSUB PMICRead &pinVoltAddr &pmicIndex
+      ENTRY &status &data
+      IF (&status!=0)
+      (
+        &range=0
+        &vmin=VAR.VALUE(\BoostBypPeriphVminNamesArr[&range])
+        &vstep=VAR.VALUE(\BoostBypPeriphVstepNamesArr[&range])
+        &pinvoltage=&vmin+(&data*&vstep)
+        &customStatus="PinV:"+FORMAT.DECIMAL(0,&pinvoltage)+"uV"
+      )
+      ELSE
+      (
+        &periphStatus=&PM_ERR_FAILURE
+      )
+    )
+  )
+
+  RETURN &periphStatus &enableStatus &swEnableStatus &pinCtrlStatus &modePrimStatus &modeSecStatus &voltStatus &vsetValidStatus &customStatus
+
+;=============================================================================
+; SUB: GetGpioStatus
+;=============================================================================
+
+GetGpioStatus:
+
+  ENTRY &pmicIndex &periphTypeData &periphSubTypeData &periphBaseAddr
+
+  &periphStatus=&PM_ERR_SUCCESS
+  &enableStatus="NONE"
+  &swEnableStatus="NONE"
+  &modeStatus="NONE"
+  &modeConfigStatus="NONE"
+  &inputValStatus="NONE"
+  &vinStatus="NONE"
+  &pullStatus="NONE"
+  &outDrvStatus="NONE"
+  &statusAddr=&periphBaseAddr+0x08
+  &modeCtlAddr=&periphBaseAddr+0x40
+  &vinCtlAddr=&periphBaseAddr+0x41
+  &pullCtlAddr=&periphBaseAddr+0x42
+  &inCtlAddr=&periphBaseAddr+0x43
+  &outCtlAddr=&periphBaseAddr+0x44
+  &outDrvAddr=&periphBaseAddr+0x45
+  &enCtlAddr=&periphBaseAddr+0x46
+  &anaCtlAddr=&periphBaseAddr+0x4A
+  &data=0
+  &modeData=0
+
+  IF ((&periphTypeData==0)||(&periphSubTypeData==0))
+  (
+    &periphStatus=&PM_ERR_FAILURE
+  )
+  ELSE
+  (
+    GOSUB PMICRead &statusAddr &pmicIndex
+    ENTRY &status &data
+    IF (&status!=0)
+    (
+      IF ((&data&0x80)==0)
+      (
+        &enableStatus="OFF"
+      )
+      ELSE
+      (
+        &enableStatus="ON"
+      )
+
+      IF ((&data&0x01)==0)
+      (
+        &inputValStatus="LOW"
+      )
+      ELSE
+      (
+        &inputValStatus="HIGH"
+      )
+    )
+    ELSE
+    (
+      &periphStatus=&PM_ERR_FAILURE
+    )
+
+    GOSUB PMICRead &enCtlAddr &pmicIndex
+    ENTRY &status &data
+    IF (&status!=0)
+    (
+      IF ((&data&0x80)!=0)
+      (
+        &swEnableStatus="ON"
+      )
+      ELSE
+      (
+        &swEnableStatus="OFF"
+      )
+    )
+    ELSE
+    (
+      &periphStatus=&PM_ERR_FAILURE
+    )
+
+    GOSUB PMICRead &modeCtlAddr &pmicIndex
+    ENTRY &status &data
+    IF (&status!=0)
+    (
+      IF (&periphSubTypeData<0x10)
+      (
+        &modeData=&data
+        &data=((&data&0x70)>>4)
+      )
+
+      IF (&data==0)
+      (
+        &modeStatus="DigitalInput"
+      )
+      ELSE IF (&data==0x1)
+      (
+        &modeStatus="DigitalOutput"
+      )
+      ELSE IF (&data==0x2)
+      (
+        &modeStatus="DigitalInp/Outp"
+      )
+      ELSE IF (&data==0x3)
+      (
+        &modeStatus="AnalogPassThru"
+      )
+      ELSE
+      (
+        &modeStatus="NONE"
+      )
+
+      IF ((&data==0x1)||(&data==0x2))
+      (
+        IF (&periphSubTypeData<0x10)
+        (
+          IF ((&modeData&0x0F)==0)
+          (
+            &modeConfigStatus="LOW"
+          )
+          ELSE IF ((&modeData&0x0F)==0x1)
+          (
+            &modeConfigStatus="HIGH"
+          )
+          ELSE IF ((&modeData&0x0F)==0x2)
+          (
+            &modeConfigStatus="PairedGPIO"
+          )
+          ELSE IF ((&modeData&0x0F)==0x3)
+          (
+            &modeConfigStatus="NotPairedGPIO"
+          )
+          ELSE IF ((&modeData&0x0F)==0x4)
+          (
+            &modeConfigStatus="SpecialFunction1"
+          )
+          ELSE IF ((&modeData&0x0F)==0x5)
+          (
+            &modeConfigStatus="NotSpecialFunction1"
+          )
+          ELSE IF ((&modeData&0x0F)==0x6)
+          (
+            &modeConfigStatus="SpecialFunction2"
+          )
+          ELSE IF ((&modeData&0x0F)==0x7)
+          (
+            &modeConfigStatus="NotSpecialFunction2"
+          )
+          ELSE IF ((&modeData&0x0F)==0x8)
+          (
+            &modeConfigStatus="DTEST1"
+          )
+          ELSE IF ((&modeData&0x0F)==0x9)
+          (
+            &modeConfigStatus="NotDTEST1"
+          )
+          ELSE IF ((&modeData&0x0F)==0xA)
+          (
+            &modeConfigStatus="DTEST2"
+          )
+          ELSE IF ((&modeData&0x0F)==0xB)
+          (
+            &modeConfigStatus="NotDTEST2"
+          )
+          ELSE IF ((&modeData&0x0F)==0xC)
+          (
+            &modeConfigStatus="DTEST3"
+          )
+          ELSE IF ((&modeData&0x0F)==0xD)
+          (
+            &modeConfigStatus="NotDTEST3"
+          )
+          ELSE IF ((&modeData&0x0F)==0xE)
+          (
+            &modeConfigStatus="DTEST4"
+          )
+          ELSE IF ((&modeData&0x0F)==0xF)
+          (
+            &modeConfigStatus="NotDTEST4"
+          )
+          ELSE
+          (
+            &modeConfigStatus="NONE"
+          )
+        )
+        ELSE
+        (
+          GOSUB PMICRead &outCtlAddr &pmicIndex
+          ENTRY &status &modeData
+          IF (&status==0)
+          (
+            &periphStatus=&PM_ERR_FAILURE
+          )
+
+          IF ((&modeData&0xF)==0)
+          (
+            &modeConfigStatus="LOW"
+          )
+          ELSE IF ((&modeData&0xF)==0x1)
+          (
+            &modeConfigStatus="PairedGPIO"
+          )
+          ELSE IF ((&modeData&0xF)==0x2)
+          (
+            &modeConfigStatus="SpecialFunction1"
+          )
+          ELSE IF ((&modeData&0xF)==0x3)
+          (
+            &modeConfigStatus="SpecialFunction2"
+          )
+          ELSE IF ((&modeData&0xF)==0x4)
+          (
+            &modeConfigStatus="SpecialFunction3"
+          )
+          ELSE IF ((&modeData&0xF)==0x5)
+          (
+            &modeConfigStatus="SpecialFunction4"
+          )
+          ELSE IF ((&modeData&0xF)==0x6)
+          (
+            &modeConfigStatus="DTEST1"
+          )
+          ELSE IF ((&modeData&0xF)==0x7)
+          (
+            &modeConfigStatus="DTEST2"
+          )
+          ELSE IF ((&modeData&0xF)==0x8)
+          (
+            &modeConfigStatus="DTEST3"
+          )
+          ELSE IF ((&modeData&0xF)==0x9)
+          (
+            &modeConfigStatus="DTEST4"
+          )
+          ELSE
+          (
+            &modeConfigStatus="NONE"
+          )
+
+          IF ((&modeData&0x80)!=0)
+          (
+            &modeConfigStatus="Not"+"&modeConfigStatus"
+          )
+        )
+      )
+      ELSE IF (&data==0)
+      (
+        GOSUB PMICRead &inCtlAddr &pmicIndex
+        ENTRY &status &modeData
+        IF (&status==0)
+        (
+          &periphStatus=&PM_ERR_FAILURE
+        )
+
+        IF (&periphSubTypeData<0x10)
+        (
+          IF ((&modeData&0x0F)!=0)
+          (
+            &modeConfigStatus="DTEST"
+            IF ((&modeData&0x01)!=0)
+            (
+              &modeConfigStatus="&modeConfigStatus"+"1,"
+            )
+            IF ((&modeData&0x02)!=0)
+            (
+              &modeConfigStatus="&modeConfigStatus"+"2,"
+            )
+            IF ((&modeData&0x04)!=0)
+            (
+              &modeConfigStatus="&modeConfigStatus"+"3,"
+            )
+            IF ((&modeData&0x08)!=0)
+            (
+              &modeConfigStatus="&modeConfigStatus"+"4"
+            )
+          )
+          ELSE
+          (
+            &modeConfigStatus="DTEST_DISABLED"
+          )
+        )
+        ELSE
+        (
+          IF ((&modeData&0x80)!=0)
+          (
+            &modeData=(&modeData&0x7)+1
+            &modeConfigStatus="DTEST"+FORMAT.DECIMAL(0,&modeData)
+          )
+          ELSE
+          (
+            &modeConfigStatus="DTEST_DISABLED"
+          )
+        )
+      )
+      ELSE IF (&data==0x3)
+      (
+        GOSUB PMICRead &anaCtlAddr &pmicIndex
+        ENTRY &status &modeData
+        IF (&status==0)
+        (
+          &periphStatus=&PM_ERR_FAILURE
+        )
+        &modeData=&modeData+1
+        &modeConfigStatus="ATEST"+FORMAT.DECIMAL(0,&modeData)
+      )
+    )
+    ELSE
+    (
+      &periphStatus=&PM_ERR_FAILURE
+    )
+
+    GOSUB PMICRead &vinCtlAddr &pmicIndex
+    ENTRY &status &data
+    IF (&status!=0)
+    (
+      &data=(&data&0x07)
+      &vinStatus="VIN"+FORMAT.DECIMAL(0,&data)
+
+    )
+    ELSE
+    (
+      &periphStatus=&PM_ERR_FAILURE
+    )
+
+    GOSUB PMICRead &pullCtlAddr &pmicIndex
+    ENTRY &status &data
+    IF (&status!=0)
+    (
+      &data=(&data&0x07)
+      IF (&data==0)
+      (
+        &pullStatus="Up30uAconst"
+      )
+      ELSE IF (&data==0x1)
+      (
+        &pullStatus="Up1.5uA"
+      )
+      ELSE IF (&data==0x2)
+      (
+        &pullStatus="Up31.5uAconst"
+      )
+      ELSE IF (&data==0x3)
+      (
+        &pullStatus="Up1.5uA+30uABoost"
+      )
+      ELSE IF (&data==0x4)
+      (
+        &pullStatus="Down10uA"
+      )
+      ELSE IF (&data==0x5)
+      (
+        &pullStatus="NoPull"
+      )
+      ELSE
+      (
+        &pullStatus="NONE"
+      )
+    )
+    ELSE
+    (
+      &periphStatus=&PM_ERR_FAILURE
+    )
+
+    GOSUB PMICRead &outDrvAddr &pmicIndex
+    ENTRY &status &data
+    IF (&status!=0)
+    (
+      &data=&data&0x03
+
+      IF (&data==0x1)
+      (
+        &outDrvStatus="LOW"
+      )
+      ELSE IF (&data==0x2)
+      (
+        &outDrvStatus="MEDIUM"
+      )
+      ELSE IF (&data==0x3)
+      (
+        &outDrvStatus="HIGH"
+      )
+      ELSE
+      (
+        &outDrvStatus="NONE"
+      )
+    )
+    ELSE
+    (
+      &periphStatus=&PM_ERR_FAILURE
+    )
+  )
+
+  RETURN &periphStatus &enableStatus &swEnableStatus &modeStatus &modeConfigStatus &inputValStatus &vinStatus &pullStatus &outDrvStatus
+
+
+;=============================================================================
+; SUB: GetMppStatus
+;=============================================================================
+
+GetMppStatus:
+
+  ENTRY &pmicIndex &periphTypeData &periphSubTypeData &periphBaseAddr
+
+  &periphStatus=&PM_ERR_SUCCESS
+  &enableStatus="NONE"
+  &swEnableStatus="NONE"
+  &modeStatus="NONE"
+  &modeConfigStatus="NONE"
+  &inputValStatus="NONE"
+  &vinStatus="NONE"
+  &pullStatus="NONE"
+  &statusAddr=&periphBaseAddr+0x08
+  &modeCtlAddr=&periphBaseAddr+0x40
+  &vinCtlAddr=&periphBaseAddr+0x41
+  &pullCtlAddr=&periphBaseAddr+0x42
+  &inCtlAddr=&periphBaseAddr+0x43
+  &enCtlAddr=&periphBaseAddr+0x46
+  &anaOutCtlAddr=&periphBaseAddr+0x48
+  &anaInCtlAddr=&periphBaseAddr+0x4A
+  &anaSinkCtlAddr=&periphBaseAddr+0x4C
+  &data=0
+  &modeData=0
+
+  IF ((&periphTypeData==0)||(&periphSubTypeData==0))
+  (
+    &periphStatus=&PM_ERR_FAILURE
+  )
+  ELSE
+  (
+    GOSUB PMICRead &statusAddr &pmicIndex
+    ENTRY &status &data
+    IF (&status!=0)
+    (
+      IF ((&data&0x80)==0)
+      (
+        &enableStatus="OFF"
+      )
+      ELSE
+      (
+        &enableStatus="ON"
+      )
+
+      IF ((&data&0x01)==0)
+      (
+        &inputValStatus="LOW"
+      )
+      ELSE
+      (
+        &inputValStatus="HIGH"
+      )
+    )
+    ELSE
+    (
+      &periphStatus=&PM_ERR_FAILURE
+    )
+
+    GOSUB PMICRead &enCtlAddr &pmicIndex
+    ENTRY &status &data
+    IF (&status!=0)
+    (
+      IF ((&data&0x80)!=0)
+      (
+        &swEnableStatus="ON"
+      )
+      ELSE
+      (
+        &swEnableStatus="OFF"
+      )
+    )
+    ELSE
+    (
+      &periphStatus=&PM_ERR_FAILURE
+    )
+
+    GOSUB PMICRead &modeCtlAddr &pmicIndex
+    ENTRY &status &data
+    IF (&status!=0)
+    (
+
+      &modeData=&data
+      &data=((&data&0x70)>>4)
+
+      IF (&data==0)
+      (
+        &modeStatus="DigitalInput"
+
+        GOSUB PMICRead &inCtlAddr &pmicIndex
+        ENTRY &status &modeData
+        IF (&status==0)
+        (
+          &periphStatus=&PM_ERR_FAILURE
+        )
+
+        IF ((&modeData&0x0F)!=0)
+        (
+          &modeConfigStatus="DTEST"
+          IF ((&modeData&0x01)!=0)
+          (
+            &modeConfigStatus="&modeConfigStatus"+"1,"
+          )
+          IF ((&modeData&0x02)!=0)
+          (
+            &modeConfigStatus="&modeConfigStatus"+"2,"
+          )
+          IF ((&modeData&0x04)!=0)
+          (
+            &modeConfigStatus="&modeConfigStatus"+"3,"
+          )
+          IF ((&modeData&0x08)!=0)
+          (
+            &modeConfigStatus="&modeConfigStatus"+"4"
+          )
+        )
+        ELSE
+        (
+          &modeConfigStatus="DTEST_DISABLED"
+        )       
+      )
+      ELSE IF (&data==0x1)
+      (
+        &modeStatus="DigitalOutput"
+
+        IF ((&modeData&0x0F)==0)
+        (
+          &modeConfigStatus="LOW"
+        )
+        ELSE IF ((&modeData&0x0F)==0x1)
+        (
+          &modeConfigStatus="HIGH"
+        )
+        ELSE IF ((&modeData&0x0F)==0x2)
+        (
+          &modeConfigStatus="PairedMPP"
+        )
+        ELSE IF ((&modeData&0x0F)==0x3)
+        (
+          &modeConfigStatus="InvertedPairedMPP"
+        )
+        ELSE IF ((&modeData&0x0F)==0x8)
+        (
+          &modeConfigStatus="DTEST1"
+        )
+        ELSE IF ((&modeData&0x0F)==0x9)
+        (
+          &modeConfigStatus="InvertedDTEST1"
+        )
+        ELSE IF ((&modeData&0x0F)==0xA)
+        (
+          &modeConfigStatus="DTEST2"
+        )
+        ELSE IF ((&modeData&0x0F)==0xB)
+        (
+          &modeConfigStatus="InvertedDTEST2"
+        )
+        ELSE IF ((&modeData&0x0F)==0xC)
+        (
+          &modeConfigStatus="DTEST3"
+        )
+        ELSE IF ((&modeData&0x0F)==0xD)
+        (
+          &modeConfigStatus="InvertedDTEST3"
+        )
+        ELSE IF ((&modeData&0x0F)==0xE)
+        (
+          &modeConfigStatus="DTEST4"
+        )
+        ELSE IF ((&modeData&0x0F)==0xF)
+        (
+          &modeConfigStatus="InvertedDTEST4"
+        )
+        ELSE
+        (
+          &modeConfigStatus="NONE"
+        )
+      )
+      ELSE IF (&data==0x2)
+      (
+        &modeStatus="DigitalInput/Output"
+
+        IF ((&modeData&0x0F)==0)
+        (
+          &modeConfigStatus="LOW"
+        )
+        ELSE IF ((&modeData&0x0F)==0x1)
+        (
+          &modeConfigStatus="HIGH"
+        )
+        ELSE IF ((&modeData&0x0F)==0x2)
+        (
+          &modeConfigStatus="PairedMPP"
+        )
+        ELSE IF ((&modeData&0x0F)==0x3)
+        (
+          &modeConfigStatus="InvertedPairedMPP"
+        )
+        ELSE IF ((&modeData&0x0F)==0x8)
+        (
+          &modeConfigStatus="DTEST1"
+        )
+        ELSE IF ((&modeData&0x0F)==0x9)
+        (
+          &modeConfigStatus="InvertedDTEST1"
+        )
+        ELSE IF ((&modeData&0x0F)==0xA)
+        (
+          &modeConfigStatus="DTEST2"
+        )
+        ELSE IF ((&modeData&0x0F)==0xB)
+        (
+          &modeConfigStatus="InvertedDTEST2"
+        )
+        ELSE IF ((&modeData&0x0F)==0xC)
+        (
+          &modeConfigStatus="DTEST3"
+        )
+        ELSE IF ((&modeData&0x0F)==0xD)
+        (
+          &modeConfigStatus="InvertedDTEST3"
+        )
+        ELSE IF ((&modeData&0x0F)==0xE)
+        (
+          &modeConfigStatus="DTEST4"
+        )
+        ELSE IF ((&modeData&0x0F)==0xF)
+        (
+          &modeConfigStatus="InvertedDTEST4"
+        )
+        ELSE
+        (
+          &modeConfigStatus="NONE"
+        )
+      )
+      ELSE IF (&data==0x3)
+      (
+        &modeStatus="BidirectionalLogic"
+
+        IF ((&modeData&0x0F)==0)
+        (
+          &modeConfigStatus="LOW"
+        )
+        ELSE IF ((&modeData&0x0F)==0x1)
+        (
+          &modeConfigStatus="HIGH"
+        )
+        ELSE IF ((&modeData&0x0F)==0x2)
+        (
+          &modeConfigStatus="PairedMPP"
+        )
+        ELSE IF ((&modeData&0x0F)==0x3)
+        (
+          &modeConfigStatus="InvertedPairedMPP"
+        )
+        ELSE IF ((&modeData&0x0F)==0x8)
+        (
+          &modeConfigStatus="DTEST1"
+        )
+        ELSE IF ((&modeData&0x0F)==0x9)
+        (
+          &modeConfigStatus="InvertedDTEST1"
+        )
+        ELSE IF ((&modeData&0x0F)==0xA)
+        (
+          &modeConfigStatus="DTEST2"
+        )
+        ELSE IF ((&modeData&0x0F)==0xB)
+        (
+          &modeConfigStatus="InvertedDTEST2"
+        )
+        ELSE IF ((&modeData&0x0F)==0xC)
+        (
+          &modeConfigStatus="DTEST3"
+        )
+        ELSE IF ((&modeData&0x0F)==0xD)
+        (
+          &modeConfigStatus="InvertedDTEST3"
+        )
+        ELSE IF ((&modeData&0x0F)==0xE)
+        (
+          &modeConfigStatus="DTEST4"
+        )
+        ELSE IF ((&modeData&0x0F)==0xF)
+        (
+          &modeConfigStatus="InvertedDTEST4"
+        )
+        ELSE
+        (
+          &modeConfigStatus="NONE"
+        )
+      )
+      ELSE IF (&data==0x4)
+      (
+        &modeStatus="AnalogInput"
+
+        GOSUB PMICRead &anaInCtlAddr &pmicIndex
+        ENTRY &status &modeData
+        IF (&status==0)
+        (
+          &periphStatus=&PM_ERR_FAILURE
+        )
+
+        IF (&modeData==0)
+        (
+          &modeConfigStatus="HKADC5"
+        )
+        ELSE IF (&modeData==1)
+        (
+          &modeConfigStatus="HKADC6"
+        )
+        ELSE IF (&modeData==2)
+        (
+          &modeConfigStatus="HKADC7"
+        )
+        ELSE IF (&modeData==3)
+        (
+          &modeConfigStatus="HKADC8"
+        )
+        ELSE IF (&modeData==4)
+        (
+          &modeConfigStatus="ATEST1"
+        )
+        ELSE IF (&modeData==5)
+        (
+          &modeConfigStatus="ATEST2"
+        )
+        ELSE IF (&modeData==6)
+        (
+          &modeConfigStatus="ATEST3"
+        )
+        ELSE IF (&modeData==7)
+        (
+          &modeConfigStatus="ATEST4"
+        )
+      )
+      ELSE IF (&data==0x5)
+      (
+        &modeStatus="AnalogOutput"
+
+        GOSUB PMICRead &anaOutCtlAddr &pmicIndex
+        ENTRY &status &modeData
+        IF (&status==0)
+        (
+          &periphStatus=&PM_ERR_FAILURE
+        )
+
+        IF (&modeData==0)
+        (
+          &modeConfigStatus="VREF_1V25"
+        )
+        ELSE IF (&modeData==1)
+        (
+          &modeConfigStatus="VREF_0V625"
+        )
+        ELSE IF (&modeData==2)
+        (
+          &modeConfigStatus="VREF_0V3125"
+        )
+        ELSE IF (&modeData==3)
+        (
+          &modeConfigStatus="PAIRED_MPP"
+        )
+        ELSE IF (&modeData==4)
+        (
+          &modeConfigStatus="ATEST1"
+        )
+        ELSE IF (&modeData==5)
+        (
+          &modeConfigStatus="ATEST2"
+        )
+        ELSE IF (&modeData==6)
+        (
+          &modeConfigStatus="ATEST3"
+        )
+        ELSE IF (&modeData==7)
+        (
+          &modeConfigStatus="ATEST4"
+        )
+      )
+      ELSE IF (&data==0x6)
+      (
+        &modeStatus="CurrentSink"
+
+        GOSUB PMICRead &anaSinkCtlAddr &pmicIndex
+        ENTRY &status &modeData
+        IF (&status==0)
+        (
+          &periphStatus=&PM_ERR_FAILURE
+        )
+
+        IF (&modeData==0)
+        (
+          &modeConfigStatus="CURRENT_5MA"
+        )
+        ELSE IF (&modeData==1)
+        (
+          &modeConfigStatus="CURRENT_10MA"
+        )
+        ELSE IF (&modeData==2)
+        (
+          &modeConfigStatus="CURRENT_15MA"
+        )
+        ELSE IF (&modeData==3)
+        (
+          &modeConfigStatus="CURRENT_20MA"
+        )
+        ELSE IF (&modeData==4)
+        (
+          &modeConfigStatus="CURRENT_25MA"
+        )
+        ELSE IF (&modeData==5)
+        (
+          &modeConfigStatus="CURRENT_30MA"
+        )
+        ELSE IF (&modeData==6)
+        (
+          &modeConfigStatus="CURRENT_35MA"
+        )
+        ELSE IF (&modeData==7)
+        (
+          &modeConfigStatus="CURRENT_40MA"
+        )
+      )
+      ELSE
+      (
+        &modeStatus="NONE"
+      )
+    )
+    ELSE
+    (
+      &periphStatus=&PM_ERR_FAILURE
+    )
+
+    GOSUB PMICRead &vinCtlAddr &pmicIndex
+    ENTRY &status &data
+    IF (&status!=0)
+    (
+      &data=(&data&0x07)
+
+      IF (&data<0x4)
+      (
+        &vinStatus="VIN"+FORMAT.DECIMAL(0,&data)
+      )
+      ELSE
+      (
+        &vinStatus="VIN0"
+      )
+
+    )
+    ELSE
+    (
+      &periphStatus=&PM_ERR_FAILURE
+    )
+
+    GOSUB PMICRead &pullCtlAddr &pmicIndex
+    ENTRY &status &data
+    IF (&status!=0)
+    (
+      &data=(&data&0x07)
+      IF (&data==0)
+      (
+        &pullStatus="0.6K"
+      )
+      ELSE IF (&data==0x1)
+      (
+        &pullStatus="Open(InfiniteZ)"
+      )
+      ELSE IF (&data==0x2)
+      (
+        &pullStatus="10K"
+      )
+      ELSE IF (&data==0x3)
+      (
+        &pullStatus="30K"
+      )
+      ELSE
+      (
+        &pullStatus="NONE"
+      )
+    )
+    ELSE
+    (
+      &periphStatus=&PM_ERR_FAILURE
+    )
+  )
+
+  RETURN &periphStatus &enableStatus &swEnableStatus &modeStatus &modeConfigStatus &inputValStatus &vinStatus &pullStatus
+
+;=============================================================================
+; SUB: SpmiCfgUpdateTarget
+;=============================================================================
+
+SpmiCfgUpdateTarget:
+
+  &PM_SPMI_CFG_TARGET=DIALOG.STRING(SPMI_CFG_TARGET_PD)
+
+  RETURN
+
+;=============================================================================
+; SUB: SetOwnerChannel
+;=============================================================================
+
+SetOwnerChannel:
+
+  ENTRY &OwnerName
+
+  IF &OwnerName=="APPS"
+  (
+    &SPMIOwnerChannel=0
+  )
+  ELSE IF &OwnerName=="TZ"
+  (
+    &SPMIOwnerChannel=1
+  )
+  ELSE IF &OwnerName=="MSS"
+  (
+    &SPMIOwnerChannel=2
+  )
+  ELSE IF &OwnerName=="DEFAULT"
+  (
+    &SPMIOwnerChannel=3
+  )
+  ELSE IF &OwnerName=="AOP"
+  (
+    &SPMIOwnerChannel=4
+  )
+  ELSE IF &OwnerName=="SSC"
+  (
+    &SPMIOwnerChannel=5
+  )
+
+  RETURN
+
+;=============================================================================
+; SUB: PMICToSPMI
+;=============================================================================
+
+PMICToSPMI:
+
+  ENTRY &addr &devid
+  LOCAL &spmi_sid &spmi_addr
+
+  IF (!STATE.RUN()&&(SYSTEM.MODE()<=0x5))
+  (
+    sys.m.a
+  )
+
+  IF (&devid==0)
+  (
+    &spmi_sid=0
+  )
+  ELSE
+  (
+    IF (VAR.VALUE(\PmicSlaveIdArr[&devid])!=0)
+    (
+      &spmi_sid=VAR.VALUE(\PmicSlaveIdArr[&devid])
+    )
+    ELSE
+    (
+      &spmi_sid=12. ;invalid slave id for now
+    )
+  )
+
+  &pmic_sid=&addr>>16.
+  IF &pmic_sid==1
+  (
+    &spmi_sid=&spmi_sid+1
+  )
+
+  &spmi_addr=&addr&0xFFFF
+
+  RETURN &spmi_sid &spmi_addr
+
+
+;=============================================================================
+; SUB: PMICRead
+;=============================================================================
+
+PMICRead:
+
+  ENTRY &addr &devid
+
+  local &spmi_target &spmi_status
+
+  GOSUB PMICToSPMI &addr &devid
+  ENTRY &spmi_sid &spmi_addr
+
+  do &PmicIoScript read &SPMIOwnerChannel &BusAccessMode &spmi_sid &spmi_addr
+  ENTRY &status &data
+
+  IF (&status==0xFF)
+  (
+    &spmi_target="&PM_SPMI_CFG_TARGET"
+
+    IF ("&spmi_target"!="")
+    (
+      do &PmicIoScript config &spmi_target
+      entry &spmi_status
+      IF (&spmi_status==1)
+      (
+        do &PmicIoScript read &SPMIOwnerChannel &BusAccessMode &spmi_sid &spmi_addr
+        ENTRY &status &data
+      )
+    )
+    ELSE
+    (
+      DIALOG.OK "Select TARGET to initialize spmi!"
+    )
+  )
+
+  RETURN &status &data
+
+;=============================================================================
+; SUB: PMICWrite
+;=============================================================================
+
+PMICWrite:
+
+  ENTRY &addr &devid &data
+
+  local &spmi_target &spmi_status
+
+  GOSUB PMICToSPMI &addr &devid
+  ENTRY &spmi_sid &spmi_addr
+
+  do &PmicIoScript write &SPMIOwnerChannel &BusAccessMode &spmi_sid &spmi_addr &data
+  ENTRY &status
+
+  IF (&status==0xFF)
+  (
+    &spmi_target="&PM_SPMI_CFG_TARGET"
+
+    IF ("&spmi_target"!="")
+    (
+      do &PmicIoScript config &spmi_target
+      entry &spmi_status
+      IF (&spmi_status==1)
+      (
+        do &PmicIoScript write &SPMIOwnerChannel &BusAccessMode &spmi_sid &spmi_addr &data
+        ENTRY &status
+      )
+    )
+    ELSE
+    (
+      DIALOG.OK "Select TARGET to initialize spmi!"
+    )
+  )
+
+  RETURN &status
+
+

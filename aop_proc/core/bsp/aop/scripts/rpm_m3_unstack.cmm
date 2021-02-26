@@ -1,0 +1,85 @@
+; rpm_m3_unstack.cmm
+; ------------------------------------------------------------------
+;
+; When to use this script 
+; -----------------------
+; This script will undo a Cortex M3 hardware stacking.  If you load an RPM dump
+; and find yourself in an RPM exception vector and want to return from it, get
+; to the top of the vector and then run this script.
+;
+; To translate the above, you usually want to run this script when you load a
+; core dump and v.frame gives you something like this:
+;
+;    -000|abort()
+;    -001|ST:0xFFFFFFF8(asm)
+;     ---|end of frame
+;
+; In that frame we see 0xFFFFFFF8 as the "top" -- that number happens to be a
+; magic EXC_RETURN value that means you need to unstack.
+;
+; Note: This script does some *basic* checks, but doesn't completely ensure
+; you're at the top of your exception stack.  This is a requirement that is
+; left to the user to satisfy.
+;
+; How to use this script
+; ----------------------
+; With a T32 session at the top of an exception stack...
+;
+; do rpm_m3_unstack
+;
+ENTRY
+
+if r(R14)==0xFFFFFFF1
+(
+    PRINT "Returning to handler mode..."
+
+    register.set r0   DATA.LONG(d:(r(MSP)+0x0))
+    register.set r1   DATA.LONG(d:(r(MSP)+0x4))
+    register.set r2   DATA.LONG(d:(r(MSP)+0x8))
+    register.set r3   DATA.LONG(d:(r(MSP)+0xc))
+    register.set r12  DATA.LONG(d:(r(MSP)+0x10))
+    register.set r14  DATA.LONG(d:(r(MSP)+0x14))
+    register.set PP   DATA.LONG(d:(r(MSP)+0x18))
+    register.set XPSR DATA.LONG(d:(r(MSP)+0x1c))
+    register.set MSP  (r(MSP)+0x20)
+
+    ENDDO
+)
+
+if r(R14)==0xFFFFFFF9
+(
+    PRINT "Returning to Thread mode, using the main stack..."
+
+    register.set r0   DATA.LONG(d:(r(MSP)+0x0))
+    register.set r1   DATA.LONG(d:(r(MSP)+0x4))
+    register.set r2   DATA.LONG(d:(r(MSP)+0x8))
+    register.set r3   DATA.LONG(d:(r(MSP)+0xc))
+    register.set r12  DATA.LONG(d:(r(MSP)+0x10))
+    register.set r14  DATA.LONG(d:(r(MSP)+0x14))
+    register.set PP   DATA.LONG(d:(r(MSP)+0x18))
+    register.set XPSR DATA.LONG(d:(r(MSP)+0x1c))
+    register.set MSP  (r(MSP)+0x20)
+
+    ENDDO
+)
+
+if r(R14)==0xFFFFFFFD
+(
+    PRINT "Returning to Thread mode, using the process stack..."
+
+    register.set r0   DATA.LONG(d:(r(PSP)+0x0))
+    register.set r1   DATA.LONG(d:(r(PSP)+0x4))
+    register.set r2   DATA.LONG(d:(r(PSP)+0x8))
+    register.set r3   DATA.LONG(d:(r(PSP)+0xc))
+    register.set r12  DATA.LONG(d:(r(PSP)+0x10))
+    register.set LR   DATA.LONG(d:(r(PSP)+0x14))
+    register.set PP   DATA.LONG(d:(r(PSP)+0x18))
+    register.set XPSR DATA.LONG(d:(r(PSP)+0x1c))
+    register.set MSP  (r(PSP)+0x20)
+
+    ENDDO
+)
+
+PRINT "*** ERROR: Invalid EXC_RETURN value in R14! ***"
+ENDDO
+

@@ -1,0 +1,224 @@
+#===============================================================================
+#                    Copyright (c) 2013  by Qualcomm Technologies, Inc.  All Rights Reserved.
+#                         QUALCOMM Proprietary/GTDR
+#===============================================================================
+import os
+import fnmatch
+import sys
+import re
+import SCons
+
+# Add command line parameters for target, install directory and build directory
+AddOption('--target',
+          dest='target',
+          default=[],
+          type='string',
+          nargs=1,
+          action='append',
+          metavar='TRGT',
+          help='Initialize Target')
+
+AddOption('--install_dir',
+          dest='instdir',
+          default='install',
+          type='string',
+          nargs=1,
+          action='store',
+          metavar='INSTALL_DIR',
+          help='Initialize Install directory')
+
+AddOption('--build_dir',
+          dest='blddir',
+          default='build',
+          type='string',
+          nargs=1,
+          action='store',
+          metavar='BUILD_DIR',
+          help='Initialize Build directory')
+
+AddOption('--q6_tools_root',
+          dest='toolsroot',
+          type='string',
+          nargs=1,
+          action='store',
+          metavar='Q6_TOOLS_ROOT',
+          help='Set tools directory')
+
+AddOption('--q6_tools_ver',
+          dest='toolsver',
+          type='string',
+          nargs=1,
+          action='store',
+          metavar='Q6_TOOLS_VER',
+          help='Set tools directory')
+
+AddOption('--extra_warnings',
+          dest='extrawarnings',
+          default=False,
+          action='store_true',
+          help='Turn on extra QuRT build warnings')
+
+AddOption('--test_objs',
+          dest='testobjs',
+          default=False,
+          action='store_true',
+          help='Turn on extra QuRT test building') # cannot be defaulted on until builders fully support dependency
+
+AddOption('--island_mode',
+          dest='island_mode_test',
+          default=[],
+          const=['--island_mode'],
+          action='store_const',
+          help='Turn on island mode (passed to test cases)')
+
+AddOption('--api_dir',
+          dest='apidir',
+          default='api',
+          type='string',
+          nargs=1,
+          action='store',
+          metavar='API_DIR',
+          help='Initialize api external location')
+		  
+AddOption('--no_whitelist',
+          dest='no_whitelist',
+          default=False,
+          action='store_true',
+          metavar='NO_WHITELIST',
+          help='ignore the whitelist check')
+
+AddOption('--pie',
+          dest='use_pie',
+          default=False,
+          action='store_true',
+          metavar='USE_PIE',
+          help='build PIC')
+
+AddOption('--debug_opt',
+          dest='use_debug',
+          default=False,
+          action='store_true',
+          metavar='USE_DEBUG',
+          help='build with Debug options')
+
+AddOption('--qurt_expose_api',
+          dest='use_qurt_expose_api',
+          default=False,
+          action='store_true',
+          metavar='USE_QURT_EXPOSE_API',
+          help='EXPOSE LIMITED QURT APIs TO User PD')
+
+if GetOption('help')==True:
+   print "\nUsage: \nscons qurt" 
+   print "          --target=<TARGET>"
+   print "          --install_dir=<INSTALL DIRECTORY>"
+   print "          --build_dir=<BUILD_DIRECTORY>"
+   print "          --q6_tools_root=<Q6_TOOLS_ROOT>"
+   print "          --q6_tools_ver=<Q6_TOOLS_VER>"
+   print "          --api_dir=<API_DIRECTORY>"
+   print "          [--extra_warnings]"
+   print "          [--pie]"
+   print "          [--debug]"
+   print "          [--qurt_expose_api]"
+   sys.exit(0)
+
+targets = GetOption('target')
+if not targets:
+    #
+    # --target wasn't specified, try TARGET=
+    #
+    if not 'TARGET' in ARGUMENTS:
+        #
+        # No target was specified at all.  Give up
+        #
+        print ''
+        print '  When building QuRT, you must specify one or more targets:'
+        print '    scons --target=xxx [--target=xxx ...]'
+        print '    scons TARGET=xxx'
+        print ''
+        sys.exit(0)
+    targets = [ARGUMENTS['TARGET']]
+
+env = DefaultEnvironment(ENV = {'PATH' : os.environ['PATH']}, 
+                         TRGT          = targets[0],
+                         Q6_RTOS_ROOT  = os.path.realpath(GetOption('instdir')),
+                         INSTALL_DIR   = os.path.realpath(GetOption('instdir')),
+                         BUILD_DIR     = os.path.abspath(GetOption('blddir')),
+                         Q6_TOOLS_ROOT = GetOption('toolsroot'),
+                         Q6_TOOLS_VER = GetOption('toolsver'),
+                         EXTRA_WARNINGS = GetOption('extrawarnings'),
+                         TEST_OBJS = GetOption('testobjs'),
+                         NO_WHITELIST = GetOption('no_whitelist'),
+                         USE_LLVM = False,
+                         USE_PIE = GetOption('use_pie'),
+                         USE_DEBUG = GetOption('use_debug'),
+                         USE_QURT_EXPOSE_API = GetOption('use_qurt_expose_api'),
+                         API_DIR       = os.path.realpath(GetOption('apidir')),
+                         tools         = ['mingw'])
+
+#
+# If the caller specified:
+#     H2DIR=/path
+# on the command line, then make that path accessible
+# as env['H2_REFERENCE_DIR']
+#
+for k,v in ARGLIST:
+    if k == 'H2DIR':
+        env['H2_REFERENCE_DIR'] = v
+        print env.subst('*** H2 reference directory is: $H2_REFERENCE_DIR')
+      
+for this_target in targets:
+    qurtenv = env.Clone(TRGT = this_target)
+    SConscript('SConscript', exports='qurtenv')
+
+#Permit command line arguments of form testcase=TESTCASE
+#  Example:  scons testcase=qurt_signal_any_t1
+#   which would cause the top level SCons to run the named test case after building
+#Permit command line arguments of form program=directory
+#  Example:  scons program=mytest
+#   which would cause the top level SCons to include mytest/SConscript
+testcases = []
+testclean = []
+programs = []
+env = qurtenv['QURT_BUILDENV']
+for key, value in ARGLIST:
+   if key == 'testcase':
+      testcases.append(str(value))
+      testclean.append(str(value))
+   if key == 'retest':
+      testcases.append(str(value))
+   if key == 'program':
+      prog_params = str(value).split('#')
+      PROG_PATH = prog_params[0]
+      builds = prog_params[1:]
+      PROG_BUILD_PATH = env.subst('$BUILD_DIR')+'/'+PROG_PATH
+      VariantDir(PROG_BUILD_PATH, PROG_PATH, duplicate=0)
+      programs.extend(SConscript(PROG_BUILD_PATH+'/SConscript', exports=['env','builds']))
+if testcases:
+   # First command does a clean.  This is because the test cases don't
+   #   yet have proper dependencies on the QuRT build itself.
+   # Second command does the real test build.
+   try:
+       f = open(env.subst('$QURT_TOP/test_dir_location'))       # If file exists, it contains the location of the test tree
+       test_tree = f.read().strip()
+       f.close()
+   except IOError:
+       test_tree = env.subst('$QURT_TOP/test')
+   cmdline = []
+   if testclean:
+      cmdline += ['Q6_RTOS_ROOT='+env['QURT_TOP']+'/install',
+                 'scons', '-C', test_tree, '-c', '--target='+env['TRGT']] + GetOption('island_mode_test') + testclean
+      cmdline += ['&&']
+   cmdline += ['Q6_RTOS_ROOT='+env['QURT_TOP']+'/install',
+              'scons', '-C', test_tree, '--target='+env['TRGT']] + GetOption('island_mode_test') + testcases
+   def testemitter(target, source, env):
+      return ['test_dummy'], []
+   env['BUILDERS']['TestBuilder'] = Builder(action = ' '.join(cmdline), emitter=testemitter)
+   testbuilder = env.TestBuilder()
+   env.Depends(testbuilder, env.QurtTargets.getlist())
+   env.AlwaysBuild(testbuilder)
+   Default(testbuilder)
+if programs:
+   ''' Make all "programs" dependent on the rest of the build so that they get built last '''
+   env.Depends(programs, env.QurtTargets.getlist())
+   Default(programs)

@@ -1,0 +1,703 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!--
+========================================================================
+   Copyright(c) 2017-2018 Qualcomm Technologies, Inc.
+   All Rights Reserved.
+   Confidential and Proprietary - Qualcomm Technologies, Inc.
+========================================================================
+-->
+<Flash
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:noNamespaceSchemaLocation="..\..\..\XSD\stats\aec\aecFlash.xsd">
+  <module_version>
+    <major_revision>1</major_revision>
+    <minor_revision>0</minor_revision>
+    <incr_revision>0</incr_revision>
+  </module_version>
+  <flashMtr description="Metering for flash photography">
+    <flashLumaTarget description="Tune lux-based luma target specifically for flash">
+      <enableFlashTarget description="Enable separate luma target for flash snapshot capture" tuning_parameter_level="often_tune">false</enableFlashTarget>
+      <flashTarget description="Luma target tuning structure, which is shared between normal and flash use case.">
+        <luxLumaTargetZone>
+          <zoneTrigger description="lux level start and end values that define trigger region">
+            <start>0</start>
+            <end>190</end>
+          </zoneTrigger>
+          <!--
+
+	AEC Tuning: Key metering structures
+
+	 -->
+          <zoneData description="Triggered data: Luma targets that will be adjusted based on lux level">
+            <lumaTarget description="Luma target value for each zone with 8 bit range." range="[0,255]" tuning_parameter_level="often_tune">45</lumaTarget>
+          </zoneData>
+        </luxLumaTargetZone>
+        <luxLumaTargetZone>
+          <zoneTrigger description="lux level start and end values that define trigger region">
+            <start>230</start>
+            <end>360</end>
+          </zoneTrigger>
+          <!--
+
+	AEC Tuning: Key metering structures
+
+	 -->
+          <zoneData description="Triggered data: Luma targets that will be adjusted based on lux level">
+            <lumaTarget description="Luma target value for each zone with 8 bit range." range="[0,255]" tuning_parameter_level="often_tune">45</lumaTarget>
+          </zoneData>
+        </luxLumaTargetZone>
+        <luxLumaTargetZone>
+          <zoneTrigger description="lux level start and end values that define trigger region">
+            <start>420</start>
+            <end>1000</end>
+          </zoneTrigger>
+          <!--
+
+	AEC Tuning: Key metering structures
+
+	 -->
+          <zoneData description="Triggered data: Luma targets that will be adjusted based on lux level">
+            <lumaTarget description="Luma target value for each zone with 8 bit range." range="[0,255]" tuning_parameter_level="often_tune">25</lumaTarget>
+          </zoneData>
+        </luxLumaTargetZone>
+      </flashTarget>
+      <!--
+
+Base Type Tuning Definition
+
+ -->
+      <flashInfluenceTargetInterpolation description="Interpolation between normal target and flash target is done by measuring the influence of flash: No influence (min: 1.0) should use normal target whereas strong influence (about 5.0 and above) should use flash target." range="[1.0,7.0]" tuning_parameter_level="rarely_tune">
+        <start>2</start>
+        <end>5</end>
+      </flashInfluenceTargetInterpolation>
+    </flashLumaTarget>
+    <smartFlash description="Smart flash uses a bias table computed by comparing stats before and after preflash to better expose scenes that have both foreground and background features">
+      <enableSmartFlashEst description="Enable metering scene using flash influence bias table" tuning_parameter_level="often_tune">true</enableSmartFlashEst>
+      <smartFlashEstStrength description="Strength of smart flash feature" range="[0.0,2.0]" tuning_parameter_level="often_tune">1</smartFlashEstStrength>
+      <minOffStats description="Off stats value will be set to this value as to make the on_stats/off_stats ratio robust to noise" range="[2,5]" tuning_parameter_level="rarely_tune">3</minOffStats>
+      <kFloorPct description="Percentile threshold to compress flash influence. The larger this value the more emphasis on small reflective objects" range="[0.0,0.95]" tuning_parameter_level="rarely_tune">0.8</kFloorPct>
+      <satPreventStrength description="Strength of saturation prevention feature" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0</satPreventStrength>
+      <enableSpeckleHandling description="This feature allows saturation to happen if it is shaped like a speckle" tuning_parameter_level="often_tune">true</enableSpeckleHandling>
+      <!--
+
+Base Type Tuning Definition
+
+ -->
+      <speckleSatPctRange description="Saturation pct range within which we will decrease influence of region. Above this range influence of region is decreased to minimum. Lower range to make speckle detection kick in more often." range="[0.01,1.0]" tuning_parameter_level="rarely_tune">
+        <start>0.05</start>
+        <end>0.35</end>
+      </speckleSatPctRange>
+    </smartFlash>
+    <statsPreprocessing description="Preflash metering defines which regions are influenced by flash. It also speeds up preflash convergence sequence.">
+      <thresBrightLevelDiff description="During preflash convergence: Y region is still too bright if larger than thresBrightLevel + thresBrightLevelDiff. The lower this value the more likely convergence will adjust after preflash turns on" range="[5,50]" tuning_parameter_level="rarely_tune">30</thresBrightLevelDiff>
+      <thresBrightLevel description="Mark Y region as bright when above this threshold" range="[180,210]" tuning_parameter_level="rarely_tune">190</thresBrightLevel>
+      <thresBrightSatDiff description="During preflash convergence: Y region is saturated if sat percentage is larger than thresBrightSat + thresBrightSatDiff. The lower this value the more likely convergence will adjust after preflash turns on" range="[0.03,0.15]" tuning_parameter_level="rarely_tune">0.1</thresBrightSatDiff>
+      <thresBrightSat description="Mark Y region as bright when above this threshold" range="[0.15,0.3]" tuning_parameter_level="rarely_tune">0</thresBrightSat>
+      <minLuma description="Preflash convergence will stop if luma drops below this threshold" range="[8,25]" tuning_parameter_level="rarely_tune">15</minLuma>
+      <minLumaAdj description="Minimum adjustment during preflash convergence. The larger this value the more precise convergence but also the longer it takes to converge" range="[0.5,1.0]" tuning_parameter_level="rarely_tune">0.55</minLumaAdj>
+    </statsPreprocessing>
+    <FDFlash description="This feature runs face detection during preflash sequence and then exposes the snapshot image using face detection ROI. It can also be tuned to extend the preflash sequence and give more time for face detection to run.">
+      <enableFDFlash description="Enable face detection ROI metering for flash snapshot" tuning_parameter_level="often_tune">true</enableFDFlash>
+      <!--
+
+Base Type Tuning Definition
+
+ -->
+      <ledFaceWeight description="Weight range assigned to face depending on face size (small face will use start weight large face will sue end weight). Leverages dominant face AEC" range="[0.1,0.5]" tuning_parameter_level="often_tune">
+        <start>0.6</start>
+        <end>0.9</end>
+      </ledFaceWeight>
+      <!--
+
+Base Type Tuning Definition
+
+ -->
+      <ledFaceSize description="Face size pct range that controls metering weight. Leverages dominant face AEC" range="[0.05,0.5]" tuning_parameter_level="often_tune">
+        <start>0.1</start>
+        <end>0.3</end>
+      </ledFaceSize>
+      <FDFlashFrameCount description="Threshold on the maximum number of frames the algorithm will wait for face detection" range="[0,100]" tuning_parameter_level="often_tune">5</FDFlashFrameCount>
+      <FDFlashLumaTarget description="Luma target for face ROIs" range="[40,70]" tuning_parameter_level="often_tune">65</FDFlashLumaTarget>
+      <!--
+
+Base Type Tuning Definition
+
+ -->
+      <faceSizeExpEffect description="Range of face size within which the effect of flash face detection phases in and out. Large face should make full use of FD metering" range="[0.005,0.4]" tuning_parameter_level="often_tune">
+        <start>0.1</start>
+        <end>0.2</end>
+      </faceSizeExpEffect>
+      <statsUpdateDelayTimeEnter description="Specify the delay in seconds to declare Face ROI officially comes into effect (for detection stability)" range="[0,10]" tuning_parameter_level="rarely_tune">0</statsUpdateDelayTimeEnter>
+      <statsUpdateDelayTimeExit description="Specify the delay in seconds to declare Face ROI officially exits (for detection stability)" range="[0,10]" tuning_parameter_level="rarely_tune">3</statsUpdateDelayTimeExit>
+    </FDFlash>
+  </flashMtr>
+  <flashConv>
+    <preflashConv description="Tuning for convergence during preflash phase of flash snapshot" tuning_parameter_level="rarely_tune">
+      <frameSkipMethod description="Specifies which type of frame skip is desired: SmoothNoSkip for smooth convergence, SkipOne if there are synchronization concerns, SkipSystemLatency if speed is preferred to smoothness" tuning_parameter_level="rarely_tune">SmoothNoSkip</frameSkipMethod>
+      <aggressiveness description="The larger this value the faster the convergence" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">1</aggressiveness>
+      <settledFrameCountThres description="Number of additional frames to wait before declaring settled and computing flash snapshot parameters. Can be reduced if sensor sync is reliable" range="[0,3]" tuning_parameter_level="rarely_tune">2</settledFrameCountThres>
+    </preflashConv>
+    <flashMeasurementConv description="Tuning for convergence during flash chromatix tuning procedure" tuning_parameter_level="rarely_tune">
+      <!--
+
+Rapid Startup is used by both Startup and Flash algorithms
+
+ -->
+      <firstFrameBias description="Heuristics to speed up convergence in first frame">
+        <enableStartUpBias description="Enable biasing to converge faster in the first frame in the presence of saturated regions" tuning_parameter_level="rarely_tune">true</enableStartUpBias>
+        <firstFrameStepSizeDarkMax description="When converging from dark to bright: maximum absolute exposure index step size for first frame" range="[0,200]" tuning_parameter_level="rarely_tune">100</firstFrameStepSizeDarkMax>
+        <!--
+
+Base Type Tuning Definition
+
+ -->
+        <stepSizeBrightAdjRange description="When converging from bright to dark: Exposure index step size range within which a factor will be applied to converge faster in the first frame" range="[20,80]" tuning_parameter_level="rarely_tune">
+          <start>30</start>
+          <end>50</end>
+        </stepSizeBrightAdjRange>
+        <maxAdjFactor description="Max factor to boost exposure adjustment in the first frame" range="[1.5,3.0]" tuning_parameter_level="rarely_tune">2.3</maxAdjFactor>
+      </firstFrameBias>
+      <startExpIndex description="Preferred initial exposure index" range="[0,500]" tuning_parameter_level="rarely_tune">220</startExpIndex>
+      <tolMultUnitStepSize description="Tolerance expressed as a multiple of unitStepSize" range="[2,6]" tuning_parameter_level="rarely_tune">3</tolMultUnitStepSize>
+      <frameSkipInit description="Initial frame skip" range="[0,4]" tuning_parameter_level="rarely_tune">2</frameSkipInit>
+      <frameSkip description="How many frames to skip between two adjustments. Depends on sensor sync" range="[2,3]" tuning_parameter_level="rarely_tune">2</frameSkip>
+      <minSettledCount description="How many frames without any adjustments before declaring the algorithm is settled" range="[3,5]" tuning_parameter_level="rarely_tune">4</minSettledCount>
+      <maxFrameConvTimeOut description="Maximum duration of convergence, in frames" range="[10,50]" tuning_parameter_level="rarely_tune">12</maxFrameConvTimeOut>
+    </flashMeasurementConv>
+    <torchConv description="Tuning for convergence during torch mode" tuning_parameter_level="rarely_tune">
+      <enableTorchConvergence description="Enable torch convergence feature" tuning_parameter_level="rarely_tune">false</enableTorchConvergence>
+      <tolMultUnitStepSize description="Exposure index tolerance is tolMultUnitStepSize * unitStepSize; exposure index range within which AEC will not adjust" range="[1,5]" tuning_parameter_level="often_tune">2</tolMultUnitStepSize>
+      <frameSkipMethod description="Specifies which type of frame skip is desired: SmoothNoSkip for smooth convergence, SkipOne if there are synchronization concerns, SkipSystemLatency if speed is preferred to smoothness" tuning_parameter_level="rarely_tune">SmoothNoSkip</frameSkipMethod>
+      <aggressiveness description="Controls convergence speed; 0.0 is slowest and 1.0 is fastest" range="[0.0,1.0]" tuning_parameter_level="often_tune">0.8</aggressiveness>
+      <startupAggressiveness description="How many frames minimum should torch convergence run" range="[0,5]" tuning_parameter_level="often_tune">0.9</startupAggressiveness>
+      <ADRCConvSpeed description="Convergence speed for short and long exposures. Smaller value yields slower convergence." range="[0.0,0.5]" tuning_parameter_level="rarely_tune">0.15</ADRCConvSpeed>
+    </torchConv>
+  </flashConv>
+  <flashArb>
+    <expTableIDPreFlash description="Index of exposure table to use during preflash convergence" range="[0,unbounded]" tuning_parameter_level="often_tune">0</expTableIDPreFlash>
+    <expTableIDMainFlash description="Index of exposure table to use for flash snapshot" range="[0,unbounded]" tuning_parameter_level="often_tune">0</expTableIDMainFlash>
+    <expTableIDFlashMeasurement description="Index of exposure table to use during chromatix flash tuning" range="[0,unbounded]" tuning_parameter_level="rarely_tune">0</expTableIDFlashMeasurement>
+  </flashArb>
+  <flashExt>
+    <!--
+
+Base Type Tuning Definition
+
+ -->
+    <flashLuxTrigger description="Lux hysteresis thresholds to trigger flash." range="[300,500]" tuning_parameter_level="often_tune">
+      <start>350</start>
+      <end>360</end>
+    </flashLuxTrigger>
+    <!--
+
+Base Type Tuning Definition
+
+ -->
+    <flashFDRequestDelayLuxTrigger description="Lux hysteresis thresholds to request additional time for face detection to run" range="[300,500]" tuning_parameter_level="often_tune">
+      <start>370</start>
+      <end>380</end>
+    </flashFDRequestDelayLuxTrigger>
+    <LEDTable description="Tuning of LEDs for flash exposure conistency as well as color matching consistency for dual LED solutions">
+      <enableDualLED description="Use LED tuning tool to populate this parameter. If project is using single LED set to false, if using dual LED set to true." tuning_parameter_level="rarely_tune">true</enableDualLED>
+      <dualLEDIntersectSlope description="For dual LED: intersection slope between measured AWB gray point and LED data in the r/g vs. b/g color domain" range="[0.0,5.0]" tuning_parameter_level="never_tune">1</dualLEDIntersectSlope>
+      <LEDPowerSize description="Use LED tuning tool to populate this parameter. How many power levels are tuned." range="[2,6]" tuning_parameter_level="rarely_tune">5</LEDPowerSize>
+      <LEDMixSize description="Use LED tuning tool to populate this parameter. How many mixes are there for each power level" range="[1,16]" tuning_parameter_level="rarely_tune">11</LEDMixSize>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">120</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">0</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">1.207631</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.368768</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">1</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">100</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">20</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">1.100574</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.433383</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">1.053577</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">96</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">24</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">1.090236</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.441535</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">0.953983</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">84</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">36</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.986462</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.499986</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">1.00437</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">72</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">48</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.88784</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.53741</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">1.039927</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">60</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">60</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.808411</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.579553</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">1.10039</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">48</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">72</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.718548</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.616195</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">1.126933</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">36</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">84</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.606613</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.628776</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">1.119815</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">24</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">96</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.567115</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.665597</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">1.184254</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">20</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">100</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.568255</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.672491</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">1.274972</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">0</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">120</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.510411</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.701651</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">1.299548</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">350</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">0</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">1.178793</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.377656</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">2.892659</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">315</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">35</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">1.098475</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.417529</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">2.959085</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">280</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">70</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">1.010952</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.470888</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">3.169688</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">245</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">105</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.925062</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.50716</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">3.306688</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">210</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">140</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.842864</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.543607</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">3.411112</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">175</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">175</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.78503</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.581188</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">3.484933</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">140</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">210</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.708714</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.607182</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">3.561306</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">105</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">245</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.62043</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.622586</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">3.655216</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">70</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">280</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.572002</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.653977</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">3.686958</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">35</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">315</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.53914</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.688375</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">3.678527</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">0</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">350</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.49865</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.713221</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">3.754501</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">500</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">0</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">1.084598</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.359237</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">3.530069</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">450</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">50</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">1.061863</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.439416</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">3.92117</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">400</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">100</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.978782</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.48911</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">4.21844</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">350</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">150</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.909088</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.514258</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">4.564175</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">300</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">200</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.840235</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.554063</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">4.872541</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">250</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">250</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.786084</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.585067</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">5.017399</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">200</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">300</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.674595</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.594863</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">5.119498</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">150</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">350</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.62358</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.630843</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">5.046241</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">100</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">400</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.580928</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.65168</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">4.891849</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">50</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">450</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.541835</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.686727</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">4.826231</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">0</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">500</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.495276</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.723729</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">4.703318</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">650</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">0</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">1.076535</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.362993</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">4.175739</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">585</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">65</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">1.049067</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.446198</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">4.609595</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">520</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">130</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.96661</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.493652</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">5.013845</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">455</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">195</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.897317</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.523931</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">5.314528</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">390</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">260</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.835937</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.558179</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">5.862498</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">325</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">325</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.77595</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.590316</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">6.15501</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">260</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">390</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.68196</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.610666</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">6.152382</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">195</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">455</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.623296</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.634526</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">5.896269</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">130</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">520</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.579786</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.66242</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">5.871614</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">65</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">585</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.545826</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.698844</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">5.750896</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">0</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">650</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.489209</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.737888</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">5.615825</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">900</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">0</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">1.052915</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.371568</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">4.820184</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">810</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">90</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">1.021041</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.464137</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">5.498838</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">720</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">180</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.932993</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.50394</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">6.131674</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">630</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">270</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.863473</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.545</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">6.821949</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">540</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">360</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.811969</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.576346</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">7.24328</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">450</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">450</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.763323</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.599757</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">7.404785</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">360</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">540</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.668655</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.607926</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">7.618574</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">270</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">630</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.632127</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.641471</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">7.610573</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">180</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">720</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.578526</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.673875</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">7.319763</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">90</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">810</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.544877</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.720309</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">7.029603</flux>
+      </CCTTables>
+      <CCTTables description="Tuning of LED parameters for both single and dual LED">
+        <LED1Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED1 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">0</LED1Setting>
+        <LED2Setting description="Use LED tuning tool to populate LED tuning table. Power level for LED2 in mA. Max value depends on hardware design and driver" range="[0,1000]" tuning_parameter_level="rarely_tune">900</LED2Setting>
+        <RGRatio description="Use LED tuning tool to populate LED tuning table. Red over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.481541</RGRatio>
+        <BGRatio description="Use LED tuning tool to populate LED tuning table. Blue over green ratio for current mix" range="[0.0,1.0]" tuning_parameter_level="rarely_tune">0.774367</BGRatio>
+        <flux description="Use LED tuning tool to populate LED tuning table. Influence of flash on scene in reference to entry in power level mix 0" range="[0.0,7.0]" tuning_parameter_level="rarely_tune">6.471078</flux>
+      </CCTTables>
+      <CCTTableCalibration description="LED calibration controls. AEC LED calibration is tightly linked to AEC LED CCT table tuning">
+        <numOfCalibration description="Number of points to calibrate" range="[0,12]" tuning_parameter_level="rarely_tune">4</numOfCalibration>
+        <enableCornerSampleScreen description="Enable screening calibration point to screen out obvious issues" tuning_parameter_level="rarely_tune">true</enableCornerSampleScreen>
+        <calibEntries>
+          <LEDPowerIndex description="Power index of LED point to calibrate" range="[0,5]" tuning_parameter_level="rarely_tune">0</LEDPowerIndex>
+          <LEDMixIndex description="Mix index of LED point to calibrate" range="[0,15]" tuning_parameter_level="rarely_tune">0</LEDMixIndex>
+        </calibEntries>
+        <calibEntries>
+          <LEDPowerIndex description="Power index of LED point to calibrate" range="[0,5]" tuning_parameter_level="rarely_tune">0</LEDPowerIndex>
+          <LEDMixIndex description="Mix index of LED point to calibrate" range="[0,15]" tuning_parameter_level="rarely_tune">10</LEDMixIndex>
+        </calibEntries>
+        <calibEntries>
+          <LEDPowerIndex description="Power index of LED point to calibrate" range="[0,5]" tuning_parameter_level="rarely_tune">4</LEDPowerIndex>
+          <LEDMixIndex description="Mix index of LED point to calibrate" range="[0,15]" tuning_parameter_level="rarely_tune">0</LEDMixIndex>
+        </calibEntries>
+        <calibEntries>
+          <LEDPowerIndex description="Power index of LED point to calibrate" range="[0,5]" tuning_parameter_level="rarely_tune">4</LEDPowerIndex>
+          <LEDMixIndex description="Mix index of LED point to calibrate" range="[0,15]" tuning_parameter_level="rarely_tune">10</LEDMixIndex>
+        </calibEntries>
+        <statsRatioOKRange>
+          <!--
+
+Base Type Tuning Definition
+
+ -->
+          <RGRatioOKRange description="Pass range of the r/g deviation percentage from golden device to device under test, for current calibration index. Calibration will fail if outside of this range." range="[0.7,1.3]" tuning_parameter_level="often_tune">
+            <start>0.8</start>
+            <end>1.2</end>
+          </RGRatioOKRange>
+          <!--
+
+Base Type Tuning Definition
+
+ -->
+          <BGRatioOKRange description="Pass range of the b/g deviation percentage from golden device to device under test, for current calibration index. Calibration will fail if outside of this range." range="[0.7,1.3]" tuning_parameter_level="often_tune">
+            <start>0.8</start>
+            <end>1.2</end>
+          </BGRatioOKRange>
+        </statsRatioOKRange>
+        <statsRatioOKRange>
+          <!--
+
+Base Type Tuning Definition
+
+ -->
+          <RGRatioOKRange description="Pass range of the r/g deviation percentage from golden device to device under test, for current calibration index. Calibration will fail if outside of this range." range="[0.7,1.3]" tuning_parameter_level="often_tune">
+            <start>0.8</start>
+            <end>1.2</end>
+          </RGRatioOKRange>
+          <!--
+
+Base Type Tuning Definition
+
+ -->
+          <BGRatioOKRange description="Pass range of the b/g deviation percentage from golden device to device under test, for current calibration index. Calibration will fail if outside of this range." range="[0.7,1.3]" tuning_parameter_level="often_tune">
+            <start>0.8</start>
+            <end>1.2</end>
+          </BGRatioOKRange>
+        </statsRatioOKRange>
+        <statsRatioOKRange>
+          <!--
+
+Base Type Tuning Definition
+
+ -->
+          <RGRatioOKRange description="Pass range of the r/g deviation percentage from golden device to device under test, for current calibration index. Calibration will fail if outside of this range." range="[0.7,1.3]" tuning_parameter_level="often_tune">
+            <start>0.8</start>
+            <end>1.2</end>
+          </RGRatioOKRange>
+          <!--
+
+Base Type Tuning Definition
+
+ -->
+          <BGRatioOKRange description="Pass range of the b/g deviation percentage from golden device to device under test, for current calibration index. Calibration will fail if outside of this range." range="[0.7,1.3]" tuning_parameter_level="often_tune">
+            <start>0.8</start>
+            <end>1.2</end>
+          </BGRatioOKRange>
+        </statsRatioOKRange>
+        <statsRatioOKRange>
+          <!--
+
+Base Type Tuning Definition
+
+ -->
+          <RGRatioOKRange description="Pass range of the r/g deviation percentage from golden device to device under test, for current calibration index. Calibration will fail if outside of this range." range="[0.7,1.3]" tuning_parameter_level="often_tune">
+            <start>0.8</start>
+            <end>1.2</end>
+          </RGRatioOKRange>
+          <!--
+
+Base Type Tuning Definition
+
+ -->
+          <BGRatioOKRange description="Pass range of the b/g deviation percentage from golden device to device under test, for current calibration index. Calibration will fail if outside of this range." range="[0.7,1.3]" tuning_parameter_level="often_tune">
+            <start>0.8</start>
+            <end>1.2</end>
+          </BGRatioOKRange>
+        </statsRatioOKRange>
+        <fixedExpIndex description="Manual exposure index for given " range="[0,500]" tuning_parameter_level="rarely_tune">200</fixedExpIndex>
+        <fixedExpIndex description="Manual exposure index for given " range="[0,500]" tuning_parameter_level="rarely_tune">200</fixedExpIndex>
+        <fixedExpIndex description="Manual exposure index for given " range="[0,500]" tuning_parameter_level="rarely_tune">100</fixedExpIndex>
+        <fixedExpIndex description="Manual exposure index for given " range="[0,500]" tuning_parameter_level="rarely_tune">100</fixedExpIndex>
+      </CCTTableCalibration>
+      <LEDMeasConfig description="Flash measurement configuration. These parameters apply to both flash tuning and flash calibration">
+        <frameErrAllowance description="For either flash calibration or flash tuning: Frame to frame error allowance when computing average r/g and b/g ratios" range="[0.005,0.03]" tuning_parameter_level="rarely_tune">0.015</frameErrAllowance>
+        <numOfFrames description="For either flash calibration or flash tuning: How many frames to average the average r/g b/g ratios" range="[3,5]" tuning_parameter_level="rarely_tune">3</numOfFrames>
+        <maxNumOfFrames description="For either flash calibration or flash tuning: Maximum number of frames to try averaging r/g and b/g ratio when stats are not consistent (cf. error allowance) before stopping measurement" range="[6,10]" tuning_parameter_level="rarely_tune">10</maxNumOfFrames>
+        <maxNumOfExtraAttempts description="For either flash calibration or flash tuning: When a measurement fails we can allow some extra attempts. This parameter controls how many extra attempts in total are allowed" range="[2,10]" tuning_parameter_level="rarely_tune">3</maxNumOfExtraAttempts>
+      </LEDMeasConfig>
+    </LEDTable>
+    <enableForceAFInLEDOnMode description="Set to true to always run LED AF when LED is in force ON mode." tuning_parameter_level="rarely_tune">true</enableForceAFInLEDOnMode>
+  </flashExt>
+</Flash>

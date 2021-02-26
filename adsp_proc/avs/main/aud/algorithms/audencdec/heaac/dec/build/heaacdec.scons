@@ -1,0 +1,110 @@
+#===============================================================================
+#
+# AVS AU
+#
+# GENERAL DESCRIPTION
+#    Build script
+#
+# Copyright (c) 2015 Qualcomm Technologies, Inc.  All Rights Reserved.
+# Confidential and Proprietary - Qualcomm Technologies, Inc.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/avs.adsp/2.8.5/aud/algorithms/audencdec/heaac/dec/build/heaacdec.scons#1 $
+#  $DateTime: 2017/11/07 23:00:25 $
+#  $Author: pwbldsvc $
+#  $Change: 14795016 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     		what, where, why
+# --------   ---     		---------------------------------------------------------
+# 04/14/15   adeepak   		HE-AAC Decoder Scons file
+#===============================================================================
+Import('env')
+
+env.Append(CFLAGS = ' -DHEAAC_DEC_SBR_THREAD_PROC')
+env.Append(CFLAGS = ' -UASSERT')
+
+env.RequireRestrictedApi(['SHARED_LIBRARY_INC_PATHS'])
+
+LIBNAME = 'HeaacDecoderModule'
+
+env.PublishProtectedApi('HEAAC',[
+   '${AVS_ROOT}/aud/algorithms/audencdec/heaac/dec/HeaacDecLib/dlb_heaacdeclib/src',
+   '${AVS_ROOT}/aud/algorithms/audencdec/heaac/dec/HeaacDecLib/dlb_heaacdeclib/frontend',
+   '${AVS_ROOT}/aud/algorithms/audencdec/heaac/dec/HeaacDecLib/dlb_heaacdeclib/include',
+   '${AVS_ROOT}/aud/algorithms/audencdec/heaac/dec/HeaacDecLib/dlb_heaacdeclib/dlb_bitbuflib',
+   '${AVS_ROOT}/aud/algorithms/audencdec/heaac/dec/HeaacDecLib/dlb_heaacdeclib/dlb_transportlib',
+   '${AVS_ROOT}/aud/algorithms/audencdec/heaac/dec/HeaacDecLib/dlb_heaacdeclib/dlb_transportlib/src',
+   '${AVS_ROOT}/aud/algorithms/audencdec/heaac/dec/HeaacDecLib/dlb_buffer/include',
+   '${AVS_ROOT}/aud/algorithms/audencdec/heaac/dec/HeaacDecLib/dlb_clif',
+   '${AVS_ROOT}/aud/algorithms/audencdec/heaac/dec/HeaacDecLib/dlb_intrinsics',
+   '${AVS_ROOT}/aud/algorithms/audencdec/heaac/dec/HeaacDecLib/dlb_heaacdeclib/dlb_aacdeclib',
+   '${AVS_ROOT}/aud/algorithms/audencdec/heaac/dec/HeaacDecLib/dlb_heaacdeclib/dlb_aacdeclib/src',
+   '${AVS_ROOT}/aud/algorithms/audencdec/heaac/dec/HeaacDecLib/dlb_heaacdeclib/dlb_sbrdeclib/',
+   '${AVS_ROOT}/aud/algorithms/audencdec/heaac/dec/HeaacDecLib/dlb_heaacdeclib/bsacdeclib/src',
+   '${AVS_ROOT}/aud/algorithms/audencdec/heaac/dec/HeaacDecLib/dlb_heaacdeclib/dlb_sbrdeclib/src',
+   '${AVS_ROOT}/aud/algorithms/audencdec/heaac/dec/HeaacDecLib/dlb_heaacdeclib/dpidlib',
+   '${AVS_ROOT}/aud/algorithms/audencdec/heaac/dec/HeaacDecLib/dlb_heaacdeclib/dpidlib/src',
+   ])
+
+env.Append(CFLAGS = ' -DMAX_NUM_OUTPUT_CHANNELS=6')
+env.Append(CFLAGS = ' -DDLB_BACKEND_GENERIC_RISC16X32=1')
+#env.Append(CFLAGS = ' -DDLB_INTRINSICS_NEW_NAMES=1')
+env.Append(CFLAGS = ' -DUSE_BIG_FFT=1')
+env.Append(CFLAGS = ' -DMAX_NUM_CHANNEL_MAPS=4')
+
+
+#-------------------------------------------------------------------------------
+# Setup source PATH
+#-------------------------------------------------------------------------------
+
+items = env.GetSoftwareUnits()
+ 
+x = items.get('LIBS')
+
+avs_reg_sources = []
+avs_stub_sources = []
+avs_prop_sources = list(x)
+
+
+for i in x: 
+    print i.name
+    if i.name == 'CHeaacDec.lib':
+        avs_reg_sources.append(i)
+        avs_prop_sources.remove(i)
+    if "_stub" in i.name:
+        avs_stub_sources.append(i)
+        avs_prop_sources.remove(i)
+
+core_public_apis = [
+ 'DEBUGTOOLS',
+ 'SERVICES',
+ 'KERNEL',
+]
+
+env.RequirePublicApi(core_public_apis, area='core')
+   
+platform_public_apis = [
+  'STDDEF', # AEEDef
+  'HAPSDK', # HAP_debug, farf etc
+    ]
+    
+# This has to be the last include command, so that the Elite_CAPI.h and Elite_APPI.h are not overridden
+env.RequirePublicApi(platform_public_apis, area='platform')
+
+if 'USES_AVS_SHARED_LIBS' in env:
+    SRCPATH='..'
+    env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+    env.AddAvsSharedLibrary(['AVS_SHARED'],'${BUILDPATH}/'+LIBNAME, [avs_reg_sources, avs_stub_sources, avs_prop_sources],build_type='MOD')
+  
+else:    
+   if 'USES_AVS_LIBRARY_BUILDER' in env:
+      x = env.AddAvsLibrary(['AVS_ADSP','AVS_ADSP_USER'], '${BUILDPATH}/'+LIBNAME,
+         [avs_reg_sources, avs_stub_sources, avs_prop_sources],'MOD')
+
+
+

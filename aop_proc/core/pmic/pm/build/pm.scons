@@ -1,0 +1,169 @@
+#===============================================================================
+#
+#
+# GENERAL DESCRIPTION
+#
+# Copyright (c) 2011-2017 Qualcomm Technologies Incorporated. All Rights Reserved
+#
+# Qualcomm Proprietary
+#
+# Export of this technology or software is regulated by the U.S. Government.
+# Diversion contrary to U.S. law prohibited.
+#
+# All ideas, data and information contained in or disclosed by
+# this document are confidential and proprietary information of
+# Qualcomm Technologies Incorporated and all rights therein are expressly reserved.
+# By accepting this material the recipient agrees that this material
+# and the information contained therein are held in confidence and in
+# trust and will not be used, copied, reproduced in whole or in part,
+# nor its contents revealed in any manner to others without the express
+# written permission of Qualcomm Technologies Incorporated.
+#
+#-------------------------------------------------------------------------------
+#
+# $Header: //components/rel/aop.ho/1.1.c1/aop_proc/core/pmic/pm/build/pm.scons#1 $
+# $DateTime: 2018/02/16 04:48:18 $ 
+#
+#                      EDIT HISTORY FOR FILE
+#                      
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#  
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 05/08/13   aks     Clk driver code re-factoring 
+# 04/12/13   hs      Code refactoring.
+# 01/29/13   aks     Adding support for 5v boost as a separate driver
+# 01/23/13   hs      Used new driver code.
+# 01/22/13   dy      Add 8x10 support
+# 01/22/13   dy      Merge target folder into common framework/npa folder
+# 06/25/12   hs      Moved to core\systemdrivers.
+# 03/30/12   hs      Added support for VBATT APP.
+# 03/07/12   hs      Added support for BOOT builds.
+# 03/12/12   hs      Updated.
+# 03/07/12   hs      Added support for MPSS and RPM builds.
+# 01/24/12   hs      Created
+#===============================================================================
+
+Import('env')
+#SDM640_CHANGES
+supported_targets = ['845', '24', '670', '855', '1000', '640']
+if env['MSM_ID'] not in supported_targets:
+    env.PrintWarning('Bailing from PMIC scripts; no support for build targets other than %s' % supported_targets)
+    Return()
+
+env.Append(CCFLAGS = '${ARMCC_STDC99_CMD}') #needed for designated initializers
+
+env.Replace(PMIC_ROOT = ["${INC_ROOT}/core/pmic/pm",])
+
+env.PublishProtectedApi( 'PMIC_APP', [    
+    '${PMIC_ROOT}/app/vrm/src',
+    ])
+#SDM640_CHANGES
+if env['CHIPSET'] in ['sdm640']:
+    env.PublishProtectedApi( 'PMIC_CONFIG', [    
+        '${PMIC_ROOT}/config/common',
+        '${PMIC_ROOT}/config/sdm670',
+        '${PMIC_ROOT}/config/sdm670/src',
+        ])
+else: 
+    env.PublishProtectedApi( 'PMIC_CONFIG', [    
+    '${PMIC_ROOT}/config/common',
+    '${PMIC_ROOT}/config/${CHIPSET}',
+    '${PMIC_ROOT}/config/${CHIPSET}/src',
+    ])
+
+env.PublishProtectedApi( 'PMIC_COMM', [    
+    '${PMIC_ROOT}/comm/src',
+    '${PMIC_ROOT}/comm/spmi_lite/src',
+    
+    ])
+
+env.PublishProtectedApi( 'PMIC_DRIVERS', [    
+    '${PMIC_ROOT}/drivers/pwr/src',
+    '${PMIC_ROOT}/drivers/smps/src',
+    '${PMIC_ROOT}/drivers/bob/src',
+    '${PMIC_ROOT}/drivers/ldo/src',
+    '${PMIC_ROOT}/drivers/vs/src',
+    '${PMIC_ROOT}/drivers/clk/src',
+   ])
+      
+env.PublishProtectedApi( 'PMIC_DEVICES', [    
+    '${PMIC_ROOT}/pmic_devices/common/src',
+    ])
+
+env.PublishProtectedApi( 'PMIC_FRAMEWORK', [    
+    '${PMIC_ROOT}/framework/inc',
+    '${PMIC_ROOT}/framework/src',
+    ])
+    
+env.PublishProtectedApi( 'PMIC_VRM', [    
+    '${PMIC_ROOT}/vrm/inc',
+    '${PMIC_ROOT}/vrm/src',
+    ])
+
+env.PublishProtectedApi( 'PMIC_PRM', [    
+    '${PMIC_ROOT}/prm/src',
+    '${PMIC_ROOT}/prm/inc',
+    ])
+
+env.PublishProtectedApi( 'PMIC_RPMH', [ 
+    '${PMIC_ROOT}/rpmh/inc',
+    '${PMIC_ROOT}/rpmh/src',
+    ])
+
+env.PublishProtectedApi( 'PMIC_UTILS', [
+    '${PMIC_ROOT}/utils/src'
+    ])
+    
+if env['CHIPSET'] in ['sdm845']:
+    env.PublishProtectedApi( 'PMIC_TARGET', [    
+    '${PMIC_ROOT}/target/sdm845_pm8998_pmi8998/inc',
+    '${PMIC_ROOT}/target/sdm845_pm8998_pmi8998/src',
+    ])  
+elif env['CHIPSET'] in ['sdm670', 'sdm640']:    #SDM640_CHANGES
+    env.PublishProtectedApi( 'PMIC_TARGET', [    
+    '${PMIC_ROOT}/target/sdm670_pm660_pm660l/inc',
+    '${PMIC_ROOT}/target/sdm670_pm660_pm660l/src',
+    ])  
+elif env['CHIPSET'] in ['sdm855', 'sdm1000']:
+    env.PublishProtectedApi( 'PMIC_TARGET', [    
+    '${PMIC_ROOT}/target/sdm855_pm855_pm855l/inc',
+    '${PMIC_ROOT}/target/sdm855_pm855_pm855l/src',
+    ])  
+elif env['CHIPSET'] in ['sdx24']:
+    env.PublishProtectedApi( 'PMIC_TARGET', [    
+    '${PMIC_ROOT}/target/sdx24_pmx24/inc',
+    '${PMIC_ROOT}/target/sdx24_pmx24/src',
+    ])  
+  
+env.PublishProtectedApi( 'PMIC_UTILS', [    
+    '${PMIC_ROOT}/utils/src',
+    ])
+       
+       
+env.RequirePublicApi([
+    'UNPA',
+    'KERNEL',
+    'POWER',
+    'DEBUGTRACE',
+    'SERVICES',
+    'SYSTEMDRIVERS',
+    'PMIC',
+    ])
+           
+env.RequireRestrictedApi([
+    'POWER',
+    'KERNEL',
+    ])
+           
+env.RequireProtectedApi([
+    'PMIC',
+    ])
+
+#-------------------------------------------------------------------------------
+# Continue loading sub-units
+#-------------------------------------------------------------------------------
+    
+env.LoadSoftwareUnits( ) 
+

@@ -1,0 +1,470 @@
+//============================================================================
+//  Name:                                                                     
+//    std_flushcache.cmm 
+//
+//  Description:                                                              
+//    Script to flush the cache depending on the processor
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who             what, where, why
+// --------   ---             ---------------------------------------------------------
+// 09/14/2015 JBILLING      Changes made for automation
+// 07/10/2012 AJCheriyan    Created for B-family 
+
+// Accepts only one argument which is the processor type
+
+ENTRY &ARG0
+
+MAIN:
+    IF (("&ARG0"=="")||(("&ARG0"!="KRAIT")&&("&ARG0"!="CORTEXA5")&&("&ARG0"!="CORTEXA7")&&("&ARG0"!="QDSP6V5H")&&("&ARG0"!="QDSP6V5A")&&("&ARG0"!="ARM9")&&("&ARG0"!="CORTEXA53")&&("&ARG0"!="CORTEXA57")))
+    (
+        PRINT %ERROR "Invalid processor: &ARG0"
+        do std_fatalexit USER "Invalid processor: &ARG0"
+        
+    )
+    
+    // Else to the appropriate routine for that processor
+    GOSUB &ARG0
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+
+    // Exit
+    GOSUB EXIT &rvalue
+
+
+KRAIT:
+    LOCAL &METHOD
+    LOCAL &L2CACHESIZE &LINESIZE
+    LOCAL &L2WAYS &L2SETS
+    LOCAL &CSSIDR_VAL
+    // Krait's L1 cache is write through
+    // Make T32's implementation the default version
+    &METHOD="METHOD2"
+    IF ("&METHOD"=="METHOD1")
+    (
+        CACHE.FLUSH L2
+    )
+    IF ("&METHOD"=="METHOD2")
+    (
+        // Cache Selection Register
+         &CSSELR="C15:0x2000"
+        // Cache Size ID Register
+        &CSSIDR="C15:0x1000"
+        // Data Cache Invalidate by Set / Way Register
+        &DCCISW="C15:0x02E7"
+         &L2CACHESIZE=2048.*1024.*1024.
+        &L2WAYS=8.
+        &LOGL2WAYS=3.
+        &L2SETS=2048.
+        &LOGL2SETS=11.
+        &LINESIZE=128.
+        &LOGLINESIZE=7.    
+
+        // Select the L2 Data Cache
+        PER.S &CSSELR %LONG 0x2    
+        // Now clean and invalidate L2
+        &SET_COUNT=0.
+        WHILE (&SET_COUNT<&L2SETS)
+        (
+            &WAY_COUNT=0.
+            WHILE (&WAY_COUNT<&L2WAYS)
+            (
+                // Last field - is cache level 
+                // 0 - L1 Cache
+                // 1 - L2 Cache
+                 &VALUE=(&WAY_COUNT<<(32.-&LOGL2WAYS))|(&SET_COUNT<<&LOGLINESIZE)|(1<<1)
+                PER.S &DCCISW %LONG &VALUE
+                &WAY_COUNT=&WAY_COUNT+1
+            )
+            &SET_COUNT=&SET_COUNT+1
+        )
+    
+    )
+    
+    RETURN
+
+ARM9:
+    LOCAL &METHOD
+    LOCAL &L1SETS &L1WAYS &LINESIZE
+
+    &METHOD="METHOD2"
+    IF ("&METHOD"=="METHOD1")
+    (
+        CACHE.FLUSH DC
+         CACHE.FLUSH L2
+    )
+
+    IF ("&METHOD"=="METHOD2")
+    (
+        // Cache Type Register
+         &CTYPE="C15:0x0100"
+        // Data Cache Invalidate by Set / Way Register
+        &DCCISW="C15:0x02E7"
+        // Find the associativity and sets
+        // Format of the register is as follows 
+        // [11:00] - ISIZE
+        // [23:12] - DSIZE
+        // [24]    - S
+        // [28:25] - CTYPE
+        // [31:29] - SBZ
+        // ISIZE and DSIZE have the following format
+        // [11]  - P
+        // [10]  - 0
+        // [9:6] - SIZE
+        // [5:3] - ASSOC
+        // [2]   - M 
+        // [1:0] - LEN
+        &CTYPE_VAL=DATA.LONG(&CTYPE)
+        &ASSOC_VAL=(&CTYPE_VAL&0x38000)>>15.
+        &SIZE_VAL=(&CTYPE_VAL&0x1C0000)>>18.
+        &LEN_VAL=(&CTYPE_VAL&0x3000)>>12.
+
+        // Ways = ( 2 + M ) << (assoc -1) field
+        &L1WAYS=(2+(&CTYPE_VAL&0x4000))<<(&ASSOC_VAL-1)
+        // Line size in bytes = ( 1 << (len + 3))
+        &LOGLINESIZE=(&LEN_VAL+3)
+        &LINESIZE=1<<&LOGLINESIZE
+        // Sets = 1 << (size + 6 - assoc - len)
+        &LOGL1SETS=(&SIZE_VAL+6.-&ASSOC_VAL-&LEN_VAL)
+        &L1SETS=1<<&LOGL1SETS        
+
+        // Now iterate through the sets and ways and clean the cache
+        &SET_COUNT=0.
+        WHILE (&SET_COUNT<&L1SETS)
+        (
+            &WAY_COUNT=0.
+            WHILE (&WAY_COUNT<&L1WAYS)
+            (
+
+                 &VALUE=(&WAY_COUNT<<(32.-&ASSOC_VAL))|(&SET_COUNT<<&LOGLINESIZE)
+                PER.S &DCCISW %LONG &VALUE
+                &WAY_COUNT=&WAY_COUNT+1
+            )
+            &SET_COUNT=&SET_COUNT+1
+        )
+    )
+
+    RETURN 
+
+     
+CORTEXA5:
+     RETURN
+
+CORTEXA7:
+    
+    LOCAL &L1WAYS &LOGL1WAYS &L1SETS &LOGL1SETS
+       LOCAL &L2WAYS &LOGL2WAYS &L2SETS &LOGL2SETS
+    LOCAL &MAX_SETS &MAX_WAYS &LOGLINESIZE &LOGWAYS &LEVEL_COUNT
+    LOCAL &CSSIDR_VAL
+    // Cache Selection Register
+    &CSSELR="C15:0x32000"
+    // Cache Size ID Register
+    &CCSIDR="C15:0x31000"
+    // Data Cache Invalidate by Set / Way Register
+    &DCCISW="C15:0x102E7"
+    
+    // Select the cache level and read the size out
+    // L1 data cache
+    PER.S &CSSELR %LONG (0<<1.)
+    &CCSIDR_VAL=DATA.LONG(&CCSIDR)
+    &L1WAYS=((&CCSIDR_VAL&0x3FF)>>0x3)+0x1
+    GOSUB LOGNUM &L1WAYS
+    ENTRY &LOGL1WAYS
+    &L1SETS=((&CCSIDR_VAL&0x7FFF)>>0xD)+0x1
+    GOSUB LOGNUM &L1SETS
+    ENTRY &LOGL1SETS
+    &LOGL1LINESIZE=(&CCSIDR_VAL&0x3)+4
+    
+    // L2 data cache
+    PER.S &CSSELR %LONG (1<<1.)
+    &CCSIDR_VAL=DATA.LONG(&CCSIDR)
+    &L2WAYS=((&CCSIDR_VAL&0x3FF)>>0x3)+0x1
+    GOSUB LOGNUM &L2WAYS
+    ENTRY &LOGL2WAYS
+    &L2SETS=((&CCSIDR_VAL&0x7FFF)>>0xD)+0x1
+    GOSUB LOGNUM &L2SETS
+    ENTRY &LOGL2SETS
+    &LOGL2LINESIZE=(&CCSIDR_VAL&0x3)+4    
+    
+    // Loop through the two caches
+    &LEVEL_COUNT=0
+    WHILE (&LEVEL_COUNT<4)
+    (
+    // Select the L2 Data Cache
+    PER.S &CSSELR %LONG &LEVEL_COUNT
+    IF (&LEVEL_COUNT==0)
+    (
+        &MAX_SETS=&L1SETS
+           &MAX_WAYS=&L1WAYS
+        &LOGWAYS=&LOGL1WAYS
+        &LOGLINESIZE=&LOGL1LINESIZE
+    )
+    ELSE
+    (
+        &MAX_SETS=&L2SETS
+           &MAX_WAYS=&L2WAYS
+        &LOGWAYS=&LOGL2WAYS
+        &LOGLINESIZE=&LOGL2LINESIZE
+    )
+
+    // Now clean and invalidate caches
+    &SET_COUNT=0.
+    WHILE (&SET_COUNT<&MAX_SETS)
+    (
+        &WAY_COUNT=0.
+        WHILE (&WAY_COUNT<&MAX_WAYS)
+        (
+            // Last field - is cache level 
+            // 0 - L1 Cache
+            // 1 - L2 Cache
+             &VALUE=(&WAY_COUNT<<(32.-&LOGWAYS))|(&SET_COUNT<<&LOGLINESIZE)|&LEVEL_COUNT
+            PER.S &DCCISW %LONG &VALUE
+            &WAY_COUNT=&WAY_COUNT+1
+        )
+        &SET_COUNT=&SET_COUNT+1
+    )
+    // Go to the next level
+    &LEVEL_COUNT=&LEVEL_COUNT+2
+    )
+        
+        
+    RETURN
+    
+    
+CORTEXA53:
+CORTEXA57:
+
+    LOCAL &L1WAYS &LOGL1WAYS &L1SETS &LOGL1SETS
+       LOCAL &L2WAYS &LOGL2WAYS &L2SETS &LOGL2SETS
+    LOCAL &MAX_SETS &MAX_WAYS &LOGLINESIZE &LOGWAYS &LEVEL_COUNT
+    LOCAL &CCSIDR_VAL
+    // Cache Selection Register
+    &CSSELR="SPR:0x32000"
+    // Cache Size ID Register
+    &CCSIDR="SPR:0x31000"
+    // Data Cache Invalidate by Set / Way Register
+    &DCCISW="SPR:0x107E2"
+    
+    // Select the cache level and read the size out
+    // L1 data cache
+    PER.S &CSSELR %LONG (0<<1.)
+    &CCSIDR_VAL=DATA.LONG(&CCSIDR)
+    &L1WAYS=((&CCSIDR_VAL>>0x3)&0x3FF)+0x1
+    GOSUB LOGNUM &L1WAYS
+    ENTRY &LOGL1WAYS
+    &L1SETS=((&CCSIDR_VAL>>0xD)&0x7FFF)+0x1
+    GOSUB LOGNUM &L1SETS
+    ENTRY &LOGL1SETS
+    &LOGL1LINESIZE=(&CCSIDR_VAL&0x3)+4
+    
+    // L2 data cache
+    PER.S &CSSELR %LONG (1<<1.)
+    &CCSIDR_VAL=DATA.LONG(&CCSIDR)
+    &L2WAYS=((&CCSIDR_VAL>>0x3)&0x3FF)+0x1
+    GOSUB LOGNUM &L2WAYS
+    ENTRY &LOGL2WAYS
+    &L2SETS=((&CCSIDR_VAL>>0xD)&0x7FFF)+0x1
+    GOSUB LOGNUM &L2SETS
+    ENTRY &LOGL2SETS
+    &LOGL2LINESIZE=(&CCSIDR_VAL&0x3)+4    
+    
+    // Loop through the two caches
+    &LEVEL_COUNT=0
+    WHILE (&LEVEL_COUNT<4)
+    (
+        // Select the Cache Level
+        PER.S &CSSELR %LONG &LEVEL_COUNT
+        IF (&LEVEL_COUNT==0)
+        (
+            &MAX_SETS=&L1SETS
+            &MAX_WAYS=&L1WAYS
+            &LOGWAYS=&LOGL1WAYS
+            &LOGLINESIZE=&LOGL1LINESIZE
+        )
+        ELSE
+        (
+            &MAX_SETS=&L2SETS
+            &MAX_WAYS=&L2WAYS
+            &LOGWAYS=&LOGL2WAYS
+            &LOGLINESIZE=&LOGL2LINESIZE
+        )
+
+        // Now clean and invalidate caches
+        &SET_COUNT=0.
+        WHILE (&SET_COUNT<&MAX_SETS)
+        (
+            &WAY_COUNT=0.
+            WHILE (&WAY_COUNT<&MAX_WAYS)
+            (
+                // Last field - is cache level 
+                // 0 - L1 Cache
+                // 1 - L2 Cache
+                &VALUE=(&WAY_COUNT<<(32.-&LOGWAYS))|(&SET_COUNT<<&LOGLINESIZE)|&LEVEL_COUNT
+                PER.S &DCCISW %LONG &VALUE
+                &WAY_COUNT=&WAY_COUNT+1
+            )
+            &SET_COUNT=&SET_COUNT+1
+        )
+        // Go to the next level
+        &LEVEL_COUNT=&LEVEL_COUNT+2
+    )
+        
+        
+    RETURN
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+QDSP6V5A:
+QDSP6V5H:
+    LOCAL &METHOD
+    LOCAL &L1CACHESIZE &L2CACHESIZE &LINESIZE &L1WAYS
+    LOCAL &L2WAYS &L1SETS &L2SETS &DCCLEAN &L2CLEAN
+    // We have two implementations for flushing the cache
+    // One is T32's built-in support, which is faster on the RUMI
+    // The other is the traditional method of iterating through the sets
+    // and ways to flush the data
+    // Currently, we use the faster approach
+    &METHOD="METHOD1"
+    IF ("&METHOD"=="METHOD1")
+    (
+       CACHE.FLUSH DC
+       CACHE.FLUSH L2
+    )
+    IF ("&METHOD"=="METHOD2")
+    (
+        IF ("&ARG0"=="QDSP6V5H")
+        (
+             &L1CACHESIZE=32.*1024. // 32 KB D-Cache
+            &LINESIZE=32. // 32 bytes or 8 words
+            &L1WAYS=8.
+            &L2CACHESIZE=512.*1024. // 512 KB D-Cache
+            &L2WAYS=8.
+        )
+        IF ("&ARG0"=="QDSP6V5A")
+        (
+             &L1CACHESIZE=32.*1024. // 32 KB D-Cache
+            &LINESIZE=32. // 32 bytes or 8 words
+            &L1WAYS=8.
+            &L2CACHESIZE=256.*1024. // 512 KB D-Cache
+            &L2WAYS=8.
+        )
+
+        &L1SETS=&L1CACHESIZE/(&LINESIZE*&L1WAYS)
+        &L2SETS=&L2CACHESIZE/(&LINESIZE*&L2WAYS)
+        
+        // ASM instruction to clean the cache dccleanidx(R0)
+        &DCCLEAN=0xA220C000
+        &L2CLEAN=0xA620C00
+
+        // Save a copy of the registers
+        REGISTER.COPY
+
+        // Switch to the monitor mode
+        REGISTER.SET SSR REGISTER(SSR)&0xFFFDFFFF
+
+        // This is the format of R0
+        // R0[10:5] = Set
+        // R0[2:0] = Way
+        &SET_COUNT=0.
+        WHILE (&SET_COUNT<&L1SETS)
+        (
+            &WAY_COUNT=0.
+            WHILE (&WAY_COUNT<&L1WAYS)
+            (
+                &VALUE=&SET_COUNT<<5|&WAY_COUNT
+                REGISTER.SET R0 &VALUE
+                SYSTEM.STUFFINSTRUCTION &DCCLEAN
+                &WAY_COUNT=&WAY_COUNT+1
+            )
+            &SET_COUNT=&SET_COUNT+1
+        )
+
+        // Now we do the same for L2 cache
+        &SET_COUNT=0.
+        WHILE (&SET_COUNT<&L2SETS)
+        (
+            &WAY_COUNT=0.
+            WHILE (&WAY_COUNT<&L2WAYS)
+            (
+                &VALUE=&SET_COUNT<<5|&WAY_COUNT
+                REGISTER.SET R0 &VALUE
+                SYSTEM.STUFFINSTRUCTION &L2CLEAN
+                &WAY_COUNT=&WAY_COUNT+1
+            )
+            &SET_COUNT=&SET_COUNT+1
+        )
+
+        // Now replace with the original registers
+        REGISTER.SWAP
+
+    )
+    // Exit
+    RETURN
+
+
+    
+    
+LOGNUM:
+    ENTRY &NUMBER
+    LOCAL &LOGVAL
+    
+    IF (&NUMBER>0)
+    (
+        &LOGVAL=0
+        WHILE (&NUMBER>1)
+        (
+            &NUMBER=&NUMBER/2
+            &LOGVAL=&LOGVAL+1
+        )
+    )
+    ELSE
+    (
+        PRINT %ERROR "Cannot compute Log2 of: &NUMBER"
+    )
+    
+    RETURN &LOGVAL
+
+EXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    ENDDO &rvalue
+    
+FATALEXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    IF STRING.SCAN("&FAILUREKEYWORD","FAILUREKEYWORD",0)==-1
+    (
+        GOSUB EXIT &FAILUREKEYWORD - &rvalue
+    )
+    ELSE
+    (
+        GOSUB EXIT &rvalue
+    )
+    
+//Should never get here
+    END

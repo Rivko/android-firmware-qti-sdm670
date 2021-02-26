@@ -1,0 +1,222 @@
+#===============================================================================
+#
+# Basic skeleton image scrip
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009-2012 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/dspbuild.adsp/5.0/bsp/apr_libs/build/apr_libs.scons#3 $
+#  $DateTime: 2017/11/26 20:49:52 $
+#  $Change: 14920335 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#
+#===============================================================================
+
+Import('env')
+import os
+#------------------------------------------------------------------------------
+# Init image vars 
+#------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
+# Init aliases array.
+# first alias (0th elemten in array) is always unique name, there should 
+# never be two images with the same unique name
+aliases = ['apr_libs', 'sdm845_ADSP', 'sdm660_ADSP', 'sdm670_ADSP','sdm855_ADSP','sdm1000_ADSP']
+
+   
+build_tools = ['buildspec_builder.py',
+         '${BUILD_ROOT}/core/bsp/build/scripts/mbn_builder.py',
+         '${BUILD_ROOT}/core/bsp/build/scripts/tms_builder_servreg.py',
+         '${BUILD_ROOT}/core/bsp/build/scripts/dnt_builder.py',
+         '${BUILD_ROOT}/core/bsp/build/scripts/cmm_builder.py',
+         '${BUILD_ROOT}/core/bsp/build/scripts/swe_builder.py',
+         '${BUILD_ROOT}/core/bsp/build/scripts/sleep_lpr_builder.py'
+]  
+
+# Declaring the SCons Image build tags. 
+build_tags = ['APR_ADSP','APR_ADSP_ROOT']
+
+#------------------------------------------------------------------------------
+# Init environment variables
+env.InitImageVars(
+   alias_list=aliases,  # aliases list
+   proc='qdsp6',      # proc (depending on tool chain arm, hexago, etc)
+   config='adsp',
+   plat='qurt',           # platform (l4, blast, foo, bar, etc)
+#build_tags = ['BASIC_IMAGE_EXAMPLE'],
+   build_tags = build_tags,
+   tools = build_tools
+)
+
+#------------------------------------------------------------------------------
+# Check if we need to load this script or just bail-out
+#------------------------------------------------------------------------------
+if not env.CheckAlias():
+   Return()
+
+#---------------------------------------------------------------------------
+# Load in CBSP uses and path variables
+#---------------------------------------------------------------------------
+env.LoadToolScript('build_utils', toolpath = ['${BUILD_ROOT}/build/scripts'])
+env.InitTargetVariation()
+env.InitBuildConfig()
+
+if 'BUILD_BAREBONE' in env or 'USES_DISABLE_APR' in env or 'USES_DISABLE_AUDIO' in env:
+   print "AUDIO_IN_USERPD or BUILD_BAREBONE in audio_image.scons env, bypass audio compilation"
+   Return()
+
+env.AddUsesFlags('USES_SERVICE_REGISTRY_PLAYBOOK')
+
+if 'USES_MULTI_PD' in env:
+   env.PrintInfo("This adsp avs libs are being built for Multi PD version")
+   env.AddUsesFlags('USES_MPD')
+   env.AddUsesFlags('USES_QURTOS_IMG') #this is the flag to be used for mpd builds to compile for guest os
+   env.Append(CPPDEFINES=["MULTI_PD_BUILD"])
+else:
+   env.PrintInfo("This adsp apr lib is being built for Single PD version")
+env.AddUsesFlags('USES_RCINIT_PLAYBOOK')
+
+#---------------------------------------------------------------------------
+# Load in the tools-set init scripts
+#---------------------------------------------------------------------------
+
+#Add ADSP Image specific linker inputs here
+env.LoadToolScript('hexagon_adsp', toolpath = ['${BUILD_ROOT}/build'])
+ 
+#Append sim flag if building for sim 
+if 'USES_AVS_TEST' in env:
+    env.Append(CFLAGS='-DSIM')
+
+#---------------------------------------------------------------------------
+# Libs/Objs
+#---------------------------------------------------------------------------
+image_libs = []
+image_objs = []
+
+#---------------------------------------------------------------------------
+# Libraries Section
+#---------------------------------------------------------------------------
+
+# load APR libs/objs build rules.
+if env.PathExists("${BUILD_ROOT}/apr"):
+   au_name_items = env.LoadAreaSoftwareUnits('apr')
+   image_libs.extend(au_name_items['LIBS'])
+   image_objs.extend(au_name_items['OBJS'])
+
+image_units = [image_objs, image_libs]
+
+#--- RCINIT Playbook Extension, Library Specific Details -------------------
+
+PLAYLISTS = [ ] # NONE USED
+
+# Follows all LoadAreaSoftwareUnits(). Precedes Link Step Details.
+# Image Owner supplies PLAYLISTS. Avoid other customization this step.
+
+# FOR SCONS TOOL EMITTERS TO PLACE OUTPUT PROPERLY
+if not os.path.exists(env.RealPath('${SHORT_BUILDPATH}')):
+   if Execute(Mkdir(env.RealPath('${SHORT_BUILDPATH}'))):
+      raise
+
+# ONLY WHEN DNT_BUILDER SCONS TOOL LOADED
+if 'USES_RCINIT' in env and 'USES_RCINIT_PLAYBOOK' in env:
+
+   # NEVER POLLUTE ENV CONSTRUCTION ENVIRONMENT WHICH GETS INHERITED
+   playbook_env = env.Clone()
+
+   # PLAYLIST OUTPUT THIS LIBRARY
+   rcinit_out_rcpl = playbook_env.RealPath('${SHORT_BUILDPATH}/rcinit_playlist.rcpl')
+   playbook_env.AddRCInitPlaylist(build_tags, rcinit_out_rcpl)
+   playbook_env.AddArtifact(build_tags, rcinit_out_rcpl)
+   playbook_env.Depends(build_tags, rcinit_out_rcpl)     # Manage explicit detail outside of AU
+   image_units.append(rcinit_out_rcpl)                   # Manage explicit detail outside of AU
+
+   # PLAYBOOK TXT OUTPUT THIS LIBRARY
+   rcinit_out_txt = playbook_env.RealPath('${SHORT_BUILDPATH}/rcinit_playlist.txt')
+   playbook_env.AddRCInitPlaybook(build_tags, rcinit_out_txt, None)
+   playbook_env.AddArtifact(build_tags, rcinit_out_txt)
+   playbook_env.Depends(rcinit_out_txt, rcinit_out_rcpl) # Manage explicit detail outside of AU
+   image_units.append(rcinit_out_txt)                    # Manage explicit detail outside of AU
+
+#--- RCINIT Playbook Extension, Library Specific Details -------------------
+#--- SERVICE REGISTRY Playbook Extension, Library Specific Details ------------BEGIN
+#build_tags = ['CORE_QDSP6_SW', 'BUILD_TEST_MODEM', 'QDSS_EN_IMG','AVS_ADSP','VIDEO_ADSP', 'QMIMSGS_ADSP', 'CORE_ADSP',
+#              'IMAGE_TREE_VERSION_AUTO_GENERATE',
+#              'IMAGE_TREE_UUID_AUTO_GENERATE', 'CORE_ADSP_ROOT', 'ROOT_PD'
+#             ]
+SERVREG_PLAYLISTS = [ ] # NONE USED
+
+# FOR SCONS TOOL EMITTERS TO PLACE OUTPUT PROPERLY
+if not os.path.exists(env.RealPath('${SHORT_BUILDPATH}')):
+   if Execute(Mkdir(env.RealPath('${SHORT_BUILDPATH}'))):
+      raise
+
+# ONLY WHEN DNT_BUILDER_SREG SCONS TOOL LOADED
+if 'USES_SERVICE_REGISTRY' in env and 'USES_SERVICE_REGISTRY_PLAYBOOK' in env:
+
+   # NEVER POLLUTE ENV CONSTRUCTION ENVIRONMENT WHICH GETS INHERITED
+   playbook_servreg_env = env.Clone()
+
+   # PLAYLIST OUTPUT THIS LIBRARY
+   servreg_out_pl = playbook_servreg_env.RealPath('${SHORT_BUILDPATH}/servreg_playlist.pl')
+   playbook_servreg_env.AddServRegPlaylist(build_tags, servreg_out_pl)
+   playbook_servreg_env.Depends(build_tags, servreg_out_pl)
+   image_units.append(servreg_out_pl)
+
+#--- SERVICE REGISTRY Playbook Extension, Library Specific Details ------------END
+#------------------------------------------------------------------------------
+# Putting the image toghther
+#------------------------------------------------------------------------------
+
+if 'IMAGE_BUILD_LOCAL_FILES' in env:
+   #-------------------------------------------------------------------------
+   # Local Files
+   #-------------------------------------------------------------------------
+   
+   # this is where local files are created, for example link scripts (lcs)
+   # for qdsp6 like images, or scatter load files (scl) for amr like images.
+   local_itmes= []
+   
+   image_units += local_itmes
+      
+if 'IMAGE_BUILD_LINK' in env:
+   #-------------------------------------------------------------------------
+   # Link image
+   #-------------------------------------------------------------------------
+
+   # this is where the rule to "link" is done.
+   #image_elf = env.AddProgram("${SHORT_BUILDPATH}/${TARGET_NAME}", image_objs, LIBS=image_libs)
+   
+   # this is just to create something for testing
+   image_elf = env.ListFileBuilder("${SHORT_BUILDPATH}/${TARGET_NAME}.txt", [image_objs, image_libs], 
+         add_header=False, relative_path="${BUILD_ROOT}/build/ms", posix=True)
+   
+if 'IMAGE_BUILD_POST_LINK' in env:
+   #-------------------------------------------------------------------------
+   # Post process image
+   #-------------------------------------------------------------------------
+   
+   # this is where any aditional rules after linking are done.
+
+   #=========================================================================
+   # Define targets needed 
+   #
+   image_units += [
+      image_elf,
+   ]
+
+#=========================================================================
+# Finish up...
+env.BindAliasesToTargets(image_units)

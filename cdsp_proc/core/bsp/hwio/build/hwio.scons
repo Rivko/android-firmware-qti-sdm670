@@ -1,0 +1,102 @@
+#===========================================================================
+#
+#  @file hwio.scons
+#  @brief Image-level build script for generating HWIO files.
+#
+#  This file can be invoked directly by calling:
+#
+#    build hwio
+#
+#  ===========================================================================
+#
+#  Copyright (c) 2011 Qualcomm Technologies Incorporated.  
+#  All Rights Reserved.
+#  QUALCOMM Proprietary and Confidential.
+#
+#  ===========================================================================
+#
+#  $Header: //source/qcom/qct/core/systemdrivers/hwio/tools/main/latest/HWIOParser.py#2 $
+#  $DateTime: 2011/07/12 14:25:23 $
+#  $Author: grahamr $
+#
+#  ===========================================================================
+
+#------------------------------------------------------------------------------
+# Imports
+#------------------------------------------------------------------------------
+
+import sys
+import os
+Import('env')
+
+env = env.Clone()
+
+#------------------------------------------------------------------------------
+# Constants
+#------------------------------------------------------------------------------
+
+ADDRESS_FILE =  '${BUILD_ROOT}/core/api/systemdrivers/hwio/${CHIPSET}/ARM_ADDRESS_FILE.FLAT'
+HWIO_TOOLPATH = '${BUILD_ROOT}/core/bsp/hwio/build/scripts/'  
+
+#------------------------------------------------------------------------------
+# Define the "hwio" image
+#------------------------------------------------------------------------------
+
+aliases = ['hwio']
+
+env.InitImageVars(
+   alias_list=aliases,
+   #proc='qdsp6',
+   proc='all',         # 'all' is just a placeholder here
+   config='qdsp6_sw',  # would like to use 'none' but it does not work
+   #config='none',
+   build_tags = ['HWIO', 'HWIO_IMAGE'],
+   tools = [ '${BUILD_ROOT}/tools/build/scons/scripts/comcc_addt.py',
+             HWIO_TOOLPATH + 'HWIOBuilder.py',
+             HWIO_TOOLPATH + 'HWIOParser.py',
+             HWIO_TOOLPATH + 'HWIOGenRegs.py'])
+
+#------------------------------------------------------------------------------
+# Check if we need to load this script or just bail-out
+#------------------------------------------------------------------------------
+
+if not env.CheckAlias(alias_list=aliases):
+   Return()
+
+#---------------------------------------------------------------------------
+# Load in uses and path variables
+#---------------------------------------------------------------------------
+
+env.InitBuildConfig()
+
+# Need the DNT builder to support the AddRCInitFunc call because the build
+# config defines USES_RCINIT all the time
+if 'USES_RCINIT' in env:
+  env.LoadToolScript('${BUILD_ROOT}/core/bsp/build/scripts/dnt_builder.py')
+
+#---------------------------------------------------------------------------
+# Set the address file path.
+#---------------------------------------------------------------------------
+
+image_env = env.get('IMAGE_ENV')
+image_env['ADDRESS_FILE'] = ADDRESS_FILE
+
+#---------------------------------------------------------------------------
+# Load build rules
+#---------------------------------------------------------------------------
+
+env.LoadAreaSoftwareUnits('core')
+#env.LoadAreaSoftwareUnits('modem')
+#env.LoadAreaSoftwareUnits('multimedia')
+#env.LoadAreaSoftwareUnits('platform')
+
+#------------------------------------------------------------------------------
+# Build
+#------------------------------------------------------------------------------
+
+hwio_units = image_env['HWIO_UNITS']
+
+for alias in aliases:
+  env.Alias(alias, hwio_units)
+
+

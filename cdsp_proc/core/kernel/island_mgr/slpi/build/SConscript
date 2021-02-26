@@ -1,0 +1,79 @@
+#===============================================================================
+#
+# ISLAND MGR Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2014 by QUALCOMM, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#-------------------------------------------------------------------------------
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 04/10/2014 balac     created 
+#===============================================================================
+Import('env')
+env = env.Clone()
+#env.Replace(HEXAGON_WARN = "-Wpointer-arith -Wno-missing-braces")
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${COREBSP_ROOT}/kernel/island_mgr/slpi"
+
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+IMAGE_SOURCES = ['CORE_QDSP6_SW']
+
+#-------------------------------------------------------------------------------
+# External depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = ['KERNEL', 'DAL', 'SYSTEMDRIVERS', 'SERVICES', 'ISLAND_MGR', 'DEBUGTRACE']
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+ISLAND_MGR_C_SOURCES = [
+   '${BUILDPATH}/src/island_mgr.c',
+]
+
+ISLAND_MGR_ISLAND_C_SOURCES = [
+   '${BUILDPATH}/src/island_mgr_island.c',
+]
+
+island_mgr_island = env.Library('${BUILDPATH}/island_mgr_island', ISLAND_MGR_ISLAND_C_SOURCES)
+island_mgr_main = env.Library('${BUILDPATH}/island_mgr_main', ISLAND_MGR_C_SOURCES)
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+if 'USES_ISLAND' in env:
+   env.AddIslandLibrary(['CORE_QDSP6_SW'], island_mgr_island)
+
+env.AddLibsToImage (['CORE_QDSP6_SW'], [island_mgr_island, island_mgr_main])
+
+if 'USES_RCINIT' in env and 'USES_ISLAND' in env:
+   env.AddRCInitFunc(         # Code Fragment in TMC: YES
+    ['CORE_QDSP6_SW'],         # define TMC_RCINIT_INIT_TIMER_TASK_INIT
+    {
+      'sequence_group'             : 'RCINIT_GROUP_0',             # required
+      'init_name'                  : 'island_mgr',                 # required
+      'init_function'              : 'island_mgr_init',            # required
+    })

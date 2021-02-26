@@ -1,0 +1,157 @@
+#===============================================================================
+#
+# SLIMbus Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2012-2017 by QUALCOMM Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1/buses/slimbus/build/slimbus.scons#1 $
+#  $DateTime: 2017/07/21 22:10:47 $
+#  $Author: pwbldsvc $
+#  $Change: 13907704 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 03/20/17   MJS     Changes for moving devcfg to settings directory.
+# 08/11/16   MJS     Add SDM845 support.
+# 07/11/16   SM      Modify build tag to use CORE_ADSP_ROOT instead of CORE_QDSP6_SW.
+# 10/22/15   MJS     Add support for 8998.
+# 03/16/15   MJS     Treat compiler warnings as errors.
+# 01/09/15   MJS     Use RCINIT group 2.
+# 09/09/14   MJS     Add support for 8992.
+# 08/01/14   MJS     Add support for 8996.
+# 03/25/14   MJS     Don't enable QMI service for 9x25/9x35.
+# 12/12/13   MJS     Add support for 8994.
+# 12/06/13   MJS     Non-slimbus MDM image size reduction support.
+# 08/19/13   MJS     Add support for 9x35.
+# 06/19/13   MJS     Add support for 8962.
+# 05/06/13   MJS     Add support for 8084.
+# 03/26/13   MJS     Don't compile for 8x10.
+# 03/11/13   MJS     Add systemdrivers pmic include.
+# 01/25/13   MJS     Use QMI service from QMIMSGS area.
+# 11/29/12   MJS     QMI service support, start QMI service after ADSPPM.
+# 09/20/12   MJS     Support for binary compatibility.
+# 01/20/12   MJS     Initial revision.
+#===============================================================================
+import os
+Import('env')
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+env = env.Clone()
+
+SRCPATH = ".."
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0) 
+
+env.Append(CFLAGS = "-Werror ")
+
+#-------------------------------------------------------------------------------
+# Publish Private APIs
+#-------------------------------------------------------------------------------
+env.PublishPrivateApi('BUSES_SLIMBUS', [
+   "${INC_ROOT}/core/buses/slimbus/inc",
+   "${INC_ROOT}/core/buses/slimbus/src/common",
+   "${INC_ROOT}/core/buses/slimbus/src/dal",
+   "${INC_ROOT}/core/buses/slimbus/hw",
+])
+
+if env['MSM_ID'] in ['8996']:
+   env.PublishPrivateApi('BUSES_SLIMBUS_HWIO', [
+      "${INC_ROOT}/core/buses/slimbus/hw/v1p1",
+   ])
+else:
+   env.PublishPrivateApi('BUSES_SLIMBUS_HWIO', [
+      "${INC_ROOT}/core/buses/slimbus/hw/v2",
+   ])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_APIS = [
+   'BUSES',
+   'DAL',
+   'HAL',
+   'HWENGINES',
+   'SERVICES',
+   'SLIMBUS_DEVCFG_INTERFACE',
+   'SYSTEMDRIVERS',
+   'PMIC',
+   'POWER',
+   'KERNEL',   
+   'MPROC',
+]
+
+env.RequirePublicApi(CBSP_APIS)
+env.RequireRestrictedApi(CBSP_APIS)
+
+env.RequirePublicApi(['SLIMBUS'], area='QMIMSGS')
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+SLIMBUS_SOURCES = [
+   '${BUILDPATH}/src/common/SlimBus.c',
+   '${BUILDPATH}/src/common/SlimBusMaster.c',
+   '${BUILDPATH}/src/common/SlimBusChanSched.c',
+   '${BUILDPATH}/src/common/SlimBusSat.c',
+   '${BUILDPATH}/src/dal/SlimBusDal.c',
+   '${BUILDPATH}/src/dal/SlimBusTarget.c',
+   '${BUILDPATH}/src/dal/SlimBusBamLib.c',
+   '${BUILDPATH}/hw/HALsb.c',
+#   '${BUILDPATH}/test/dal/src/DalSlimBusTest.c',
+]
+
+slimbus_lib = env.Library('${BUILDPATH}/SlimBus', env.Object(SLIMBUS_SOURCES))
+
+SLIMBUS_QMI_SOURCES = [
+   '${BUILDPATH}/src/qmi/slimbus_qmi_svc.c',
+]
+
+slimbus_qmi_lib = env.Library('${BUILDPATH}/slimbus_qmi', env.Object(SLIMBUS_QMI_SOURCES))
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+if 'AUDIO_IN_USERPD' in env:
+   LIBS_IMG   = ['CORE_QDSP6_AUDIO_SW']
+else:
+   LIBS_IMG   = ['CORE_ADSP_ROOT']
+
+env.AddLibsToImage(LIBS_IMG, slimbus_lib)
+env.AddLibsToImage(LIBS_IMG, slimbus_qmi_lib)
+
+#---------------------------------------------------------------------------
+# RCINIT
+#---------------------------------------------------------------------------
+if 'USES_RCINIT' in env:
+   env.AddRCInitFunc(
+    LIBS_IMG,
+    {
+     'sequence_group'             : 'RCINIT_GROUP_2',                # required
+     'init_name'                  : 'slimbus_qmi',                   # required
+     'init_function'              : 'slimbus_qmi_init',              # required
+     'dependencies'               : ['dalsys','qmi_fw', 'adsppm']
+    })
+#   env.AddRCInitFunc(
+#    LIBS_IMG,
+#    {
+#     'sequence_group'             : 'RCINIT_GROUP_2',                 # required
+#     'init_name'                  : 'slimbus_test',                   # required
+#     'init_function'              : 'slimbus_test_init',              # required
+#     'dependencies'               : ['dalsys','qmi_fw', 'adsppm']
+#    })
+
+

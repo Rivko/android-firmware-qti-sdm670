@@ -1,0 +1,71 @@
+/*=============================================================================
+  Readme file for Image FV feature
+
+  Copyright (c) 2016 Qualcomm Technologies, Inc. All rights reserved.
+
+                              EDIT HISTORY
+
+ when       who     what, where, why
+ --------   ---     -----------------------------------------------------------
+ 10/11/17   bd      Initial version
+=============================================================================*/
+
+ --------------
+| Introduction |
+ --------------
+
+UEFI supports display of Boot logo.
+For different reasons there may be requirements to display different logo.
+That means adding multipl image files to main FV. 
+This leads to increase in size of main FV and increase in Boot time.
+
+To address this a new FV - imagefv - is created.
+Whenever required larger/multiple images can go into the imagefv.
+
+It is advised to keep the first static boot image (QcomPkg/Logo/[LA|WP]/logo1.bmp)
+inside mainfv for faster boot time.
+Any additional boot logo animations and non-standard boot path logos can go inside the imagefv.
+
+
+ -------------------------------
+| Adding images to ImageFv |
+ -------------------------------
+ In file boot_images\QcomPkg\SDM845Pkg\[WP|LA]\Core.fdf add the entry for the image file under section "[FV.ImageFv]"
+ Like any other UEFI file, entry should contain a unique GUID, filename and relative path as shown below
+ 
+ Example :
+  FILE FREEFORM = 3E5584ED-05D4-4267-9048-0D47F76F4248 {
+    SECTION UI = "battery_symbol_Soc10.bmp"
+    SECTION RAW = QcomPkg/Drivers/QcomChargerDxe/battery_symbol_Soc10.bmp
+  }
+
+ -------------------------------
+| Build and flashing of ImageFv |
+ -------------------------------
+ImageFv gets built along with xbl.elf for both DEBUG and RELEASE variants.
+There is no seperate build command for ImageFv.
+Generated binary will be available in the same path as xbl.elf; 
+i.e boot_images\QcomPkg\SDM845Pkg\Bin\845\[WP|LA]\[DEBUG|RELEASE]\
+
+Flash the imageFv as shown below
+Example : fastboot.exe flash ImageFv Bin\845\LA\DEBUG\imagefv.elf
+
+
+ --------------------------------------------------
+| Loading and authenticating the ImageFv at runtime|
+ --------------------------------------------------
+ Call below API to load, authenticate and decompress the ImageFv.
+
+ LoadAndAuthenticateFV(&gImageFvGuid, L"ImageFv");
+ 
+ Once above API is successfull, images can be loaded as below.
+ LoadFileFromGuidedFv (NULL, "filename", &FileBuffer, &FileSize);     
+
+ -------------
+| Limitations |
+ -------------
+ Current partition size of ImageFv in Napali is 2MB.
+ 
+ Example partition file entry
+ <partition label="ImageFv" size_in_kb="2048" type="17911177-C9E6-4372-933C-804B678E666F" bootable="false" readonly="false" filename=""/>
+

@@ -1,0 +1,118 @@
+#===============================================================================
+#
+# Kernel INC PATHs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2009-2013, 2017 by QUALCOMM Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //source/qcom/qct/core/pkg/riva/rel/1.0/core/kernel/build/paths.sconscript#1 $
+#  $DateTime: 2010/11/04 21:49:20 $
+#  $Author: coresvc $
+#  $Change: 1506170 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 05/04/17   sm      Decentralize deployment of required header files.
+# 01/24/17   sm      Exposing Restricted APIs as Public APIs.
+# 02/18/11   sho     Kernel paths for boot loader images
+#
+#===============================================================================
+import os
+Import('env')
+
+if env.get('CHIPSET').startswith('msm') or env.get('CHIPSET').startswith('sdm'):
+   cpu_arch = 'ARMv8'
+   smmu_type = 'QSMMU'
+   SMMU_PATH = 'ACv3.0'
+   SMMU_CHIPSET_PATH = 'ACv3.0/chipset'
+elif env.get('CHIPSET').startswith('mdm') or env.get('CHIPSET').startswith('sdx'):
+   cpu_arch = 'ARMv7'
+   smmu_type = 'mmu500'
+   SMMU_PATH = 'smmu500'
+   SMMU_CHIPSET_PATH = SMMU_PATH
+else:
+   cpu_arch = 'ARMv8'
+   smmu_type = 'QSMMU'
+   SMMU_PATH = 'ACv3.0'
+   SMMU_CHIPSET_PATH = 'ACv3.0/chipset'
+   
+if os.path.exists(env.subst('../hypervisor/inc/arch/'+cpu_arch+'/chipset/${MSM_ID}')):
+   env.Replace(HYP_MSM_ID = env['MSM_ID'])
+else:
+   env.Replace(HYP_MSM_ID = 'stubs')
+   env.PrintWarning("HYP target not implemented... using stubs.")
+
+if os.path.exists(env.subst("../smmu/"+SMMU_CHIPSET_PATH+"/${MSM_ID}")):
+   env.Replace(SMMU_MSM_ID = env['MSM_ID'])
+else:
+   env.Replace(SMMU_MSM_ID = 'stubs')
+   env.PrintWarning("SMMU not implemented... using stubs.")
+#-------------------------------------------------------------------------------
+# Publish Public APIs
+# these are accecible internal or external to CoreBSP
+#-------------------------------------------------------------------------------
+env.PublishPublicApi('KERNEL', [
+   "${INC_ROOT}/core/api/kernel",
+   "${INC_ROOT}/core/api/kernel/libstd",
+   "${INC_ROOT}/core/api/kernel/libstd/stringl",
+   "${INC_ROOT}/core/api/kernel/devcfg",
+])
+
+##-------------------------------------------------------------------------------
+# Publish Restricted APIs
+# these are accecible only within CoreBSP
+#-------------------------------------------------------------------------------
+env.PublishRestrictedApi('KERNEL', [
+   '${INC_ROOT}/core/kernel/hypervisor/inc',
+   '${INC_ROOT}/core/kernel/hypervisor/inc/arch/'+cpu_arch+'',
+   '${INC_ROOT}/core/kernel/hypervisor/inc/arch/'+cpu_arch+'/chipset/${HYP_MSM_ID}',
+   '${INC_ROOT}/core/kernel/mmu/inc',
+   '${INC_ROOT}/core/kernel/iortlib/inc',
+   '${INC_ROOT}/core/kernel/smmu/'+SMMU_PATH+'/common/inc',
+   '${INC_ROOT}/core/kernel/smmu/'+SMMU_PATH+'/chipset/${SMMU_MSM_ID}/inc',
+   '${INC_ROOT}/core/kernel/smmu/'+SMMU_PATH+'/impl/'+smmu_type+'/${SMMU_MSM_ID}/inc',   
+   '${INC_ROOT}/core/kernel/smmu/'+SMMU_PATH+'/inc',
+   '${INC_ROOT}/core/kernel/smmu/'+SMMU_PATH+'/inc/${SMMU_MSM_ID}',
+   '${INC_ROOT}/core/kernel/smmu/'+SMMU_PATH+'/tz',
+])
+
+# TZTD_845 TZTD_670: Temporarily expose as Public APIs. #--
+env.PublishPublicApi('KERNEL', [
+   '${INC_ROOT}/core/kernel/hypervisor/inc',
+   '${INC_ROOT}/core/kernel/hypervisor/inc/arch/'+cpu_arch+'',
+   '${INC_ROOT}/core/kernel/hypervisor/inc/arch/'+cpu_arch+'/chipset/${HYP_MSM_ID}',
+   '${INC_ROOT}/core/kernel/mmu/inc',
+   '${INC_ROOT}/core/kernel/smmu/'+SMMU_PATH+'/common/inc',
+   '${INC_ROOT}/core/kernel/smmu/'+SMMU_PATH+'/chipset/${SMMU_MSM_ID}/inc',
+   '${INC_ROOT}/core/kernel/smmu/'+SMMU_PATH+'/impl/'+smmu_type+'/${SMMU_MSM_ID}/inc',   
+   '${INC_ROOT}/core/kernel/smmu/'+SMMU_PATH+'/inc',
+   '${INC_ROOT}/core/kernel/smmu/'+SMMU_PATH+'/src',
+   '${INC_ROOT}/core/kernel/smmu/'+SMMU_PATH+'/inc/${SMMU_MSM_ID}',
+   '${INC_ROOT}/core/kernel/smmu/'+SMMU_PATH+'/${SMMU_MSM_ID}/tz',
+])
+#--TZTD_845 TZTD_670: END
+
+# TZTD_845 TZTD_670: This include path is currently hardcoded in SecureMSM. #--
+env.PublishPublicApi('KERNEL', [
+   "${INC_ROOT}/core/kernel/hypervisortest/inc",
+])
+#--TZTD_845: END
+
+if "USES_DEPLOY_BUILDER" in env:
+   # Deploy required header files for customer packaging.
+   env.Deploy([
+      '${INC_ROOT}/core/api/kernel/libstd/stringl/stringl.h',
+      '${INC_ROOT}/core/api/kernel/devcfg/devcfg.h',
+      '${INC_ROOT}/core/api/kernel/devcfg/devcfgTypes.h',
+      ])
+env.LoadAPIUnits()

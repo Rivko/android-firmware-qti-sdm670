@@ -1,0 +1,32 @@
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Copyright (c) 2017 Qualcomm Technologies, Inc.
+// All Rights Reserved.
+// Confidential and Proprietary - Qualcomm Technologies, Inc.
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/// @file  camxincs.h
+/// @brief CamX common header file
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+#ifndef CAMXINCS_H
+#define CAMXINCS_H
+
+#ifdef _WIN32
+// NOWHINE FILE PR006:
+#pragma warning (disable : 4100) // unreferenced formal parameter
+#pragma warning (disable:  4189) // local variable is initialized but not referenced
+#pragma warning (disable : 4201) // nonstandard extension used : nameless struct/union
+#pragma warning (disable : 4505) // unreferenced local function has been removed
+#endif // _WIN32
+
+#include "camxatomic.h"
+#include "camxdebug.h"
+#include "camxdebugprint.h"
+#include "camxdefs.h"
+#include "camxosutils.h"
+#include "camxtrace.h"
+#include "camxtypes.h"
+#include "camxutils.h"
+
+#endif // CAMXINCS_H

@@ -1,0 +1,296 @@
+#===============================================================================
+#
+# AC Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2014-2017 by Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/ssg.tz/1.0.2/securemsm/accesscontrol/build/SConscript#4 $
+#  $DateTime: 2018/07/25 11:55:39 $
+#  $Author: pwbldsvc $
+#  $Change: 16728613 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+#  2/16/17           move xbl_sec from core to ssg
+# 04/03/15   rs      Moved SMEM partition protections to Hypervisor
+# 02/09/12   PS      Initial release
+#===============================================================================
+import os
+import re
+Import('env')
+
+#-------------------------------------------------------------------------------
+# Load sub scripts
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+env = env.Clone()
+
+# Additional defines
+env.Append(CPPDEFINES = ["FEATURE_LIBRARY_ONLY"])
+env.Append(CCFLAGS = ' -Wno-missing-braces -Werror ')
+
+SRCPATH = "../../accesscontrol"
+CBSP_APIS = []
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+IMAGES_HYP = ['HYPERVISOR_IMAGE']
+IMAGES_TZ = ['TZOS_IMAGE']
+IMAGES_XBLSEC = ['XBL_SEC_IMAGE']
+
+excel_parse_script_tool = '${BUILD_ROOT}/ssg/securemsm/accesscontrol/tools/deviceinfoconfig_gen.py'
+env.LoadToolScript(excel_parse_script_tool)
+
+if env.has_key('XBL_SEC_IMAGE'):
+    env.Replace(AC_IMG = 'tz')
+    env.Append(CFLAGS = " -ffunction-sections ")
+    # Uncomment the following line to disable XPU
+    #env.Append(CCFLAGS = " -DXPU_DISABLE ")
+elif env.has_key('TZOS_IMAGE'):
+    env.Replace(AC_IMG = 'tz')
+elif env.has_key('HYPERVISOR_IMAGE') or env.has_key('QHEEBSP_IMAGE') or env.has_key('DAL_DEVCFG_OEM_IMG'):
+    env.Replace(AC_IMG = 'hyp')
+else:
+    Return();
+
+if 'tzbsp_with_test_svc' in env:
+  if env['tzbsp_with_test_svc'] == 1:
+      print "With Test is turned on"
+      env.Append(CCFLAGS = " -DTZBSP_WITH_TEST_SVC ")
+
+if 'tzbsp_with_mmu' in env:
+  if env['tzbsp_with_mmu'] == 1:
+      print "With MMU is turned on"
+      env.Append(CCFLAGS = " -DTZBSP_WITH_MMU ")
+
+# This is to support TZ standalone execution only during pre-sil bringup.
+# uAddr stub needs to be unused address range of size MEMORY_OWNERSHIP_TABLE_BUFFER_SIZE + PARITY_BUFFER_SIZE
+supported_targets = ['8998', '630', '660', '845', '670', '855', '1000', '24','6200']
+if 'tzbsp_standalone' in env:
+  if env['tzbsp_standalone'] == 1:
+    if env['MSM_ID'] in supported_targets:
+      print "TZ standalone execution is being built"
+      env.Append(CPPDEFINES = ['-DUADDR_CHIPSET_STUB=0x85600000'])
+    else:
+      raise RuntimeError, "TZ standalone error in AC: uAddr has no value!! Fix it in Sconscript."
+
+if env['TARGET_FAMILY'] in ['hoya']:
+	env.Replace(AC_FAMILY_ID = 'honeybadger')
+elif env['TARGET_FAMILY'] in ['bear']:
+	env.Replace(AC_FAMILY_ID = 'bear')
+else:
+   env.Replace(AC_FAMILY_ID = '${TARGET_FAMILY}')
+
+if os.path.exists(env.subst("../../accesscontrol/src/tz/${AC_FAMILY_ID}")):
+   env.PrintWarning("AC Build debug... using TARGET_FAMILY specific files")
+else:
+   env.Replace(AC_FAMILY_ID = 'stubs')
+   env.PrintWarning("No AC for the target yet... using stubs.")
+
+
+build_cfg_file = ''
+if os.path.isfile(env.subst("ac_def_${MSM_ID}.cfg")):
+	build_cfg_file = env.subst("ac_def_${MSM_ID}.cfg")
+
+#-------------------------------------------------------------------------------
+# Publish Private APIs
+#-------------------------------------------------------------------------------
+env.PublishPrivateApi('AC', [
+   '${INC_ROOT}/ssg/securemsm/accesscontrol/src/components/smmu',
+   '${INC_ROOT}/ssg/securemsm/accesscontrol/src/components/xpu/${XPU_VERSION}',
+   '${INC_ROOT}/ssg/securemsm/accesscontrol/src/components',
+   '${INC_ROOT}/ssg/securemsm/accesscontrol/src/common/${AC_FAMILY_ID}',
+   '${INC_ROOT}/ssg/securemsm/accesscontrol/src/common',
+   '${INC_ROOT}/ssg/securemsm/accesscontrol/src/tz',
+   '${INC_ROOT}/ssg/securemsm/accesscontrol/api',
+   '${INC_ROOT}/ssg/securemsm/accesscontrol/cfg/${AC_MSM_ID}',
+   '${INC_ROOT}/ssg/securemsm/accesscontrol/cfg/debug',
+   '${INC_ROOT}/ssg/securemsm/accesscontrol/cfg/${AC_MSM_ID}/${AC_IMG}',
+   '${INC_ROOT}/ssg/securemsm/accesscontrol/src/components/vmidmt'
+   '${INC_ROOT}/ssg/securemsm/accesscontrol/src/components/xpu/drivers/${XPU_VERSION_NAME}/hal/inc',
+   '${INC_ROOT}/ssg/securemsm/accesscontrol/src/components/xpu/drivers/${XPU_VERSION_NAME}/hal/inc/${AC_MSM_ID}',
+   '${INC_ROOT}/ssg/securemsm/accesscontrol/src/components/xpu/drivers/${XPU_VERSION_NAME}/hal/src',
+])
+
+env.PublishProtectedApi('AC', [
+   '${INC_ROOT}/ssg/securemsm/accesscontrol/src/smmu',
+   '${INC_ROOT}/ssg/securemsm/accesscontrol/src/components/xpu/${XPU_VERSION}',
+   '${INC_ROOT}/ssg/securemsm/accesscontrol/api',
+   '${INC_ROOT}/ssg/securemsm/accesscontrol/cfg/${AC_MSM_ID}',
+   '${INC_ROOT}/ssg/securemsm/accesscontrol/cfg/${AC_MSM_ID}/${AC_IMG}',
+   '${INC_ROOT}/ssg/securemsm/accesscontrol/src/components/vmidmt/drivers/hal/inc/${MSM_ID}',
+])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_APIS += [
+   'BUSES',
+   'HAL',
+   'DAL',
+   'MPROC',
+   'SYSTEMDRIVERS',
+   'PMIC',
+   'SERVICES',
+   'KERNEL',
+   'KERNEL_API',
+]
+
+env.RequirePublicApi(CBSP_APIS, area='core')
+
+SSG_API = [
+   'AC',
+   'XBL_SEC',
+   'SECUREMSM',
+   'MINK_LK',
+   'MINK',
+   'KERNEL',
+   'TZCHIPSET',
+   'AOP',
+   'SSGPLATFORM',
+   'QSEE',
+]
+
+
+env.RequirePublicApi(SSG_API, area='ssg')
+env.RequireRestrictedApi(SSG_API)
+
+#-------------------------------------------------------------------------------
+# HYP Sources, libraries
+#-------------------------------------------------------------------------------
+AC_SOURCES_RAW_HYP = env.GlobFiles('../../accesscontrol/src/hyp/AccessControlHyp.c', posix=True)
+AC_SOURCES_RAW_HYP += env.GlobFiles('../../accesscontrol/src/hyp/AccessControlRules.c', posix=True)
+AC_SOURCES_RAW_HYP += env.GlobFiles('../../accesscontrol/src/components/smmu/*.c', posix=True)
+AC_SOURCES_RAW_HYP += env.GlobFiles('../../accesscontrol/src/hyp/${AC_MSM_ID}/*.c', posix=True)
+AC_SOURCES_RAW_HYP += env.GlobFiles('../../accesscontrol/cfg/${AC_MSM_ID}/*.c', posix=True)
+AC_SOURCES_RAW_HYP += env.GlobFiles('../../accesscontrol/cfg/${AC_MSM_ID}/hyp/*.c', posix=True)
+AC_SOURCES_RAW_HYP += env.GlobFiles('../../accesscontrol/src/common/${AC_FAMILY_ID}/*.c', posix=True)
+AC_SOURCES_RAW_HYP += env.GlobFiles('../../accesscontrol/src/common/*.c', posix=True)
+AC_SOURCES_RAW_HYP = [path.replace(SRCPATH, '${BUILDPATH}') for path in AC_SOURCES_RAW_HYP]
+
+#AC_SOURCES_HYP_SYSCALL = env.GlobFiles('../../accesscontrol/src/hyp/AccessControlSMC.c', posix=True)
+#AC_SOURCES_HYP_SYSCALL = [path.replace(SRCPATH, '${BUILDPATH}') for path in AC_SOURCES_HYP_SYSCALL]
+AC_SOURCES_HYP_SYSCALL = ['${BUILDPATH}/src/hyp/AccessControlSMC.c']
+AC_SOURCES_HYP_SYSCALL += ['${BUILDPATH}/src/hyp/AccessControlSHM.c']
+
+#-------------------------------------------------------------------------------
+# TZ Sources, libraries
+#-------------------------------------------------------------------------------
+AC_SOURCES_RAW_TZ = env.GlobFiles('../../accesscontrol/src/tz/AccessControlTz.c', posix=True)
+AC_SOURCES_RAW_TZ += env.GlobFiles('../../accesscontrol/src/tz/${AC_MSM_ID}/AccessControlTzTarget.c', posix=True)
+AC_SOURCES_RAW_TZ += env.GlobFiles('../../accesscontrol/src/tz/${AC_FAMILY_ID}/AccessControlTzFamily.c', posix=True)
+AC_SOURCES_RAW_TZ += env.GlobFiles('../../accesscontrol/src/tz/${AC_FAMILY_ID}/AccessControlSHM.c', posix=True)
+AC_SOURCES_RAW_TZ += env.GlobFiles('../../accesscontrol/src/tz/${AC_FAMILY_ID}/ACNandFamily.c', posix=True)
+AC_SOURCES_RAW_TZ += env.GlobFiles('../../accesscontrol/src/common/${AC_FAMILY_ID}/*.c', posix=True)
+AC_SOURCES_RAW_TZ += env.GlobFiles('../../accesscontrol/src/common/*.c', posix=True)
+AC_SOURCES_RAW_TZ += env.GlobFiles('../../accesscontrol/src/components/vmidmt/*.c', posix=True)
+AC_SOURCES_RAW_TZ += env.GlobFiles('../../accesscontrol/cfg/${AC_MSM_ID}/tz/*.c', posix=True)
+AC_SOURCES_RAW_TZ += env.GlobFiles('../../accesscontrol/cfg/${AC_MSM_ID}/*.c', posix=True)
+
+# Pick the WA added ACMpu.c for Napali V1 which was implemented for HW bug in ANOC1/ANOC2 MPU
+acmpu_workaround_targets = ['670', '845' , '24']
+if env['MSM_ID'] in acmpu_workaround_targets:
+    AC_SOURCES_RAW_TZ += env.GlobFiles('../../accesscontrol/src/components/xpu/${XPU_VERSION}/ACXpu.c', posix=True)
+    AC_SOURCES_RAW_TZ += env.GlobFiles('../../accesscontrol/src/tz/${AC_MSM_ID}/ACMpu.c', posix=True)
+else:
+    AC_SOURCES_RAW_TZ += env.GlobFiles('../../accesscontrol/src/components/xpu/${XPU_VERSION}/*.c', posix=True)
+
+AC_SOURCES_RAW_TZ = [path.replace(SRCPATH, '${BUILDPATH}') for path in AC_SOURCES_RAW_TZ]
+
+#-------------------------------------------------------------------------------
+# xBL Sec Sources, libraries
+#-------------------------------------------------------------------------------
+AC_SOURCES_RAW_XBLSEC = env.GlobFiles('../../accesscontrol/src/xbl_sec/AccessControlXblSec.c', posix=True)
+AC_SOURCES_RAW_XBLSEC += env.GlobFiles('../../accesscontrol/src/xbl_sec/${AC_MSM_ID}/AccessControlXblSecTarget.c', posix=True)
+AC_SOURCES_RAW_XBLSEC += env.GlobFiles('../../accesscontrol/src/components/xpu/${XPU_VERSION}/*.c', posix=True)
+AC_SOURCES_RAW_XBLSEC += env.GlobFiles('../../accesscontrol/src/*.c', posix=True)
+AC_SOURCES_RAW_XBLSEC += env.GlobFiles('../../accesscontrol/cfg/${AC_MSM_ID}/xbl_sec/*.c', posix=True)
+AC_SOURCES_RAW_XBLSEC += env.GlobFiles('../../accesscontrol/cfg/${AC_MSM_ID}/*.c', posix=True)
+AC_SOURCES_RAW_XBLSEC = [path.replace(SRCPATH, '${BUILDPATH}') for path in AC_SOURCES_RAW_XBLSEC]
+
+#-------------------------------------------------------------------------------
+# XML files
+#-------------------------------------------------------------------------------
+#SPMI_CONFIG_FILE_XML = env.GlobFiles('../../spmi/config/${SPMI_MSM_ID}/*${SPMI_MSM_ID}*.xml', posix=True)
+#SPMI_CONFIG_FILE_XML = ', '.join(SPMI_CONFIG_FILE_XML) #convert list to string
+
+#if SPMI_CONFIG_FILE_XML: #try including XML only if it is present in the build
+#   if 'USES_DEVCFG' in env:
+#      env.AddDevCfgInfo(['DAL_DEVCFG_IMG'],
+#      {
+#          'devcfg_xml'    : SPMI_CONFIG_FILE_XML
+#      })
+
+#-------------------------------------------------------------------------------
+# Bear targets don't have Hyp.
+#-------------------------------------------------------------------------------
+SMMU_CONFIG = 'smmu_config.xml'
+XPU_CONFIG = 'xpu_config.xml'
+if 'USES_NOAC' in env:
+  SMMU_CONFIG = 'smmu_config_noac.xml'
+  XPU_CONFIG = 'xpu_config_noac.xml'
+
+if 'USES_NOXPU' in env:
+  XPU_CONFIG = 'xpu_config_noac.xml'
+
+DEVCFG_QSEE_IMG = ['DAL_DEVCFG_OEM_QSEE_IMG']
+DEVCFG_HYP_IMG = ['DAL_DEVCFG_OEM_HYP_IMG']
+
+if env['TARGET_FAMILY'] != 'bear':
+  SMMU_CONFIG_FILE_XML = env.GlobFiles('../../accesscontrol/cfg/${AC_MSM_ID}/hyp/'+SMMU_CONFIG, posix=True)
+  SMMU_CONFIG_FILE_XML = ', '.join(SMMU_CONFIG_FILE_XML) #convert list to string
+  if 'USES_DEVCFG' in env:
+    env.AddDevCfgInfo(DEVCFG_HYP_IMG,
+    {
+       'devcfg_xml' : [SMMU_CONFIG_FILE_XML]
+    })
+
+XPU_CONFIG_FILE_XML = env.GlobFiles('../../accesscontrol/cfg/${AC_MSM_ID}/tz/'+XPU_CONFIG, posix=True)
+XPU_CONFIG_FILE_XML = ', '.join(XPU_CONFIG_FILE_XML) #convert list to string
+OEM_REGN_CONFIG_XML_FILE = ', '.join(env.GlobFiles('../../accesscontrol/cfg/${AC_MSM_ID}/ac_oem_regions_config.xml', posix=True))
+
+if 'USES_DEVCFG' in env:
+  env.AddDevCfgInfo(DEVCFG_QSEE_IMG,
+  {
+    'devcfg_xml' : [XPU_CONFIG_FILE_XML, OEM_REGN_CONFIG_XML_FILE]
+  })
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+env.AddBinaryLibrary(IMAGES_TZ, '${BUILDPATH}/AC', AC_SOURCES_RAW_TZ)
+
+# For some reason AddBinaryLibrary causes HYP syscalls defined in code to not
+# get linked into the HYP_IMAGE (KEEP attribute are applied on object files)
+if env.get('CHIPSET').startswith('msm') or env.get('CHIPSET').startswith('sdm'):
+    env.AddBinaryObject(IMAGES_HYP, AC_SOURCES_HYP_SYSCALL)
+    env.AddBinaryLibrary(IMAGES_HYP, '${BUILDPATH}/AC', AC_SOURCES_RAW_HYP)
+    env.AddBinaryObject('QHEEBSP_IMAGE', [AC_SOURCES_HYP_SYSCALL, AC_SOURCES_RAW_HYP])
+
+if env['MSM_ID'] in supported_targets:
+    env.AddBinaryLibrary(IMAGES_XBLSEC, '${BUILDPATH}/AC', AC_SOURCES_RAW_XBLSEC)
+
+if env['XPU_VERSION'] in ['v3']:
+  env.Deploy(['SConscript',
+            '../src/components/xpu/v3/ACHALxpu.h',
+            '../tools/deviceinfoconfig_gen.py',
+           ])
+else:
+  env.Deploy(['SConscript',
+            '../src/components/xpu/v2/ACHALxpu.h',
+            '../tools/deviceinfoconfig_gen.py',
+           ])

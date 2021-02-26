@@ -1,0 +1,482 @@
+#===============================================================================
+#
+# ADSP Audio User PD SCons Image
+#
+# GENERAL DESCRIPTION
+#    This is the Image SCons to generate the User PD *.ELF, specific to Audio.
+#
+# Copyright (c) 2009-2014 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/dspbuild.adsp/5.0.c3/bsp/avs_adsp_user/build/avs_adsp_user.scons#1 $
+#  $DateTime: 2018/08/07 05:36:15 $
+#  $Change: 16823152 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 09/02/14   sl      Initial revision.
+#===============================================================================
+import sys
+import re
+import os
+Import('env')
+
+#------------------------------------------------------------------------------
+# Init image vars
+#------------------------------------------------------------------------------
+
+#------------------------------------------------------------------------------
+# Init aliases array.
+# first alias (0th element in array) is always unique name, there should
+# never be two images with the same unique name
+aliases = ['avs_adsp_user', 'adsp_mpd_images', 'adsp_mpd_core_images',
+	       'msm8998_ADSP', 'sdm845_ADSP', 'sdm660_ADSP', 'sdm670_ADSP','sdm855_ADSP','sdm1000_ADSP'
+          ]
+
+build_tools = ['buildspec_builder.py',
+         '${BUILD_ROOT}/qdsp6/tools/QshrinkExe.py',
+         '${BUILD_ROOT}/core/bsp/build/scripts/mbn_builder.py',
+         '${BUILD_ROOT}/core/bsp/build/scripts/dnt_builder.py',
+         '${BUILD_ROOT}/core/bsp/build/scripts/tms_builder_servreg.py',
+         '${BUILD_ROOT}/core/bsp/build/scripts/cmm_builder.py',
+         '${BUILD_ROOT}/core/bsp/build/scripts/swe_builder.py']
+
+build_tags = ['CORE_AVS_ADSP_USER', 'CORE_QDSP6_AUDIO_SW', 'AVS_ADSP_USER', 'USER_PD', 'CORE_USER_PD', 'QMIMSGS_ADSP', 'APR_ADSP_USER', 'CORE_ADSP_USER']
+# CORE_AVS_ADSP_USER is replacement for CORE_QDSP6_AUDIO_SW;
+# AVS_ADSP_USER is a tag for AVS code and will go to a separate scons after compilation is separated from linking. USER_PD replaces CORE_USER_PD
+# For 8994 and 8996, we want to autogenerate the LCS file.
+build_tools += [
+         '${BUILD_ROOT}/core/bsp/build/scripts/lcs_autogen.py']
+
+# Init environment variables
+env.InitImageVars(
+   alias_list=aliases,
+   proc='qdsp6',
+   config='adsp',
+   plat='qurt',
+   target='AUDIO_IMG_${BUILD_ID}',
+   build_tags = build_tags,
+   tools = build_tools
+   )
+
+#------------------------------------------------------------------------------
+# Check if we need to load this script or just bail-out
+#------------------------------------------------------------------------------
+if not env.CheckAlias():
+   Return()
+
+#---------------------------------------------------------------------------
+# Load in CBSP uses and path variables
+#---------------------------------------------------------------------------
+env.LoadToolScript('build_utils', toolpath = ['${BUILD_ROOT}/build/scripts'])
+env.InitTargetVariation()
+env.InitBuildConfig()
+
+if 'USES_DISABLE_AUDIO' in env:
+   Return()
+ 
+#---------------------------------------------------------------------------
+# Load in the tools scripts
+#---------------------------------------------------------------------------
+#Add ADSP Image specific linker inputs here
+env.LoadToolScript('hexagon_adsp', toolpath = ['${BUILD_ROOT}/build'])
+
+env.Append(USES_QDSS_SWE_MULTIPD = True)
+
+env.Append(CPPDEFINES=["MULTI_PD_BUILD"])
+#if image wants to own "main": # image calls core_main to init cbsp
+if 'BUILD_BAREBONE' not in env:
+    env.Append(CPPDEFINES=["COREMAIN_EXCLUDE_MAIN"])
+    env.Append(CPPDEFINES=["TASK_EXCLUDE_MAIN"])
+env.AddUsesFlags('USES_SERVICE_REGISTRY_PLAYBOOK')
+
+if ('USES_FEATURE_DYNAMIC_LOADING_GLOBAL' in env) :
+   env.Replace(USES_FEATURE_DYNAMIC_LOADING = 'yes')
+   env.LoadToolScript('sharedlib_symbols', toolpath = ['${BUILD_ROOT}/core/bsp/build/scripts'])
+   env.LoadToolScript('dlinker_symbols', toolpath = ['${BUILD_ROOT}/core/bsp/build/scripts'])
+   env.Replace(LINKCOM = "${TEMPFILE('$LINK $LINKFLAGS $LINK_DIRS $LINKOBJGRP $DYNLINKFLAGS $HEXAGON_OUTPUT_CMD $TARGET.posix $LINKFLAGS_END')}")
+
+env.AddUsesFlags('USES_RCINIT_PLAYBOOK') # MUST OCCUR BEFORE FIRST LoadAreaSoftwareUnits
+#---------------------------------------------------------------------------
+# Set the Kernel Target Configuration
+#---------------------------------------------------------------------------
+if env['MSM_ID'] in ['8994', '8992', '8952']:
+   env.Replace(QURT_BUILD_CONFIG="ADSPv56MP")
+elif env['MSM_ID'] in ['8996']:
+   env.Replace(QURT_BUILD_CONFIG="ADSPv60MP")
+elif env['MSM_ID'] in ['8998']:
+   env.Replace(QURT_BUILD_CONFIG="ADSPv62MP")    
+elif env['MSM_ID'] in ['660']:
+   env.Replace(QURT_BUILD_CONFIG="ADSPv62MP_SL")      
+elif env['MSM_ID'] in ['670']:
+   env.Replace(QURT_BUILD_CONFIG="ADSPv65MP")      
+elif env['MSM_ID'] in ['845']:
+   env.Replace(QURT_BUILD_CONFIG="ADSPv65MP")    
+elif env['MSM_ID'] in ['855','1000']:
+   env.Replace(QURT_BUILD_CONFIG="ADSPv66MP")
+else:
+   env.PrintError("QURT_BUILD_CONFIG is not defined for this chipset, exit compilation!!!")
+   Exit(1)
+env.PrintInfo("QURT_BUILD_CONFIG is  ${QURT_BUILD_CONFIG}")
+
+if 'USES_ADSPPM_INTEGRATION_ENABLED' in env:
+    if 'USES_AVS_TEST' in env:
+       env.Append(CFLAGS='-DADSPPM_INTEGRATION=0')
+    else:
+       env.Append(CFLAGS='-DADSPPM_INTEGRATION=1')
+else:
+    env.Append(CFLAGS='-DADSPPM_INTEGRATION=0')  
+ 
+# Change the image entry point.
+env.Replace(HEXAGON_IMAGE_ENTRY='0xb0000000')
+# These lines need to be cleaned up still.  We should be reading the linkflags, and only modifying what we need.
+if os.environ.get('COMPILER') == ('gcc'):
+   env.Replace(LINKFLAGS = "-m${Q6VERSION} --wrap malloc --wrap calloc --wrap free --wrap realloc --wrap memalign -g -G0 -nostdlib ${HEXAGONLD_MAP_CMD} ${TARGET.posix}.map --section-start .start=${HEXAGON_IMAGE_ENTRY} --gc-sections ${LFLAGS}")
+else: # LLVM linker flags: only difference is removed -T${BUILD_ROOT}/Sensors/build/${CHIPSET}/sensors.linker
+   env.Replace(LINKFLAGS = "-m${Q6VERSION} --wrap malloc --wrap calloc --wrap free --wrap realloc --wrap memalign -g -G0 -nostdlib ${HEXAGONLD_MAP_CMD} ${TARGET.posix}.map --section-start .start=${HEXAGON_IMAGE_ENTRY} --gc-sections ${LFLAGS}")
+
+
+
+env.Replace(QDSP6OBJS3  = [
+         '${QDSP6_LIBDIR}/libqurt.a',
+         '${QDSP6_LIBDIR}/libqurtcfs.a',
+         '${QDSP6_LIBDIR}/libqurtkernel.a',
+         '${QDSP6_LIBDIR}/libqube_compat.a',
+         '${QDSP6_LIBDIR}/libtimer.a',
+         '${QDSP6_LIBDIR}/libposix.a',
+         '${QDSP6_RELEASE_LIB_DIR}/libc.a',
+         '${QDSP6_RELEASE_LIB_DIR}/libqcc.a',
+         '${QDSP6_RELEASE_LIB_DIR}/libstdc++.a',
+         '${QDSP6_RELEASE_LIB_DIR}/libdl.a',
+         ])
+
+env.Replace(LINKOBJGRP = "${QDSP6OBJS1} " \
+   "--start-group $_LIBFLAGS_POSIX ${QDSP6OBJS2} $SOURCES.posix $_LISTFILES ${QDSP6OBJS3} --end-group " \
+   "${QDSP6OBJS4} "
+)
+
+#---------------------------------------------------------------------------
+# Libs/Objs
+#---------------------------------------------------------------------------
+audio_img_libs = []
+audio_img_objs = []
+
+#---------------------------------------------------------------------------
+# Libraries Section
+#---------------------------------------------------------------------------
+# Load CORE
+core_qurt_env = env.Clone()
+core_qurt_items = core_qurt_env.LoadAreaSoftwareUnits('core', ["kernel/qurt"])
+audio_img_libs.extend(core_qurt_items['LIBS'])
+audio_img_objs.extend(core_qurt_items['OBJS'])
+
+# load QMI
+if env.PathExists("${BUILD_ROOT}/qmimsgs"):
+  au_items = env.LoadAreaSoftwareUnits('qmimsgs')
+  audio_img_libs.extend(au_items['LIBS'])
+  audio_img_objs.extend(au_items['OBJS'])
+  
+
+if 'BUILD_BAREBONE' not in env :
+   # Load QDSP6
+   au_items = env.LoadAreaSoftwareUnits('qdsp6')
+   audio_img_libs.extend(au_items['LIBS'])
+   audio_img_objs.extend(au_items['OBJS'])
+
+   # load Platform libs/objs build rules.
+   if 'USES_AVS_TEST' in env:
+      audio_img_libs.append('${BUILD_ROOT}/avs/main/aDSPTest/rtldOrphans/rtld.lib')
+   else:
+      au_items = env.LoadAreaSoftwareUnits('platform')
+      audio_img_libs.extend(au_items['LIBS'])
+      audio_img_objs.extend(au_items['OBJS'])
+
+   if env.PathExists("${BUILD_ROOT}/apr"):
+      au_items = env.LoadAreaSoftwareUnits('apr')
+      audio_img_libs.extend(au_items['LIBS'])
+      audio_img_objs.extend(au_items['OBJS'])
+
+   if env.PathExists("${BUILD_ROOT}/performance"):
+      au_items = env.LoadAreaSoftwareUnits('performance','sysmon')
+      audio_img_libs.extend(au_items['LIBS'])
+      audio_img_objs.extend(au_items['OBJS'])
+
+# Debug code for finding environment variables
+#for key in env.Dictionary():
+#   try:
+#      if type(env[key]) == str and env[key] in ["20201170", "AAABQMAAM", "AABBQMAAM", "7X30A", "M7X30", "7X30", "7x30", "7630"]:
+#         print "env['" + str(key) + "'] = " + str(env[key])
+#   except:
+#      print "Exception on key", key
+#      import pdb; pdb.set_trace()
+
+
+image_units = []
+
+# ---------------------------------------------------------------------------
+# Make SWE master list from individual image list
+# ---------------------------------------------------------------------------
+if 'QDSS_TRACER_SWE_MULTIPD' in env: # swe_builder supports multiPD functions.
+
+   SWE_LISTS = [    #  SWE LISTS CONTAINING INTERMEDIATS EVENT INFO
+      env.RealPath('../../core_user_libs/build/${SHORT_BUILDPATH}/sweevent_list.txt'),
+      ]
+   if 'BUILD_BAREBONE' not in env :
+      SWE_LISTS.append(env.RealPath('../../avs_libs/build/${SHORT_BUILDPATH}/sweevent_list.txt'))
+   env.SWEMergeBuilder(['${SHORT_BUILDPATH}/sweevent_consolidate_list.txt'],SWE_LISTS)
+
+   SWE_OUTPUT_LISTS = [    # SWE LISTS THAT WILL CONTAIN SWE INFO FROM MASTER FILE
+     env.RealPath('../../core_user_libs/build/${SHORT_BUILDPATH}/sweevent_master_list.txt'),
+       ]
+   if 'BUILD_BAREBONE' not in env :
+      SWE_OUTPUT_LISTS.append(env.RealPath('../../avs_libs/build/${SHORT_BUILDPATH}/sweevent_master_list.txt'))
+   env.SWEReplicateBuilder(SWE_OUTPUT_LISTS,['${SHORT_BUILDPATH}/sweevent_consolidate_list.txt'])
+
+#--- RCINIT Playbook Extension, Image Specific Details --------------------- BEG
+
+PLAYLISTS = [ # IMAGE_OWNER ADDS SPECIFIC PLAYLISTS, ONE PER LIBRARY, EXPLICIT, NOT AUTO_MAGIC
+   env.RealPath('../../core_user_libs/build/${SHORT_BUILDPATH}/rcinit_playlist.rcpl'), # LIBRARY EXPANDS AS $SHORT_BUILDPATH
+]
+if 'BUILD_BAREBONE' not in env :
+  PLAYLISTS.append(env.RealPath('../../avs_libs/build/${SHORT_BUILDPATH}/rcinit_playlist.rcpl'))
+
+# Follows all LoadAreaSoftwareUnits(). Precedes Link Step Details.
+# Image Owner supplies PLAYLISTS. Avoid other customization this step.
+
+# FOR SCONS TOOL EMITTERS TO PLACE OUTPUT PROPERLY
+if not os.path.exists(env.RealPath('${SHORT_BUILDPATH}')):
+   if Execute(Mkdir(env.RealPath('${SHORT_BUILDPATH}'))):
+      raise
+
+# ONLY WHEN DNT_BUILDER SCONS TOOL LOADED
+if 'USES_RCINIT' in env and 'USES_RCINIT_PLAYBOOK' in env:
+
+   # NEVER POLLUTE ENV CONSTRUCTION ENVIRONMENT WHICH GETS INHERITED
+   playbook_env = env.Clone()
+
+   # PLAYBOOK C OUTPUT THIS IMAGE (REQUIRED)
+   rcinit_out_c = playbook_env.RealPath('${SHORT_BUILDPATH}/rcinit_autogen.c')
+   playbook_env.AddRCInitPlaybook(build_tags, rcinit_out_c, PLAYLISTS)
+   rcinit_obj = playbook_env.AddObject(build_tags, rcinit_out_c)
+   playbook_env.Depends(build_tags, rcinit_out_c)     # Manage explicit detail outside of AU
+   audio_img_objs.append(rcinit_obj)                      # Manage explicit detail outside of AU
+
+   # PLAYBOOK TXT OUTPUT THIS IMAGE (REQUIRED)
+   rcinit_out_txt = playbook_env.RealPath('${SHORT_BUILDPATH}/${TARGET_NAME}_rcinit_output_log.txt')
+   playbook_env.AddRCInitPlaybook(build_tags, rcinit_out_txt, None)
+   playbook_env.AddArtifact(build_tags, rcinit_out_txt)
+   playbook_env.Depends(rcinit_out_txt, rcinit_out_c) # Manage explicit detail outside of AU
+   image_units.append(rcinit_out_txt)                 # Manage explicit detail outside of AU
+
+#--- RCINIT Playbook Extension, Image Specific Details --------------------- END
+#--- SERVICE REGISTRY Playbook Extension, Image Specific Details -----------BEGIN
+
+#build_tags = ['CORE_AVS_ADSP_USER', 'CORE_QDSP6_AUDIO_SW', 'AVS_ADSP_USER', 'USER_PD', 'CORE_USER_PD', 'QMIMSGS_ADSP', 'APR_ADSP_USER', 'CORE_ADSP_USER']
+
+# Follows all LoadAreaSoftwareUnits(). Precedes Link Step Details.
+
+# FOR SCONS TOOL EMITTERS TO PLACE OUTPUT PROPERLY
+if not os.path.exists(env.RealPath('${SHORT_BUILDPATH}')):
+   if Execute(Mkdir(env.RealPath('${SHORT_BUILDPATH}'))):
+      raise
+
+# ONLY WHEN tms_builder_servreg SCONS TOOL LOADED
+if 'USES_SERVICE_REGISTRY' in env and 'USES_SERVICE_REGISTRY_PLAYBOOK' in env:
+
+   # NEVER POLLUTE ENV CONSTRUCTION ENVIRONMENT WHICH GETS INHERITED
+   playbook_servreg_env = env.Clone()
+
+   # EVERY IMAGE OWNER HAS TO DEFINE THE DOMAIN SCOPES USING AddServRegDomain() API
+   playbook_servreg_env.AddServRegDomain(
+      build_tags,
+      {
+         'soc'                  : 'msm',
+         'domain'               : 'adsp',
+         'subdomain'            : 'audio_pd',
+      })
+
+   # PLAYLIST TO STORE THE SERVICE REGISTRY - DOMAIN INFORMATION
+   servreg_out_pl = playbook_servreg_env.RealPath('${SHORT_BUILDPATH}/servreg_playlist.pl')
+   playbook_servreg_env.AddServRegPlaylist(build_tags, servreg_out_pl)
+   playbook_servreg_env.Depends(build_tags, servreg_out_pl)
+   image_units.append(servreg_out_pl)
+
+   # LIST OF ALL PLAYLISTS THAT WILL CONTRIBUTE TO MAKE THE OUTPUT JSON FILE
+   SERVREG_PLAYLISTS = [ # IMAGE_OWNER ADDS SPECIFIC SERVREG_PLAYLISTS, ONE PER LIBRARY, EXPLICIT, NOT AUTO_MAGIC
+      env.RealPath('${SHORT_BUILDPATH}/servreg_playlist.pl'),
+      env.RealPath('../../core_user_libs/build/${SHORT_BUILDPATH}/servreg_playlist.pl'),
+      #'${BUILD_ROOT}/build/bsp/sensors_libs/build/${SHORT_BUILDPATH}/servreg_playlist.pl',
+   ]
+   if 'BUILD_BAREBONE' not in env :
+      SERVREG_PLAYLISTS.append(env.RealPath('../../avs_libs/build/${SHORT_BUILDPATH}/servreg_playlist.pl'))
+
+   # CREATION OF OUTPUT JSON FILE
+   servreg_out_json = playbook_servreg_env.RealPath('${SHORT_BUILDPATH}/${TARGET_NAME}_servreg.json')
+   playbook_servreg_env.AddServRegPlaybook(build_tags, servreg_out_json, SERVREG_PLAYLISTS)
+   playbook_servreg_env.Depends(build_tags, servreg_out_json)
+   image_units.append(servreg_out_json)
+
+   # CREATEION OF OUTPUT C FILE i.e THE SERVICE REGISTRY LOCAL DATABASE
+   servreg_out_c = playbook_servreg_env.RealPath('${SHORT_BUILDPATH}/servreg_local_db_autogen.c')
+   playbook_servreg_env.AddServRegPlaybook(build_tags, servreg_out_c, SERVREG_PLAYLISTS)
+   servreg_obj = playbook_servreg_env.AddObject(build_tags, servreg_out_c)
+   playbook_servreg_env.Depends(build_tags, servreg_out_c)
+   audio_img_objs.append(servreg_obj)
+# INSTALL JSON FILE IN LOCAL DIRECTORY
+   servreg_out_json_install = InstallAs(env.RealPath("${BUILD_MS_ROOT}/servreg/${BUILD_ID}/adspua.jsn"),servreg_out_json)
+   image_units += [servreg_out_json_install]
+#--- SERVICE REGISTRY Playbook Extension, Image Specific Details ----------- END
+
+#-------------------------------------------------------------------------
+# Dynamic Loading Support
+#-------------------------------------------------------------------------
+if env.GetUsesFlag('USES_FEATURE_DYNAMIC_LOADING'):
+   avs_img_sym_lst= env.RealPath('${SHORT_BUILDPATH}/AVS_IMG_SYMS_${BUILD_ID}.txt')
+   avs_sym_lst= env.RealPath('../../avs_libs/build/${SHORT_BUILDPATH}/AVS_SYMS_${BUILD_ID}.txt')
+   #core_user_libs is also generating DSOs, pull in their sym list
+   core_user_sym_lst = env.RealPath('../../core_user_libs/build/${SHORT_BUILDPATH}/CORE_USER_SYMS_${BUILD_ID}.txt')
+   dlysm_list = env.DLExposeGenerateList([avs_img_sym_lst], None)
+   image_units += dlysm_list
+   #Generate dynamic symbols list files for exporting symbols for shared library
+   dynsym_export_lst = '${SHORT_BUILDPATH}/dynsymbols.lst'
+   dynsym_extern_lst = '${SHORT_BUILDPATH}/externs.lst'
+   sym_list = [avs_sym_lst, avs_img_sym_lst, core_user_sym_lst]
+   if 'BUILD_BAREBONE' in env :
+      sym_list.remove(avs_sym_lst)
+   sym_lst_all = env.DLExposeLSTBuilder([dynsym_export_lst, dynsym_extern_lst], sym_list)
+   sh_libs_dynsym = env.Flatten(sym_lst_all[0])
+   sh_libs_extsym = env.Flatten(sym_lst_all[1])
+   #env.Replace(DYNLINKFLAGS = "--force-dynamic --dynamic-linker= --dynamic-list=%s -T%s" % (env.RealPath(str(sh_libs_dynsym[0]), posix=True) , env.RealPath(str(sh_libs_extsym[0]), posix=True)))
+   env.Replace(DYNLINKFLAGS = "--force-dynamic --dynamic-linker= --dynamic-list=%s --extern-list=%s" % (env.RealPath(str(sh_libs_dynsym[0]), posix=True) , env.RealPath(str(sh_libs_dynsym[0]), posix=True)))
+   #Add dynamic symbols list files as dependency on final image
+   image_units += sym_lst_all
+
+#-------------------------------------------------------------------------
+# Auto-generate the LCS file
+#-------------------------------------------------------------------------
+if 'USES_LCS_AUTOGEN' in env:
+  linker_template = "${BUILD_ROOT}/build/chipset/${CHIPSET}/${IMAGE}/avs_adsp_user.lcs.template"
+  generated_linker = "${SHORT_BUILDPATH}/avs_adsp_user"
+  generated_linker_path = "${BUILD_ROOT}/build/bsp/avs_adsp_user/build/${SHORT_BUILDPATH}/avs_adsp_user.lcs"
+  
+  # Generate the LCS from the template, and add it to the environment.
+  if 'USES_ISLAND' in env:
+     lcs_autogen = env.GenerateLCSFileFromTemplate(generated_linker, linker_template, [core_libs_island_txt,libc_island,qurt_island_txt])
+     env.Depends(lcs_autogen, island_analysis_file)
+  # If this is not an island build, do not pass in I-SPEC files.
+  else:
+     lcs_autogen = env.GenerateLCSFileFromTemplate(generated_linker, linker_template)
+  image_units += [lcs_autogen]
+
+  # Store the LCS file in the image environment, if we need to refer to it later.
+  rootenv = env.get('IMAGE_ENV')
+  rootenv['lcs_file'] = lcs_autogen
+  
+  # Get the LINKFLAGS.
+  linkflags = env.get('LINKFLAGS')
+  # Search to see if a template file is being used.
+  if re.match(r'.* -{1,2}T.*',linkflags):
+     # Modify the linkflags to use the new template file.
+     modified_linkflags = re.sub(r'-{1,2}T ?([^ ]*)','-T ' + generated_linker_path, linkflags)
+     env.Replace(LINKFLAGS = modified_linkflags)
+  else:
+     # Append the linker script to the linkflags.
+     env.Append(LINKFLAGS = "-T " + generated_linker_path)
+
+  # Temporary requirement to replace '.start' with '.qurtstart'
+  # Get the LINKFLAGS.
+  linkflags = env.get('LINKFLAGS')
+  # Search to see if '.start' is being used.
+  if re.match(r'.* .start*',linkflags):
+     # Modify the linkflags to use '.qurtstart'.
+     modified_linkflags = re.sub(r'\.start','.qurtstart', linkflags)
+     env.Replace(LINKFLAGS = modified_linkflags)
+  else:
+     env.PrintError("Cannot find .start in LINKFLAGS.  This is expected.")
+     env.PrintError("In Island linking, we need to replace .start with .qurtstart")
+     exit(1)
+#------------------------------------------------------------------------------
+# Putting the image together
+#------------------------------------------------------------------------------
+# Due to a requirement that the .MAP file must be formatted with relative paths, to be compatible with the GenerateIslandList formatting.  We are saving a list of library files and object files into the SCons image root, to be used at link time.
+image_lf = env.ListFileBuilder("${SHORT_BUILDPATH}/${TARGET_NAME}.lf", [audio_img_objs, audio_img_libs],
+      add_header=False, relative_path="${BUILD_ROOT}/build/ms", posix=True)
+image_units += [image_lf]
+avs_adsp_user_libs_lf = env.RealPath('${SHORT_BUILDPATH}/AUDIO_IMG_${BUILD_ID}.lf')
+
+# External List files
+avs_user_libs_txt = env.RealPath('../../avs_libs/build/${SHORT_BUILDPATH}/AVS_LIBS_${BUILD_ID}.txt')
+core_user_libs_txt =  env.RealPath('../../core_user_libs/build/${SHORT_BUILDPATH}/CORE_USER_LIBS_${BUILD_ID}.txt', posix=True)
+
+listfile =[avs_adsp_user_libs_lf, avs_user_libs_txt, core_user_libs_txt]
+if 'BUILD_BAREBONE' in env:
+   listfile.remove(avs_user_libs_txt)
+
+# These are dummy placeholders for now.  The complete implementation will only use listing files, and this will be removed.
+image_libs_dummy = []
+image_objs_dummy = []
+
+# Link the ELF.
+image_elf = env.AddProgram("${SHORT_BUILDPATH}/${TARGET_NAME}", image_objs_dummy, LIBS=image_libs_dummy, LISTFILES=listfile)
+if 'USES_INTERNAL_ELF_GEN' in env and 'BUILD_BAREBONE' not in env:
+   if env.IsBuildInternal():
+      avs_internal_libs_txt=env.RealPath('${SHORT_BUILDPATH}/INT_AVS_LIBS_${BUILD_ID}.txt')
+      print "avs_internal_libs_txt: ", avs_internal_libs_txt
+      avs_debug_libs_list= env.ReplaceTextInFileBuilder(avs_internal_libs_txt,avs_user_libs_txt, REPLACE_DICT={'_strip.lib':'_internal.lib', '_strip_only.lib':'_internal.lib'})
+      internal_listfile = []
+      for item in listfile: 
+           if(item == avs_user_libs_txt): 
+               item = avs_internal_libs_txt
+           internal_listfile.append(item)
+      image_internal_elf = env.AddProgram("${SHORT_BUILDPATH}/${TARGET_NAME}_INTERNAL", image_objs_dummy, LIBS=image_libs_dummy, LISTFILES=internal_listfile)
+      env.Depends(image_internal_elf, avs_debug_libs_list)
+      env.Depends(image_internal_elf, image_elf)
+      image_units += [image_internal_elf]
+      image_map = env.RealPath('${BUILD_ROOT}/build/bsp/avs_adsp_user/build/${SHORT_BUILDPATH}/AUDIO_IMG_${BUILD_ID}.elf.map')
+      env.SideEffect(image_map, image_elf) 
+   else:
+      env.CleanPack(build_tags, [env.RealPath('${SHORT_BUILDPATH}/${TARGET_NAME}_INTERNAL.elf')])
+# The image linking depends on whether the LCS file was generated.
+if 'USES_LCS_AUTOGEN' in env:
+   env.Depends(image_elf, lcs_autogen)
+
+if 'IMAGE_BUILD_POST_LINK' in env:
+   #-------------------------------------------------------------------------
+   # Post process image
+   #-------------------------------------------------------------------------
+   # Install the *.ELF in .\build\ms for the next step.
+   BUILD_ELF_EXTN = ''
+   if 'USES_UNIFIED_DEVCFG' not in env: 
+      BUILD_ELF_EXTN = '_NODEVCFG'
+   qshrink_elf_name = env.RealPath("${SHORT_BUILDPATH}/${AUDIO_IMG_NAME}%s_QSHRINK.elf"%BUILD_ELF_EXTN)
+   if 'USES_FEATURE_QSHRINK_ENABLED' in env:
+      elf_QshrinkNode = env.QShrinkBuilder(qshrink_elf_name,image_elf)
+      install_target_elf = env.InstallAs(
+            "${BUILD_MS_ROOT}/${AUDIO_IMG_NAME}%s.elf"%BUILD_ELF_EXTN, elf_QshrinkNode)
+   else:
+      install_target_elf = env.InstallAs(
+            "${BUILD_MS_ROOT}/${AUDIO_IMG_NAME}%s.elf"%BUILD_ELF_EXTN, image_elf)   
+   if 'USES_INTERNAL_ELF_GEN' in env and 'BUILD_BAREBONE' not in env:
+      if env.IsBuildInternal():
+         install_internal_elf = env.InstallAs(
+            "${BUILD_MS_ROOT}/INTERNAL_${AUDIO_IMG_NAME}%s.elf"%BUILD_ELF_EXTN, image_internal_elf)
+         env.Depends(install_target_elf, install_internal_elf)
+      else:
+         env.CleanPack(build_tags, [env.RealPath("${BUILD_MS_ROOT}/INTERNAL_${AUDIO_IMG_NAME}%s.elf"%BUILD_ELF_EXTN)])
+   #=========================================================================
+   # Define targets needed
+   #
+   image_units += [
+      image_elf,install_target_elf
+   ]
+
+#=========================================================================
+# Finish up...
+env.BindAliasesToTargets(image_units)

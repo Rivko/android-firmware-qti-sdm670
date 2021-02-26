@@ -1,0 +1,128 @@
+#===============================================================================
+#
+# DAL Framework Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2015 Qualcomm Incorporated.
+# All Rights Reserved.
+# Qualcomm Confidential and Proprietary
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.tz/2.0.2/dal/framework/build/SConscript#2 $
+#  $DateTime: 2018/07/12 03:45:51 $
+#  $Author: pwbldsvc $
+#  $Change: 16626739 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 06/09/17   sm      Update to properly parse MSM_ID.
+# 07/30/15   sb      Added DALGlbCtxt.c
+# 05/16/12   sc      Updated for 9x25
+# 02/24/12   sc      Removed non TZOS_IMAGE and updated using AddLibrary
+# 01/25/11   sho     Restore TZ for 8660 and 8960
+# 01/17/11   sc      Updated source file for RPM
+# 01/11/11   sho     Removed TZOS_IMAGE
+# 12/16/10   sc      Added DALNativeGlbCtxt for SPS ucos
+# 11/10/10   pg      Added Sensors ucos version of DAL FWK library.
+# 10/01/10   sc      Compiled in DALGlbCtxt for SPS/ARM7
+# 09/23/10   sc      Added SBL1_BOOT_IMAGE
+# 09/20/10   vk      Added support for NOR_TOOLS_IMAGE
+# 07/13/10   sc      Added support for RPM_IMAGE
+# 07/08/10   sc      Updated with CORE_SPS and CORE_RPM
+# 07/07/10   sho     Added support for WCN_IMAGE
+# 04/20/10   sho     Added TZOS_IMAGE
+# 03/24/10   wd      Added call to load subscripts (sys).
+#
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+
+if 'USES_NESSUS' in env or 'USES_BMPOS_QNK' in env:
+   Return()
+
+if env.has_key('TZOS_IMAGE'):
+   env.Append(CPPDEFINES = ["DAL_CONFIG_MMU_SCHEME=DAL_CONFIG_MMU_SCHEME_NONE"])
+else:
+   env.Append(CPPDEFINES = ["DAL_CONFIG_MMU_SCHEME=DAL_CONFIG_MMU_SCHEME_L4_PMEM"])
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${DAL_ROOT}/framework/src"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'DAL',
+   'MPROC',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+#-------------------------------------------------------------------------------
+# Source Code
+#-------------------------------------------------------------------------------
+
+DALFW_TZ_SOURCES =  [
+   '${BUILDPATH}/DALGlbCtxt.c',
+   '${BUILDPATH}/dalfwkbase.c',
+   '${BUILDPATH}/DALQueue.c',
+   '${BUILDPATH}/DALMemDesc.c',
+   #'${BUILDPATH}/dal_asm_wrap.c',
+   #'${BUILDPATH}/dal_asm_rvct.s'
+]
+DALFW_HYP_SOURCES =  [
+   '${BUILDPATH}/DALGlbCtxt.c',
+]
+#-------------------------------------------------------------------------------
+# Load dal config builder
+#-------------------------------------------------------------------------------
+env.Tool('dalconfig_builder', toolpath = ['${COREBSP_ROOT}/kernel/devcfg/scripts/'])
+
+#-------------------------------------------------------------------------------
+# DalModDir.c file
+#-------------------------------------------------------------------------------
+if env.GetUsesFlag('USES_DEVCFG') is True:
+    #Get devcfg XML tag-list
+    devcfg_xml_tag_list = env.get('DEVCFG').getFeature('devcfgXMLTagList')
+    target_img          = env.get('DEVCFG').getFeature('targetImg')
+    config_str          = devcfg_xml_tag_list[0].split('_')[0] + '_' + target_img
+    Master_XML          = File(env.subst('${DEVCFG_ROOT}/build/${BUILDPATH}/DevCfg_master_'+config_str+'.xml'))
+    DalModDir           = env.DALModDirSrcBuilder('${BUILDPATH}/DalModDir.c', 
+                                                  [Master_XML], 
+                                                   CONFIG=config_str)
+    env.AddObject(['TZOS_IMAGE','HYPERVISOR_IMAGE', 'QHEEBSP_IMAGE'], DalModDir)
+        
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+env.AddBinaryLibrary('TZOS_IMAGE','${BUILDPATH}/DALFwk_tz', DALFW_TZ_SOURCES)
+env.AddBinaryLibrary('HYPERVISOR_IMAGE', '${BUILDPATH}/DALFwk_hyp', DALFW_HYP_SOURCES)
+env.AddBinaryObject('QHEEBSP_IMAGE', DALFW_HYP_SOURCES)
+
+#-------------------------------------------------------------------------------
+# Load Subunits (sys)
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+if "USES_DEPLOY_BUILDER" in env:
+   env.Deploy(['SConscript',
+               '../inc/dalconfig.h'])
+			   
+			   
+

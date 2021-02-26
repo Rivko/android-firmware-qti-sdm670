@@ -1,0 +1,2533 @@
+//============================================================================
+//  Name:                                                                     
+//    std_utils.cmm
+//
+//  Description:                                                              
+//    Script to house common utilities or macros
+//
+//  Usage
+//  do std_utils < Name of utility > < Arguments for the utlity >
+//
+//    e.g. do std_utils removeslash exit c:\dropbox\ will return c:\dropbox to the caller
+//    e.g  do std_utils executecmm exit std_memorymap will execute std_memorymap.cmm or exit if not found.
+//                                                                            
+// Copyright (c) 2012 - 2016 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when         who         what, where, why
+// --------     ---        --------------------------------------------------------
+// 07/05/2017 JBILLING     Update to ATTACHPROC
+// 04/06/2017 JBILLING     Updates to breakproc added and evaluate_attachstate subroutine added
+// 03/08/2017 JBILLING     New APIs added (WAIT_TO_STOP, SANITIZEPATHS, PARSEOUTLIST, LOAD_ELF_UTILITY, GET_BUILD_PROC_ROOT_NAME, GET_BUILD_ROOT_NAME, GET_ELF_BUILDROOT
+// 07/06/2016 JBILLING     Minor fix to SETBREAKPOINTS
+// 06/23/2016 JBILLING     Updates for EXECUTESCRIPT to process exe, py, pl files
+// 03/10/2016 JBILLING     Updates for UNIX systems
+// 12/23/2016 JBILLING     Add GET_LOADCMM_HEX_FILE
+// 12/07/2015 JBILLING     Added synch subroutines
+// 09/30/2015 JBILLING     Additional fixes for automation
+// 09/14/2015 JBILLING     Changes made for automation
+// 08/11/2015 JBILLING     Updated message passing for automation
+// 04/16/2015 JBILLING     Added accessmode to all HWIO_ functions
+// 02/05/2015 JBILLING     Added HWIO_*DAP functions for debug access port
+// 10/30/2013 JBILLING     Added cti functions
+// 09/12/2013 AJCheriyan   Fixed few practice errors
+// 07/03/2013 AJCheriyan   Fixed typo in SAVEBIN
+// 04/10/2013 AJCheriyan   Added support for QDSS Gen 2
+// 10/19/2012 AJCheriyan   Fixed bug in CHECKARGS. Added one more arg
+// 09/12/2012 AJCheriyan   Fixed menu option in EXECUTESCRIPT
+// 07/19/2012 AJCheriyan   Added HWIO utilities
+// 07/14/2012 AJCheriyan   Added new utilities - LOADBIN, SAVEBIN, CHECKARGS
+// 07/09/2012 AJCheriyan   Added 2 extra arguments to execute cmm util
+// 03/15/2011 AJCheriyan   Added util to remove slash, execute cmm file
+// 03/15/2011 AJCheriyan   Created for MSM8660 
+//
+
+
+//    Locals: Local Variables
+//    Input Arguments
+//LOCAL &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4
+
+//    Return values to the caller along with success / fail value specific to utility
+LOCAL &PASS &RVAL0 &RVAL1 &RVAL2
+
+// Name of the utility we are calling
+LOCAL &SUBROUTINE
+LOCAL &FAILURE &SUCCESS
+&FAILURE="FAIL"
+&SUCCESS="SUCCESS"
+// Any subroutine specific options
+// Default exists for each subroutine
+LOCAL &OPTION
+
+// All our input arguments
+LOCAL &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+ENTRY &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+
+// Input Argument 0 is the name of the utility
+&SUBROUTINE="&UTILITY"
+
+IF ("&SUBROUTINE"=="")
+(
+    PRINT %ERROR "WARNING: UTILITY &UTILITY DOES NOT EXIST."
+    GOSUB EXIT FAILURE
+)
+ELSE
+(
+    // This should be created by some top level script. The setupenv for each proc would
+    // set this up
+     AREA.SELECT
+
+     // Debug Print Statement
+    // PRINT "&SUBROUTINE &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG5 &IARG6 &IARG7"
+    // Call the required utility
+    GOSUB &SUBROUTINE &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+
+    //Remove error handler if it was set
+    ON ERROR
+    
+    GOSUB EXIT &rvalue
+    
+)
+
+
+// Function: SANITIZEQUOTATIONS
+// removes extra quotation marks on either end of the variable
+//
+SANITIZEQUOTATIONS:
+LOCAL &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11 &IARG12 &IARG13 &IARG14
+ENTRY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11 &IARG12 &IARG13 &IARG14
+
+//discard &OPTION
+        
+        &string_length=STRING.LENGTH("&IARG0")
+        IF (STRING.CHAR("&IARG0",&string_length-1)==22)
+        (
+            &IARG0=STRING.CUT("&IARG0",-1)
+        )
+        IF (STRING.CHAR("&IARG0",0)==22)
+        (
+            &IARG0=STRING.CUT("&IARG0",1)
+        )
+        
+        &string_length=STRING.LENGTH("&IARG1")
+        IF (STRING.CHAR("&IARG1",&string_length-1)==22)
+        (
+            &IARG1=STRING.CUT("&IARG1",-1)
+        )
+        IF (STRING.CHAR("&IARG1",0)==22)
+        (
+            &IARG1=STRING.CUT("&IARG1",1)
+        )
+        
+        &string_length=STRING.LENGTH("&IARG2")
+        IF (STRING.CHAR("&IARG2",&string_length-1)==22)
+        (
+            &IARG2=STRING.CUT("&IARG2",-1)
+        )
+        IF (STRING.CHAR("&IARG2",0)==22)
+        (
+            &IARG2=STRING.CUT("&IARG2",1)
+        )
+        
+        &string_length=STRING.LENGTH("&IARG3")
+        IF (STRING.CHAR("&IARG3",&string_length-1)==22)
+        (
+            &IARG3=STRING.CUT("&IARG3",-1)
+        )
+        IF (STRING.CHAR("&IARG3",0)==22)
+        (
+            &IARG3=STRING.CUT("&IARG3",1)
+        )
+        
+        &string_length=STRING.LENGTH("&IARG4")
+        IF (STRING.CHAR("&IARG4",&string_length-1)==22)
+        (
+            &IARG4=STRING.CUT("&IARG4",-1)
+        )
+        IF (STRING.CHAR("&IARG4",0)==22)
+        (
+            &IARG4=STRING.CUT("&IARG4",1)
+        )
+        
+        &string_length=STRING.LENGTH("&IARG5")
+        IF (STRING.CHAR("&IARG5",&string_length-1)==22)
+        (
+            &IARG5=STRING.CUT("&IARG5",-1)
+        )
+        IF (STRING.CHAR("&IARG5",0)==22)
+        (
+            &IARG5=STRING.CUT("&IARG5",1)
+        )
+        
+        &string_length=STRING.LENGTH("&IARG6")
+        IF (STRING.CHAR("&IARG6",&string_length-1)==22)
+        (
+            &IARG6=STRING.CUT("&IARG6",-1)
+        )
+        IF (STRING.CHAR("&IARG6",0)==22)
+        (
+            &IARG6=STRING.CUT("&IARG6",1)
+        )
+        
+        &string_length=STRING.LENGTH("&IARG7")
+        IF (STRING.CHAR("&IARG7",&string_length-1)==22)
+        (
+            &IARG7=STRING.CUT("&IARG7",-1)
+        )
+        IF (STRING.CHAR("&IARG7",0)==22)
+        (
+            &IARG7=STRING.CUT("&IARG7",1)
+        )
+        
+        &string_length=STRING.LENGTH("&IARG8")
+        IF (STRING.CHAR("&IARG8",&string_length-1)==22)
+        (
+            &IARG8=STRING.CUT("&IARG8",-1)
+        )
+        IF (STRING.CHAR("&IARG8",0)==22)
+        (
+            &IARG8=STRING.CUT("&IARG8",1)
+        )
+        
+        &string_length=STRING.LENGTH("&IARG9")
+        IF (STRING.CHAR("&IARG9",&string_length-1)==22)
+        (
+            &IARG9=STRING.CUT("&IARG9",-1)
+        )
+        IF (STRING.CHAR("&IARG9",0)==22)
+        (
+            &IARG9=STRING.CUT("&IARG9",1)
+        )
+        
+        &string_length=STRING.LENGTH("&IARG10")
+        IF (STRING.CHAR("&IARG10",&string_length-1)==22)
+        (
+            &IARG10=STRING.CUT("&IARG10",-1)
+        )
+        IF (STRING.CHAR("&IARG10",0)==22)
+        (
+            &IARG10=STRING.CUT("&IARG10",1)
+        )
+        
+        &string_length=STRING.LENGTH("&IARG11")
+        IF (STRING.CHAR("&IARG11",&string_length-1)==22)
+        (
+            &IARG10=STRING.CUT("&IARG11",-1)
+        )
+        IF (STRING.CHAR("&IARG11",0)==22)
+        (
+            &IARG10=STRING.CUT("&IARG11",1)
+        )
+        
+        &string_length=STRING.LENGTH("&IARG12")
+        IF (STRING.CHAR("&IARG12",&string_length-1)==22)
+        (
+            &IARG10=STRING.CUT("&IARG12",-1)
+        )
+        IF (STRING.CHAR("&IARG12",0)==22)
+        (
+            &IARG10=STRING.CUT("&IARG12",1)
+        )
+        
+        &string_length=STRING.LENGTH("&IARG13")
+        IF (STRING.CHAR("&IARG13",&string_length-1)==22)
+        (
+            &IARG10=STRING.CUT("&IARG13",-1)
+        )
+        IF (STRING.CHAR("&IARG13",0)==22)
+        (
+            &IARG10=STRING.CUT("&IARG13",1)
+        )
+        
+        &string_length=STRING.LENGTH("&IARG14")
+        IF (STRING.CHAR("&IARG14",&string_length-1)==22)
+        (
+            &IARG10=STRING.CUT("&IARG14",-1)
+        )
+        IF (STRING.CHAR("&IARG14",0)==22)
+        (
+            &IARG10=STRING.CUT("&IARG14",1)
+        )
+        ENDDO &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11 &IARG12 &IARG13 &IARG14
+
+
+
+// Function: REMOVESLASH
+// Removes a trailing backslash or forward slash from the string
+//
+// First argument determines to the number of arguments to process.
+REMOVESLASH:
+    LOCAL &OPTION &ARG0 &ARG1 &ARG2
+    ENTRY &OPTION &ARG0 &ARG1 &ARG2
+    
+    LOCAL &COUNT
+    &COUNT=0x0
+    
+    IF (("&ARG0"!="")&&((STRING.CUT("&ARG0",STRING.LEN("&ARG0")-1)=="\")||(STRING.CUT("&ARG0",STRING.LEN("&ARG0")-1)=="/")))
+    (
+        &RVAL0=STRING.CUT("&ARG0",-1)
+        &COUNT=&COUNT+1.
+    )
+    ELSE
+    (
+        &RVAL0="&ARG0"
+    )
+    
+    IF (("&ARG1"!="")&&((STRING.CUT("&ARG1",STRING.LEN("&ARG1")-1)=="\")||(STRING.CUT("&ARG1",STRING.LEN("&ARG1")-1)=="/")))
+    (
+        &RVAL1=STRING.CUT("&ARG1",-1)
+        &COUNT=&COUNT+1.
+    )
+    ELSE
+    (
+        &RVAL1="&ARG1"
+    )
+    
+    IF (("&ARG2"!="")&&((STRING.CUT("&ARG2",STRING.LEN("&ARG2")-1)=="\")||(STRING.CUT("&ARG2",STRING.LEN("&ARG2")-1)=="/")))
+    (
+        &RVAL2=STRING.CUT("&ARG2",-1)
+        &COUNT=&COUNT+1.
+    )
+    ELSE
+    (
+        &RVAL2="&ARG2"
+    )
+    
+    // Return the values to caller
+    RETURN &COUNT &RVAL0 &RVAL1 &RVAL2
+
+// Function: CHECKARGS
+// Checks an argument value against a list of possible values
+// Typically used
+CHECKARGS:
+    LOCAL &ACTION &ARGVAL &POSS1 &POSS2 &POSS3 &POSS4 &POSS5 &POSS6 &POSS7 &POSS8 &POSS9 &POSS10 &POSS11
+    ENTRY &ACTION &ARGVAL &POSS1 &POSS2 &POSS3 &POSS4 &POSS5 &POSS6 &POSS7 &POSS8 &POSS9 &POSS10 &POSS11
+
+    LOCAL &RVALUE
+    &RVALUE="FALSE"
+
+    // Check if all the possibilities are empty
+    IF    (("&POSS1"!="")||("&POSS2"!="")||("&POSS3"!="")||("&POSS4"!="")||("&POSS5"!="")||("&POSS6"!="")||("&POSS7"!="")||("&POSS8"!="")||("&POSS9"!="")||("&POSS10"!="")||("&POSS11"!=""))
+    (
+        IF ("&ARGVAL"=="&POSS1")
+        (
+            &RVALUE="TRUE"
+        )
+        IF ("&ARGVAL"=="&POSS2")
+        (
+            &RVALUE="TRUE"
+        )
+        IF ("&ARGVAL"=="&POSS3")
+        (
+            &RVALUE="TRUE"
+        )
+        IF ("&ARGVAL"=="&POSS4")
+        (
+            &RVALUE="TRUE"
+        )
+        IF ("&ARGVAL"=="&POSS5")
+        (
+            &RVALUE="TRUE"
+        )
+        IF ("&ARGVAL"=="&POSS6")
+        (
+            &RVALUE="TRUE"
+        )
+        IF ("&ARGVAL"=="&POSS7")
+        (
+            &RVALUE="TRUE"
+        )
+        IF ("&ARGVAL"=="&POSS8")
+        (
+            &RVALUE="TRUE"
+        )
+        IF ("&ARGVAL"=="&POSS9")
+        (
+            &RVALUE="TRUE"
+        )
+        IF ("&ARGVAL"=="&POSS10")
+        (
+            &RVALUE="TRUE"
+        )
+        IF ("&ARGVAL"=="&POSS11")
+        (
+            &RVALUE="TRUE"
+        )
+    )
+    // The check failed. We want to know how to exit 
+    IF (("&ACTION"!="EXIT")&&("&RVALUE"!="TRUE"))
+    (
+        PRINT %ERROR "&ARGVAL does not match values: &POSS1 &POSS2 &POSS3 &POSS4 &POSS5 &POSS6 &POSS7 &POSS8 &POSS9 &POSS10 &POSS11"
+        GOSUB &ACTION "&ARGVAL does not match values: &POSS1 &POSS2 &POSS3 &POSS4 &POSS5 &POSS6 &POSS7 &POSS8 &POSS9 &POSS10 &POSS11"
+    )
+    // Else, return gracefully
+    RETURN &RVALUE
+
+
+// Function: SAVEMMU
+// Saves the MMU for a particular type of processor
+SAVEMMU:
+    LOCAL &PROCTYPE &DIRNAME &FILENAME
+    ENTRY &PROCTYPE &DIRNAME &FILENAME
+    
+    LOCAL &FULLPATH
+    &FULLPATH="&DIRNAME"+"/&FILENAME"
+    
+    // We always append to an existing file
+    OPEN #1 "&FULLPATH" /CREATE
+    
+    IF ("&PROCTYPE"=="ARM")
+    (
+        WRITE #1 "// MMU Settings for ARM Processor"
+        WRITE #1 "PER.S C15:0x3 %LONG "+FORMAT.HEX(DATA.LONG(C15:0x3), 8)
+        WRITE #1 "PER.S C15:0x2 %LONG "+FORMAT.HEX(DATA.LONG(C15:0x2), 8)
+        WRITE #1 "PER.S C15:0x102 %LONG "+FORMAT.HEX(DATA.LONG(C15:0x102), 8)
+        WRITE #1 "PER.S C15:0x202 %LONG "+FORMAT.HEX(DATA.LONG(C15:0x202), 8)
+        WRITE #1 "PER.S C15:0x1 %LONG "+FORMAT.HEX(DATA.LONG(C15:0x1), 8)
+        WRITE #1 "ENDDO"
+    )
+
+    CLOSE #1
+
+    RETURN SUCCESS
+
+
+// Function: GET_LOADCMM_HEX_FILE
+// load.cmm, a file in ramdumps, maps binary files in the ramdump to hex addresses
+// load.cmm can be run outright but it is faster to load only what's needed.
+// This script scans load.cmm to find what file contains data at the specified hex address.
+// Mainly used for sim loading 
+GET_LOADCMM_HEX_FILE:
+    LOCAL &OPTION &DIRNAME &HEXADDR
+    ENTRY &OPTION &DIRNAME &HEXADDR
+    LOCAL &rvalue
+
+    LOCAL &FULLPATH 
+    &FULLPATH="&DIRNAME"+"/load.cmm"
+    IF !FILE.EXIST("&FULLPATH")
+    (
+        PRINT "Could not find load.cmm file! - &FULLPATH"
+        GOSUB &OPTION "Could not find load.cmm file! - &FULLPATH"
+    )
+
+    LOCAL &linelst &match
+    &linelst="NULL"
+    OPEN #1 &FULLPATH
+    &match=0.
+    
+    WHILE (("&linelst"!="")&&(&match==0.))
+    (
+        READ #1 %line &linelst
+        IF STRING.SCAN("&linelst","&HEXADDR",0)!=-1
+        (
+            &match=1.
+        )
+    )
+    CLOSE #1
+    
+    LOCAL &string &hexvaluelocation &stringsize &wheretocut
+    &string=STRING.TRIM("&linelst")
+    &string=STRING.CUT("&string",14.)
+    &string=STRING.CUT("&string",-9.)
+    //should have something like 'DDRCS1.BIN 0x80000000'
+    //&string=STRING.CUT("&string",-9.)
+    &hexvaluelocation=STRING.SCAN("&string","&HEXADDR",0)
+    &stringsize=STRING.LENGTH("&string")
+    //should be negative. In our example above, should be -10
+    &wheretocut=&hexvaluelocation-&stringsize
+    &string=(STRING.CUT("&string",&wheretocut))
+    &string=STRING.TRIM("&string")
+    
+    IF FILE.EXIST("&DIRNAME/&string")
+    (
+        &rvalue="&string"
+    )
+    ELSE
+    (
+        PRINT %ERROR "FAILURE - found hex match but couldn't parse out file"
+        &rvalue="FAILURE"
+    )
+
+    RETURN &rvalue
+// Function: CHECKFILEHEXMATCH
+// Checks that particular value is found in a line in specified file.
+// Mainly used for sim loading - load.cmm, which specifies where binary files are located in memory.
+// e.g. the line "d.load.binary DDRCS1.BIN 0x80000000 /noclear" is in load.cmm, 
+// and we want to verify that DDRCS1 corresponds to 0x80000000.
+// Other arguments not used
+CHECKFILELINEVALUEMATCH:
+    LOCAL &OPTION &DIRNAME &FILENAME &VALUE1 &VALUE2
+    ENTRY &OPTION &DIRNAME &FILENAME &VALUE1 &VALUE2
+    LOCAL &rvalue
+
+    LOCAL &FULLPATH 
+    &FULLPATH="&DIRNAME"+"/&FILENAME"
+    IF !FILE.EXIST("&FULLPATH")
+    (
+        PRINT "Could not find specified file! - &FULLPATH"
+        GOSUB &OPTION "Could not find specified file! - &FULLPATH"
+    )
+
+    LOCAL &linelst 
+    &linelst="NULL"
+    OPEN #1 &FULLPATH
+    &rvalue="FAILURE"
+    
+    WHILE (("&linelst"!="")&&("&rvalue"=="FAILURE"))
+    (
+        read #1 %line &linelst
+        IF STRING.SCAN("&linelst","&VALUE1",0)!=-1
+        (
+            IF STRING.SCAN("&linelst","&VALUE2",0)!=-1
+            (
+                &rvalue="SUCCESS"
+            )
+        )
+        
+        
+    )
+    CLOSE #1
+
+    RETURN &rvalue
+    
+
+/////////////////////////////////////////////
+//
+// Function: LOADBIN
+// Loads a binary in some directory to a specified address
+// Other arguments not used
+//
+/////////////////////////////////////////////
+LOADBIN:
+    LOCAL &DIRNAME &FILENAME &STARTADDR &OFFSET &SIZE
+    ENTRY &DIRNAME &FILENAME &STARTADDR &OFFSET &SIZE
+    
+    PRINT "&DIRNAME &FILENAME &STARTADDR &OFFSET &SIZE"
+    
+    LOCAL &FULLPATH 
+    &FULLPATH="&DIRNAME"+"/&FILENAME"
+    IF !(FILE.EXIST("&FULLPATH"))
+    (
+        RETURN "&FAILURE: std_utils LOADBIN couldn't access &FULLPATH"
+    )
+    
+    
+    IF ("&OFFSET"=="")
+    (    
+        D.LOAD.BINARY &FULLPATH &STARTADDR 
+    )
+    ELSE
+    (
+        IF (OS.FILE.SIZE("&FULLPATH")<(&OFFSET))
+        (
+            D.LOAD.BINARY &FULLPATH &STARTADDR
+        )
+        ELSE
+        (
+            D.LOAD.BINARY &FULLPATH &STARTADDR++&SIZE /SKIP &OFFSET
+        )        
+    )
+
+    RETURN &SUCCESS
+///////////////////////////////////////
+//
+// Functions: MEMCOPY
+// Copies a chunk of memory from one location to another    
+//
+///////////////////////////////////////
+MEMCOPY:
+    LOCAL &DEST_ADDR &SOURCE_ADDR &SIZE
+    ENTRY &DEST_ADDR &SOURCE_ADDR &SIZE
+
+    DATA.COPY &SOURCE_ADDR++&SIZE &DEST_ADDR
+
+    RETURN "TRUE"
+///////////////////////////////////////////////////
+//
+// Function: SAVEBIN
+// Saves a binary at some specified address to a directory
+//
+///////////////////////////////////////
+SAVEBIN:
+    LOCAL &DIRNAME &FILENAME &STARTADDR &SIZE
+    ENTRY &DIRNAME &FILENAME &STARTADDR &SIZE
+    
+    PRINT "&DIRNAME &FILENAME &STARTADDR &SIZE"
+    IF !(OS.DIR("&DIRNAME"))
+    (
+        RETURN "&FAILURE: std_utils SAVEBIN couldn't access &DIRNAME"
+    )
+    
+    LOCAL &FULLPATH 
+    &FULLPATH="&DIRNAME"+"/&FILENAME"
+
+    
+SECURE_DAP:
+    ON ERROR GOTO NSECURE_DAP
+    D.SAVE.BINARY &FULLPATH EZ&ACCESS:&STARTADDR++(&SIZE-1)
+    GOTO EXIT_SAVEBIN
+NSECURE_DAP:
+    ON ERROR
+    D.SAVE.BINARY &FULLPATH E&ACCESS:&STARTADDR++(&SIZE-1)
+    GOTO EXIT_SAVEBIN
+EXIT_SAVEBIN:
+    RETURN "TRUE"
+    
+///////////////////////////////////////
+//
+// Function: ATTACHPROC
+// Attach to a T32 session after it checks
+//
+///////////////////////////////////////
+ATTACHPROC:
+entry &dontgo &prepare
+LOCAL &RETRYCOUNT
+&RETRYCOUNT=0
+    IF ((SYSTEM.UP())&&("&prepare"!="FALSE"))||(SYSTEM.MODE()>5)
+    (
+        IF (!STATE.RUN()&&("&dontgo"==""))
+        (
+            GO
+        )
+    )
+    ELSE
+    (
+        // Bring the system up and reset registers to be safe
+        // Set up a handler to trap an error
+        ON ERROR GOSUB
+        (
+            &RETRYCOUNT=&RETRYCOUNT+1
+            WAIT 1s
+            RETURN            
+        )
+RETRY_ATTACH:
+
+            SYS.MODE ATTACH
+            IF (!STATE.RUN()&&("&dontgo"==""))
+            (
+                GO
+            )
+            IF ((SYSTEM.MODE()<6)&&(&RETRYCOUNT<10))
+            (
+                GOTO RETRY_ATTACH
+            )
+            // We are here because we attached or timed out.
+            // Remove the error handler and continue
+            ON ERROR
+
+    )
+
+    IF ("&prepare"=="FALSE")
+    (
+        IF SYSTEM.MODE()<6
+        (
+            RETURN "&FAILURE: std_utils ATTACHPROC couldn't attach"
+        )
+        ELSE
+        (
+            RETURN &SUCCESS
+        )
+    )
+    ELSE
+    (
+        IF (!SYSTEM.UP())
+        (   
+            RETURN "&FAILURE: std_utils ATTACHPROC couldn't attach"
+        )
+        ELSE
+        (
+            RETURN &SUCCESS
+        )
+    )
+        
+///////////////////////////////////////
+//
+// Function: DETACHPROC
+// Disconnect a T32 session
+//
+///////////////////////////////////////
+DETACHPROC:
+    IF (SYSTEM.UP())
+    (
+        SYS.DOWN
+    )
+
+    RETURN &SUCCESS
+    
+///////////////////////////////////////
+//
+// Function: BREAKPROC
+// Attach and stop a T32 session
+//
+////////////////////////////////////////
+BREAKPROC:
+    LOCAL &targetprocessorport
+    ENTRY &targetprocessorport
+    // Attach to the processor
+    // Add second attach to prevent fickle behavior because of JTAG clock issues
+
+    LOCAL &localproc &localhost
+    &localhost=INTERCOM.PORT()
+    IF ("&targetprocessorport"=="")
+    (
+        &localproc="TRUE"
+    )
+    ELSE IF ("&targetprocessorport"=="&localhost")
+    (
+        &localproc="TRUE"
+    )
+    ELSE IF INTERCOM.PING(&localproc)
+    (
+        &localproc="FALSE"
+    )
+    ELSE
+    (
+        &localproc="TRUE"
+    )
+
+    LOCAL &RETRYCOUNT
+    &RETRYCOUNT=0
+
+
+    IF "&localproc"=="TRUE"
+    (
+
+        ON ERROR GOTO RETRY
+
+RETRY:
+
+        WAIT.500ms
+
+        IF (&RETRYCOUNT<10)
+        (
+            &RETRYCOUNT=&RETRYCOUNT+1
+        )
+        ELSE
+        (
+            RETURN "&FAILURE std_utils BREAKPROC - Error when breaking processor"
+        )
+        SYS.M.A
+        BREAK
+        ON ERROR
+
+        RETURN &SUCCESS
+    )
+    ELSE
+    (
+        LOCAL &stopstate
+        GOSUB EVALUATE_INTERCOM_STOP_STATE
+        ENTRY &stopstate
+        WHILE (&RETRYCOUNT<10)&&("&stopstate"!="STOPPED")
+        (
+            INTERCOM.EXECUTE &targetprocessorport BREAK
+            GOSUB EVALUATE_INTERCOM_STOP_STATE
+            ENTRY &stopstate
+            &RETRYCOUNT=&RETRYCOUNT+1
+        )
+    
+    )
+    
+    IF "&stopstate"=="STOPPED"
+    (
+        RETURN SUCCESS
+    )
+    ELSE
+    (
+        RETURN FAILURE
+    )
+
+///////////////////////////////////////
+//
+// Function: SETBREAKPOINTS
+// Attach and stop a T32 session
+//
+////////////////////////////////////////
+SETBREAKPOINTS:
+  //enddo "main"
+    LOCAL &maxcount &rvalue
+    &maxcount=30
+    LOCAL &Option &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10
+    entry &Option &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10
+    
+    
+    LOCAL &string_size &string_length &current_string &value_to_cut  &current_breakpoint &breakpointlist &last_character
+
+    LOCAL &count
+    LOCAL &option
+    &option=STR.LWR("&Option")
+
+    //If inputs for Option aren't known, assume its part of the breakpoint input
+    IF ((STR.LWR("&Option")=="none")||(STR.LWR("&Option")=="onchip")||(STR.LWR("&Option")=="soft")||(STR.LWR("&Option")=="firstonly"))
+    (
+      
+        &breakpointlist="&IARG0"+","+"&IARG1"+","+"&IARG2"+","+"&IARG3"+","+"&IARG4"+","+"&IARG5"+","+"&IARG6"+","+"&IARG7"+","+"&IARG8"+","+"&IARG9"+","+"&IARG10"
+        &breakpointlist="&breakpointlist"
+    )
+    ELSE
+    (
+    
+        &breakpointlist="&Option"+","+"&IARG0"+","+"&IARG1"+","+"&IARG2"+","+"&IARG3"+","+"&IARG4"+","+"&IARG5"+","+"&IARG6"+","+"&IARG7"+","+"&IARG8"+","+"&IARG9"+","+"&IARG10"
+    )
+
+    
+    //Trim off remaining ',,,,,,'
+    &string_length=STRING.LENGTH("&breakpointlist")
+    &last_character=STRING.CUT("&breakpointlist",&string_length-1)
+
+    while ("&last_character"==",")
+    (
+        &breakpointlist=STRING.CUT("&breakpointlist",-1)
+        &string_length=STRING.LENGTH("&breakpointlist")
+        &last_character=STRING.CUT("&breakpointlist",&string_length-1)
+    
+    
+    )
+    
+    //trim off remaining quotations (") from beginning and end of string
+    &breakpointlist="&breakpointlist"
+    IF (STRING.CHAR("&breakpointlist",&string_length-1)==22)
+    (
+        &breakpointlist=STRING.CUT("&breakpointlist",-1)
+    )
+    IF (STRING.CHAR("&breakpointlist",0)==22)
+    (
+        &breakpointlist=STRING.CUT("&breakpointlist",1)
+    )
+
+    
+    BREAK.LIST
+    &count=0
+    //we expect breakpointlist to be a string of breakpoints, separated by commas, no spaces
+    &current_string="&breakpointlist"
+    while (&count<&maxcount)
+    (
+        &string_length=String.Length("&current_string")
+        
+        &string_size=string.scan("&current_string",",",0)
+        
+        //if no "," found
+        IF (&string_size!=-1)
+        (
+            &value_to_cut=&string_size-&string_length
+            
+            //separate the first breakpoint from the rest of the string
+            &current_breakpoint=string.cut("&current_string",&value_to_cut)
+        )
+        ELSE
+        (
+            &current_breakpoint="&current_string"
+        )
+        
+        
+        &rvalue="FAILURE"
+        //check that there's something there
+        IF ("&current_breakpoint"!="")
+        (
+        
+                ON ERROR CONTINUE
+                //set the breakpoint
+                //accept the bp if the symbol exists, or if it's a hex address or if it's a symbol with 
+                IF (Y.EXIST(&current_breakpoint)||(STRING.SCAN("&current_breakpoint","0x",0)!=-1)||(STRING.SCAN("&current_breakpoint","\",0)!=-1))
+                (
+                    IF ((STR.LWR("&Option")=="onchip"))
+                    (
+                        BREAK.SET &current_breakpoint /ONCHIP
+                        &rvalue="SUCCESS"
+                    )
+                    //If option 'onchip_firstonly' was specified, thats going to be interpreted as the first breakpoint,
+                    //so set count==1 to catch the first one
+                    ELSE IF (STRING.SCAN("&option","firstonly",0)!=-1)&&(&count==1)
+                    (
+                
+                        //Set first as onchip and exit here
+                        BREAK.SET &current_breakpoint /ONCHIP
+                        &rvalue="SUCCESS"
+                        &count=&maxcount
+                    )
+                    ELSE
+                    (
+                        BREAK.SET &current_breakpoint /SOFT
+                        &rvalue="SUCCESS"
+                    )
+                )
+                
+                
+                IF ("&rvalue"!="SUCCESS")
+                (
+                    Print "SetBreakpoint: Error setting &current_breakpoint"
+                )
+                //remove error handler
+                ON ERROR
+                
+        )
+
+    
+
+        //break out of loop if we just set the last breakpoint
+        IF STRING.FIND("&current_string",",")
+        (
+            //trim off that first breakpoint and start over
+            &current_string=string.cut("&current_string",&string_size+1)
+            &count=&count+1
+        )
+        ELSE
+        (
+            &count=&maxcount
+        )
+        
+    )
+    
+    IF ("&rvalue"=="SUCCESS")
+    (
+        RETURN &SUCCESS
+    )
+    ELSE
+    (
+        RETURN "&FAILURE - std_utils SETBREAKPOINTS hit some error"
+    )
+    
+    
+
+
+///////////////////////////////////////
+//
+// Function: DeleteBreakpoint
+// Attach and stop a T32 session
+//
+////////////////////////////////////////
+DeleteBreakpoint:
+DELETEBREAKPOINT:
+        ENTRY &OPTION &IARG0
+        
+        ON ERROR GOSUB
+        (
+            RETURN "&FAILURE - std_utils DELETEBREAKPOINT hit some error"
+        )
+        
+        //if Option isn't 'ONCHIP' or 'soft', user is using Option as a breakpoint. default to soft
+        IF ((STRING.SCAN("&OPTION","ALL",0)!=-1)||(STRING.SCAN("&OPTION","all",0)!=-1))
+        (
+            b.delete /all
+            RETURN
+        )
+        if (y.exist(&OPTION))
+        (
+            b.delete &OPTION
+            RETURN
+        )
+        
+        IF y.exist(&IARG0)
+        (
+            b.delete &IARG0
+        )
+        ELSE
+        (
+            Print "DeleteBreakpoint: Could not find symbol &IARG0"
+        )
+        ON ERROR
+        RETURN &SUCCESS
+
+////////////////////////////////////////////////////////////
+//
+// Function: SAVEREGS
+// Stores a processors registers to a particular file
+//
+////////////////////////////////////////////////////////////
+SAVEREGS:
+    LOCAL &DIRNAME &FILENAME
+    ENTRY &DIRNAME &FILENAME
+
+    LOCAL &FULLPATH
+    &FULLPATH="&DIRNAME"+"/&FILENAME"
+    IF !(OS.DIR("&DIRNAME"))
+    (
+        RETURN "&FAILURE - std_utils SAVEREGS could not access directory &DIRNAME"
+    )
+    
+    STORE &FULLPATH HEX REGSET
+
+    RETURN &SUCCESS
+
+
+ 
+
+
+
+///////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////// 
+////
+//// Macros for reading and writing to registers
+//// Warning: The symbols used must exist and must conform
+//// to the expected format. No error checking here
+//// 
+///////////////////////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////
+
+////////////////////////////////////////
+//
+//      HWIO_OUT
+//
+//      Formatted WRITE with EZAXI: accessmode
+//
+//      Format: HWIO_OUT <register> <field>
+//
+/////////////////////////////////////////
+HWIO_OUT:
+     LOCAL &REG &VALUE &Loc_ACCESSMODE &extraoption
+     ENTRY &REG &VALUE &Loc_ACCESSMODE &extraoption
+    
+    &extraoption=STR.LWR("&extraoption")
+    LOCAL &error_action
+    IF STRING.SCAN("&extraoption","fatal",0)!=-1
+    (
+        &error_action="do std_fatalexit ATTACH"
+    )
+    ELSE
+    (
+        &error_action="RETURN"
+    )
+    
+    LOCAL &REGNAME
+    &REGNAME="HWIO_"+"&REG"+"_ADDR"
+    
+    IF !SYMBOL.EXIST(&REGNAME)
+    (
+        &error_action "&FAILURE - std_utils HWIO_OUTF - symbol doesn't exist: &REGNAME"
+    )
+    
+    IF !(("&Loc_ACCESSMODE"=="")||("&Loc_ACCESSMODE"=="NULL"))
+    (
+        ON ERROR GOTO EXIT_HWIO_OUT
+        DATA.SET &Loc_ACCESSMODE:&REGNAME %LONG &VALUE
+        ON ERROR
+    )
+    ELSE
+    (
+    
+         ON ERROR GOTO NSECURE_HWIO_OUT
+SECURE_HWIO_OUT:
+         DATA.SET EZ&ACCESS:&REGNAME %LONG &VALUE
+         ON ERROR
+         RETURN &SUCCESS
+NSECURE_HWIO_OUT:
+        ON ERROR GOTO EXIT_HWIO_OUT
+        DATA.SET E&ACCESS:&REGNAME %LONG &VALUE
+        ON ERROR &SUCCESS
+    
+     )
+     RETURN &SUCCESS
+     
+EXIT_HWIO_OUT:
+        PRINT "HWIO_OUT: Error writing register: &REG"
+        &error_action "&FAILURE std_utils HWIO_OUT: Error writing register: &REG"
+
+        
+// Write to a particular register field
+
+
+ 
+////////////////////////////////////////
+//
+//      HWIO_OUTF
+//
+//      Formatted WRITE with EZAXI: accessmode
+//
+//      Format: HWIO_OUTF <register> <field>
+//
+/////////////////////////////////////////
+HWIO_OUTF:
+    LOCAL &REG &FIELD &VALUE &Loc_ACCESSMODE &extraoption
+    ENTRY &REG &FIELD &VALUE &Loc_ACCESSMODE &extraoption
+ 
+    
+    &extraoption=STR.LWR("&extraoption")
+    LOCAL &error_action
+    IF STRING.SCAN("&extraoption","fatal",0)!=-1
+    (
+        &error_action="do std_fatalexit ATTACH"
+    )
+    ELSE
+    (
+        &error_action="RETURN"
+    )
+    
+    LOCAL &REGNAME &READ &DATA &MASK &SHFT
+    &REGNAME="HWIO_"+"&REG"+"_ADDR"
+    &MASK="HWIO_"+"&REG"+"_&FIELD"+"_BMSK"
+    &SHFT="HWIO_"+"&REG"+"_&FIELD"+"_SHFT"
+    
+    
+    IF !(SYMBOL.EXIST(&REGNAME))
+    (
+        &error_action "&FAILURE - std_utils HWIO_OUTF - symbol doesn't exist: &REGNAME"
+    )
+    IF !(SYMBOL.EXIST(&MASK))
+    (
+        &error_action "&FAILURE - std_utils HWIO_OUTF - mask symbol: &MASK doesn't exist for &REGNAME"
+    )
+    IF !(SYMBOL.EXIST(&SHFT))
+    (
+        &error_action "&FAILURE - std_utils HWIO_OUTF - shift symbol: &SHFT doesn't exist for &REGNAME"
+    )
+    
+    
+    IF !(("&Loc_ACCESSMODE"=="")||("&Loc_ACCESSMODE"=="NULL"))
+    (
+        ON ERROR GOTO EXIT_HWIO_OUTF
+        &READ=DATA.LONG(&Loc_ACCESSMODE:&REGNAME)
+        &DATA=(&READ&~address.offset(&MASK))|(&VALUE<<address.offset(&SHFT))
+        DATA.SET &Loc_ACCESSMODE:&REGNAME %LONG &DATA
+        ON ERROR
+    )
+    ELSE
+    (
+    
+        ON ERROR GOTO NSECURE_HWIO_OUTF
+SECURE_HWIO_OUTF:
+        &READ=DATA.LONG(EZ&ACCESS:&REGNAME)
+        &DATA=(&READ&~address.offset(&MASK))|(&VALUE<<address.offset(&SHFT))
+        DATA.SET EZ&ACCESS:&REGNAME %LONG &DATA
+        ON ERROR
+        RETURN &SUCCESS
+NSECURE_HWIO_OUTF:
+        ON ERROR GOTO EXIT_HWIO_OUTF
+        &READ=DATA.LONG(E&ACCESS:&REGNAME)
+        &DATA=(&READ&~address.offset(&MASK))|(&VALUE<<address.offset(&SHFT))
+        DATA.SET E&ACCESS:&REGNAME %LONG &DATA
+        ON ERROR
+        
+     )
+     RETURN &SUCCESS
+     
+EXIT_HWIO_OUTF:
+    PRINT "HWIO_OUTF: Error writing to register: &REG"
+    &error_action "&FAILURE std_utils HWIO_OUTF: Error writing to register: &REG"
+
+// Read a register
+ 
+ 
+////////////////////////////////////////
+//
+//      HWIO_IN
+//
+//      UNFormatted read with EZAXI: accessmode
+//
+//      Format: HWIO_IN <register> (Accessmode)
+//
+/////////////////////////////////////////
+HWIO_IN:
+     LOCAL &REG &Loc_ACCESSMODE &extraoption
+     ENTRY &REG &Loc_ACCESSMODE &extraoption
+    
+    &extraoption=STR.LWR("&extraoption")
+    LOCAL &error_action
+    IF STRING.SCAN("&extraoption","fatal",0)!=-1
+    (
+        &error_action="do std_fatalexit ATTACH"
+    )
+    ELSE
+    (
+        &error_action="RETURN"
+    )
+    
+    LOCAL &REGNAME &DATA
+    
+    &REGNAME="HWIO_"+"&REG"+"_ADDR"
+    IF !SYMBOL.EXIST(&REGNAME)
+    (
+        &error_action "&FAILURE - std_utils HWIO_IN - symbol doesn't exist: &REGNAME"
+    )
+    
+    IF !(("&Loc_ACCESSMODE"=="")||("&Loc_ACCESSMODE"=="NULL"))
+    (
+        ON ERROR GOTO EXIT_HWIO_IN
+        &DATA=DATA.LONG(&Loc_ACCESSMODE:&REGNAME)
+        ON ERROR
+    )
+    ELSE
+    (
+    
+        ON ERROR GOTO NSECURE_HWIO_IN
+SECURE_HWIO_IN:
+        &DATA=DATA.LONG(EZ&ACCESS:&REGNAME)
+        ON ERROR
+        RETURN &DATA
+NSECURE_HWIO_IN:
+        ON ERROR GOTO EXIT_HWIO_IN
+        &DATA=DATA.LONG(E&ACCESS:&REGNAME)
+        ON ERROR
+    
+    )
+    RETURN &DATA
+
+EXIT_HWIO_IN:
+    PRINT "HWIO_IN: Error reading register: &REG"
+    IF STRING.SCAN("&extraoption","fatal",0)!=-1
+    (
+        &error_action "HWIO_IN: Error reading register: &REG"
+    )
+    ELSE
+    (
+        RETURN NULL
+    )
+////////////////////////////////////////
+//
+//      HWIO_INF
+//
+//      Formatted read with EZAXI or specified accessmode
+//
+//      Format: HWIO_INF <register> <field> (accessmode)
+//
+/////////////////////////////////////////
+HWIO_INF:
+    LOCAL &REG &FIELD &Loc_ACCESSMODE &extraoption
+    ENTRY &REG &FIELD &Loc_ACCESSMODE &extraoption
+    
+    &extraoption=STR.LWR("&extraoption")
+    LOCAL &error_action
+    IF STRING.SCAN("&extraoption","fatal",0)!=-1
+    (
+        &error_action="do std_fatalexit ATTACH"
+    )
+    ELSE
+    (
+        &error_action="RETURN"
+    )
+    
+    
+    
+    LOCAL &REGNAME &READ &DATA &MASK &SHFT
+    
+    &REGNAME="HWIO_"+"&REG"+"_ADDR"
+    &MASK="HWIO_"+"&REG"+"_&FIELD"+"_BMSK"
+    &SHFT="HWIO_"+"&REG"+"_&FIELD"+"_SHFT"
+     
+    IF !(SYMBOL.EXIST(&REGNAME))
+    (
+        &error_action "&FAILURE - std_utils HWIO_INF - symbol doesn't exist: &REGNAME"
+    )
+    IF !(SYMBOL.EXIST(&MASK))
+    (
+        &error_action "&FAILURE - std_utils HWIO_INF - mask symbol: &MASK doesn't exist for &REGNAME"
+    )
+    IF !(SYMBOL.EXIST(&SHFT))
+    (
+        &error_action "&FAILURE - std_utils HWIO_INF - shift symbol: &SHFT doesn't exist for &REGNAME"
+    )
+    
+    IF !(("&Loc_ACCESSMODE"=="")||("&Loc_ACCESSMODE"=="NULL"))
+    (
+        ON ERROR GOTO EXIT_HWIO_INF
+        &READ=DATA.LONG(&Loc_ACCESSMODE:&REGNAME)
+        &DATA=(&READ&address.offset(&MASK))>>address.offset(&SHFT)
+        ON ERROR
+    )
+    ELSE
+    (
+    
+        ON ERROR GOTO NSECURE_HWIO_INF
+SECURE_HWIO_INF:
+        &READ=DATA.LONG(EZ&ACCESS:&REGNAME)
+        &DATA=(&READ&address.offset(&MASK))>>address.offset(&SHFT)
+        ON ERROR
+        RETURN &DATA
+NSECURE_HWIO_INF:
+        ON ERROR GOTO EXIT_HWIO_INF
+        &READ=DATA.LONG(E&ACCESS:&REGNAME)
+        &DATA=(&READ&address.offset(&MASK))>>address.offset(&SHFT)
+        ON ERROR
+    )
+
+    RETURN &DATA
+     
+EXIT_HWIO_INF:
+    PRINT "HWIO_INF: Error reading register &REGNAME"
+    IF STRING.SCAN("&extraoption","fatal",0)!=-1
+    (
+        &error_action "HWIO_INF: Error reading register: &REGNAME"
+    )
+    ELSE
+    (
+        RETURN NULL
+    )
+    
+    
+////////////////////////////////////////
+//
+//      HWIO_OUTI
+//
+//      Performs an indexed write to a register
+//
+//      Format: HWIO_OUTI <base register> <index> <value> (accessmode)
+//
+/////////////////////////////////////////
+HWIO_OUTI:
+    LOCAL &REG &INDEX &DATA &Loc_ACCESSMODE &extraoption
+    ENTRY &REG &INDEX &DATA &Loc_ACCESSMODE &extraoption
+    
+    
+    &extraoption=STR.LWR("&extraoption")
+    LOCAL &error_action
+    IF STRING.SCAN("&extraoption","fatal",0)!=-1
+    (
+        &error_action="do std_fatalexit ATTACH"
+    )
+    ELSE
+    (
+        &error_action="RETURN"
+    )
+    
+    
+    LOCAL &REG1 &REG2 &SIZE &REGADDR
+    
+    &REG1="HWIO_"+"&REG"+"0_ADDR"
+    &REG2="HWIO_"+"&REG"+"1_ADDR"
+    
+    IF !(SYMBOL.EXIST(&REG1))
+    (
+        &error_action "&FAILURE - std_utils HWIO_OUTI - symbol doesn't exist: &REG1"
+    )
+    IF !(SYMBOL.EXIST(&REG2))
+    (
+        &error_action "&FAILURE - std_utils HWIO_OUTI - symbol doesn't exist: &REG2"
+    )
+    
+    &SIZE=address.offset(&REG2)-address.offset(&REG1)
+    &REGADDR=address.offset(&REG1)+(&SIZE*&INDEX)
+    
+     
+    
+    
+    IF !(("&Loc_ACCESSMODE"=="")||("&Loc_ACCESSMODE"=="NULL"))
+    (
+        ON ERROR GOTO EXIT_HWIO_OUTI
+        DATA.SET &Loc_ACCESSMODE:&REGADDR %LONG &DATA
+        ON ERROR
+    )
+    ELSE
+    (
+    
+        ON ERROR GOTO NSECURE_HWIO_OUTI
+SECURE_HWIO_OUTI:
+        DATA.SET EZ&ACCESS:&REGADDR %LONG &DATA
+        ON ERROR
+        RETURN &SUCCESS
+NSECURE_HWIO_OUTI:
+        ON ERROR GOTO EXIT_HWIO_OUTI
+        DATA.SET E&ACCESS:&REGADDR %LONG &DATA
+        ON ERROR
+    )
+    
+    RETURN &SUCCESS
+    
+EXIT_HWIO_OUTI:
+    PRINT "HWIO_OUTI: Error setting register: &REGADDR"
+    &error_action "&FAILURE std_utils HWIO_OUTI: Error setting register: &REGADDR"
+
+////////////////////////////////////////
+//
+//      HWIO_ADDR
+//
+//      Returns the address of a particular register
+//
+//      Format: HWIO_ADDR <register>
+//
+/////////////////////////////////////////
+HWIO_ADDR:
+    LOCAL &VAR &extraoption
+    ENTRY &REG &extraoption
+    
+    
+    &extraoption=STR.LWR("&extraoption")
+    LOCAL &error_action
+    IF STRING.SCAN("&extraoption","fatal",0)!=-1
+    (
+        &error_action="do std_fatalexit ATTACH"
+    )
+    ELSE
+    (
+        &error_action="RETURN"
+    )
+    
+    
+    &VAR="HWIO_"+"&REG"+"_ADDR"
+    
+    IF !(SYMBOL.EXIST(&VAR))
+    (
+        &error_action "&FAILURE - std_utils HWIO_ADDR - symbol doesn't exist: &VAR"
+    )
+    
+    
+    &VAR=ADDRESS.OFFSET(&VAR)
+    RETURN &VAR
+
+    
+////////////////////////////////////////
+//
+//      ENABLE_CBCR_AND_SPIN
+//
+//      Returns the address of a particular register
+//
+//      Format: ENABLE_CBCR_AND_SPIN <register> (accessmode)
+//
+/////////////////////////////////////////
+ENABLE_CBCR_AND_SPIN:
+    
+    LOCAL &reg &accessmode &action &extraoption
+    ENTRY &reg &accessmode &action &extraoption
+                                             
+    &extraoption=STR.LWR("&extraoption")
+    LOCAL &error_action
+    IF STRING.SCAN("&extraoption","fatal",0)!=-1
+    (
+        &error_action="do std_fatalexit ATTACH"
+    )
+    ELSE
+    (
+        &error_action="RETURN"
+    )
+
+    LOCAL &maxDelay &clkstate
+    &maxDelay=50
+    
+    IF (STR.UPR("&accessmode")=="ANC")||(STR.UPR("&accessmode")=="DAP")||(STR.UPR("&accessmode")=="AN")
+    (
+        &accessmode=STR.UPR("&accessmode")
+    )
+    ELSE
+    (
+        &accessmode="NULL"
+    )
+
+    GOSUB HWIO_OUTF &reg CLK_ENABLE 0x1 &accessmode fatalexit
+    GOSUB HWIO_INF &reg CLK_OFF &accessmode fatalexit
+        ENTRY &clkstate
+
+    IF STRING.SCAN("&clkstate","FAIL",0)!=-1
+    (
+        do std_fatalexit SYSTEM "Error! Could not access clock. Device may have powered off during bootup?"
+        PLIST
+        PSTEP
+    )
+    while ((&clkstate)!=0)&&(!(&maxDelay<=0x0))
+    (                 
+            
+        GOSUB HWIO_INF &reg CLK_OFF &accessmode fatalexit
+            ENTRY &clkstate
+        wait.10ms                            
+        &maxDelay=&maxDelay-1   
+        
+    )                                         
+    
+    if &maxDelay<=0 
+    (
+        &error_action "&FAILURE - std_utils ENABLE_CBCR_AND_SPIN - timed out"
+    )
+  
+  RETURN &SUCCESS
+
+
+  
+////////////////////////////////////////
+//
+//          SYNCH API's
+//          
+//          These subroutines setup T32 synch's between different windows
+//
+//          Limited to 2 ports for now
+//
+///////////////////////////////////////// 
+SETUPSYNCH:
+
+    LOCAL &port1 &port2 &port3 &port4 &port5 &port6 &port7 &port8
+    ENTRY  &port1 &port2 &port3 &port4 &port5 &port6 &port7 &port8
+    
+    
+    INTERCOM.EXECUTE &port1 SYNCH.CONNECT &port2
+    INTERCOM.EXECUTE &port1 SYNCH.MASTERGO ON 
+    INTERCOM.EXECUTE &port1 SYNCH.SLAVEGO  ON
+    INTERCOM.EXECUTE &port1 SYNCH.MASTERBREAK ON 
+    INTERCOM.EXECUTE &port1 SYNCH.SLAVEBREAK  ON
+    INTERCOM.EXECUTE &port1 SYNCH.ON
+    
+    IF "&port2"!=""
+    (
+        INTERCOM.EXECUTE &port2 SYNCH.CONNECT &port1
+        INTERCOM.EXECUTE &port2 SYNCH.MASTERGO ON 
+        INTERCOM.EXECUTE &port2 SYNCH.SLAVEGO  ON
+        INTERCOM.EXECUTE &port2 SYNCH.MASTERBREAK ON 
+        INTERCOM.EXECUTE &port2 SYNCH.SLAVEBREAK  ON
+        INTERCOM.EXECUTE &port2 SYNCH.ON
+    )
+    RETURN
+    
+CLEARSYNCH:
+
+    LOCAL &port1 &port2 &port3 &port4 &port5 &port6 &port7 &port8
+    ENTRY  &port1 &port2 &port3 &port4 &port5 &port6 &port7 &port8
+    
+    INTERCOM.EXECUTE &port1 SYNCH.OFF
+    IF "&port2"!=""
+    (
+        INTERCOM.EXECUTE &port2 SYNCH.OFF
+    )
+    RETURN
+    
+    
+////////////////////////////////////////
+//
+// Function: FILEXIST
+// Checks if a file exists in a particular location
+// First Arg - Action in case of failure
+// Second Arg - Directory name 
+// Third Arg - Filename
+// Other Args - not used
+//
+////////////////////////////////////////
+
+FILEXIST:
+    LOCAL &result
+    LOCAL &ACTION &DIRNAME &FILENAME &ARG0 &ARG1
+    ENTRY &ACTION &DIRNAME &FILENAME &ARG0 &ARG1
+    
+    
+    LOCAL &FULLPATH &RVALUE
+    &RVALUE="FALSE"
+    IF ("&FILENAME"=="")
+    (
+        // Assume user has given the full path to the file
+        // in the directory name
+        &FULLPATH="&DIRNAME"
+    )
+    ELSE
+    (
+        &FULLPATH="&DIRNAME"+"/&FILENAME"
+    )
+
+    IF (OS.FILE(&FULLPATH))
+    (
+        &RVALUE="TRUE"
+    )
+    ELSE
+    (
+        PRINT %ERROR "File &FULLPATH does not exist"
+        &RVALUE="FALSE"
+    )
+
+    // The check failed. We want to know how to exit 
+    IF (("&ACTION"!="EXIT")&&("&RVALUE"!="TRUE"))
+    (
+        GOSUB &ACTION &result
+    )
+    // Else, return gracefully
+    RETURN &RVALUE
+
+
+
+
+////////////////////////////////////////
+//
+//    Function: EXECUTESCRIPT
+//    If a cmm script exists, it will execute it.
+//
+//     Second argument determines course of action to be taken in case of error. 
+//    EXIT - Normal exit. End that particular script
+//    FATALEXIT - Fatalexit. End the entire program.
+//
+////////////////////////////////////////
+EXECUTESCRIPT:
+    LOCAL &ACTION &SCRIPTNAME &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5 &ARG6 &ARG7 &ARG8
+    ENTRY &ACTION &SCRIPTNAME &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5 &ARG6 &ARG7 &ARG8
+    
+    LOCAL &EXTENSION
+    LOCAL &FILENAME
+    LOCAL &CWDIR
+    LOCAL &option
+    LOCAL &temp &ostype
+    &temp=OS.PWD()
+    IF STRING.SCAN("&temp","/",0)!=-1
+    (
+        &ostype="UNIX"
+    )
+    ELSE
+    (
+        &ostype="WINDOWS"
+    )
+    IF "&ostype"=="UNIX"
+    (
+        &SCRIPTNAME=STRING.REPLACE("&SCRIPTNAME","\","/",0)
+    )
+    
+    IF (("&SCRIPTNAME"!=""))
+    (
+        &EXTENSION=OS.FILE.EXTENSION("&SCRIPTNAME")
+        IF ("&EXTENSION"=="")
+        (
+            // Assume it is a cmm script.
+            &EXTENSION=".cmm"
+            // Append the extension to the scriptname then
+            &FILENAME="&SCRIPTNAME"+"&EXTENSION"
+        )
+        ELSE
+        (
+            // The utility was used with the full filename. So filename is same as scriptname
+            &FILENAME="&SCRIPTNAME"
+        )
+    )
+    
+    IF "&ACTION"=="ERRORHANDLE"
+    (
+        &ACTION="EXIT"
+        &option="ERRORHANDLE"
+        ON ERROR GOSUB
+        (
+            GOSUB DOFATALEXIT "Error found when executing &FILENAME"
+        )
+    )
+    
+    
+    // Check if CMM and execute
+    IF (OS.FILE("&FILENAME")&&("&EXTENSION"==".cmm"))
+    (
+
+        &CWDIR=OS.PWD()
+        CD.DO "&FILENAME" &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5 &ARG6 &ARG7 &ARG8
+        ENTRY &rvalue
+        &PASS=0x1
+        CD &CWDIR
+        IF "&option"=="ERRORHANDLE"
+        (
+            ON ERROR
+        )
+
+         // Take the action based on the input
+         GOSUB &ACTION &rvalue
+    )
+
+    // Check if MEN and execute
+    IF (OS.FILE("&FILENAME")&&("&EXTENSION"==".men"))
+    (
+        // First delete
+         MENU.DELETE "&FILENAME"
+        // Then add
+         MENU.REPROGRAM "&FILENAME"
+         &PASS=0x1
+        
+        // Take the action based on the input
+        GOSUB &ACTION
+    
+    )
+    
+    // Check if T32 extension and execute
+    IF (OS.FILE("&FILENAME")&&("&EXTENSION"==".t32"))
+    (
+         TASK.CONFIG "&FILENAME" 
+        &PASS=0x1
+
+        // Take the action based on the input
+        GOSUB &ACTION
+    )
+
+    // Check if emm and execute
+    IF (OS.FILE("&FILENAME")&&("&EXTENSION"==".emm"))
+    (
+        // We assume the encrypted script is using the script name as the encryption key
+        // This saves us one argument
+        &CWDIR=OS.PWD()
+        DODECRYPT "&FILENAME" "&SCRIPTNAME" &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5 &ARG6 &ARG7 &ARG8
+        &PASS=0x1
+        CD &CWDIR
+
+        // Take the action based on the input
+        GOSUB &ACTION
+    )
+    
+    
+    // Check if exe and execute
+    IF (OS.FILE("&FILENAME")&&(("&EXTENSION"==".py")))
+    (
+        
+        // We assume the encrypted script is using the script name as the encryption key
+        // This saves us one argument
+        &CWDIR=OS.PWD()
+        IF "&ostype"=="WINDOWS"
+        (
+            CD C:/
+        )
+        OS.COMMAND python &FILENAME &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5 &ARG6 &ARG7 &ARG8
+        &PASS=0x1
+        CD &CWDIR
+
+        // Take the action based on the input
+        GOSUB &ACTION
+    )
+    
+    // Check if exe and execute
+    IF (OS.FILE("&FILENAME")&&(("&EXTENSION"==".pl")))
+    (
+        
+        // We assume the encrypted script is using the script name as the encryption key
+        // This saves us one argument
+        &CWDIR=OS.PWD()
+        IF "&ostype"=="WINDOWS"
+        (
+            CD C:/
+        )
+        OS.COMMAND perl &FILENAME &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5 &ARG6 &ARG7 &ARG8
+        &PASS=0x1
+        CD &CWDIR
+
+        // Take the action based on the input
+        GOSUB &ACTION
+    )
+    // Check if exe and execute
+    IF (OS.FILE("&FILENAME")&&(("&EXTENSION"==".exe")||("&EXTENSION"==".bat")))
+    (
+        
+        // We assume the encrypted script is using the script name as the encryption key
+        // This saves us one argument
+        &CWDIR=OS.PWD()
+        IF "&ostype"=="WINDOWS"
+        (
+            CD C:/
+        )
+        OS.COMMAND START &FILENAME &ARG0 &ARG1 &ARG2 &ARG3 &ARG4 &ARG5 &ARG6 &ARG7 &ARG8
+        &PASS=0x1
+        CD &CWDIR
+
+        // Take the action based on the input
+        GOSUB &ACTION
+    )
+    ELSE
+    (
+        // Will enter this section only if the file did not exist / error condition
+        &PASS=0x0
+        PRINT "&SCRIPTNAME not found"
+        GOSUB &ACTION
+    )
+    
+    
+    
+    IF "&option"=="ERRORHANDLE"
+    (
+        ON ERROR
+    )
+    // Not required as input determines the return path
+    RETURN &SUCCESS
+
+        
+
+////////////////////////////////////////
+//
+//            MAKE_SURE_BOOT_PROCESSOR_ATTACHED
+//            
+//            Makes sure boot processor is attached
+//          Otherwise attaching on subsystem processor not possible
+//
+///////////////////////////////////////// 
+MAKE_SURE_BOOT_PROCESSOR_ATTACHED:
+    LOCAL &prepareoption
+    ENTRY &prepareoption
+    
+    //Need to get boot processor
+    LOCAL &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+        &image="appsboot"
+    do std_debug_&CHIPSET GETDEBUGDEFAULTS NONE &image &lpm_option &cti_enable &alternateelf &extraoption
+        ENTRY &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+        
+        
+
+    //Check if boot processor window is open. For case of Apps0, can be apps0 or appsc0
+    LOCAL &Rvalue
+    do std_intercom_init CHECKSESSION 1 &bootprocessor
+    ENTRY &Rvalue
+    //Special case for apps window - can have apps0 or cluster
+    IF (&Rvalue!=1.)&&("&bootprocessor"=="APPS0")
+    (
+        do std_intercom_init CHECKSESSION 1 APPSC0
+        ENTRY &Rvalue
+    )
+    IF (&Rvalue!=1.)
+    (
+        PRINT %ERROR "&bootprocessor T32 window not open. Please open and try again"
+        do std_fatalexit "&FAILURE - std_utils ATTACH_BOOT_PROC - &bootprocessor T32 window not open. Please open and try again"
+    )
+
+    //Run hwio
+    do std_intercom_do &bootprocessorport hwio
+
+    LOCAL &SYSMODE_DOWN &SYSMODE_NODEBUG &SYSMODE_PREPARE &SYSMODE_GO &SYSMODE_ATTACH &SYSMODE_STANDBY &SYSMODE_UP
+    &SYSMODE_DOWN=0x0
+    &SYSMODE_NODEBUG=0x2
+    &SYSMODE_PREPARE=0x4
+    &SYSMODE_GO=0xB
+    &SYSMODE_ATTACH=0xB
+    &SYSMODE_STANDBY=0xC
+    &SYSMODE_UP=0xB
+    //if boot processor t32 not attached, attach.
+    INTERCOM.EVALUATE &bootprocessorport SYSTEM.MODE()
+        &BOOT_PROCESSOR_STATE=EVAL()
+    IF !((&BOOT_PROCESSOR_STATE==&SYSMODE_ATTACH)||(&BOOT_PROCESSOR_STATE==&SYSMODE_PREPARE))
+    (
+        IF (STRING.SCAN("&prepareoption","prepare",0)!=-1)
+        (
+            INTERCOM.EXECUTE &bootprocessorport sys.option.enreset off
+            INTERCOM.EXECUTE &bootprocessorport sys.m.prepare
+            INTERCOM.EXECUTE &bootprocessorport sys.option.enreset on
+        )
+        ELSE
+        (
+            INTERCOM.EXECUTE &bootprocessorport sys.m.a
+        )
+    )
+    
+    INTERCOM.EVALUATE &bootprocessorport SYSTEM.MODE()
+        &BOOT_PROCESSOR_STATE=EVAL()
+        
+        
+    //if we're not attached or if we're still in prepare and that wasn't specified, exit with failure
+    IF !((&BOOT_PROCESSOR_STATE==&SYSMODE_ATTACH)||((&BOOT_PROCESSOR_STATE==&SYSMODE_PREPARE)&&(STRING.SCAN("&prepareoption","prepare",0)!=-1)))
+    (
+            winclear
+            WINPOS 0. 0. 60. 15. 0. 0. 
+            area.reset
+            area
+            PRINT %ERROR " std_cti_&image - &bootprocessor not able to attach"
+            PRINT %ERROR " Please ensure the following:"    
+            PRINT %ERROR "     JTAG is physically attached"
+            PRINT %ERROR "     T32 installation is up to date."
+            PRINT %ERROR "     Device is booted."
+            PRINT %ERROR " "
+            
+            DO std_fatalexit "&FAILURE - std_utils ATTACH_BOOT_PROC - not able to attach"
+    )
+    
+    RETURN &SUCCESS
+    
+FILECOPIER:
+    LOCAL &source &destination
+    ENTRY &source &destination
+            
+            ON ERROR GOSUB
+            (
+                do std_fatalexit USER "Error when copying files: source - &source, destination - &destination"
+            )
+                
+            PRINT "Copying &source to &destination"
+            COPY &source &destination
+
+            ON ERROR
+            RETURN SUCCESS
+            
+            
+DELAYSECONDS:
+    LOCAL &delayvalue
+    ENTRY &delayvalue
+    
+    &delayvalue=5
+    &delayvalue="&delayvalue"+"."
+    IF STRING.SCAN(STR.UPR("&delayvalue"),"0X",0)!=-1
+    (
+        &delayvalue=STRING.cut("&delayvalue",2)
+    )
+    WAIT.&delayvalue
+    
+    RETURN SUCCESS
+
+    
+////////////////////////////////////////////////////
+///
+/// FindSymbol
+/// @brief Finds a symbol. Note that &FindSymbolResult must be declared outside this context
+///        Meant to be called via symbol.foreach from calling function.
+///
+/////////////////////////////////////////////////////    
+FINDSYMBOL:
+    
+    LOCAL &symbol &searchstring &searchstring2
+    ENTRY &symbol &searchstring &searchstring2
+    //Assumes &FindSymbolResult has been declared above
+    &symbol=SYMBOL.NAME(&symbol)
+
+    IF "&searchstring2"==""
+    (    
+        IF (STRING.SCAN("&symbol","&searchstring",0)!=-1)
+        (
+            IF (STRING.SCAN("&FindSymbolResult","&symbol",0)==-1)
+            (
+                IF ("&FindSymbolResult"=="")
+                (
+                    &FindSymbolResult=SYMBOL.NAME(&symbol)
+                )
+                ELSE
+                (
+                    &FindSymbolResult="&FindSymbolResult"+","+SYMBOL.NAME(&symbol)
+                )
+            )
+        )
+    )
+    ELSE
+    (    
+        IF (STRING.SCAN("&symbol","&searchstring",0)!=-1)&&(STRING.SCAN("&symbol","&searchstring2",0)!=-1)
+        (
+            IF (STRING.SCAN("&FindSymbolResult","&symbol",0)==-1)
+            (
+                IF ("&FindSymbolResult"=="")
+                (
+                    &FindSymbolResult=SYMBOL.NAME(&symbol)
+                )
+                ELSE
+                (
+                    &FindSymbolResult="&FindSymbolResult"+","+SYMBOL.NAME(&symbol)
+                )
+            )
+        )
+    )
+    
+    RETURN
+
+/////////////////////////////////////
+///
+///    Function: SANITIZEPATHS
+///    @brief Replaces '\' with '/' for use in structures. 
+///           If path is not valid, replaces it with 'NULL'
+/////////////////////////////////////
+SANITIZEPATHS:
+    LOCAL &argline
+    ENTRY %LINE &argline
+    LOCAL &currentpathtext &listdoneflag &rvalue &currpath
+    &currentpathtext="&argline"
+    &listdoneflag="FALSE"
+    WHILE ("&listdoneflag"=="FALSE")
+    (
+        GOSUB PARSEOUTLIST , &currentpathtext
+        ENTRY &currpath &currentpathtext &listdoneflag
+        
+        IF OS.FILE("&currpath")||OS.DIR("&currpath")
+        (
+            &currpath=STRING.REPLACE("&currpath","\","/",0)
+            &rvalue="&rvalue &currpath"
+        )
+        ELSE
+        (
+            &rvalue="&rvalue NULL"
+        )
+    )
+    &rvalue=STRING.TRIM("&rvalue")
+RETURN &rvalue
+
+////////////////////////////////////////////////////////////
+///
+///  LOAD_ELF_UTILITY
+///  @brief Generic loader for elf files. 
+///
+////////////////////////////////////////////////////////////
+LOAD_ELF_UTILITY:
+    LOCAL &elffile &buildroot &proc_name &offset &elfoptions
+    ENTRY &elffile &buildroot &proc_name &offset %LINE &elfoptions
+    LOCAL &rvalue
+    &rvalue="SUCCESS"
+    
+    IF !OS.FILE("&elffile")
+    (
+        RETURN FAILURE
+    )
+    LOCAL &path_set_usable
+    IF ("&buildroot"=="NULL")||("&buildroot"=="")||(!OS.DIR("&buildroot"))
+    (
+        GOSUB GET_ELF_BUILDROOT &elffile &proc_name
+        ENTRY &buildroot
+
+    )
+    ELSE IF ("&proc_name"=="NULL")||("&proc_name"=="")&&(STRING.SCAN("&buildroot","&proc_name",0)!=-1)
+    (
+        GOSUB GET_BUILD_PROC_ROOT_NAME &elffile
+        ENTRY &proc_name
+    )
+    
+    IF ("&buildroot"=="NULL")||("&proc_name"=="NULL")
+    (
+        &path_set_usable="FALSE"
+    )
+    ELSE
+    (
+        &path_set_usable="TRUE"
+    )
+    
+    //Format given elf options
+    &elfoptions=STRING.TRIM("&elfoptions")
+    //Remove unwanted/unneeded options
+    &elfoptions=STRING.REPLACE("&elfoptions","strippart","",0)
+    &elfoptions=STRING.REPLACE("&elfoptions","sourcepath","",0)
+    &elfoptions=STRING.REPLACE("&elfoptions"," ",",",0)
+    &elfoptions=STRING.REPLACE("&elfoptions",","," /",0)
+    IF "&elfoptions"!=""
+    (
+        &elfoptions="/"+"&elfoptions"
+    )
+    &offset=STR.UPR("&offset")
+    IF ("&offset"=="NULL")||("&offset"=="")
+    (
+        &offset=""
+    )
+    ELSE
+    (
+        IF (STRING.SCAN("&offset","0X",0)==-1)
+        (
+            PRINT "Error! LOAD_ELF_UTILITY: Invalid offset given (not null, blank or hex address: &offset. Returning"
+            RETURN FAILURE
+        )
+    )
+    
+    ON ERROR GOSUB 
+    (
+        ON ERROR DEFAULT
+        PRINT "Error ocurred during elf load. Elf file: &elffile"
+        RETURN FAILURE
+    )
+    IF "&path_set_usable"=="TRUE"
+    (
+        D.LOAD.ELF &elffile &offset &elfoptions /strippart "&proc_name" /sourcepath "&buildroot"
+    )
+    ELSE
+    (
+        D.LOAD.ELF &elffile &offset &elfoptions
+    )
+    
+    ON ERROR DEFAULT
+    RETURN &rvalue
+
+
+
+////////////////////////////////////////////////////////////
+///
+///  GET_BUILD_PROC_ROOT_NAME
+///  @brief Gets likely root name from given file
+///
+////////////////////////////////////////////////////////////
+GET_BUILD_PROC_ROOT_NAME:
+    LOCAL &rootname &file
+    ENTRY &file
+    
+    LOCAL &WLAN_RootName &MPSS_RootName &RPM_RootName &ADSP_RootName &CDSP_RootName &SLPI_RootName
+    &WLAN_RootName="wlan_proc"
+    &MPSS_RootName="modem_proc"
+    &RPM_RootName="rpm_proc"
+    &ADSP_RootName="adsp_proc"
+    &CDSP_RootName="cdsp_proc"
+    &SLPI_RootName="slpi_proc"
+
+    
+    IF STRING.SCAN("&file","&MPSS_RootName",0)!=-1
+    (
+        &rootname="&MPSS_RootName"
+    )
+    ELSE IF STRING.SCAN("&file","&WLAN_RootName",0)!=-1
+    (
+        &rootname="&WLAN_RootName"
+    )
+    ELSE IF STRING.SCAN("&file","&RPM_RootName",0)!=-1
+    (
+        &rootname="&RPM_RootName"
+    )
+    ELSE IF STRING.SCAN("&file","&CDSP_RootName",0)!=-1
+    (
+        &rootname="&CDSP_RootName"
+    )
+    ELSE IF STRING.SCAN("&file","&ADSP_RootName",0)!=-1
+    (
+        &rootname="&ADSP_RootName"
+    )
+    ELSE IF STRING.SCAN("&file","&SLPI_RootName",0)!=-1
+    (
+        &rootname="&SLPI_RootName"
+    )
+    ELSE
+    (
+        &rootname="NULL"
+    )
+    
+    
+    RETURN &rootname
+////////////////////////////////////////////////////////////
+///
+///  GET_ELF_BUILDROOT
+///  @brief Finds buildroot given elf path and root name
+///
+////////////////////////////////////////////////////////////
+GET_ELF_BUILDROOT:
+            LOCAL &local_elffile &local_buildroot &processor_root_name
+            ENTRY &local_elffile &processor_root_name
+            
+            IF ("&processor_root_name"=="")||("&processor_root_name"=="NULL")
+            (
+                GOSUB GET_BUILD_PROC_ROOT_NAME &local_elffile
+                ENTRY &processor_root_name
+                IF "&processor_root_name"=="NULL"
+                (
+                    RETURN &processor_root_name
+                )
+            )
+            
+            LOCAL &location &what_to_cut &filepath
+            &location=STRING.SCAN("&local_elffile","&processor_root_name",0)
+            &what_to_cut=&location-STRING.LENGTH("&local_elffile")-1
+            &filepath=STRING.CUT("&local_elffile",&what_to_cut)
+
+            //If not a legitimate  path, return NULL
+            IF (OS.DIR("&filepath")&&("&filepath"!=""))
+            (
+                
+                &local_buildroot=OS.FILE.PATH(&filepath/&processor_root_name)
+                GOSUB SANITIZEPATHS &local_buildroot
+                ENTRY &local_buildroot
+            )
+            ELSE
+            (
+                &local_buildroot="NULL"
+            )
+            
+            
+            RETURN &local_buildroot
+            
+////////////////////////////////////////////////////////////
+///
+///  PARSEOUTLIST
+///  @brief Parses out a given comma-separated list. Returns first element and remainder of list and a flag
+///         Meant to be iterated over from caller.
+///
+///  arguments: deliminator: symbol to deliminate around (usually a ','). Can be anything but space
+///             givenlist: comma-separated list of inputs. If space separated, then spaces are replaced by the deliminator argument
+///
+///  returns:   newlist - list with first element removed.
+///             return_value - first element of list returned
+///             flag - TRUE - inidcates if list is done
+///                    FALSE - indicates list can continue.
+////////////////////////////////////////////////////////////
+//An example caller of this script can be found in  SANITIZEPATHS       
+PARSEOUTLIST:
+        LOCAL &deliminator &newlist &return_value &flag &givenstring &rvalue
+        ENTRY &deliminator %LINE &givenstring
+        
+        &givenstring=STRING.TRIM("&givenstring")
+        IF STRING.SCAN("&givenstring"," ",0)!=-1
+        (
+            &givenstring=STRING.REPLACE("&givenstring"," ","&deliminator",0)
+        )
+        
+        LOCAL &count &maxcount &return_value &size_of_returnvalue &string_length &string_size &value_to_cut
+        
+        &current_string="&givenstring"
+        
+        &string_length=String.Length("&current_string")
+        &string_size=string.scan("&current_string","&deliminator",0)
+        
+        IF (&string_size!=-1)
+        (
+            &value_to_cut=&string_size-&string_length    
+            //separate the first master from the rest of the string
+            &return_value=string.cut("&current_string",&value_to_cut)
+            &size_of_returnvalue=STRING.LENGTH("&return_value")
+            &newlist=STRING.CUT("&current_string",&size_of_returnvalue+1)
+            &flag="FALSE"
+        )
+        ELSE //if no "&deliminator" found, exit condition
+        (
+            &return_value="&current_string"
+            &newlist="NULL"
+            &flag="TRUE"
+            &count=&maxcount
+        )
+        
+        &count=&count+1
+    
+        
+        
+    RETURN &return_value &newlist &flag
+
+    
+/////////////////////////////////////////////
+///
+/// EVALUATE_INTERCOM_ATTACH_STATE
+/// @brief Retrieves attachstate from specified t32 window.
+/// Arguments:  targetprocessorport - numerical value - intercom port number for desired window.
+/// Return values:
+///         ATTACHED - T32 window is attached to desired target
+///         PREPARED - T32 window is in sys.m.prepare state
+///         FALSE    - T32 window is not attached
+///         CLOSED   - T32 window is not open.
+///
+/////////////////////////////////////////////
+EVALUATE_INTERCOM_ATTACH_STATE:
+    LOCAL &targetprocessorport
+    ENTRY &targetprocessorport
+    
+    LOCAL &rvalue
+    LOCAL &localhost
+    &localhost=INTERCOM.PORT()
+    IF "&targetprocessorport"=="&localhost"
+    (
+        IF SYSTEM.MODE()==0xB
+        (
+            &rvalue="ATTACHED"
+        )
+        ELSE IF SYSTEM.MODE()==0x4
+        (
+            &rvalue="PREPARED"
+        )
+        ELSE
+        (
+            &rvalue="FALSE"
+        )
+    )
+    ELSE
+    (
+        IF (INTERCOM.PING(&targetprocessorport))
+        (
+            INTERCOM.EVALUATE &targetprocessorport SYSTEM.MODE()
+            LOCAL &attachstate
+            &attachstate=EVAL()
+            IF ("&attachstate"=="0x0B")
+            (
+                &rvalue="ATTACHED"
+            )
+            ELSE IF ("&attachstate"=="0x04")
+            (
+                &rvalue="PREPARED"
+            )
+            ELSE
+            (
+                &rvalue="FALSE"
+            )
+        )
+        ELSE
+        (
+            &rvalue="CLOSED"
+        )
+    )
+    
+    
+    RETURN &rvalue
+    
+
+/////////////////////////////////////////////
+///
+/// EVALUATE_INTERCOM_STOP_STATE
+/// @brief Retrieves attachstate from specified t32 window.
+/// Arguments:  targetprocessorport - numerical value - intercom port number for desired window.
+/// Return values:
+///         STOPPED - T32 window is attached and processor is in debug halt state.
+///         RUNNING - T32 window is attached to processor, processor is in running state.
+///         PREPARED - T32 window is in sys.m.prepare state
+///         FALSE    - T32 window is not attached
+///         CLOSED   - T32 window is not open.
+///
+/////////////////////////////////////////////
+EVALUATE_INTERCOM_STOP_STATE:
+    LOCAL &targetprocessorport
+    ENTRY &targetprocessorport
+    
+    LOCAL &rvalue
+    LOCAL &localhost
+    &localhost=INTERCOM.PORT()
+    IF "&targetprocessorport"=="&localhost"
+    (
+        IF SYSTEM.MODE()==0xB
+        (
+            IF FALSE()==STATE.RUN()
+            (
+                &rvalue="STOPPED"
+            )
+            ELSE
+            (
+                &rvalue="RUNNING"
+            )
+        )
+        ELSE IF SYSTEM.MODE()==0x4
+        (
+            &rvalue="PREPARED"
+        )
+        ELSE
+        (
+            &rvalue="FALSE"
+        )
+    )
+    ELSE
+    (
+        IF (INTERCOM.PING(&targetprocessorport)
+        (
+            INTERCOM.EVALUATE &targetprocessorport SYSTEM.MODE()
+            LOCAL &attachstate
+            IF ("&attachstate"=="0x0B")
+            (
+                INTERCOM.EVALUATE &targetprocessorport STATE.RUN()
+                LOCAL &stopstate
+                &stopstate=EVAL()
+                IF (1==&stopstate)
+                (
+                    &rvalue="RUNNING"
+                )
+                ELSE
+                (
+                    &rvalue="STOPPED"
+                )
+            )
+            ELSE IF ("&attachstate"=="0x04")
+            (
+                &rvalue="PREPARED"
+            )
+            ELSE
+            (
+                &rvalue="FALSE"
+            )
+        )
+        ELSE
+        (
+            &rvalue="CLOSED"
+        )
+    )
+    
+    
+    RETURN &rvalue
+/////////////////////////////////////////////
+///
+/// WAIT_TO_STOP
+/// @brief Waits for processor to stop running.
+/// Arguments:  breakpoint - only used for error message
+///             countvalue_ms - value in milliseconds. If &RUMI=="TRUE", it's value in ms*100
+///             targetprocessorport - port value. If not given, will assume local processor window.
+///             scriptname - not necessary, but error message will print scriptname as calling script
+///
+/////////////////////////////////////////////
+WAIT_TO_STOP:
+    LOCAL &breakpoint &countvalue_ms &targetprocessorport
+    ENTRY &breakpoint &countvalue_ms &targetprocessorport %LINE &therest
+
+    IF ("&scriptname"=="NULL")||("&scriptname"=="")
+    (
+        "&scriptname"="Script Error"
+    )
+    IF ("&targetprocessorport"=="NULL")||("&targetprocessorport"=="")
+    (
+        &targetprocessorport=INTERCOM.PORT()
+    )
+    IF ("&countvalue_ms"=="")
+    (
+        do std_fatalexit SYSTEM "Error - invalid countvalue_ms given for WAIT_TO_STOP routine. countvalue_ms: &countvalue_ms"
+        plist
+        pstep
+    )
+    &countvalue_ms=(&countvalue_ms/100)
+
+    
+    
+    LOCAL &T32_runstate &count
+    &count=0
+    &retries=0
+    &maxretries=3
+    INTERCOM.EVALUATE &targetprocessorport STATE.RUN()
+    &T32_runstate=EVAL()
+    INTERCOM.EVALUATE &targetprocessorport SYSTEM.MODE()
+    &T32_attachstate=EVAL()
+    
+    wait.100ms
+    
+    WHILE ((&T32_runstate==1)&&(&count<&countvalue_ms)&&(&retries<&maxretries))
+    (
+        INTERCOM.EVALUATE &targetprocessorport STATE.RUN()
+        &T32_runstate=EVAL()
+        &count=&count+1
+        IF (&T32_runstate==0)
+        (
+            &retries=&retries+1
+        )
+        IF ("&RUMI"=="TRUE")
+        (
+            Wait.2s
+        )
+        ELSE
+        (
+            wait.100ms
+        )
+    )
+    IF ("&targetprocessorport"!="&LOCALHOST")
+    (
+        INTERCOM.WAIT &targetprocessorport
+    )
+    INTERCOM.EVALUATE &targetprocessorport STATE.RUN()
+    &T32_runstate=EVAL()
+    IF (1==&T32_runstate)
+    (
+        //Try one more time.
+        wait.1s
+        INTERCOM.EVALUATE &targetprocessorport STATE.RUN()
+        &T32_runstate=EVAL()
+        IF (1==&T32_runstate)
+        (
+            
+            GOSUB REMOTE_PROC_NOT_STOPPED &breakpoint
+            &USEEXISTINGSYMS_TARGET="FALSE"
+            &ENTRYHEXADDR_TARGET="NULL"
+            LOCAL &breakpointexitstring
+            IF "&breakpoint"=="NULL"
+            (
+                &breakpointexitstring="!"
+            )
+            ELSE
+            (
+                &breakpointexitstring=" at &breakpoint."
+            )   
+            &exitstring=PRACTICE.CALLER.FILE(1.)+" - symbol mismatch; processor didn't halt&breakpointexitstring"
+            
+            do std_fatalexit USER &exitstring
+        )
+    )
+    
+    RETURN SUCCESS    
+    
+REMOTE_PROC_NOT_STOPPED:
+    LOCAL &argline
+    ENTRY %LINE &argline
+    
+        WINPOS 0. 0. 50. 10.
+        area.reset
+        area
+        PRINT %ERROR "   Was not able to stop remote processor. "
+        PRINT        "   Breakpoint: &argline "
+        PRINT %ERROR "   Please Check if:"
+        PRINT %ERROR "       - Symbols mismatch,"
+        PRINT %ERROR "       - Need to restart remote T32 window"
+        PRINT %ERROR "       - Apps timeout resulting "
+        PRINT " "
+        PRINT " "
+        PRINT " "
+        //Don't use same symbols on next run
+        
+        RETURN 
+        
+/////////////////////////////////////////
+///
+/// @brief Because PRACTICE doesn't give us file search utilities, 
+/// recursively search given serachpath directory for file.
+///
+/////////////////////////////////////////
+GET_SCRIPT_PATH:
+
+            LOCAL &rvalue &origdir
+            LOCAL &ACTION &searchpath &script_to_look_for
+            ENTRY &ACTION &searchpath &script_to_look_for
+            
+            IF !OS.DIR("&searchpath")||("&searchpath"=="")
+            (
+                RETURN "NULL"
+            )
+            
+            &searchpath=STRING.REPLACE("&searchpath","\","/",0)
+            GOSUB REMOVESLASH exit &searchpath
+            ENTRY &notused &searchpath %LINE &therest
+            // Load the memory map again for relocated images
+            //do std_memorymap DYNAMIC
+            ON ERROR CONTINUE
+
+            &tempfile="&TEMPDIR\listfiles.txt"
+            PRINTER.FILE &tempfile
+            PRINTER.FILETYPE ASCII
+            PRINTER.SIZE 0XFA, 0XFA
+            
+            &origdir=OS.PWD()
+            CD &searchpath
+            //WINPOS 0. 100% 10. 0. 
+            WP.DIR
+            
+            
+            LOCAL &linelst 
+            &linelst="NULL"
+            open #1 &tempfile
+            LOCAL &directoryfound &scriptmatch
+            &directoryfound=""
+            &scriptmatch=0
+            
+            WHILE (("&linelst"!="")&&(&scriptmatch==0.))
+            (
+                read #1 %line &linelst
+                IF !(("&linelst"=="B::DIR")||("&linelst"==".")||("&linelst"=="..")||("&directoryfound"!=""))
+                (
+                    &directoryfound="&linelst"
+                )
+                
+                IF ("&script_to_look_for"=="&linelst")
+                (
+                    &scriptmatch=1
+                )
+                
+            )
+            close #1
+            ON ERROR
+            
+            IF (&scriptmatch==1)
+            (
+                &rvalue="&searchpath"
+                CD &origdir
+            )
+            ELSE IF (OS.DIR("&searchpath/&directoryfound")&&("&directoryfound"!=""))
+            (
+                do std_utils GET_SCRIPT_PATH EXIT &searchpath/&directoryfound
+                LOCAL &returnpath
+                ENTRY &returnpath
+                IF "&returnpath"=="&searchpath/&directoryfound"
+                (
+                    &rvalue="&returnpath"
+                )
+            )
+            ELSE
+            (
+                &rvalue="NULL"
+            )
+                
+            print " "
+            
+            RETURN &rvalue
+    
+  
+EXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    ENDDO &rvalue
+    
+
+
+FATALEXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    IF STRING.SCAN("&FAILUREKEYWORD","FAILUREKEYWORD",0)==-1
+    (
+        GOSUB EXIT &FAILUREKEYWORD - &rvalue
+    )
+    ELSE
+    (
+        GOSUB EXIT &rvalue
+    )
+
+    
+//Should never get here
+    END
+
+//Prints log file and exits scripts
+DOFATALEXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+
+    //No return from here
+    do std_fatalexit &rvalue
+    
+//Should never get here
+    END
+    

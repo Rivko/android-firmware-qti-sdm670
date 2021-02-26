@@ -1,0 +1,2327 @@
+//============================================================================
+//  Name:                                                                     
+//    std_cti.cmm
+//
+//  Description:                                                              
+//    Master script to program the CTI (Cross trigger interface)
+//
+//  Usage
+//  do std_cti masters=<master1>,<master2>,<master3>,... slaves=<slave1>,<slave2>,<slave3>,... <extraoption="extra option">
+//      where
+//          masters or slaves is one of the following CTI subsystems:
+//              apps0, apps1, apps2 apps3 apps4, apps5, apps6, apps7, allapps, rpm, pronto/wcnss,
+//              venus/video, vpu/maple, mpss/modem, adsp/lpass, sensor/sensors
+//              hwevent/hwevents, etb, gpio/cti6/external, aotimer/cti8
+//
+//          allapps - will set all apps cores on the target to desired configuration (slave/master)
+//
+//          "extra option" = use_level_trigger or enable_interrupt
+//
+//
+//
+//  e.g. do std_cti masters=modem,rpm slaves=allapps,rpm extraoption=use_level_trigger
+
+//          This will cause modem and RPM to broadcast halt and go signals to all apps
+//          cores on the chip. RPM will also halt when modem halts. The Option 'use_level_trigger' will
+//          configure them to send the event trigger (holds the line high as long as the
+//          core is halted)
+
+//          Thus, whenever MPSS or RPM stops, Kraits and RPM will stop. Whenever MPSS goes,
+//          Kraits and RPM will go. (note that you'll need to Ack the cores for the RPM or
+//          Kraits to go again. This can be done simply by running the same script again.
+//    
+//      Additionally, you may call one of the following available API's
+//        do std_cti ENABLECTI <subsystem>
+//        do std_cti DISABLECTI <subsystem>
+//        do std_cti CLEARCTI <subsystem>
+//        do std_cti UNLOCKCTI <subsystem>
+//        do std_cti LOCKCTI <subsystem>
+//        do std_cti ACKCTI <subsystem>
+//        do std_cti CTI_TRIGGER_BROADCAST <subsystem> <CTI Trigger> <CTM Channel>
+//        do std_cti CTI_TRIGGER_RECEIVE  <subsystem> <CTI Trigger> <CTM Channel>
+//        do std_cti INSERTAPPULSE <subsystem> <CTM Channel>
+//        do std_cti TRIGSETCHANNEL <subsystem> <CTM Channel>
+//        do std_cti TRIGCLEARCHANNEL <subsystem> <CTM Channel>
+//        do std_cti HELP,help - displays help menu
+//
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when         who         what, where, why
+// --------     ---        --------------------------------------------------------
+// 03/22/2017   JBILLING   AOP and SHRM added
+// 11/21/2016   JBILLING   Fix for SENDAPPPULSE
+// 09/14/2015   JBILLING   Significant changes for automation
+// 04/16/2015   JBILLING   Changed API to HWIO_ functions
+// 02/06/2015   JBILLING   Added SLPI, changed access mode to EDAP
+// 08/11/2014   JBILLING   Added etbflush option and others
+// 05/20/2014   JBillings  Logic overhaul
+// 10/29/2013   JBILLING   Created
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////// std_cti //////////////////////////////////////////////////
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+//###################Arguments passed #####################
+LOCAL &ArgumentLine
+ENTRY %LINE &ArgumentLine
+LOCAL &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+ENTRY &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+
+
+//#####################Select Subroutine###################
+// Name of the utility we are calling
+LOCAL &SUBROUTINE
+// Any subroutine specific options
+// Default exists for each subroutine
+
+
+// Input Argument 0 is the name of the utility
+&SUBROUTINE="&UTILITY"
+IF !(("&SUBROUTINE"=="ENABLECTI")||("&SUBROUTINE"=="DISABLECTI")||("&SUBROUTINE"=="CLEARCTI")||("&SUBROUTINE"=="UNLOCKCTI")||("&SUBROUTINE"=="LOCKCTI")||("&SUBROUTINE"=="ACKCTI")||("&SUBROUTINE"=="CTI_TRIGGER_BROADCAST")||("&SUBROUTINE"=="CTI_TRIGGER_RECEIVE")||("&SUBROUTINE"=="INSERTAPPULSE")||("&SUBROUTINE"=="INSERTCTITRIGGER")||("&SUBROUTINE"=="TRIGSETCHANNEL")||("&SUBROUTINE"=="TRIGCLEARCHANNEL")||("&SUBROUTINE"=="DISABLECTICHANNELGATE")||("&SUBROUTINE"=="ENABLECTICHANNELGATE")||("&SUBROUTINE"=="HELP")||("&SUBROUTINE"=="help"))
+(
+    &SUBROUTINE="MAIN"   
+)
+
+    // This should be created by some top level script. The setupenv for each proc would
+    // set this up
+     AREA.SELECT
+    // Call the required utility
+    GOSUB &SUBROUTINE &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+
+    //Remove error handler if it was set
+    ON ERROR
+    
+    GOSUB EXIT &rvalue
+
+    
+
+    
+////////////////////////////////////////
+//
+//            MAIN
+//            Main std_cti logic
+//          Expected input:
+//              masters=master1,master2... slaves=slave1,slave2...
+//              master1 slave1 slave2 slave3...
+//
+/////////////////////////////////////////
+MAIN:
+        
+
+        LOCAL &CTM_CHANNEL_0 &CTM_CHANNEL_1 &CTM_CHANNEL_2 &CTM_CHANNEL_3
+        LOCAL &CTM_HALT_CHANNEL &CTM_GO_CHANNEL &CTM_STM_HALT_CHANNEL
+        LOCAL &CTI_TRIG_HALT_ARMCORE &CTI_TRIG_HALT_Q6CORE &CTI_TRIG_HALT_LEVEL_ARMCORE &CTI_TRIG_HALT_LEVEL_Q6CORE &CTI_TRIG_GO_Q6CORE &CTI_TRIG_GO_ARMCORE &CTI_TRIG_GO_ARMCORE64 &CTI_TRIG_HALT_LEVEL_ARMCORE64
+
+        LOCAL &CTI_TRIG_HALT_HWEVENT_HETE &CTI_TRIG_HALT_HWEVENT_SPTE &CTI_TRIG_to_GPIO &CTI_TRIG_from_GPIO_Postive_Edge &CTI_TRIG_from_GPIO_Positive_Level &CTI_ETB_Trigger_Insertion &CTI_ETB_BufferFull
+        
+        &CTM_CHANNEL_0=0x0
+        &CTM_CHANNEL_1=0x1
+        &CTM_CHANNEL_2=0x2 //HLOS uses CTM2 for workarounds on 8994
+        &CTM_CHANNEL_3=0x3
+
+        &CTM_HALT_CHANNEL=&CTM_CHANNEL_0
+        &CTM_GO_CHANNEL=&CTM_CHANNEL_1
+        &CTM_STM_HALT_CHANNEL=&CTM_CHANNEL_2
+        &CTM_INTERRUPT_CHANNEL=&CTM_CHANNEL_3 
+
+        &CTI_TRIG_HALT_ARMCORE=0x0
+        &CTI_TRIG_HALT_Q6CORE=0x0
+        &CTI_TRIG_HALT_LEVEL_ARMCORE=0x1
+        &CTI_TRIG_HALT_LEVEL_ARMCORE64=0x0
+        &CTI_TRIG_HALT_LEVEL_Q6CORE=0x2
+        &CTI_TRIG_GO_Q6CORE=0x1
+        &CTI_TRIG_GO_ARMCORE=0x7  
+        &CTI_TRIG_GO_ARMCORE64=0x1  
+        
+        &CTI_TRIG_HALT_HWEVENT_HETE=0x6
+        &CTI_TRIG_HALT_HWEVENT_SPTE=0x4
+        &CTI_TRIG_to_GPIO=0x2
+        &CTI_TRIG_from_GPIO_Postive_Edge=0x2
+        &CTI_TRIG_from_GPIO_Positive_Level=0x4
+        &CTI_ETB_Trigger_Insertion=0x0
+        &CTI_ETB_Flush_Trigger_Insertion=0x1
+        &CTI_ETB_BufferFull=0x0
+        &CTI_ETB_AcqComplete=0x0
+            
+            
+        //logic flow:
+        //check input. 
+        //   if input is 'master1, slave1, slave2...', then set vars to masters=master1 slaves=slave1,slave2...
+        //parse out masters, to configure each subsystem given as a master
+        //parse out slaves, to configure each subsystem given as a slave
+        
+        
+        IF ((STRING.SCAN("&ArgumentLine","masters",0)==-1)&&(STRING.SCAN("&ArgumentLine","slaves",0)==-1))
+        (
+            PRINT %ERROR "Error! std_cti: Needs keyword masters or slaves in command"
+            GOSUB HELP
+            do std_fatalexit USER "Error! std_cti: Needs keyword masters or slaves in command"
+        
+        )
+        
+        LOCAL &masters &slaves &extraoption
+        do optextract masters,slaves,extraoption &ArgumentLine
+            entry &masters &slaves &extraoption
+        
+        do std_utils SANITIZEQUOTATIONS NULL &masters &slaves &extraoption
+            entry &masters &slaves &extraoption
+        
+
+        
+        //Always accept prepare as a state
+        do std_utils MAKE_SURE_BOOT_PROCESSOR_ATTACHED prepare
+        
+        
+        //disable pmic watchdog
+//        do std_pmic_&CHIPSET PMIC_WDOG disable
+        
+
+
+
+        
+
+
+        //case for all of apps - populate masters/slaves list with correct list of appscores.
+        IF ((STRING.SCAN("&masters","allapps",0)!=-1)||(STRING.SCAN("&slaves","allapps",0)!=-1))
+        (
+            
+            LOCAL &appscorelist
+            do std_cti_&CHIPSET GETAPPSCORELIST
+            entry &appscorelist
+            
+            do std_utils SANITIZEQUOTATIONS none &appscorelist
+                ENTRY &appscorelist
+            
+            IF (STRING.SCAN("&slaves","allapps",0)!=-1)
+            (
+                &slaves=STRING.REPLACE("&slaves","allapps","&appscorelist",0)
+            )
+            IF (STRING.SCAN("&masters","allapps",0)!=-1)
+            (
+                &masters=STRING.REPLACE("&masters","allapps","&appscorelist",0)
+            )
+
+        )
+        
+        //case for all cores in system - populate masters/slaves list with correct list of cores.
+        IF ((STRING.SCAN("&masters","allcores",0)!=-1)||(STRING.SCAN("&slaves","allcores",0)!=-1))
+        (
+            
+            LOCAL &fullcorelist
+            do std_cti_&CHIPSET GETALLCORELIST
+            entry &fullcorelist
+            
+            do std_utils SANITIZEQUOTATIONS none &fullcorelist
+                ENTRY &fullcorelist
+            
+            IF (STRING.SCAN("&slaves","allcores",0)!=-1)
+            (
+                &slaves=STRING.REPLACE("&slaves","allcores","&fullcorelist",0)
+            )
+            IF (STRING.SCAN("&masters","allcores",0)!=-1)
+            (
+                &masters=STRING.REPLACE("&masters","allcores","&fullcorelist",0)
+            )
+
+        )
+        
+        LOCAL &count &maxcount &current_master &size_of_master &string_length &string_size &value_to_cut &current_slave &size_of_slave
+        //parse out masters
+        &current_string="&masters"
+        &count=0
+        &maxcount=10
+        while (&count<&maxcount)
+        (
+            &string_length=String.Length("&current_string")
+            &string_size=string.scan("&current_string",",",0)
+            
+            IF (&string_size!=-1)
+            (
+                &value_to_cut=&string_size-&string_length    
+                //separate the first master from the rest of the string
+                &current_master=string.cut("&current_string",&value_to_cut)
+                &size_of_master=STRING.LENGTH("&current_master")
+                &current_string=STRING.CUT("&current_string",&size_of_master+1) //remove comma
+            )
+            ELSE //if no "," found
+            (
+                &current_master="&current_string"
+                &count=&maxcount
+            )
+            GOSUB CONFIGURECTIBLOCK &current_master configure_as_master
+                ENTRY %LINE &rvalue
+                IF "&rvalue"!="SUCCESS"
+                (
+                    GOSUB EXIT &rvalue    
+                )
+            &count=&count+1
+        )
+
+        //parse out slaves
+        &current_string="&slaves"
+        &count=0
+        while (&count<&maxcount)
+        (
+            &string_length=String.Length("&current_string")
+            &string_size=string.scan("&current_string",",",0)
+            
+            IF (&string_size!=-1)
+            (
+                &value_to_cut=&string_size-&string_length
+                //separate the first slave from the rest of the string
+                &current_slave=string.cut("&current_string",&value_to_cut)
+                &size_of_slave=STRING.LENGTH("&current_slave")
+                &current_string=STRING.CUT("&current_string",&size_of_slave+1) //remove comma
+            )
+            ELSE //if no "," found
+            (
+                &current_slave="&current_string"
+                &count=&maxcount
+            )
+            GOSUB CONFIGURECTIBLOCK &current_slave configure_as_slave
+                ENTRY %LINE &rvalue
+                IF "&rvalue"!="SUCCESS"
+                (
+                    GOSUB EXIT &rvalue    
+                )
+            &count=&count+1
+        )
+        
+    
+
+RETURN SUCCESS
+
+
+//////////////////////////////////
+//
+//      CONFIGURECTIBLOCK
+//      expected inputs: 
+//              core: APPS0
+//              configuration: master or slave
+//
+//
+//
+/////////////////////////////////////
+CONFIGURECTIBLOCK:
+        LOCAL &corefamily &corename &core_CTI_ExtBreakTrig &core_CTI_ExtResumeTrig  &core_CTI_IntBreakTrig &core_CTI_IntResumeTrig &core_CTI_IntBreakEvent &core_CTI_nIRQOUT
+        
+
+        entry &core &configuration
+
+        DO std_cti_&CHIPSET GETCORETYPE APPS
+        ENTRY &coretype
+        
+        
+        &core=STRING.LOWER("&core")
+        
+        
+        IF (STRING.SCAN("&core","apps",0)!=-1)        
+        (
+        
+            &corefamily="ARM"
+            
+            IF (STRING.LENGTH("&core")!=5)
+            (
+                PRINT %ERROR "std_cti: Unknown Apps core argument! - &core"
+                GOSUB HELP
+                do std_fatalexit USER "std_cti: Unknown Apps core argument! - &core"
+            )
+            &n=STRING.CUT("&core",(STRING.LENGTH("&core")-1))
+            &corename="APPS"+"&n"
+            
+
+            
+            //parameters for slave configuration
+                &core_CTI_ExtBreakTrig=&CTI_TRIG_HALT_ARMCORE
+                
+                IF (("&coretype"=="A53")||("&coretype"=="A57")||("&coretype"=="HYDRA"))
+                (
+                    &core_CTI_ExtResumeTrig=&CTI_TRIG_GO_ARMCORE64 //&CTI_TRIG_GO_ARMCORE //this is trigout1 for a53/a57's. 
+                )
+                ELSE
+                (
+                    &core_CTI_ExtResumeTrig=&CTI_TRIG_GO_ARMCORE
+                )
+                //ETM Functionality
+                //&core_EtmExtTrig_out=3
+                //&core_EtmEtbTrig_out=4
+                //&core_EtmExtTrig_in=2
+                &core_CTI_nIRQOUT=6 //Interrupt 
+            
+            //parameters for master configuration
+                &core_CTI_IntBreakTrig=&CTI_TRIG_HALT_ARMCORE
+                &core_CTI_IntResumeTrig="NONE"
+                
+                IF (("&coretype"=="A53")||("&coretype"=="A57")||("&coretype"=="HYDRA"))
+                (
+                    &core_CTI_IntBreakEvent=&CTI_TRIG_HALT_LEVEL_ARMCORE64 //&CTI_TRIG_GO_ARMCORE //this is trigout0 for a53/a57's, same as pulse break
+                )
+                ELSE
+                (
+                    &core_CTI_IntBreakEvent=&CTI_TRIG_HALT_LEVEL_ARMCORE
+                )
+                
+                
+                
+                
+                
+            //enable channel gate for 8994
+            
+            GOSUB ENABLECTICHANNELGATE &corename
+            ENTRY %LINE &rvalue
+            IF "&rvalue"!="SUCCESS"
+            (
+                RETURN &rvalue    
+            )
+            
+            //Takes care of external, internal, level, and interrupts
+            GOSUB CONFIGURE_CTI_CORE &configuration &core_CTI_ExtBreakTrig &core_CTI_ExtResumeTrig &core_CTI_IntBreakTrig &core_CTI_IntResumeTrig &core_CTI_IntBreakEvent &core_CTI_nIRQOUT &extraoption
+            ENTRY %LINE &rvalue
+        )
+        else if ("&core"=="rpm")
+        (
+            &corefamily="ARM"
+            &corename="RPM"
+            
+            //parameters for slave configuration
+                &core_CTI_ExtBreakTrig=&CTI_TRIG_HALT_ARMCORE
+                &core_CTI_ExtResumeTrig=&CTI_TRIG_GO_ARMCORE
+                //ETM Functionality
+                //&core_EtmExtTrig_out=3
+                //&core_EtmEtbTrig_out=4
+                //&core_EtmExtTrig_in=2
+                &core_CTI_nIRQOUT=2  //Interrupt
+                &core_CTI_nIRQOUT2=3  //Interrupt #2.
+            
+            //parameters for master configuration
+                &core_CTI_IntBreakTrig=&CTI_TRIG_HALT_ARMCORE
+                &core_CTI_IntResumeTrig="NONE"
+                &core_CTI_IntBreakEvent=&CTI_TRIG_HALT_LEVEL_ARMCORE //this is the level trigger
+            
+            //Takes care of external, internal, level, and interrupts
+            GOSUB CONFIGURE_CTI_CORE &configuration &core_CTI_ExtBreakTrig &core_CTI_ExtResumeTrig &core_CTI_IntBreakTrig &core_CTI_IntResumeTrig &core_CTI_IntBreakEvent &core_CTI_nIRQOUT &extraoption
+            ENTRY %LINE &rvalue
+            //special case for RPM - has an extra interrupt
+            IF (STRING.SCAN("&extraoption","enable_interrupt",0)!=-1)
+            (
+
+                GOSUB CTI_Trigger_Receive &corename &core_CTI_nIRQOUT2 &CTM_INTERRUPT_CHANNEL
+                ENTRY %LINE &rvalue
+                IF "&rvalue"!="SUCCESS"
+                (
+                    RETURN &rvalue    
+                )
+            )
+        )
+        
+        else if ("&core"=="aop")
+        (
+            &corefamily="ARM"
+            &corename="AOP"
+            
+            //parameters for slave configuration
+                &core_CTI_ExtBreakTrig=&CTI_TRIG_HALT_ARMCORE
+                &core_CTI_ExtResumeTrig=&CTI_TRIG_GO_ARMCORE
+                //ETM Functionality
+                //&core_EtmExtTrig_out=3
+                //&core_EtmEtbTrig_out=4
+                //&core_EtmExtTrig_in=2
+                &core_CTI_nIRQOUT=2  //Interrupt
+                &core_CTI_nIRQOUT2=3  //Interrupt #2.
+            
+            //parameters for master configuration
+                &core_CTI_IntBreakTrig=&CTI_TRIG_HALT_ARMCORE
+                &core_CTI_IntResumeTrig="NONE"
+                &core_CTI_IntBreakEvent=&CTI_TRIG_HALT_LEVEL_ARMCORE //this is the level trigger
+            
+            //Takes care of external, internal, level, and interrupts
+            GOSUB CONFIGURE_CTI_CORE &configuration &core_CTI_ExtBreakTrig &core_CTI_ExtResumeTrig &core_CTI_IntBreakTrig &core_CTI_IntResumeTrig &core_CTI_IntBreakEvent &core_CTI_nIRQOUT &extraoption
+            ENTRY %LINE &rvalue
+
+        )
+        else if ("&core"=="aoss3")
+        (
+            &corefamily="QDSS"
+            &corename="AOSS3"
+            
+            //parameters for slave configuration
+                &core_CTI_ExtBreakTrig=&CTI_TRIG_HALT_ARMCORE
+                &core_CTI_ExtResumeTrig=&CTI_TRIG_GO_ARMCORE
+                //ETM Functionality
+                //&core_EtmExtTrig_out=3
+                //&core_EtmEtbTrig_out=4
+                //&core_EtmExtTrig_in=2
+                &core_CTI_nIRQOUT=2  //Interrupt
+                &core_CTI_nIRQOUT2=3  //Interrupt #2.
+            
+            //parameters for master configuration
+                &core_CTI_IntBreakTrig=&CTI_TRIG_HALT_ARMCORE
+                &core_CTI_IntResumeTrig="NONE"
+                &core_CTI_IntBreakEvent=&CTI_TRIG_HALT_LEVEL_ARMCORE //this is the level trigger
+            
+            //Takes care of external, internal, level, and interrupts
+            GOSUB CONFIGURE_CTI_CORE &configuration &core_CTI_ExtBreakTrig &core_CTI_ExtResumeTrig &core_CTI_IntBreakTrig &core_CTI_IntResumeTrig &core_CTI_IntBreakEvent &core_CTI_nIRQOUT &extraoption
+            ENTRY %LINE &rvalue
+
+        )
+        else if ("&core"=="shrm")||("&core"=="ddr")
+        (
+            &corefamily="TENSILICA"
+            &corename="SHRM"
+            
+            //parameters for slave configuration
+                &core_CTI_ExtBreakTrig=&CTI_TRIG_HALT_ARMCORE
+                &core_CTI_ExtResumeTrig=&CTI_TRIG_GO_ARMCORE
+                //ETM Functionality
+                //&core_EtmExtTrig_out=3
+                //&core_EtmEtbTrig_out=4
+                //&core_EtmExtTrig_in=2
+                &core_CTI_nIRQOUT=2  //Interrupt
+                &core_CTI_nIRQOUT2=3  //Interrupt #2.
+            
+            //parameters for master configuration
+                &core_CTI_IntBreakTrig=&CTI_TRIG_HALT_ARMCORE
+                &core_CTI_IntResumeTrig="NONE"
+                &core_CTI_IntBreakEvent=&CTI_TRIG_HALT_LEVEL_ARMCORE //this is the level trigger
+            
+            //Takes care of external, internal, level, and interrupts
+            GOSUB CONFIGURE_CTI_CORE &configuration &core_CTI_ExtBreakTrig &core_CTI_ExtResumeTrig &core_CTI_IntBreakTrig &core_CTI_IntResumeTrig &core_CTI_IntBreakEvent &core_CTI_nIRQOUT &extraoption
+            ENTRY %LINE &rvalue
+
+        )
+        else if (("&core"=="pronto")||("&core"=="wcnss"))
+        (
+            &corefamily="ARM"
+            &corename="PRONTO"
+        
+            //parameters for slave configuration
+                &core_CTI_ExtBreakTrig=&CTI_TRIG_HALT_ARMCORE
+                &core_CTI_ExtResumeTrig="NONE"
+                //ETM Functionality
+                //&core_EtmExtTrig_out=3
+                //&core_EtmEtbTrig_out=4
+                //&core_EtmExtTrig_in=2
+                &core_CTI_nIRQOUT=6  //Interrupt
+            
+            //parameters for master configuration
+                &core_CTI_IntBreakTrig=&CTI_TRIG_HALT_ARMCORE
+                &core_CTI_IntResumeTrig="NONE"
+                &core_CTI_IntBreakEvent=&CTI_TRIG_HALT_LEVEL_ARMCORE //this is the level trigger     
+        
+        
+            GOSUB CONFIGURE_CTI_CORE &configuration &core_CTI_ExtBreakTrig &core_CTI_ExtResumeTrig &core_CTI_IntBreakTrig &core_CTI_IntResumeTrig &core_CTI_IntBreakEvent &core_CTI_nIRQOUT &extraoption
+            ENTRY %LINE &rvalue
+
+            
+        
+        )
+        else if (("&core"=="venus")||("&core"=="video"))
+        (
+            &corefamily="ARM"
+            &corename="VSS"
+        
+            //parameters for slave configuration
+                &core_CTI_ExtBreakTrig=&CTI_TRIG_HALT_ARMCORE
+                &core_CTI_ExtResumeTrig="NONE"
+                //ETM Functionality
+                //&core_EtmExtTrig_out=3
+                //&core_EtmEtbTrig_out=4
+                //&core_EtmExtTrig_in=2
+                &core_CTI_nIRQOUT=6  //Interrupt
+            
+            //parameters for master configuration
+                &core_CTI_IntBreakTrig=&CTI_TRIG_HALT_ARMCORE
+                &core_CTI_IntResumeTrig="NONE"
+                &core_CTI_IntBreakEvent=&CTI_TRIG_HALT_LEVEL_ARMCORE //this is the level trigger      
+            
+            
+            GOSUB CONFIGURE_CTI_CORE &configuration &core_CTI_ExtBreakTrig &core_CTI_ExtResumeTrig &core_CTI_IntBreakTrig &core_CTI_IntResumeTrig &core_CTI_IntBreakEvent &core_CTI_nIRQOUT &extraoption
+            ENTRY %LINE &rvalue
+            
+
+        
+        )
+        else if (("&core"=="vpu")||("&core"=="maple"))
+        (
+            &corefamily="ARM"
+            &corename="VPU"
+        
+            //parameters for slave configuration
+                &core_CTI_ExtBreakTrig=&CTI_TRIG_HALT_ARMCORE
+                &core_CTI_ExtResumeTrig=&CTI_TRIG_GO_ARMCORE
+                //ETM Functionality
+                //&core_EtmExtTrig_out=3
+                //&core_EtmEtbTrig_out=4
+                //&core_EtmExtTrig_in=2
+                &core_CTI_nIRQOUT=6   //Interrupt
+            
+            //parameters for master configuration
+                &core_CTI_IntBreakTrig=&CTI_TRIG_HALT_ARMCORE
+                &core_CTI_IntResumeTrig="NONE"
+                &core_CTI_IntBreakEvent=&CTI_TRIG_HALT_LEVEL_ARMCORE //this is the level trigger        
+        
+        
+            GOSUB CONFIGURE_CTI_CORE &configuration &core_CTI_ExtBreakTrig &core_CTI_ExtResumeTrig &core_CTI_IntBreakTrig &core_CTI_IntResumeTrig &core_CTI_IntBreakEvent &core_CTI_nIRQOUT &extraoption
+            ENTRY %LINE &rvalue
+        
+        )
+        else if (("&core"=="sp")||("&core"=="secureprocessor"))
+        (
+            &corefamily="ARM"
+            &corename="SP"
+        
+            //parameters for slave configuration
+                &core_CTI_ExtBreakTrig=&CTI_TRIG_HALT_ARMCORE
+                &core_CTI_ExtResumeTrig=&CTI_TRIG_GO_ARMCORE
+                //ETM Functionality
+                //&core_EtmExtTrig_out=3
+                //&core_EtmEtbTrig_out=4
+                //&core_EtmExtTrig_in=2
+                &core_CTI_nIRQOUT=6   //Interrupt
+            
+            //parameters for master configuration
+                &core_CTI_IntBreakTrig=&CTI_TRIG_HALT_ARMCORE
+                &core_CTI_IntResumeTrig="NONE"
+                &core_CTI_IntBreakEvent=&CTI_TRIG_HALT_LEVEL_ARMCORE //this is the level trigger        
+        
+        
+            GOSUB CONFIGURE_CTI_CORE &configuration &core_CTI_ExtBreakTrig &core_CTI_ExtResumeTrig &core_CTI_IntBreakTrig &core_CTI_IntResumeTrig &core_CTI_IntBreakEvent &core_CTI_nIRQOUT &extraoption
+            ENTRY %LINE &rvalue
+        
+        )
+        else if (("&core"=="mpss")||("&core"=="modem"))
+        (
+            &corefamily="Q6"
+            &corename="MPSS"
+        
+            //parameters for slave configuration
+                &core_CTI_ExtBreakTrig=&CTI_TRIG_HALT_Q6CORE
+                &core_CTI_ExtResumeTrig=&CTI_TRIG_GO_Q6CORE
+                //ETM functionality            
+                //&core_EtmExtTrig_out=3
+                //&core_EtmEtbTrig_out=4
+                &core_CTI_nIRQOUT=3 //Interrupt
+            
+            //parameters for master configuration
+                &core_CTI_IntBreakTrig=&CTI_TRIG_HALT_Q6CORE
+                &core_CTI_IntResumeTrig=&CTI_TRIG_GO_Q6CORE
+                &core_CTI_IntBreakEvent=&CTI_TRIG_HALT_LEVEL_Q6CORE //this is the level trigger
+                //ETM functionality
+                //&core_EtmExtTrig_in=2
+
+                
+            GOSUB CONFIGURE_CTI_CORE &configuration &core_CTI_ExtBreakTrig &core_CTI_ExtResumeTrig &core_CTI_IntBreakTrig &core_CTI_IntResumeTrig &core_CTI_IntBreakEvent &core_CTI_nIRQOUT &extraoption
+            ENTRY %LINE &rvalue
+
+
+        )
+        else if (("&core"=="sensor")||("&core"=="sensors")||("&core"=="slpi")||("&core"=="ssc"))
+        (
+        
+            &corefamily="Q6"
+            &corename="SLPI"
+
+            //parameters for slave configuration
+                &core_CTI_ExtBreakTrig=&CTI_TRIG_HALT_Q6CORE
+                &core_CTI_ExtResumeTrig=&CTI_TRIG_GO_Q6CORE
+                //ETM functionality            
+                //&core_EtmExtTrig_out=3
+                //&core_EtmEtbTrig_out=4
+                &core_CTI_nIRQOUT=3 //Interrupt
+            
+            //parameters for master configuration
+                &core_CTI_IntBreakTrig=&CTI_TRIG_HALT_Q6CORE
+                &core_CTI_IntResumeTrig=&CTI_TRIG_GO_Q6CORE
+                &core_CTI_IntBreakEvent=&CTI_TRIG_HALT_LEVEL_Q6CORE //this is the level trigger
+                //ETM functionality
+                //&core_EtmExtTrig_in=2
+
+            GOSUB CONFIGURE_CTI_CORE &configuration &core_CTI_ExtBreakTrig &core_CTI_ExtResumeTrig &core_CTI_IntBreakTrig &core_CTI_IntResumeTrig &core_CTI_IntBreakEvent &core_CTI_nIRQOUT &extraoption
+            ENTRY %LINE &rvalue
+
+         
+
+        )        
+        
+        else if (("&core"=="sensor1")||("&core"=="slpi1")||("&core"=="ssc1")||("&core"=="island")||("&core"=="island_qdss"))
+        (
+        
+            &corefamily="Q6"
+            &corename="SLPI1"
+
+            //parameters for slave configuration
+                &core_CTI_ExtBreakTrig=&CTI_TRIG_HALT_Q6CORE
+                &core_CTI_ExtResumeTrig=&CTI_TRIG_GO_Q6CORE
+                //ETM functionality            
+                //&core_EtmExtTrig_out=3
+                //&core_EtmEtbTrig_out=4
+                &core_CTI_nIRQOUT=3 //Interrupt
+            
+            //parameters for master configuration
+                &core_CTI_IntBreakTrig=&CTI_TRIG_HALT_Q6CORE
+                &core_CTI_IntResumeTrig=&CTI_TRIG_GO_Q6CORE
+                &core_CTI_IntBreakEvent=&CTI_TRIG_HALT_LEVEL_Q6CORE //this is the level trigger
+                //ETM functionality
+                //&core_EtmExtTrig_in=2
+
+            GOSUB CONFIGURE_CTI_CORE &configuration &core_CTI_ExtBreakTrig &core_CTI_ExtResumeTrig &core_CTI_IntBreakTrig &core_CTI_IntResumeTrig &core_CTI_IntBreakEvent &core_CTI_nIRQOUT &extraoption
+            ENTRY %LINE &rvalue
+
+
+        )        
+        
+        
+        
+        else if (("&core"=="adsp")||("&core"=="lpass"))
+        (
+            &corefamily="Q6"
+            &corename="ADSP"
+        
+            //parameters for slave configuration
+                &core_CTI_ExtBreakTrig=&CTI_TRIG_HALT_Q6CORE
+                &core_CTI_ExtResumeTrig=&CTI_TRIG_GO_Q6CORE
+                //ETM functionality            
+                //&core_EtmExtTrig_out=3
+                //&core_EtmEtbTrig_out=4
+                &core_CTI_nIRQOUT=3 //Interrupt
+            
+            //parameters for master configuration
+                &core_CTI_IntBreakTrig=&CTI_TRIG_HALT_Q6CORE
+                &core_CTI_IntResumeTrig=&CTI_TRIG_GO_Q6CORE
+                &core_CTI_IntBreakEvent=&CTI_TRIG_HALT_LEVEL_Q6CORE //this is the level trigger
+                //ETM functionality
+                //&core_EtmExtTrig_in=2
+
+            GOSUB CONFIGURE_CTI_CORE &configuration &core_CTI_ExtBreakTrig &core_CTI_ExtResumeTrig &core_CTI_IntBreakTrig &core_CTI_IntResumeTrig &core_CTI_IntBreakEvent &core_CTI_nIRQOUT &extraoption
+            ENTRY %LINE &rvalue
+
+            
+
+        )        
+        else if (("&core"=="cdsp")||("&core"=="compute")||("&core"=="turing"))
+        (
+            &corefamily="Q6"
+            &corename="CDSP"
+        
+            //parameters for slave configuration
+                &core_CTI_ExtBreakTrig=&CTI_TRIG_HALT_Q6CORE
+                &core_CTI_ExtResumeTrig=&CTI_TRIG_GO_Q6CORE
+                //ETM functionality            
+                //&core_EtmExtTrig_out=3
+                //&core_EtmEtbTrig_out=4
+                &core_CTI_nIRQOUT=3 //Interrupt
+            
+            //parameters for master configuration
+                &core_CTI_IntBreakTrig=&CTI_TRIG_HALT_Q6CORE
+                &core_CTI_IntResumeTrig=&CTI_TRIG_GO_Q6CORE
+                &core_CTI_IntBreakEvent=&CTI_TRIG_HALT_LEVEL_Q6CORE //this is the level trigger
+                //ETM functionality
+                //&core_EtmExtTrig_in=2
+
+            GOSUB CONFIGURE_CTI_CORE &configuration &core_CTI_ExtBreakTrig &core_CTI_ExtResumeTrig &core_CTI_IntBreakTrig &core_CTI_IntResumeTrig &core_CTI_IntBreakEvent &core_CTI_nIRQOUT &extraoption
+            ENTRY %LINE &rvalue
+
+            
+
+        )        
+        else if (("&core"=="hwevent")||("&core"=="hwevents"))
+        (
+        
+            &corefamily="QDSS"
+            &corename="QDSS_CTI0"
+            
+            
+            //parameters for slave configuration
+                &core_CTI_ExtBreakTrig="NONE"
+                &core_CTI_ExtResumeTrig="NONE"
+                //ETM functionality            
+                //&core_EtmExtTrig_out="NONE"
+                //&core_EtmEtbTrig_out="NONE"
+                &core_CTI_nIRQOUT="NONE" //Interrupt
+            
+            //parameters for master configuration
+                &core_CTI_IntBreakTrig=&CTI_TRIG_HALT_HWEVENT_HETE
+                &core_CTI_IntResumeTrig="NONE"
+                &core_CTI_IntBreakEvent="NONE"
+                //ETM functionality
+                //&core_EtmExtTrig_in="NONE"
+                
+            IF ("&configuration"=="configure_as_master")
+            (
+                GOSUB CTI_Trigger_Broadcast &corename &core_CTI_IntBreakTrig &CTM_HALT_CHANNEL
+                ENTRY %LINE &rvalue
+                IF "&rvalue"!="SUCCESS"
+                (
+                    RETURN &rvalue    
+                )
+            )
+            ELSE IF ("&configuration"=="configure_as_slave")
+            (
+            )
+
+        )
+        else if ("&core"=="etbstop")
+        (
+        
+            &corefamily="QDSS"
+            &corename="QDSS_CTI0"
+            
+            
+            //parameters for slave configuration
+                &core_CTI_ExtBreakTrig=&CTI_ETB_Trigger_Insertion //0
+                &core_CTI_ExtResumeTrig="NONE"
+            
+            //parameters for master configuration
+                //&core_CTI_IntBreakTrig=&CTI_ETB_BufferFull //0x0
+                &core_CTI_IntBreakTrig=&CTI_ETB_AcqComplete //0x1
+                
+            IF ("&configuration"=="configure_as_master")
+            (
+                GOSUB CTI_Trigger_Broadcast &corename &core_CTI_IntBreakTrig &CTM_HALT_CHANNEL
+                ENTRY %LINE &rvalue
+                IF "&rvalue"!="SUCCESS"
+                (
+                    RETURN &rvalue    
+                )
+            )
+            ELSE IF ("&configuration"=="configure_as_slave")
+            (
+                GOSUB CTI_Trigger_Receive &corename &core_CTI_ExtBreakTrig &CTM_HALT_CHANNEL
+                ENTRY %LINE &rvalue
+                IF "&rvalue"!="SUCCESS"
+                (
+                    RETURN &rvalue    
+                )
+            )
+
+        )
+        else if (("&core"=="etb")||("&core"=="etbflush"))
+        (
+        
+            &corefamily="QDSS"
+            &corename="QDSS_CTI0"
+            
+            
+            //parameters for slave configuration
+                &core_CTI_ExtBreakTrig=&CTI_ETB_Flush_Trigger_Insertion //0
+                &core_CTI_ExtResumeTrig="NONE"
+            
+            //parameters for master configuration
+                //&core_CTI_IntBreakTrig=&CTI_ETB_BufferFull //0x0
+                &core_CTI_IntBreakTrig=&CTI_ETB_AcqComplete //0x1
+                
+                
+            IF ("&configuration"=="configure_as_master")
+            (
+            
+            )
+            ELSE IF ("&configuration"=="configure_as_slave")
+            (
+                GOSUB CTI_Trigger_Receive &corename &core_CTI_ExtBreakTrig &CTM_HALT_CHANNEL
+                ENTRY %LINE &rvalue
+                IF "&rvalue"!="SUCCESS"
+                (
+                    RETURN &rvalue    
+                )
+            )
+
+        )
+        else if (("&core"=="gpio")||("&core"=="cti6")||("&core"=="external"))
+        (
+        
+            &corefamily="QDSS"
+            LOCAL &CTI_TRIG_to_GPIO
+            do std_cti_&CHIPSET SETCTIGPIOS
+            entry &corename &CTI_TRIG_to_GPIO
+            //&corename and &CTI_TRIG_to_GPIO were set as globals earlier. 
+            //These may change depending on what std_cti_&CHIPSET gives us
+            
+            
+            //parameters for slave configuration
+                &core_CTI_ExtBreakTrig=&CTI_TRIG_to_GPIO 
+                &core_CTI_ExtResumeTrig="NONE"
+                //ETM functionality            
+                //&core_EtmExtTrig_out="NONE"
+                //&core_EtmEtbTrig_out="NONE"
+                &core_CTI_nIRQOUT="NONE" //Interrupt
+            
+            //parameters for master configuration
+                &core_CTI_IntBreakTrig=&CTI_TRIG_from_GPIO_Postive_Edge //2
+                &core_CTI_IntResumeTrig="NONE"
+                &core_CTI_IntBreakEvent=&CTI_TRIG_from_GPIO_Positive_Level //4
+                //ETM functionality
+                //&core_EtmExtTrig_in="NONE"
+                
+                
+            IF ("&configuration"=="configure_as_master")
+            (
+                IF (STRING.SCAN("&extraoption","use_level_trigger",0)!=-1)
+                (
+                    GOSUB CTI_Trigger_Broadcast &corename &core_CTI_IntBreakEvent &CTM_HALT_CHANNEL
+                    ENTRY %LINE &rvalue
+                    IF "&rvalue"!="SUCCESS"
+                    (
+                        RETURN &rvalue    
+                    )
+                )
+                ELSE
+                (
+                    GOSUB CTI_Trigger_Broadcast &corename &core_CTI_IntBreakTrig &CTM_HALT_CHANNEL
+                    ENTRY %LINE &rvalue
+                    IF "&rvalue"!="SUCCESS"
+                    (
+                        RETURN &rvalue    
+                    )
+                )   
+            )
+            ELSE IF ("&configuration"=="configure_as_slave")
+            (
+                GOSUB CTI_Trigger_Receive &corename &core_CTI_ExtBreakTrig &CTM_HALT_CHANNEL
+                ENTRY %LINE &rvalue
+                IF "&rvalue"!="SUCCESS"
+                (
+                    RETURN &rvalue    
+                )
+            )
+
+        )
+        else if (("&core"=="aotimer")||("&core"=="cti8"))
+        (
+        
+            &corefamily="QDSS"
+            &corename="QDSS_CTI8"
+            
+            
+            //parameters for slave configuration
+                &core_CTI_ExtBreakTrig=0 //TRIGOUT0 maps to AOtimer 
+                &core_CTI_ExtResumeTrig="NONE"
+                &core_CTI_nIRQOUT="NONE" //Interrupt
+            
+            //parameters for master configuration
+                &core_CTI_IntBreakTrig="NONE"
+                &core_CTI_IntResumeTrig="NONE"
+                &core_CTI_IntBreakEvent="NONE"
+                //ETM functionality
+                //&core_EtmExtTrig_in="NONE"
+                
+                
+            IF ("&configuration"=="configure_as_slave")
+            (
+                GOSUB CTI_Trigger_Receive &corename &core_CTI_ExtBreakTrig &CTM_HALT_CHANNEL
+                ENTRY %LINE &rvalue
+                IF "&rvalue"!="SUCCESS"
+                (
+                    RETURN &rvalue    
+                )
+            )
+
+        )
+        else 
+        (
+                if (("&core"!="")&&("&core"!="null")) //lowercase null due to str.lwr above
+                (
+                    Print "Didn't recognize corename &core"
+                )
+        )
+
+      RETURN SUCCESS
+      
+///////////////////////////////////////////
+//
+//  CONFIGURE_CTI_CORE
+//  Runs configurations specified by core defaults
+//
+///////////////////////////////////////////
+CONFIGURE_CTI_CORE:
+        LOCAL &configuration &core_CTI_ExtBreakTrig &core_CTI_ExtResumeTrig &core_CTI_IntBreakTrig &core_CTI_IntResumeTrig &core_CTI_IntBreakEvent &extraoption
+        ENTRY &configuration &core_CTI_ExtBreakTrig &core_CTI_ExtResumeTrig &core_CTI_IntBreakTrig &core_CTI_IntResumeTrig &core_CTI_IntBreakEvent %LINE &extraoption
+        
+        LOCAL &rvalue
+            IF ("&configuration"=="configure_as_master")
+            (
+               
+                GOSUB CTI_Trigger_Broadcast &corename &core_CTI_IntResumeTrig &CTM_GO_CHANNEL
+                ENTRY %LINE &rvalue
+                IF "&rvalue"!="SUCCESS"
+                (
+                    RETURN &rvalue    
+                )
+                
+                IF (STRING.SCAN("&extraoption","use_level_trigger",0)!=-1)
+                (
+                    GOSUB CTI_Trigger_Broadcast &corename &core_CTI_IntBreakEvent &CTM_HALT_CHANNEL
+                    ENTRY %LINE &rvalue
+                    IF "&rvalue"!="SUCCESS"
+                    (
+                        RETURN &rvalue    
+                    )
+                )
+                ELSE
+                (
+                    GOSUB CTI_Trigger_Broadcast &corename &core_CTI_IntBreakTrig &CTM_HALT_CHANNEL
+                    ENTRY %LINE &rvalue
+                    IF "&rvalue"!="SUCCESS"
+                    (
+                        RETURN &rvalue    
+                    )
+                )
+                
+            )
+            ELSE IF ("&configuration"=="configure_as_slave")
+            (
+                GOSUB CTI_Trigger_Receive &corename &core_CTI_ExtBreakTrig &CTM_HALT_CHANNEL
+                ENTRY %LINE &rvalue
+                IF "&rvalue"!="SUCCESS"
+                (
+                    RETURN &rvalue    
+                )
+                GOSUB CTI_Trigger_Receive &corename &core_CTI_ExtResumeTrig &CTM_GO_CHANNEL
+                ENTRY %LINE &rvalue
+                IF "&rvalue"!="SUCCESS"
+                (
+                    RETURN &rvalue    
+                )
+            )
+            
+            IF (STRING.SCAN("&extraoption","enable_interrupt",0)!=-1)
+            (
+                GOSUB CTI_Trigger_Receive &corename &core_CTI_nIRQOUT &CTM_INTERRUPT_CHANNEL
+                ENTRY %LINE &rvalue
+                IF "&rvalue"!="SUCCESS"
+                (
+                    RETURN &rvalue    
+                )
+            )
+        RETURN SUCCESS
+        
+        
+        
+        
+//#############################
+//      Function: EnableCTI
+//      Input param: <subsystem>
+//      Function: Enables the CTI Control bit so that CTI block is active
+//##########################################################
+ENABLECTI:
+EnableCTI:
+
+        LOCAL &subsystem &extra1 &extra2 &extra3 &extra4 &extra5
+        ENTRY &subsystem &extra1 &extra2 &extra3 &extra4 &extra5
+        LOCAL &ctireg 
+        
+        
+        
+        //check inputs
+        &subsystem=STR.UPR("&subsystem")
+        
+        do hwio
+        
+        do std_cti_&CHIPSET SETUPCLOCKS &subsystem        
+        ENTRY %LINE &rvalue
+        IF "&rvalue"!="SUCCESS"
+        (
+            RETURN &rvalue    
+        )
+        
+        GOSUB UnLockCTI &subsystem
+
+        &ctireg="&subsystem"+"_CTICONTROL"
+
+        do std_utils HWIO_OUT &ctireg 0x1 EDAP
+        ENTRY %LINE &rvalue
+        IF "&rvalue"!="SUCCESS"
+        (
+            RETURN &rvalue    
+        )
+        
+        
+        GOSUB LockCTI &subsystem
+
+RETURN SUCCESS
+
+//##########################################################
+//      Function: DisableCTI
+//      Input param: <subsystem>
+//      Function: Writes 0 to CTI Control bit to disable CTI block
+//##########################################################
+DISABLECTI:
+DisableCTI:
+
+        LOCAL &subsystem &extra1 &extra2 &extra3 &extra4 &extra5
+        ENTRY &subsystem &extra1 &extra2 &extra3 &extra4 &extra5
+        LOCAL &ctireg 
+
+        //check inputs
+        &subsystem=STR.UPR("&subsystem")
+        
+        do hwio
+
+        do std_cti_&CHIPSET SETUPCLOCKS &subsystem
+        ENTRY %LINE &rvalue
+        IF "&rvalue"!="SUCCESS"
+        (
+            RETURN &rvalue    
+        )
+        
+        
+        GOSUB UnLockCTI &subsystem
+        
+        &ctireg="&subsystem"+"_CTICONTROL"
+
+        do std_utils HWIO_OUT &ctireg 0x0 EDAP
+        ENTRY %LINE &rvalue
+        IF "&rvalue"!="SUCCESS"
+        (
+            RETURN &rvalue    
+        )
+        
+        GOSUB LockCTI &subsystem
+
+RETURN SUCCESS
+
+//##########################################################
+//      Subroutine: ClearCTITrig - clears all cti in and cti out registers
+//      Input param: <subsystem>
+//      Function: Clears CTI Block of all settings, locks and disables it.
+//##########################################################
+CLEARCTI:
+ClearCTITrig:
+
+        LOCAL &subsystem &extra1 &extra2 &extra3 &extra4 &extra5
+        ENTRY &subsystem &extra1 &extra2 &extra3 &extra4 &extra5
+        
+        
+        IF (STR.LWR("&subsystem")=="allcores")
+        (
+            LOCAL &corelist
+            do std_cti_&CHIPSET GETALLCORELIST
+                ENTRY &corelist
+                
+            do std_utils SANITIZEQUOTATIONS none &corelist
+                ENTRY &corelist
+            
+            LOCAL &count &maxcount &current_master &size_of_master &string_length &string_size &value_to_cut &current_slave &size_of_slave
+            //parse out corelist
+            &current_string="&corelist"
+            &count=0
+            &maxcount=10
+            while (&count<&maxcount)
+            (
+                &string_length=String.Length("&current_string")
+                &string_size=string.scan("&current_string",",",0)
+                
+                IF (&string_size!=-1)
+                (
+                    &value_to_cut=&string_size-&string_length    
+                    //separate the first master from the rest of the string
+                    &current_master=string.cut("&current_string",&value_to_cut)
+                    &size_of_master=STRING.LENGTH("&current_master")
+                    &current_string=STRING.CUT("&current_string",&size_of_master+1) //remove comma
+                )
+                ELSE //if no "," found
+                (
+                    &current_master="&current_string"
+                    &count=&maxcount
+                )
+                GOSUB CLEARCTI &current_master 
+                ENTRY %LINE &rvalue
+                //Fail silently
+                //IF "&rvalue"!="SUCCESS"
+                //(
+                //    RETURN &rvalue    
+                //)
+                
+                &count=&count+1
+            )
+            
+            RETURN SUCCESS
+            
+        )
+        ELSE IF (STR.LWR("&subsystem")=="allapps")
+        (
+            LOCAL &corelist
+            do std_cti_&CHIPSET GETAPPSCORELIST
+                ENTRY &corelist
+                
+            do std_utils SANITIZEQUOTATIONS none &corelist
+                ENTRY &corelist
+            
+            LOCAL &count &maxcount &current_master &size_of_master &string_length &string_size &value_to_cut &current_slave &size_of_slave
+            //parse out corelist
+            &current_string="&corelist"
+            &count=0
+            &maxcount=10
+            while (&count<&maxcount)
+            (
+                &string_length=String.Length("&current_string")
+                &string_size=string.scan("&current_string",",",0)
+                
+                IF (&string_size!=-1)
+                (
+                    &value_to_cut=&string_size-&string_length    
+                    //separate the first master from the rest of the string
+                    &current_master=string.cut("&current_string",&value_to_cut)
+                    &size_of_master=STRING.LENGTH("&current_master")
+                    &current_string=STRING.CUT("&current_string",&size_of_master+1) //remove comma
+                )
+                ELSE //if no "," found
+                (
+                    &current_master="&current_string"
+                    &count=&maxcount
+                )
+                GOSUB CLEARCTI &current_master
+                ENTRY %LINE &rvalue
+                //Fail silently
+                //IF "&rvalue"!="SUCCESS"
+                //(
+                //    RETURN &rvalue    
+                //)
+                &count=&count+1
+            )
+            
+            RETURN SUCCESS
+            
+        )
+        ELSE IF ((STR.LWR("&subsystem")=="etb")||(STR.LWR("&subsystem")=="etbstop")||(STR.LWR("&subsystem")=="etbflush"))
+        (
+            &subsystem="QDSS_CTI0"
+        )
+        
+        //check inputs
+        &subsystem=STR.UPR("&subsystem")
+        
+        do hwio
+        
+        do std_cti_&CHIPSET SETUPCLOCKS &subsystem
+        ENTRY %LINE &rvalue
+        //Fail silently
+        //IF "&rvalue"!="SUCCESS"
+        //(
+        //    RETURN &rvalue    
+        //)
+        
+        GOSUB UnLockCTI &subsystem
+
+        LOCAL &ctireg
+        ;-----clear all cti in triggers---------
+
+        
+        
+        //Fail silently, don't handle errors from HWIO_OUT
+        &ctireg="&subsystem"+"_CTIINEN0"
+        do std_utils HWIO_OUT &ctireg 0 EDAP
+        
+
+        &ctireg="&subsystem"+"_CTIINEN1"
+        do std_utils HWIO_OUT &ctireg 0 EDAP
+
+        &ctireg="&subsystem"+"_CTIINEN2"
+        do std_utils HWIO_OUT &ctireg 0 EDAP
+
+        &ctireg="&subsystem"+"_CTIINEN3"
+        do std_utils HWIO_OUT &ctireg 0 EDAP
+
+        &ctireg="&subsystem"+"_CTIINEN4"
+        do std_utils HWIO_OUT &ctireg 0 EDAP
+
+        &ctireg="&subsystem"+"_CTIINEN5"
+        do std_utils HWIO_OUT &ctireg 0 EDAP
+
+        &ctireg="&subsystem"+"_CTIINEN6"
+        do std_utils HWIO_OUT &ctireg 0 EDAP
+
+        &ctireg="&subsystem"+"_CTIINEN7"
+        do std_utils HWIO_OUT &ctireg 0 EDAP
+
+        ;---clear all cti out triggers----
+
+        &ctireg="&subsystem"+"_CTIOUTEN0"
+        do std_utils HWIO_OUT &ctireg 0 EDAP
+
+        &ctireg="&subsystem"+"_CTIOUTEN1"
+        do std_utils HWIO_OUT &ctireg 0 EDAP
+
+        &ctireg="&subsystem"+"_CTIOUTEN2"
+        do std_utils HWIO_OUT &ctireg 0 EDAP
+
+        &ctireg="&subsystem"+"_CTIOUTEN3"
+        do std_utils HWIO_OUT &ctireg 0 EDAP
+
+        &ctireg="&subsystem"+"_CTIOUTEN4"
+        do std_utils HWIO_OUT &ctireg 0 EDAP
+
+        &ctireg="&subsystem"+"_CTIOUTEN5"
+        do std_utils HWIO_OUT &ctireg 0 EDAP
+
+        &ctireg="&subsystem"+"_CTIOUTEN6"
+        do std_utils HWIO_OUT &ctireg 0 EDAP
+
+        &ctireg="&subsystem"+"_CTIOUTEN7"
+        do std_utils HWIO_OUT &ctireg 0 EDAP
+
+        ;acknowledge halt signals so that no processors look mysteriously hung
+        IF (("&subsystem"!="MPSS")||("&subsystem"!="ADSP"))
+        (
+          GOSUB ACKCTI &subsystem
+          
+        )
+
+        GOSUB DisableCTI &subsystem
+        GOSUB LockCTI &subsystem
+
+RETURN SUCCESS
+
+
+//##########################################################
+//      Function: UnLockCTI
+//      Input param: <physical address>
+//      Function: Writes access value to CTI so that CTI block is writeable and configurable
+//##########################################################
+UNLOCKCTI:
+UnLockCTI:
+    LOCAL &subsystem
+    ENTRY &subsystem
+    
+    //check inputs
+    &subsystem=STR.UPR("&subsystem")
+     
+    do hwio
+    
+    do std_cti_&CHIPSET SETUPCLOCKS &subsystem
+        ENTRY %LINE &rvalue
+        IF "&rvalue"!="SUCCESS"
+        (
+            RETURN &rvalue    
+        )
+    
+    LOCAL &ctireg
+    &ctireg="&subsystem"+"_LAR"
+    do std_utils HWIO_OUT &ctireg 0xC5ACCE55 EDAP
+        ENTRY %LINE &rvalue
+        IF "&rvalue"!="SUCCESS"
+        (
+            RETURN &rvalue    
+        )
+
+RETURN SUCCESS
+
+
+
+//##########################################################
+//      Function: LockCTI
+//      Input param: <physical address>
+//      Function: Writes 0 to access register so that CTI block is no longer writeable or configurable
+//##########################################################
+LOCKCTI:
+LockCTI:
+    LOCAL &subsystem
+    ENTRY &subsystem
+    
+    //check inputs
+    &subsystem=STR.UPR("&subsystem")
+
+    do hwio
+
+    do std_cti_&CHIPSET SETUPCLOCKS &subsystem
+        ENTRY %LINE &rvalue
+        IF "&rvalue"!="SUCCESS"
+        (
+            RETURN &rvalue    
+        )
+    
+    LOCAL &ctireg
+    &ctireg="&subsystem"+"_LAR"
+    do std_utils HWIO_OUT &ctireg 0x0 EDAP
+        ENTRY %LINE &rvalue
+        IF "&rvalue"!="SUCCESS"
+        (
+            RETURN &rvalue    
+        )
+
+RETURN SUCCESS
+
+
+//##########################################################
+//      Function: ACKCTI
+//      Input param: <physical address> <CTI channel number>
+//      Function: Writes to ACK bit of CTI block, so that a processor can
+//                  after being halted by CTI
+//##########################################################
+ACKCTI:
+    LOCAL &subsystem &trigoutnumber
+    ENTRY &subsystem &trigoutnumber
+    
+    IF (STR.LWR("&subsystem")=="allcores")
+        (
+            LOCAL &corelist
+            do std_cti_&CHIPSET GETALLCORELIST
+                ENTRY &corelist
+                
+            do std_utils SANITIZEQUOTATIONS none &corelist
+                ENTRY &corelist
+            
+            LOCAL &count &maxcount &current_master &size_of_master &string_length &string_size &value_to_cut &current_slave &size_of_slave
+            //parse out corelist
+            &current_string="&corelist"
+            &count=0
+            &maxcount=10
+            while (&count<&maxcount)
+            (
+                &string_length=String.Length("&current_string")
+                &string_size=string.scan("&current_string",",",0)
+                
+                IF (&string_size!=-1)
+                (
+                    &value_to_cut=&string_size-&string_length    
+                    //separate the first master from the rest of the string
+                    &current_master=string.cut("&current_string",&value_to_cut)
+                    &size_of_master=STRING.LENGTH("&current_master")
+                    &current_string=STRING.CUT("&current_string",&size_of_master+1) //remove comma
+                )
+                ELSE //if no "," found
+                (
+                    &current_master="&current_string"
+                    &count=&maxcount
+                )
+                GOSUB ACKCTI &current_master 
+                ENTRY %LINE &rvalue
+                //Fail silently
+                //IF "&rvalue"!="SUCCESS"
+                //(
+                //    RETURN &rvalue    
+                //)
+                &count=&count+1
+            )
+            
+            RETURN SUCCESS
+            
+        )
+    ELSE IF (STR.LWR("&subsystem")=="allapps")
+        (
+            LOCAL &corelist
+            do std_cti_&CHIPSET GETAPPSCORELIST
+                ENTRY &corelist
+                
+            do std_utils SANITIZEQUOTATIONS none &corelist
+                ENTRY &corelist
+            
+            LOCAL &count &maxcount &current_master &size_of_master &string_length &string_size &value_to_cut &current_slave &size_of_slave
+            //parse out corelist
+            &current_string="&corelist"
+            &count=0
+            &maxcount=10
+            while (&count<&maxcount)
+            (
+                &string_length=String.Length("&current_string")
+                &string_size=string.scan("&current_string",",",0)
+                
+                IF (&string_size!=-1)
+                (
+                    &value_to_cut=&string_size-&string_length    
+                    //separate the first master from the rest of the string
+                    &current_master=string.cut("&current_string",&value_to_cut)
+                    &size_of_master=STRING.LENGTH("&current_master")
+                    &current_string=STRING.CUT("&current_string",&size_of_master+1) //remove comma
+                )
+                ELSE //if no "," found
+                (
+                    &current_master="&current_string"
+                    &count=&maxcount
+                )
+                GOSUB ACKCTI &current_master 
+                ENTRY %LINE &rvalue
+                //Fail silently
+                //IF "&rvalue"!="SUCCESS"
+                //(
+                //    RETURN &rvalue    
+                //)
+                &count=&count+1
+            )
+            
+            RETURN SUCCESS
+            
+        )
+    ELSE IF ((STR.LWR("&subsystem")=="etb")||(STR.LWR("&subsystem")=="etbflush")||(STR.LWR("&subsystem")=="etbstop"))
+        (
+            &subsystem="QDSS_CTI0"
+        )
+        
+    //check inputs
+    &subsystem=STR.UPR("&subsystem")
+    
+    do hwio
+    
+    do std_cti_&CHIPSET SETUPCLOCKS &subsystem
+        ENTRY %LINE &rvalue
+        //Fail silently
+        //IF "&rvalue"!="SUCCESS"
+        //(
+        //    RETURN &rvalue    
+        //)
+    
+    IF ("&trigoutnumber"=="")
+    (
+        //defaulting to ack all trigouts
+        &trigoutnumber=0xF
+    )
+    ELSE IF ((&trigoutnumber<0)||(&trigoutnumber>7))
+    (
+        //unknown trigout number. defaulting to ack all trigouts
+        &trigoutnumber=0xF
+    )
+    
+    
+    
+    GOSUB ENABLECTI &subsystem
+    GOSUB UNLOCKCTI &subsystem
+    
+    &ctireg="&subsystem"+"_CTIINTACK"
+    
+    do std_utils HWIO_OUT &ctireg &trigoutnumber EDAP
+        ENTRY %LINE &rvalue
+        //Fail silently
+        //IF "&rvalue"!="SUCCESS"
+        //(
+        //    RETURN &rvalue    
+        //)
+    
+    GOSUB LOCKCTI &subsystem
+
+RETURN SUCCESS
+
+//##########################################################
+//     Function: CTI_Trigger_Broadcast:
+//     Input param: <Name of Subsystem> <CTI Action to set> <CTM Channel to connect action to>
+//      Function: Writes to CTI TRIGIN, so so that core can send signals to desired CTM
+//##########################################################
+CTI_TRIGGER_BROADCAST:
+CTI_Trigger_Broadcast:
+
+        LOCAL &subsystem &connects_cti_IN_action &to_ctm_rail
+        ENTRY &subsystem &connects_cti_IN_action &to_ctm_rail
+        LOCAL &rvalue
+        &subsystem=STR.UPR("&subsystem")
+        
+        if "&connects_cti_IN_action"=="NONE"
+        (
+            RETURN SUCCESS
+        )
+        
+        do hwio
+        
+        do std_cti_&CHIPSET SETUPCLOCKS &subsystem
+            ENTRY %LINE &rvalue
+            IF "&rvalue"!="SUCCESS"
+            (
+                RETURN &rvalue    
+            )
+        
+        GOSUB EnableCTI &subsystem
+            ENTRY %LINE &rvalue
+            IF "&rvalue"!="SUCCESS"
+            (
+                &rvalue="std_cti TRIG_BROADCAST EnableCTI fail &subsystem, "+&rvalue
+                RETURN &rvalue
+            )
+        GOSUB UnLockCTI &subsystem
+            ENTRY %LINE &rvalue
+            IF "&rvalue"!="SUCCESS"
+            (
+                &rvalue="std_cti TRIG_BROADCAST UnLockCTI fail &subsystem, "+&rvalue
+                RETURN &rvalue
+            )
+
+        //assign CTIIN number
+        LOCAL &cti_in_number
+
+        if &connects_cti_IN_action==0x0
+        (
+            &cti_in_number="CTIINEN0"
+        )
+        else if &connects_cti_IN_action==0x1
+        (
+            &cti_in_number="CTIINEN1"
+        )
+        else if &connects_cti_IN_action==0x2
+        (
+            &cti_in_number="CTIINEN2"
+        )
+        else if &connects_cti_IN_action==0x3
+        (
+            &cti_in_number="CTIINEN3"
+        )
+        else if &connects_cti_IN_action==0x4
+        (
+            &cti_in_number="CTIINEN4"
+        )
+        else if &connects_cti_IN_action==0x5
+        (
+            &cti_in_number="CTIINEN5"
+        )
+        else if &connects_cti_IN_action==0x6
+        (
+            &cti_in_number="CTIINEN6"
+        )
+        else if &connects_cti_IN_action==0x7
+        (
+            &cti_in_number="CTIINEN7"
+        )
+        else
+        (
+            print %error "Unknown value for trigout channel number(expected:0 to 7)"
+            do std_fatalexit USER "std_cti TRIG_BROADCAST - Unknown value for trigout channel number(expected:0 to 7)"
+        )
+
+        if ((&to_ctm_rail<0)&&(&to_ctm_rail>3))
+        (
+            print %error "CTM channel out of range(expected: 0 to 3)"
+            do std_fatalexit USER "std_cti TRIG_BROADCAST - Unknown value for trigout channel number(expected:0 to 7)"
+        )
+
+
+
+        &ctireg="&subsystem"+"_"+"&cti_in_number"
+        do std_utils HWIO_OUT &ctireg (1<<&to_ctm_rail) EDAP
+            ENTRY %LINE &rvalue
+            IF "&rvalue"!="SUCCESS"
+            (
+                &rvalue="std_cti TRIG_BROADCAST HWIO_OUT fail &ctireg, "+&rvalue
+                RETURN &rvalue
+            )
+
+        GOSUB LockCTI &subsystem
+            ENTRY %LINE &rvalue
+            IF "&rvalue"!="SUCCESS"
+            (
+                &rvalue="std_cti TRIG_BROADCAST LockCTI fail &subsystem, "+&rvalue
+                RETURN &rvalue
+            )
+
+RETURN SUCCESS
+
+//##########################################################
+//     Function: CTI_Trigger_Receive:
+//     Input param: <physical address> <CTM channel num> <CTI TRIGOUT channel>
+//      Function: Writes to CTI TRIGOUT so that specified core can 
+//              receive signals from specified CTM rail
+//##########################################################
+CTI_TRIGGER_RECEIVE:
+CTI_Trigger_Receive:
+        LOCAL &subsystem &connects_cti_OUT_action &to_ctm_rail
+        ENTRY &subsystem &connects_cti_OUT_action &to_ctm_rail
+        LOCAL &rvalue
+        &subsystem=STR.UPR("&subsystem")
+
+        if "&connects_cti_OUT_action"=="NONE"
+        (
+            RETURN
+        )
+
+        do hwio
+        
+        do std_cti_&CHIPSET SETUPCLOCKS &subsystem
+            ENTRY %LINE &rvalue
+            IF "&rvalue"!="SUCCESS"
+            (
+                RETURN &rvalue    
+            )
+        
+        GOSUB EnableCTI &subsystem
+            ENTRY %LINE &rvalue
+            IF "&rvalue"!="SUCCESS"
+            (
+                &rvalue="std_cti TRIG_RECEIVE EnableCTI fail &subsystem, "+&rvalue
+                RETURN &rvalue
+            )
+        GOSUB UnLockCTI &subsystem
+            ENTRY %LINE &rvalue
+            IF "&rvalue"!="SUCCESS"
+            (
+                &rvalue="std_cti TRIG_RECEIVE UnLockCTI fail &subsystem, "+&rvalue
+                RETURN &rvalue
+            )
+
+        
+        //assign CTIOUT number
+        LOCAL &cti_out_number
+        
+        if &connects_cti_OUT_action==0x0
+        (
+            &cti_out_number="CTIOUTEN0"
+        )
+        else if &connects_cti_OUT_action==0x1
+        (
+            &cti_out_number="CTIOUTEN1"
+        )
+        else if &connects_cti_OUT_action==0x2
+        (
+            &cti_out_number="CTIOUTEN2"
+        )
+        else if &connects_cti_OUT_action==0x3
+        (
+            &cti_out_number="CTIOUTEN3"
+        )
+        else if &connects_cti_OUT_action==0x4
+        (
+            &cti_out_number="CTIOUTEN4"
+        )
+        else if &connects_cti_OUT_action==0x5
+        (
+            &cti_out_number="CTIOUTEN5"
+        )
+        else if &connects_cti_OUT_action==0x6
+        (
+            &cti_out_number="CTIOUTEN6"
+        )
+        else if &connects_cti_OUT_action==0x7
+        (
+            &cti_out_number="CTIOUTEN7"
+        )
+        else
+        (
+            print %error "Unknown value for trigout channel number(expected:0 to 7)"
+            do std_fatalexit USER "std_cti TRIG_RECEIVE - Unknown value for trigout channel number(expected:0 to 7)"
+        )
+
+        if ((&to_ctm_rail<0)&&(&to_ctm_rail>3))
+        (
+            print %error "CTM channel out of range(expected: 0 to 3)"
+            do std_fatalexit USER "std_cti TRIG_RECEIVE - Unknown value for trigout channel number(expected:0 to 7)"
+        )
+        
+        &ctireg="&subsystem"+"_"+"&cti_out_number"
+        do std_utils HWIO_OUT &ctireg (0x1<<&to_ctm_rail) EDAP
+            ENTRY %LINE &rvalue
+            IF "&rvalue"!="SUCCESS"
+            (
+                &rvalue="std_cti TRIG_RECEIVE HWIO_OUT fail &ctireg, "+&rvalue
+                RETURN &rvalue
+            )
+
+
+        if (("&subsystem"!="MPSS")||("&subsystem"!="ADSP"))
+        (
+          GOSUB ACKCTI &subsystem          
+        )
+
+        GOSUB LockCTI &subsystem
+            ENTRY %LINE &rvalue
+            IF "&rvalue"!="SUCCESS"
+            (
+                &rvalue="std_cti TRIG_RECEIVE UnLockCTI fail &subsystem, "+&rvalue
+                RETURN &rvalue
+            )
+
+RETURN SUCCESS
+
+//##########################################################
+//      Function: InsertTrigPulseOnChannel
+//      Input param: <subsystem> <CTM channel number>
+//      Function: This will insert a pulse from the 
+//                  subsystem of choice onto the CTM rail of choice
+//##########################################################
+INSERTAPPULSE:
+INSERTCTITRIGGER:
+InsertTrigPulseOnChannel:
+        LOCAL &subsystem &ctm_channel
+        ENTRY &subsystem &ctm_channel
+
+        IF ((STR.LWR("&subsystem")=="etb")||(STR.LWR("&subsystem")=="etbflush")||(STR.LWR("&subsystem")=="etbstop"))
+        (
+            &subsystem="QDSS_CTI0"
+        )
+
+        //sanitize inputs, check for HWIO
+        &subsystem=STR.UPR("&subsystem")
+        
+        do hwio
+        
+        do std_cti_&CHIPSET SETUPCLOCKS &subsystem
+            ENTRY %LINE &rvalue
+            IF "&rvalue"!="SUCCESS"
+            (
+                RETURN &rvalue    
+            )
+            
+        IF "&ctm_channel"==""
+        (
+            &ctm_channel=0x0
+        )
+        
+        IF ((&ctm_channel<0)&&(&ctm_channel>3))
+        (
+            PRINT %ERROR "std_cti INSERTAPPULSE - CTM channel out of range(expected: 0 to 3)"
+            do std_fatalexit USER "std_cti INSERTAPPULSE - CTM channel out of range(expected: 0 to 3)"
+        )
+        
+        GOSUB EnableCTI &subsystem
+            ENTRY %LINE &rvalue
+            IF "&rvalue"!="SUCCESS"
+            (
+                &rvalue="std_cti INSERTAPPULSE EnableCTI fail &subsystem, "+&rvalue
+                RETURN &rvalue
+            )
+        GOSUB UnLockCTI &subsystem
+            ENTRY %LINE &rvalue
+            IF "&rvalue"!="SUCCESS"
+            (
+                &rvalue="std_cti INSERTAPPULSE UnLockCTI fail &subsystem, "+&rvalue
+                RETURN &rvalue
+            )
+
+
+        /////////////////Set the register/////////////////////
+        &ctireg="&subsystem"+"_CTIAPPPULSE"
+        LOCAL &full_ctireg
+        &full_ctireg="HWIO_"+"&ctireg"+"_ADDR"
+        IF !Y.EXIST("&full_ctireg")
+        (
+            &ctireg="&subsystem"+"_CTIAPPULSE"
+        )
+        &full_ctireg="HWIO_"+"&ctireg"+"_ADDR"
+        IF !Y.EXIST("&full_ctireg")
+        (
+            &rvalue="std_cti INSERTAPPULSE Failure - register symbol not found: &full_ctireg"
+            RETURN &rvalue
+        )
+        
+        do std_utils HWIO_OUT &ctireg (1<<&ctm_channel) EDAP
+            ENTRY %LINE &rvalue
+            IF "&rvalue"!="SUCCESS"
+            (
+                &rvalue="std_cti INSERTAPPULSE HWIO_OUT fail &ctireg, "+&rvalue
+                RETURN &rvalue
+            )
+            
+        GOSUB LockCTI &subsystem
+            ENTRY %LINE &rvalue
+            IF "&rvalue"!="SUCCESS"
+            (
+                &rvalue="std_cti INSERTAPPULSE LockCTI fail &subsystem, "+&rvalue
+                RETURN &rvalue
+            )
+
+
+RETURN SUCCESS
+                
+//##########################################################
+//      Function: TrigSetChannel
+//      Input param: <subsystem> <CTM channel number>
+//      not yet verified
+//      Function: 
+//##########################################################
+TRIGSETCHANNEL:
+TrigSetChannel:
+        LOCAL &subsystem &ctm_channel
+        ENTRY &subsystem &ctm_channel
+        
+        
+        LOCAL &ctm_channellocal
+        &ctm_channellocal=&ctm_channel
+
+        IF ((STR.LWR("&subsystem")=="etb")||(STR.LWR("&subsystem")=="etbflush")||(STR.LWR("&subsystem")=="etbstop"))
+        (
+            &subsystem="QDSS_CTI0"
+        )
+
+        //sanitize inputs, check for HWIO
+        &subsystem=STR.UPR("&subsystem")
+        
+        do hwio
+
+        do std_cti_&CHIPSET SETUPCLOCKS &subsystem
+            ENTRY %LINE &rvalue
+            IF "&rvalue"!="SUCCESS"
+            (
+                RETURN &rvalue
+            )
+            
+        IF "&ctm_channel"!=""
+        (
+            IF ((&ctm_channellocal<0)&&(&ctm_channellocal>3))
+            (
+                 print %error "CTM channel out of range(expected: 0 to 3)"
+                 end
+            )
+        
+        )
+        ELSE
+        (
+            &ctm_channel=0x0
+        )
+        
+        GOSUB EnableCTI &subsystem
+            ENTRY %LINE &rvalue
+            IF "&rvalue"!="SUCCESS"
+            (
+                &rvalue="std_cti TRIGSETCHANNEL EnableCTI fail &subsystem, "+&rvalue
+                RETURN &rvalue
+            )
+        GOSUB UnLockCTI &subsystem
+            ENTRY %LINE &rvalue
+            IF "&rvalue"!="SUCCESS"
+            (
+                &rvalue="std_cti TRIGSETCHANNEL UnLockCTI fail &subsystem, "+&rvalue
+                RETURN &rvalue
+            )
+        
+        ////////////////////Set the register//////////////////////
+        &ctireg="&subsystem"+"_CTIAPPSET"
+        do std_utils HWIO_OUT &ctireg (1<<&ctm_channel) EDAP
+            ENTRY %LINE &rvalue
+            IF "&rvalue"!="SUCCESS"
+            (
+                &rvalue="std_cti TRIGSETCHANNEL HWIO_OUT fail &ctireg, "+&rvalue
+                RETURN &rvalue
+            )
+            
+            
+        GOSUB LockCTI &subsystem
+            ENTRY %LINE &rvalue
+            IF "&rvalue"!="SUCCESS"
+            (
+                &rvalue="std_cti TRIGSETCHANNEL LockCTI fail &subsystem, "+&rvalue
+                RETURN &rvalue
+            )
+RETURN SUCCESS
+
+//##########################################################
+//     Function: TrigClearChannel
+//     Input param: <subsystem> <CTM channel number>
+//     not yet verified
+//      Function: 
+//##########################################################
+TRIGCLEARCHANNEL:
+TrigClearChannel:
+        LOCAL &subsystem &ctm_channel
+        ENTRY &subsystem &ctm_channel
+        
+        
+        IF (STR.LWR("&subsystem")=="allcores")
+        (
+            LOCAL &corelist
+            do std_cti_&CHIPSET GETALLCORELIST
+                ENTRY &corelist
+                
+            do std_utils SANITIZEQUOTATIONS none &corelist
+                ENTRY &corelist
+            
+            LOCAL &count &maxcount &current_master &size_of_master &string_length &string_size &value_to_cut &current_slave &size_of_slave
+            //parse out corelist
+            &current_string="&corelist"
+            &count=0
+            &maxcount=10
+            while (&count<&maxcount)
+            (
+                &string_length=String.Length("&current_string")
+                &string_size=string.scan("&current_string",",",0)
+                
+                IF (&string_size!=-1)
+                (
+                    &value_to_cut=&string_size-&string_length    
+                    //separate the first master from the rest of the string
+                    &current_master=string.cut("&current_string",&value_to_cut)
+                    &size_of_master=STRING.LENGTH("&current_master")
+                    &current_string=STRING.CUT("&current_string",&size_of_master+1) //remove comma
+                )
+                ELSE //if no "," found
+                (
+                    &current_master="&current_string"
+                    &count=&maxcount
+                )
+                GOSUB TRIGCLEARCHANNEL &current_master 0
+                GOSUB TRIGCLEARCHANNEL &current_master 1
+                GOSUB TRIGCLEARCHANNEL &current_master 2
+                GOSUB TRIGCLEARCHANNEL &current_master 3
+                &count=&count+1
+            )
+            
+            RETURN
+            
+        ) 
+        ELSE IF ((STR.LWR("&subsystem")=="etb")||(STR.LWR("&subsystem")=="etbflush")||(STR.LWR("&subsystem")=="etbstop"))
+        (
+            &subsystem="QDSS_CTI0"
+        )
+        
+        LOCAL &ctm_channellocal
+        &ctm_channellocal=&ctm_channel
+
+        //sanitize inputs, check for HWIO
+        &subsystem=STR.UPR("&subsystem")
+        
+        do hwio
+        
+        do std_cti_&CHIPSET SETUPCLOCKS &subsystem
+            ENTRY %LINE &rvalue
+            IF "&rvalue"!="SUCCESS"
+            (
+                RETURN &rvalue
+            )
+            
+            
+        IF "&ctm_channel"!=""
+        (
+            IF ((&ctm_channellocal<0)&&(&ctm_channellocal>3))
+            (
+                 print %error "CTM channel out of range(expected: 0 to 3)"
+                 end
+            )
+        
+        )
+        ELSE
+        (
+            &ctm_channel=0x0
+        )
+
+
+
+        
+        GOSUB EnableCTI &subsystem
+            ENTRY %LINE &rvalue
+            IF "&rvalue"!="SUCCESS"
+            (
+                &rvalue="std_cti TRIGCLEARCHANNEL EnableCTI fail &subsystem, "+&rvalue
+                RETURN &rvalue
+            )
+        GOSUB UnLockCTI &subsystem
+            ENTRY %LINE &rvalue
+            IF "&rvalue"!="SUCCESS"
+            (
+                &rvalue="std_cti TRIGCLEARCHANNEL UnLockCTI fail &subsystem, "+&rvalue
+                RETURN &rvalue
+            )
+        
+        ///////////////////Set the register///////////////
+        &ctireg="&subsystem"+"_CTIAPPCLEAR"
+        do std_utils HWIO_OUT &ctireg (1<<&ctm_channel) EDAP
+            ENTRY %LINE &rvalue
+            IF "&rvalue"!="SUCCESS"
+            (
+                &rvalue="std_cti TRIGCLEARCHANNEL HWIO_OUT fail &ctireg, "+&rvalue
+                RETURN &rvalue
+            )
+        
+        GOSUB LockCTI &subsystem
+            ENTRY %LINE &rvalue
+            IF "&rvalue"!="SUCCESS"
+            (
+                &rvalue="std_cti TRIGCLEARCHANNEL LockCTI fail &subsystem, "+&rvalue
+                RETURN &rvalue
+            )
+
+
+RETURN SUCCESS
+
+//##########################################################
+//     Function:DisableCTIChannelGate
+//     Input: <phys addr> <channel to disable>
+//      Function: 
+//##########################################################
+DISABLECTICHANNELGATE:
+DisableCTIChannelGate:
+
+        entry &subsystem &ctm_channel
+        LOCAL &ctm_channellocal
+        &ctm_channellocal=&ctm_channel
+
+        
+        do hwio
+        
+        do std_cti_&CHIPSET SETUPCLOCKS &subsystem
+        
+        IF ((STR.LWR("&subsystem")=="etb")||(STR.LWR("&subsystem")=="etbflush")||(STR.LWR("&subsystem")=="etbstop"))
+        (
+            &subsystem="QDSS_CTI0"
+        )
+
+
+        IF "&ctm_channel"!=""
+        (
+            IF ((&ctm_channellocal<0)&&(&ctm_channellocal>3))
+            (
+                 print %error "CTM channel out of range(expected: 0 to 3)"
+                 end
+            )
+        
+        )
+        ELSE
+        (
+            &ctm_channel=0x0
+        )
+
+        GOSUB EnableCTI &subsystem
+        GOSUB UnLockCTI &subsystem
+        &ctireg="&subsystem"+"_CTIGATE"
+
+        do std_utils HWIO_IN &ctireg EDAP
+        entry &currentregvalue
+        
+        IF ("&currentregvalue"=="NULL")
+        (
+            PRINT "Warning: Could not Disable CTI Gate on &subsystem"
+        )
+        ELSE
+        (
+            &valuetowrite=&currentregvalue&(~(1<<&ctm_channel))
+            &valuetowrite=0x0
+            do std_utils HWIO_OUT &ctireg &valuetowrite EDAP
+        )
+        
+        GOSUB LockCTI &subsystem
+        
+RETURN SUCCESS
+
+
+
+//##########################################################
+//     Function:EnableCTIChannelGate  - All channel gates enabled on RESET
+//     Input: <subsystem> <channel to disable>
+//     not yet verified
+//      Function: 
+//##########################################################
+ENABLECTICHANNELGATE:
+EnableCTIChannelGate:
+
+        entry &subsystem &ctm_channel
+        LOCAL &ctm_channellocal
+        &ctm_channellocal=&ctm_channel
+
+        
+        IF (STR.LWR("&subsystem")=="allcores")
+        (
+            LOCAL &corelist
+            do std_cti_&CHIPSET GETALLCORELIST
+                ENTRY &corelist
+                
+            do std_utils SANITIZEQUOTATIONS none &corelist
+                ENTRY &corelist
+            
+            LOCAL &count &maxcount &current_master &size_of_master &string_length &string_size &value_to_cut &current_slave &size_of_slave
+            //parse out corelist
+            &current_string="&corelist"
+            &count=0
+            &maxcount=10
+            while (&count<&maxcount)
+            (
+                &string_length=String.Length("&current_string")
+                &string_size=string.scan("&current_string",",",0)
+                
+                IF (&string_size!=-1)
+                (
+                    &value_to_cut=&string_size-&string_length    
+                    //separate the first master from the rest of the string
+                    &current_master=string.cut("&current_string",&value_to_cut)
+                    &size_of_master=STRING.LENGTH("&current_master")
+                    &current_string=STRING.CUT("&current_string",&size_of_master+1) //remove comma
+                )
+                ELSE //if no "," found
+                (
+                    &current_master="&current_string"
+                    &count=&maxcount
+                )
+                GOSUB ENABLECTICHANNELGATE &current_master 0
+
+                &count=&count+1
+            )
+            
+            RETURN SUCCESS
+            
+        )
+        IF (STR.LWR("&subsystem")=="allapps")
+        (
+            LOCAL &corelist
+            do std_cti_&CHIPSET GETAPPSCORELIST
+                ENTRY &corelist
+                
+            do std_utils SANITIZEQUOTATIONS none &corelist
+                ENTRY &corelist
+            
+            LOCAL &count &maxcount &current_master &size_of_master &string_length &string_size &value_to_cut &current_slave &size_of_slave
+            //parse out corelist
+            &current_string="&corelist"
+            &count=0
+            &maxcount=10
+            while (&count<&maxcount)
+            (
+                &string_length=String.Length("&current_string")
+                &string_size=string.scan("&current_string",",",0)
+                
+                IF (&string_size!=-1)
+                (
+                    &value_to_cut=&string_size-&string_length    
+                    //separate the first master from the rest of the string
+                    &current_master=string.cut("&current_string",&value_to_cut)
+                    &size_of_master=STRING.LENGTH("&current_master")
+                    &current_string=STRING.CUT("&current_string",&size_of_master+1) //remove comma
+                )
+                ELSE //if no "," found
+                (
+                    &current_master="&current_string"
+                    &count=&maxcount
+                )
+                GOSUB ENABLECTICHANNELGATE &current_master 0
+
+                &count=&count+1
+            )
+            
+            RETURN SUCCESS
+            
+        )
+        
+        &subsystem=STR.UPR("&subsystem")
+        
+        do hwio
+        
+        do std_cti_&CHIPSET SETUPCLOCKS &subsystem
+                
+        IF "&ctm_channel"!=""
+        (
+            IF ((&ctm_channellocal<0)&&(&ctm_channellocal>3))
+            (
+                 print %error "CTM channel out of range(expected: 0 to 3)"
+                 end
+            )
+        
+        )
+        ELSE
+        (
+            &ctm_channel=0x0
+        )
+        IF ((STR.LWR("&subsystem")=="etb")||(STR.LWR("&subsystem")=="etbflush")||(STR.LWR("&subsystem")=="etbstop"))
+        (
+            &subsystem="QDSS_CTI0"
+        )
+
+        
+        GOSUB EnableCTI &subsystem
+        GOSUB UnLockCTI &subsystem
+        
+        
+        &ctireg="&subsystem"+"_CTIGATE"
+        
+        do std_utils HWIO_IN &ctireg EDAP
+        entry &currentregvalue
+        
+        IF ("&currentregvalue"=="NULL")
+        (
+            PRINT "Warning: Could not Enable CTI Gate on &subsystem"
+        )
+        ELSE
+        (
+            &valuetowrite=&currentregvalue|(1<<&ctm_channel)
+            &valuetowrite=0xF
+            do std_utils HWIO_OUT &ctireg &valuetowrite EDAP
+        )
+        
+        GOSUB LockCTI &subsystem
+
+RETURN SUCCESS
+    
+    
+    
+    
+    
+help:
+HELP:
+    AREA.RESET
+    AREA.CREATE std_cti_help 125. 49.
+    AREA.SELECT std_cti_help
+    WINPOS 0. 29. 125. 49.
+    AREA.VIEW std_cti_help
+
+    //HEADER "std_cti help window"
+    
+    
+    PRINT " ////////////////////////////////////////////////////////////////////"
+    PRINT " /////////////////////////// std_cti Help ///////////////////////////"
+    PRINT " ////////////////////////////////////////////////////////////////////"
+    PRINT " Usage: "
+        
+    PRINT "   do std_cti masters=<master1>,<master2>,<master3>,... slaves=<slave1>,<slave2>,<slave3>,... <extraoption='extra option'>"
+    PRINT " "
+    PRINT " Where:"
+    PRINT "   masters or slaves is one of the following CTI subsystems:"
+    PRINT "       apps0, apps1, apps2 apps3 apps4, apps5, apps6, apps7, rpm, pronto/wcnss,"
+    PRINT "       venus/video, vpu/maple, mpss/modem, adsp/lpass, sensor/sensors"
+    PRINT "       hwevent/hwevents, etb, gpio/cti6/external, aotimer/cti8"
+    PRINT " "
+    PRINT "   'extra option' = use_level_trigger,enable_interrupt"
+    PRINT " "
+    PRINT "  e.g. do std_cti masters=modem,rpm slaves=apps0,apps1,apps2,apps3,rpm extraoption=use_level_trigger"
+    PRINT " "
+    PRINT " This will cause modem and RPM to broadcast halt and go signals to the "
+    PRINT " 4 apps cores. RPM will also halt when modem halts. The Option "
+    PRINT " 'use_level_trigger' will configure them to send the event trigger, "
+    PRINT " which holds the line high as long as the core is halted"
+    PRINT " "
+    PRINT "   Thus, whenever MPSS or RPM stops, Kraits and RPM will stop. Whenever MPSS goes,"
+    PRINT "   Kraits and RPM will go. (note that you'll need to Ack the cores for the RPM or"
+    PRINT "   Kraits to go again. This can be done simply by running the same script again."
+    PRINT " "
+    
+    PRINT " Additionally, you may call one of the following available API's"
+    PRINT "   do std_cti ENABLECTI <subsystem>"
+    PRINT "   do std_cti DISABLECTI <subsystem>"
+    PRINT "   do std_cti CLEARCTI <subsystem>"
+    PRINT "   do std_cti UNLOCKCTI <subsystem>"
+    PRINT "   do std_cti LOCKCTI <subsystem>"
+    PRINT "   do std_cti ACKCTI <subsystem>"
+    PRINT "   do std_cti CTI_TRIGGER_BROADCAST <subsystem> <CTI Trigger> <CTM Channel>"
+    PRINT "   do std_cti CTI_TRIGGER_RECEIVE  <subsystem> <CTI Trigger> <CTM Channel>"
+    PRINT "   do std_cti INSERTAPPULSE <subsystem> <CTM Channel>"
+    PRINT "   do std_cti TRIGSETCHANNEL <subsystem> <CTM Channel>"
+    PRINT "   do std_cti TRIGCLEARCHANNEL <subsystem> <CTM Channel>"
+    PRINT "   do std_cti ENABLECTICHANNELGATE <subsystem> "
+    PRINT "   do std_cti DISABLECTICHANNELGATE <subsystem> "
+    PRINT "   do std_cti HELP,help - displays help menu"
+    PRINT " "
+
+
+    RETURN
+  
+
+  
+EXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    
+    //Clear any persistent variables needed
+    do std_cti_&CHIPSET CLEARSENTINELS
+    
+    ENDDO &rvalue
+    
+
+//Should never get here. 
+FATALEXIT:
+    LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    IF STRING.SCAN("&FAILUREKEYWORD","FAILUREKEYWORD",0)==-1
+    (
+        GOSUB EXIT &FAILUREKEYWORD - &rvalue
+    )
+    ELSE
+    (
+        GOSUB EXIT &rvalue
+    )
+    
+//Should never get here
+    END
+
+
+    
+    
+
+        
+        
+        
+       

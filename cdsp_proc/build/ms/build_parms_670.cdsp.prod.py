@@ -1,0 +1,3 @@
+BUILD_ID = '670.cdsp.prodQ'
+BUILD_VER = '00249'
+BUILD_ASIC = '670'

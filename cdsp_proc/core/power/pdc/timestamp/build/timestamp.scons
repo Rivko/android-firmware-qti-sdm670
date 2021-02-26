@@ -1,0 +1,205 @@
+#===============================================================================
+#
+# PDC Timestamp system
+#
+# GENERAL DESCRIPTION
+#    Builds the PDC timestamp libraries for all target.
+#
+#    Copyright (c) 2016-2017 Qualcomm Technologies, Inc. (QTI).
+#    All Rights Reserved.
+#    Qualcomm Confidential and Proprietary.
+#    Export of this technology or software is regulated by the U.S. Government.
+#    Diversion contrary to U.S. law prohibited.
+#-------------------------------------------------------------------------------
+#  $Header: //components/rel/core.qdsp6/2.1.c4/power/pdc/timestamp/build/timestamp.scons#1 $
+#  $DateTime: 2018/07/30 01:21:36 $
+#===============================================================================
+import os
+import stat
+import fnmatch
+import itertools
+import subprocess
+
+from os.path import join, basename, exists
+
+Import('env')
+env = env.Clone()
+
+if env['POWER_SUBSYSTEM'].lower() != 'adsp':
+  env.PrintWarning('PDC timestamps are not supported')
+  Return()
+
+#-------------------------------------------------------------------------------
+# Build options
+#-------------------------------------------------------------------------------
+#Turn off optimizations for easier debug
+#env.Append(CCFLAGS = ' -O0')
+
+#-------------------------------------------------------------------------------
+# Target Checks
+#-------------------------------------------------------------------------------
+#Start with an empty list of target specific definitions
+TS_DEFINES = []
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = os.path.join("..", "src")
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Target options
+#-------------------------------------------------------------------------------
+#Supported number of user PD's
+TS_DEFINES += ['PDCTS_SUPPORTED_USER_PDS=3']
+
+#Maximum number of timestamps supported
+TS_DEFINES += ['MAX_NUM_SUPPORTED_TIMESTAMPS=5']
+
+#-------------------------------------------------------------------------------
+# Source directory roots
+#-------------------------------------------------------------------------------
+# Source directories relative to SRCPATH (../src/)
+
+# User PD source
+user_source_dirs = [
+  'client_user',
+]
+
+# Main directories
+source_dirs = [
+  'client',
+]
+
+# Normal operational mode common directories
+normal_mode_source_dirs = [
+  'ddr',
+]
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+  'DAL',
+  'DEBUGTOOLS',
+  'POWER',
+  'SERVICES',
+  'SYSTEMDRIVERS',
+  'POWER_PDC',
+  'KERNEL', #needs to be last also contains wrong comdef.h
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+env.RequireProtectedApi(CBSP_API)
+
+PRIVATE_API_PATHS = [
+  '${BUILD_ROOT}/core/power/pdc/timestamp/src/client',
+]
+
+env.PublishPrivateApi('PDCTS', PRIVATE_API_PATHS)
+
+#-------------------------------------------------------------------------------
+# Add target specific defines to build options
+#-------------------------------------------------------------------------------
+env.Append(CPPDEFINES = TS_DEFINES)
+
+#-------------------------------------------------------------------------------
+# Global source settings
+#-------------------------------------------------------------------------------
+MAIN_IMG_TAG    = ['CORE_Q6_ROOT']
+CORE_ISLAND_TAG = ['CORE_Q6_ROOT']
+
+USER_IMG_TAG    = ['CORE_ADSP_USER']
+USER_ISLAND_TAG = ['CORE_ADSP_USER']
+
+SOURCE_PATTERN = ['*.c']
+
+sources = []
+user_sources = []
+island_sources = []
+user_island_sources = []
+
+#-------------------------------------------------------------------------------
+# normal mode sources
+#-------------------------------------------------------------------------------
+for src_path_root in source_dirs:
+  for root, dir, files in os.walk(os.path.join(SRCPATH, src_path_root)):
+    if os.path.basename(root) in normal_mode_source_dirs:
+      for sub, subdir, subfile in os.walk(root):
+        matches = itertools.chain(*[fnmatch.filter(subfile, pattern) for pattern in SOURCE_PATTERN])
+        matches = [os.path.join(root, filename) for filename in matches]
+        matches = [matched_path.replace(SRCPATH,'${BUILDPATH}',1) for matched_path in matches]
+        sources.extend(matches)
+
+for src_path_root in user_source_dirs:
+  for root, dir, files in os.walk(os.path.join(SRCPATH, src_path_root)):
+    if os.path.basename(root) in normal_mode_source_dirs: 
+      for sub, subdir, subfile in os.walk(root):
+        matches = itertools.chain(*[fnmatch.filter(subfile, pattern) for pattern in SOURCE_PATTERN])
+        matches = [os.path.join(root, filename) for filename in matches]
+        matches = [matched_path.replace(SRCPATH,'${BUILDPATH}',1) for matched_path in matches]
+        user_sources.extend(matches)
+
+#-------------------------------------------------------------------------------
+# island sources
+#-------------------------------------------------------------------------------
+for src_path_root in source_dirs:
+  for root, dir, files in os.walk(os.path.join(SRCPATH, src_path_root)):
+    dir[:] = [d for d in dir if d not in normal_mode_source_dirs]
+    island_matches = itertools.chain(*[fnmatch.filter(files, pattern) for pattern in SOURCE_PATTERN])
+    island_matches = [os.path.join(root, filename) for filename in island_matches]
+    island_matches = [matched_path.replace(SRCPATH,'${BUILDPATH}',1) for matched_path in island_matches]
+    island_sources.extend(island_matches)
+
+for src_path_root in user_source_dirs:
+  for root, dir, files in os.walk(os.path.join(SRCPATH, src_path_root)):
+    dir[:] = [d for d in dir if d not in normal_mode_source_dirs]
+    island_matches = itertools.chain(*[fnmatch.filter(files, pattern) for pattern in SOURCE_PATTERN])
+    island_matches = [os.path.join(root, filename) for filename in island_matches]
+    island_matches = [matched_path.replace(SRCPATH,'${BUILDPATH}',1) for matched_path in island_matches]
+    user_island_sources.extend(island_matches)
+
+#-------------------------------------------------------------------------------
+# Compile sources and create libraries
+#-------------------------------------------------------------------------------
+pdcts_lib = env.AddLibrary(MAIN_IMG_TAG, os.path.join('${BUILDPATH}', 'pdcTs'), sources)
+pdcts_island_lib = env.AddLibrary(MAIN_IMG_TAG, os.path.join('${BUILDPATH}', 'pdcTS_island'), island_sources)
+
+user_lib = env.AddLibrary(USER_IMG_TAG, os.path.join('${BUILDPATH}', 'pdcTS_user_normal'), user_sources)
+user_island_lib = env.AddLibrary(USER_ISLAND_TAG, os.path.join('${BUILDPATH}', 'pdcTS_user_island'), user_island_sources)
+
+#-------------------------------------------------------------------------------
+# Add library to island section
+#-------------------------------------------------------------------------------
+if 'USES_ISLAND' in env:
+  env.AddIslandLibrary(CORE_ISLAND_TAG, pdcts_island_lib)
+  env.AddIslandLibrary(USER_ISLAND_TAG, user_island_lib)
+
+#-------------------------------------------------------------------------------
+# Root RCINIT
+#-------------------------------------------------------------------------------
+RCINIT_FUNC = {
+  'sequence_group'      : 'RCINIT_GROUP_0',
+  'init_name'           : 'PDCTimestamp',
+  'init_function'       : 'pdcTimestamp_initialize',
+  'dependencies'        : ['PDCHWIO', 'PDCLog'],
+}
+
+#-------------------------------------------------------------------------------
+# User RCINIT
+#-------------------------------------------------------------------------------
+USER_RCINIT_FUNC = {
+  'sequence_group'         : 'RCINIT_GROUP_0',
+  'init_name'              : 'pdcTS_clnt',
+  'init_function'          : 'pdcTimestamp_clientQDIInit',
+  'dependencies'           : ['PDCTimestamp']
+}
+
+#-------------------------------------------------------------------------------
+# RCINIT additions
+#-------------------------------------------------------------------------------
+if 'USES_RCINIT' in env:
+  env.AddRCInitFunc(MAIN_IMG_TAG, RCINIT_FUNC)
+  env.AddRCInitFunc(USER_IMG_TAG, USER_RCINIT_FUNC)
+

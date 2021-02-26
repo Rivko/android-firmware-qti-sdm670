@@ -1,0 +1,213 @@
+#===============================================================================
+#                    Copyright 2009 QUALCOMM Incorporated.
+#                           All Rights Reserved.
+#                         QUALCOMM Proprietary/GTDR
+#===============================================================================
+#
+#                            Power Debug Tool
+#
+#==============================================================================
+#
+#                        EDIT HISTORY FOR MODULE
+#
+# $Header: //components/rel/core.qdsp6/2.1.c4/powertools/pwrdb/build/SConscript#1 $
+# $DateTime: 2018/07/30 01:21:36 $
+# $Author: pwbldsvc $
+#
+# when          who             what, where, why
+# --------      ---             -------------------------------------------
+# 09/29/14      dy              Deliver PwrDB Pro by default for internal builds 
+# 07/27/11      rohans          Initial creation - Integration into 8960      
+#
+#==============================================================================
+
+Import('env')
+env2 = env.Clone()
+
+#-------------------------------------------------------------------------------
+# SRC PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/powertools/pwrdb/src"
+
+PWRDB_SOURCES = [
+    '${BUILDPATH}/pwrdb_pack.c',
+    '${BUILDPATH}/pwrdb_task.c',
+    '${BUILDPATH}/pwrdb.c',
+    '${BUILDPATH}/pwrdb_modem.c', ]
+
+#-------------------------------------------------------------------------------
+# External depends outside CoreBSP
+#-------------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'BUSES',
+   'DAL',
+   'HAL',
+   'DEBUGTOOLS',
+   'DEBUGTRACE',
+   'IODEVICES',
+   'MPROC',
+   'PWRDB',
+   'POWER',
+   'SERVICES',
+   'STORAGE',
+   'SYSTEMDRIVERS',
+   'WIREDCONNECTIVITY',
+# needs to be last also contains wrong comdef.h
+   'KERNEL', ]
+
+#-------------------------------------------------------------------------------
+# External depends within CoreBSP
+#-------------------------------------------------------------------------------
+# Note: this needs to come last to ensure proper inclusion of other header files
+
+#-------------------------------------------------------------------------------
+# Image Lists
+#-------------------------------------------------------------------------------
+MODEM_IMGS_LIST = [
+    'MODEM_IMAGE', 
+    'CBSP_MODEM_IMAGE',
+    'APPS_IMAGE', 
+    'CBSP_APPS_IMAGE',
+    'SINGLE_IMAGE',
+    'CBSP_SINGLE_IMAGE', 
+    'QDSP6_SW_IMAGE', 
+    'CBSP_QDSP6_SW_IMAGE',
+    'MODEM_MODEM',
+    'CORE_MODEM',
+    'CORE_QDSP6_SW', ]
+
+ADSP_IMGS_LIST = [
+    'CBSP_SINGLE_IMAGE', 
+    'QDSP6_SW_IMAGE', 
+    'CBSP_QDSP6_SW_IMAGE', ]
+
+SLPI_IMGS_LIST = [
+    'QDSP6_SW_IMAGE',
+    'CBSP_QDSP6_SW_IMAGE',
+    'CORE_QDSP6_SW',
+    'CORE_SLPI_ROOT', ]
+
+# For the time being, CDSP will use the same tag as SLPI (change approved by ckackman). 
+# Keep in mind that the ID in the source code will need to be updated if this changes.
+CDSP_IMGS_LIST = SLPI_IMGS_LIST
+
+#-------------------------------------------------------------------------------
+# RCInit config
+#-------------------------------------------------------------------------------
+MODEM_RCINIT_PWRDB = ['CORE_MODEM', 'CORE_QDSP6_SW']
+MODEM_RCINIT_TASK_PWRDB = {
+    'thread_name'                : 'pwrdb',                        # required
+    #'thread_type'                : 'RCINIT_TASK_DALTASK',
+    'sequence_group'             : 'RCINIT_GROUP_7',               # required
+    'stack_size_bytes'           : '16384',                        # required
+    'priority_amss_order'        : 'PWRDB_PRI_ORDER',              # required, legacy value pri_order, not exported, run at same pri as TMC
+    'cpu_affinity'               : 'REX_ANY_CPU_AFFINITY_MASK'     # opt, REX_ANY_CPU_AFFINITY_MASK or REX_SINGLE_CPU_AFFINITY_MASK
+   }
+
+OTHER_RCINIT_PWRDB = ['CORE_QDSP6_SW']
+OTHER_RCINIT_TASK_PWRDB = {
+    'thread_name'                : 'pwrdb',                        # required
+    'thread_type'                : 'RCINIT_TASK_QURTTASK',
+    'thread_entry'               : 'pwrdb_task',
+    'sequence_group'             : 'RCINIT_GROUP_2',               # required
+    'stack_size_bytes'           : '16384',                        # required
+    'priority_amss_order'        : 'PWRDB_PRI_ORDER',              # required, legacy value pri_order, not exported, run at same pri as TMC
+    'dependencies'               : ['dalsys', 'diag']
+    }
+
+#-------------------------------------------------------------------------------
+# Common Settings
+#-------------------------------------------------------------------------------
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+env.Append(CPPDEFINES = ['FEATURE_LIBRARY_ONLY',])
+env.Append(CPPDEFINES = ["DIRNAME=\\\"${BUILD_TARGET}\\\""])
+# Turn on debug message for power debug task
+# env.Append(CPPDEFINES = ["MSG_BT_SSID_DFLT=MSG_SSID_PWRDB"])
+
+#-------------------------------------------------------------------------------
+# Processor Specific settings
+#-------------------------------------------------------------------------------
+if 'MODEM_PROC' in env:
+    env.Append(CPPDEFINES=['FEATURE_PWRDB_MPSS'])
+    PWRDB_IMGS=MODEM_IMGS_LIST
+    RCINIT_PWRDB=MODEM_RCINIT_PWRDB
+    RCINIT_TASK_PWRDB=MODEM_RCINIT_TASK_PWRDB
+    if 'USES_NO_MODEM' not in env: # Full modem build. Enable external APIs like MCPM
+        env.PrintWarning('PWRDB_MODEM_API will be enabled in this build.')
+        env.Append(CPPDEFINES=['FEATURE_PWRDB_MODEM_API'])
+        env.RequirePublicApi(['MPOWER','MPOWER_MCPM_INC','MPOWER_MCPM_HW_SRC',],area='MPOWER')
+        env.RequirePublicApi(['MPOWER_CMN',],area='MPOWER_CMN')
+        env.RequirePublicApi(['COMMON',],area='FW')
+        env.RequirePublicApi(['COMMON',],area='RFA')
+        env.RequirePublicApi(['MCS',],area='MCS')
+
+elif env.IsTargetEnable('CORE_ADSP_ROOT'):
+    env.Append(CPPDEFINES=['FEATURE_PWRDB_ADSP'])
+    PWRDB_IMGS=ADSP_IMGS_LIST
+    RCINIT_PWRDB=OTHER_RCINIT_PWRDB
+    RCINIT_TASK_PWRDB=OTHER_RCINIT_TASK_PWRDB
+
+elif env.IsTargetEnable('CORE_SLPI_ROOT'):
+    env.Append(CPPDEFINES=['FEATURE_PWRDB_SLPI'])
+    PWRDB_IMGS=SLPI_IMGS_LIST
+    RCINIT_PWRDB=OTHER_RCINIT_PWRDB
+    RCINIT_TASK_PWRDB=OTHER_RCINIT_TASK_PWRDB
+
+elif env.IsTargetEnable('CORE_CDSP_ROOT'):
+    env.Append(CPPDEFINES=['FEATURE_PWRDB_CDSP'])
+    PWRDB_IMGS=CDSP_IMGS_LIST
+    RCINIT_PWRDB=OTHER_RCINIT_PWRDB
+    RCINIT_TASK_PWRDB=OTHER_RCINIT_TASK_PWRDB
+
+else:
+    env.PrintWarning('PWRDB cannot detect the processor.')
+    Return()
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+env.PrintWarning('PWRDB will be included in this build.')
+pwrdb_lib = env.AddBinaryLibrary(PWRDB_IMGS, '${BUILDPATH}/pwrdb', PWRDB_SOURCES)
+
+#-------------------------------------------------------------------------------
+# RCINIT_PWRDB
+#-------------------------------------------------------------------------------
+if 'USES_RCINIT' in env:
+    env.AddRCInitTask(RCINIT_PWRDB, RCINIT_TASK_PWRDB)
+
+#-------------------------------------------------------------------------------
+# Load child SUs
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+#-------------------------------------------------------------------------------
+# Pack Info for Pwrdb
+#-------------------------------------------------------------------------------
+CLEAN_PWRDB_SOURCES = []
+CLEAN_PWRDB_SOURCES.extend(env.FindFiles("*", "${BUILD_ROOT}/core/powertools/pwrdb/src"))
+CLEAN_PWRDB_SOURCES.extend(env.FindFiles("*", "${BUILD_ROOT}/core/powertools/pwrdb/offtarget"))
+CLEAN_PWRDB_SOURCES.extend(env.FindFiles("*", "${BUILD_ROOT}/core/powertools/pwrdb/inc"))
+env.CleanPack(PWRDB_IMGS,CLEAN_PWRDB_SOURCES)
+
+#-------------------------------------------------------------------------------
+# QDSS Tracer definitions
+#-------------------------------------------------------------------------------
+if 'USES_QDSS_SWE' in env:
+   QDSS_IMG = ['QDSS_EN_IMG']
+
+   events = [['PWRDB_SWE_0','Pwrdb Startup %x'],
+             ['PWRDB_SWE_1','%d %d %d'],          #-ctk Standard output over QDSS
+             ['PWRDB_SWE_2','TS QDSS LOG'],
+             ['PWRDB_SWE_TLMM','GPIO # %d Function: %d Dirction: %d Pull: %d Drive: %d Out Value: %d'],
+             ['PWRDB_SWE_SPMI','Slave ID: %x Address: %x Contents: %x'],]
+   env.AddSWEInfo(QDSS_IMG, events)
+   
+if 'QDSS_TRACER_SWE' in env: 
+   env.SWEBuilder(['${BUILDPATH}/pwrdb_tracer_event_ids.h'],None)
+   env.Append(CPPPATH =['${BUILD_ROOT}/core/powertools/pwrdb/build/$BUILDPATH'])

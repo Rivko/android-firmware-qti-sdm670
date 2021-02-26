@@ -1,0 +1,411 @@
+//============================================================================
+//  Name:                                                                     
+//    std_cti_apps.cmm 
+//
+//  Description:                                                              
+//    CTI usage specific to Apps cores
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who           what, where, why
+// --------   ---           ---------------------------------------------------------
+// 12/02/2016 JBILLING      Logging added
+// 02/05/2015 JBILLING      CTI halt resume working with ack. clearcti added
+// 06/19/2014 jbilling      Initial creation
+//
+//  Usage:
+//      do std_cti_adsp <Subroutine>
+//
+//  Where Subroutines is one of the following:
+//      SETUPSYNCHALT            //sets up CTI framework to break all apps when any apps breaks
+//      CLEARCTI                 //Clears CTI network
+//      SENDCTIBREAKTOALLCORES   //Sends CTI pulse to break all cores
+//      SENDCTIGOTOALLCORES      //Acks all cores and sends CTI "go" command
+//
+//  Dependencies
+//  This script is expected to be run from within context of metabuild scripts.
+//  It needs the following scripts in support 
+//      (and the scripts below have their own dependencies)
+//       - q6 startup scripts, which set initial macros, T32 settings, paths etc.
+//       - std_debug_<CHIPSET>
+//       - std_cti
+//
+//####################Declarations#######################
+
+//###################Arguments passed #####################
+ENTRY %LINE &ArgumentLine
+LOCAL &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+ENTRY &UTILITY &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+
+do std_memorymap
+//##################Defaults##########################
+LOCAL &MPSS_COOKIE_ADDRESS &ADSP_COOKIE_ADDRESS &MBA_COOKIE_ADDRESS &WCNSS_COOKIE_ADDRESS 
+
+//Definitions from std_memorymap
+&MPSS_COOKIE_ADDRESS=&MPSS_DEBUG_COOKIE
+&ADSP_COOKIE_ADDRESS=&ADSP_DEBUG_COOKIE
+&MBA_COOKIE_ADDRESS=&MBA_DEBUG_COOKIE
+&WCNSS_COOKIE_ADDRESS=&WCNSS_DEBUG_COOKIE
+
+
+LOCAL &COOKIE_BUSYWAIT &COOKIE_BKRPT &COOKIE_CRASH
+&COOKIE_BUSYWAIT="0x53444248"
+&COOKIE_BKRPT="0x53444249"
+&COOKIE_CRASH="0x5344424A"
+
+LOCAL &FAILURE &SUCCESS
+&FAILURE="failure"
+&SUCCESS="success"
+
+//################Configurations for this script######################//
+
+
+
+//#################Other misc variables#############################///
+LOCAL &targetprocessor &string_length
+
+
+//##################Get configurations for this target###############//
+LOCAL &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+
+&image="appsboot"
+
+    do std_debug_&CHIPSET GETDEBUGDEFAULTS NONE &image &lpm_option &cti_enable &alternateelf &extraoption
+        ENTRY &image &targetprocessor &targetprocessorport &bootprocessor &bootprocessorport &peripheral_processor &processortimeoutvalue &debugscript &symbolloadscript &imagebuildroot &entry_bkpt &error_bkpts &lpm_option &sleep_disable_command &cti_enable &multi_elf_option &alternateelf &extraoption
+
+        
+//#####################Select Subroutine###################
+// Name of the utility we are calling
+LOCAL &SUBROUTINE
+// Any subroutine specific options
+// Default exists for each subroutine
+
+
+// Input Argument 0 is the name of the utility
+&SUBROUTINE="&UTILITY"
+IF !(("&SUBROUTINE"=="SETUPSYNCHALT")||("&SUBROUTINE"=="SENDCTIBREAKTOALLCORES")||("&SUBROUTINE"=="SENDCTIGOTOALLCORES")||("&SUBROUTINE"=="CLEARCTI")||("&SUBROUTINE"=="HELP")||("&SUBROUTINE"=="help"))
+(
+   &SUBROUTINE="HELP"
+    PRINT %ERROR "std_cti_&targetprocessor: Subroutine not found! Printing Help Window"
+)
+
+   // This should be created by some top level script. The setupenv for each proc would
+   // set this up
+    AREA.SELECT
+    // Call the required utility
+   GOSUB &SUBROUTINE &OPTION &IARG0 &IARG1 &IARG2 &IARG3 &IARG4 &IARG5 &IARG6 &IARG7 &IARG8 &IARG9 &IARG10 &IARG11
+   LOCAL &rvalue
+    ENTRY %LINE &rvalue
+    IF "&rvalue"==""
+    (
+        &rvalue="NONE"
+    )
+    do std_results std_cti_apps &rvalue "&SUBROUTINE"
+   GOTO EXIT
+  
+    
+////////////////////////////////////////
+//
+//         SETUPSYNCHALT
+//         
+//         Sets up this core as master on CTI network, 
+//
+///////////////////////////////////////// 
+SETUPSYNCHALT:
+    GOSUB MAKE_SURE_BOOT_PROCESSOR_ATTACHED
+
+    do std_intercom_do &bootprocessorport std_cti masters=allapps slaves=allapps
+GOTO EXIT
+
+
+////////////////////////////////////////
+//
+//         CLEARCTI
+//         
+//         Clears CTI network from boot processor 
+//
+///////////////////////////////////////// 
+CLEARCTI:
+    GOSUB MAKE_SURE_BOOT_PROCESSOR_ATTACHED
+    do std_intercom_do &bootprocessorport std_cti CLEARCTI ALLAPPS
+
+GOTO EXIT
+////////////////////////////////////////
+//
+//         SENDCTIBREAKTOALLCORES
+//         
+//         Sets up this core as master on CTI network, 
+//          then sends a pulse to break
+//
+///////////////////////////////////////// 
+SENDCTIBREAKTOALLCORES:
+
+    GOSUB MAKE_SURE_BOOT_PROCESSOR_ATTACHED
+    
+    do std_intercom_do &bootprocessorport std_cti masters=allapps slaves=allapps
+    do std_intercom_do &bootprocessorport std_cti TRIGSETCHANNEL &targetprocessor 0
+    WAIT.1s
+    do std_intercom_do &bootprocessorport std_cti TRIGCLEARCHANNEL &targetprocessor 0
+    
+    do std_intercom_do &bootprocessorport std_cti ACKCTI allapps
+    
+    do std_apps SYSTEM.OPTION ENRESET OFF
+    do std_apps doall sys.m.prepare
+    do std_intercom_do &bootprocessorport std_cti CLEARCTI ALLAPPS
+    do std_apps doall sys.m.a
+    do std_apps SYSTEM.OPTION ENRESET ON
+GOTO EXIT
+
+
+////////////////////////////////////////
+//
+//         SENDCTIGOTOALLCORES
+//         
+//         Sets up this core as master on CTI network
+//         Then sends a pulse to go.
+//         This core must be halted
+//
+///////////////////////////////////////// 
+SENDCTIGOTOALLCORES:
+LOCAL &argument
+ENTRY &argument 
+
+
+    GOSUB MAKE_SURE_BOOT_PROCESSOR_ATTACHED
+    
+    //do std_apps doall SYNCH.OFF
+    do std_apps doall break.disable /all
+    do std_apps doall break.enable /all
+    do std_apps SYSTEM.OPTION ENRESET OFF
+    
+    do std_apps doall sys.m.prepare
+    
+    do std_intercom_do &bootprocessorport std_cti TRIGCLEARCHANNEL &targetprocessor 0
+    do std_intercom_do  &bootprocessorport std_cti CLEARCTI allapps
+    do std_intercom_do &bootprocessorport std_cti masters=allapps slaves=allapps,&argument extraoption=use_level_trigger
+    
+    do std_intercom_do &bootprocessorport std_cti ACKCTI allapps
+    do std_intercom_do &bootprocessorport std_cti ENABLECTICHANNELGATE allapps
+    
+    do std_intercom_do &bootprocessorport std_cti TRIGSETCHANNEL &targetprocessor 1 
+    wait.100ms
+    do std_intercom_do &bootprocessorport std_cti TRIGCLEARCHANNEL &targetprocessor 1 
+    //do std_intercom_do &bootprocessorport std_cti INSERTAPPULSE &targetprocessor 1
+    do std_apps doall sys.m.a
+    do std_apps SYSTEM.OPTION ENRESET ON
+    //do std_apps doall SYNCH.ON
+GOTO EXIT
+
+
+
+////////////////////////////////////////
+//
+//      FAILED_TO_BREAK
+//         
+//      Print error on failed to break.
+//
+///////////////////////////////////////// 
+FAILED_TO_BREAK:
+    //remove Error handler
+    ON ERROR
+
+    WINPOS 5. 39. 90. 5.
+    AREA
+    PRINT %ERROR "Error! std_cti_&targetprocessor - Could not break processor. "
+    PRINT %ERROR " This could be a Trace32 version issue "
+    PRINT %ERROR "  (please ensure your T32 installation is up to date)"
+    PRINT %ERROR " Or this could be a software issue "
+    PRINT %ERROR " (e.g. QuRT or CTI driver on target has malfunctioned)"
+    
+    ENDDO &FAILURE //fail
+
+
+
+
+////////////////////////////////////////
+//
+//         ATTACH_TO_PROCESSOR
+//         
+//         Attempts to attach to target processor.
+//          Tries twice as on Q6 sometimes debug registers
+//              need to be asserted then one can attach
+//
+///////////////////////////////////////// 
+ATTACH_TO_PROCESSOR:
+
+        ON ERROR GOTO SECONDATTACH
+        sys.m.a
+        ON ERROR
+   
+       RETURN
+
+
+////////////////////////////////////////
+//
+//      SECONDATTACH
+//         
+//      Usually necessary for Q6 as the first attach
+//      asserts debug registers, and then the second will 
+//      be successful. Should eventually be fixed by JTag provider
+//
+///////////////////////////////////////// 
+SECONDATTACH:
+        ON ERROR
+
+        ON ERROR GOTO CONTINUE
+        sys.m.a
+CONTINUE:
+        ON ERROR
+
+        IF (SYSTEM.MODE()==0x0B)
+        (
+            print "attached successfully"
+        )
+        ELSE
+        (
+            winclear
+            WINPOS 0. 0. 60. 15. 0. 0. 
+            area.reset
+            area
+            PRINT %ERROR " std_cti_&targetprocessor - could not attach"
+            PRINT %ERROR " Please ensure the following:"  
+            PRINT %ERROR "     - Device is not in XO Shutdown"
+            PRINT %ERROR "     - &targetprocessor has booted up"
+            PRINT %ERROR "     - T32 installation is up to date."
+            PRINT %ERROR "     - &targetprocessor build is CTI compliant."
+            PRINT %ERROR " "
+            
+            ENDDO &FAILURE
+            
+        )
+    
+    
+    IF "&break"=="break"
+    (
+       RETURN
+    )
+    ELSE
+    (
+        GOTO EXIT
+    )
+        
+        
+////////////////////////////////////////
+//
+//         MAKE_SURE_BOOT_PROCESSOR_ATTACHED
+//         
+//         Makes sure boot processor is attached
+//          Otherwise attaching on subsystem processor not possible
+//
+///////////////////////////////////////// 
+MAKE_SURE_BOOT_PROCESSOR_ATTACHED:
+
+
+
+    LOCAL &Rvalue
+    do std_intercom_init CHECKSESSION 1 &bootprocessor
+        ENTRY &Rvalue
+    IF (&Rvalue!=1.)&&("&bootprocessor"=="APPS0")
+    (
+        do std_intercom_init CHECKSESSION 1 APPSC0
+        ENTRY &Rvalue
+    )
+    IF (&Rvalue!=1.)
+    (
+        PRINT %ERROR "&bootprocessor T32 window not open. Please open and try again"
+        GOTO FATALEXIT
+    )
+   
+   
+    //Run HWIO if needed
+    do std_intercom_do &bootprocessorport hwio
+
+    
+    //if boot processor t32 not attached, attach.
+    INTERCOM.EVALUATE &bootprocessorport SYSTEM.MODE()
+        &BOOT_PROCESSOR_STATE=EVAL()
+    IF !(("&BOOT_PROCESSOR_STATE"=="0x0B")||("&BOOT_PROCESSOR_STATE"=="0x4"))
+    (
+        do std_intercom_cmds &bootprocessorport WAIT sys.m.a
+    )
+    INTERCOM.EVALUATE &bootprocessorport SYSTEM.MODE()
+        &BOOT_PROCESSOR_STATE=EVAL()
+    IF !(("&BOOT_PROCESSOR_STATE"=="0x0B")||("&BOOT_PROCESSOR_STATE"=="0x4"))
+    (
+            winclear
+            WINPOS 0. 0. 60. 15. 0. 0. 
+            area.reset
+            area
+            PRINT %ERROR " std_cti_apps - &bootprocessor not able to attach"
+            PRINT %ERROR " Please ensure the following:"    
+            PRINT %ERROR "     JTAG is physically attached"
+            PRINT %ERROR "     T32 installation is up to date."
+            PRINT %ERROR "     Device is booted."
+            PRINT %ERROR " "
+            
+            ENDDO &FAILURE
+    )
+    
+    RETURN
+    
+        
+////////////////////////////////////////
+//
+//         SEND_CTI_PULSE
+//         
+//         Sends CTI pulse to target processor
+//
+/////////////////////////////////////////   
+SEND_CTI_PULSE:
+    
+    do std_intercom_do &bootprocessorport std_cti CTI_TRIGGER_RECEIVE &targetprocessor 3 0
+    do std_intercom_do &bootprocessorport std_cti INSERTAPPULSE &targetprocessor 0
+    do std_intercom_do &bootprocessorport std_cti CLEARCTI &targetprocessor
+    RETURN
+    
+    
+help:
+HELP:    
+
+    AREA.RESET
+    AREA.CREATE std_cti_apps_help 125. 23.
+    AREA.SELECT std_cti_apps_help
+    WINPOS 5. 39. 125. 23.
+    AREA.VIEW std_cti_apps_help
+    
+    PRINT " Usage:"
+    PRINT "     do std_cti_apps <Subroutine>"
+    PRINT " "
+    PRINT " Where Subroutines is one of the following:"
+
+    PRINT "     SETUPSYNCHALT           //sets up CTI framework to break other cores"
+    PRINT "     CLEARCTI                //Clears CTI network"
+    PRINT "     SENDCTIBREAKTOALLCORES  //Sends CTI pulse to break all cores"
+    PRINT "     SENDCTIGOTOALLCORES     //Acks all cores and sends CTI GO command"
+    PRINT " "
+    PRINT " Dependencies"
+    PRINT " This script is expected to be run from within context of metabuild scripts."
+    PRINT " It needs the following scripts in support "
+    PRINT "     (and the scripts below have their own dependencies)"
+    PRINT "      - q6 startup scripts, which set initial macros, T32 settings, paths etc."
+    PRINT "      - std_debug_<CHIPSET>"
+    PRINT "      - std_cti"
+    PRINT " "
+
+    ENDDO &FAILURE
+   
+
+EXIT:
+   ENDDO
+
+FATALEXIT:
+   END
+   
+

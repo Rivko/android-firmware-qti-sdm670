@@ -1,0 +1,122 @@
+#===============================================================================
+#
+# Diag Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2014, 2016-2017 by Qualcomm Technologies, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: $
+#  $DateTime: 2010/02/25 18:33:40 $
+#  $Author: sgownipa $
+#  $Change: 1194317 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 10/24/16    gn     Changes to support common PW for ADSP, CDSP and SLPI
+# 10/09/14    rs     Updated scons api's.
+# 05/16/14    sm     Added TISE image support.  Note that 'USES_MSVC' and
+#                    'USES_TISE' are used to specify a subset of files from this
+#                    driver to compile for the Windows (MSVC) compiler.  Please
+#                    do not remove these definitions from this file.
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+# This is to remove any -Werror declarations in the environmnent for the MSVC
+# compiler.
+if 'USES_MSVC' in env:
+    env.Replace(CFLAGS="")
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/services/diag/"
+
+if not env.PathExists(SRCPATH):
+   SRCPATH = "${BUILD_ROOT}/services/diag"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+# TISE requires some additional definitions.
+if 'USES_TISE' and 'USES_MSVC' in env:
+    env.Append(CPPDEFINES=['CUSTOMER_H'])
+    env.Append(CPPDEFINES=['DIAG_SIO_SUPPORT'])
+    env.Append(CPPDEFINES=['DIAG_SMDL_SUPPORT'])
+
+env.Append(CPPDEFINES=['MSG_BT_SSID_DFLT=MSG_SSID_DIAG']) 
+env.Append(CPPDEFINES=['FEATURE_DIAG_8K_QDSP6'])
+env.Append(CPPDEFINES=['FEATURE_ALIGNED_QWORD'])
+env.Append(CPPDEFINES=['MEMHEAP_ASSERT_NONE'])
+env.Append(CPPDEFINES=['DIAG_MP'])
+env.Append(CPPDEFINES=['FEATURE_SMD'])
+env.Append(CPPDEFINES=['DIAG_QDSP6_APPS_PROC']) # Common define for ADSP, CDSP and SLPI
+env.Append(CPPDEFINES=['DIAG_SMD_SUPPORT'])
+env.Append(CPPDEFINES=['DIAG_SMDL_SUPPORT'])
+env.Append(CPPDEFINES=['DIAG_C_STRING'])
+env.Append(CPPDEFINES=['DIAG_MP_SLAVE_LAST'])
+
+if env.has_key('ADSP_PROC'):
+   env.Append(CPPDEFINES=['DIAG_IMAGE_QDSP6_PROC'])
+   
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+   'BOOT',
+   'BUSES',
+   'DAL',
+   'DEBUGTOOLS',
+   'HAL',
+   'HWENGINES',
+   'MPROC',
+   'POWER',
+   'SERVICES',
+   'STORAGE',
+   'SYSTEMDRIVERS',
+   'WIREDCONNECTIVITY',
+   # needs to be last also contains wrong comdef.h
+   'KERNEL',   
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+
+DIAG_MASK_TBL_SOURCES = [
+    '${BUILDPATH}/diag_mask_tbl/src/msg_arrays_i.c',
+    '${BUILDPATH}/diag_mask_tbl/src/log_arrays_i.c', 
+   ]
+
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------  
+diagbuffer_micro_uimage = env.AddLibrary(['CORE_SLPI_USER', 'CORE_SLPI_ROOT', 
+                                          'CORE_ADSP_ROOT', 'CORE_ADSP_USER', 
+                                          'CORE_CDSP_ROOT'], 
+  '${BUILDPATH}/diag/diag_mask_tbl', DIAG_MASK_TBL_SOURCES)
+
+
+#-------------------------------------------------------------------------------
+# Add Libraries to micro image
+#------------------------------------------------------------------------------- 
+# Images for which micro uimage library need to be generated			 
+DIAG_BUFFER_MICRO_IMGS = ['CORE_SLPI_ROOT', 'CORE_SLPI_USER']		
+
+if 'USES_ISLAND' in env: 
+  env.AddIslandLibraryObject(DIAG_BUFFER_MICRO_IMGS, diagbuffer_micro_uimage,'log_arrays_i.o')
+  
+  

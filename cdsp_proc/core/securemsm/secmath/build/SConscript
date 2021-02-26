@@ -1,0 +1,98 @@
+#===============================================================================
+#
+# secmath
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 20011 by QUALCOMM, Incorporated.
+# All Rights Reserved.
+# QUALCOMM Proprietary/GTDR
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1.c4/securemsm/secmath/build/SConscript#1 $
+#  $DateTime: 2018/07/30 01:21:36 $
+#  $Author: pwbldsvc $
+#  $Change: 16759227 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 12/22/11   vg     Removed publish restricted API as this is getting done in 
+#                   paths under core/securemsm.
+# 06/16/11   vg     Added AUTH_BOOT_DRIVER to link to boot loaders for future 
+#                   targets
+# 06/16/11   vg     Fixed for pack and strip build.
+# 05/12/11   vg     initial version
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Set search path for securemsm subsystem files
+#-------------------------------------------------------------------------------
+#env.Append(CPPPATH = "${BUILD_ROOT}/core/securemsm/secmath/shared/inc")
+#env.Append(CCFLAGS = " --restrict  -O3 -OTime ")
+
+#-------------------------------------------------------------------------------
+# External depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_API = [
+    'SERVICES',
+]
+
+env.RequirePublicApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+SRCPATH = "${BUILD_ROOT}/core/securemsm/secmath"
+
+#-------------------------------------------------------------------------------
+# Let Scons build the object files in $(BUILDPATH} and don't copy over files
+#-------------------------------------------------------------------------------
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Compiler, object, and linker definitions
+#-------------------------------------------------------------------------------
+env.RequirePublicApi(['SECUREMSM'])
+env.RequireRestrictedApi(['SECUREMSM'])
+
+
+#-------------------------------------------------------------------------------
+# Sources, libraries
+#-------------------------------------------------------------------------------
+SECMATH_SRC_SHARED = [
+  '${BUILDPATH}/shared/src/secmath_mod_exp.c',
+  '${BUILDPATH}/shared/src/secmath_montmul_ref.c',
+  '${BUILDPATH}/shared/src/secmath_montmul_utils.c',
+  '${BUILDPATH}/shared/src/secmath_barrett_reduce.c',
+  '${BUILDPATH}/shared/src/secmath_BIGINT_read_unsigned_bin.c',
+  '${BUILDPATH}/shared/src/secmath_BIGINT_to_radix.c',
+  '${BUILDPATH}/shared/src/secmath_BIGINT_to_unsigned_bin.c',
+  '${BUILDPATH}/shared/src/secmath_bin_to_hex_str.c',
+  '${BUILDPATH}/shared/src/secmath_hex_str_to_bin.c',
+]
+
+#-------------------------------------------------------------------------------
+# This depends on the random number generator provided by TZ
+# (keep them until I know what those secmath files are doing)
+#-------------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
+# Add Libraries to images in the secboot3 boot architecture. Note we don't
+# add the library into SBL1 image as SBL1 uses PBL secboot library instead
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+env.AddBinaryLibrary(['CORE_QDSP6_SW'], '${BUILDPATH}/secmath', SECMATH_SRC_SHARED)
+
+CLEAN_SOURCES = env.FindFiles(['*.c', '*.h'], '${BUILD_ROOT}/core/securemsm/secmath/shared/src')
+CLEAN_SOURCES.extend(env.FindFiles('*.h', '${BUILD_ROOT}/core/securemsm/secmath/shared/inc'))
+env.CleanPack(['CORE_QDSP6_SW'], CLEAN_SOURCES)
+

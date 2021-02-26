@@ -1,0 +1,102 @@
+; ============================================================================
+;
+;  PMICPSHold.cmm
+;
+; Script to configure PMIC PS_HOLD
+;
+;  Execution:
+;    PMICPSHold.cmm [SOFTRESET, WARMRESET, SHUTDOWN, HARDRESET, DVDD_HARDRESET, XVDD_HARDRESET, SYSUP]
+;
+;  This script will perform PMIC reset using PMIC_IO script
+;  
+;  Usage: 
+;     PMICPSHold.cmm SOFTRESET -> Configure for Soft reset 
+;     PMICPSHold.cmm WARMRESET -> Configure for warm reset from PMIC
+;     PMICPSHold.cmm SHUTDOWN  -> Configure for power off
+;     PMICPSHold.cmm HARDRESET -> Configure for hard reset 
+;     PMICPSHold.cmm DVDD_HARDRESET -> Configure for dVdd [MainBatt removal] hard reset 
+;     PMICPSHold.cmm XVDD_HARDRESET -> Configure for xVdd [Main batt and Coin cell removal] hard reset 
+;     PMICPSHold.cmm SYSUP     -> Configure for any settings needed prior to T32 sys.up command
+;
+;  ====================================================================
+;
+;  Copyright (c) 2015-2016 QUALCOMM Technologies Incorporated. All Rights Reserved.
+;  QUALCOMM Proprietary and Confidential.
+;
+;  ====================================================================
+;
+;
+; ============================================================================
+;
+
+ENTRY &type
+
+;-----------------------------------------------------------------------------
+; Default bus access mode and owner
+;-----------------------------------------------------------------------------
+
+local &SPMIOwnerChannel
+&SPMIOwnerChannel=3  ; LPASS Channel by default
+
+local &BusAccessMode
+&BusAccessMode="EZAXI"
+
+local &CurrentDir
+&CurrentDir=OS.PWD()
+
+local &PmicIoScript
+&PmicIoScript="&CurrentDir"+"\pmic_io.cmm"
+
+LOCAL &res_cmd &option_pin &rst_spmi_stat &pm_model
+
+IF ("&type"=="SOFTRESET")
+(
+  &res_cmd=0x0
+)
+ELSE IF ("&type"=="WARMRESET")
+(
+  &res_cmd=0x1
+)
+ELSE IF ("&type"=="SHUTDOWN")
+(
+  &res_cmd=0x4
+)
+ELSE IF ("&type"=="HARDRESET")
+(
+  &res_cmd=0x7
+)
+ELSE IF ("&type"=="DVDD_HARDRESET")
+(
+  &res_cmd=0x8
+)
+ELSE IF ("&type"=="XVDD_HARDRESET")
+(
+  &res_cmd=0x9
+)
+ELSE IF ("&type"=="SYSUP")
+(
+  &res_cmd=0
+)
+ELSE
+(
+  PRINT %ERROR "Error! Reset type specified is not supported "
+  ENDDO "Error! Reset type specified is not supported "
+)
+
+; If 0 or none is passed disable the WDOG; else Enable the WDOG
+  
+IF &res_cmd!=0
+(
+  ;Disable PS_HOLD
+  do &PmicIoScript write &SPMIOwnerChannel &BusAccessMode 0x0 0x85B 0x0
+  WAIT 1.ms
+  ;Config PS_HOLD to desired need
+  do &PmicIoScript write &SPMIOwnerChannel &BusAccessMode 0x0 0x85A &res_cmd
+  WAIT 1.ms
+  ;Enable PS_HOLD
+  do &PmicIoScript write &SPMIOwnerChannel &BusAccessMode 0x0 0x85B 0x80
+  WAIT 1.ms
+)
+
+ENDDO SUCCESS
+ 

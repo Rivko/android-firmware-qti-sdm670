@@ -1,0 +1,228 @@
+; ============================================================================
+;
+;  spmi_dump.cmm
+;
+;  Script to collect SPMI register dump
+;
+;  Execution:
+;  do spmi_dump.cmm <target> <register_filter> file=<dump_file>
+;
+;  <target>: Target on which the script is executed
+;  <register_filter>: Optional register name filter for debugging
+;  <dump_file>: Optional dump file name with location
+;
+;  Example:
+;  
+;  do spmi_dump.cmm 845                 -> Collects full SPMI register dump and copies to file
+;  do spmi_dump.cmm 845 pvc             -> Collects PVC related register dump and prints
+;  do spmi_dump.cmm 845 pmic_arb_reg    -> Collects the channel to ppid mapping related register dump
+;  do spmi_dump.cmm 845 * file=default  -> Collects full SPMI dump, prints and copies to default file
+;  do spmi_dump.cmm 845 * file=\\<user>\dropbox\demo.txt -> Collects full SPMI dump, prints and copies to demo.txt
+;
+;  ====================================================================
+;
+;  Copyright (c) 2017 QUALCOMM Technologies Incorporated.  All Rights Reserved.
+;  QUALCOMM Proprietary and Confidential.
+;
+;  ====================================================================
+;
+;  $Header: //components/rel/core.glue/1.2/tools/tools/systemdrivers/pmic/hoya/spmi/spmi_dump.cmm#1 $
+;  $DateTime: 2017/03/16 15:30:26 $
+;  $Author: pwbldsvc $
+;
+; ============================================================================
+;
+
+entry &target &register_filter &spmi_config
+
+;-----------------------------------------------------------------------------
+; Default bus access mode and owner
+;-----------------------------------------------------------------------------
+
+local &bus_access_mode
+&bus_access_mode="EZAXI"
+
+;-----------------------------------------------------------------------------
+; Determine the file name to save to.
+;-----------------------------------------------------------------------------
+
+local &spmi_date
+&spmi_date=FORMAT.DECIMAL(0,DATE.DAY())+FORMAT.DECIMAL(0,DATE.MONTH())+FORMAT.DECIMAL(0,DATE.YEAR())+"_"+FORMAT.DECIMAL(0,DATE.SECONDS())
+
+local &save_to_file
+&save_to_file=0
+
+local &dump_file
+&dump_file=""
+
+if ("&spmi_config"!="")
+(
+  &dump_file=string.scanandextract("&spmi_config","file=","")
+)
+
+if (("&dump_file"=="")||(string.compare(string.lower("&dump_file"),"default")==TRUE()))
+(
+  if (string.compare(string.lower("&dump_file"),"default")==TRUE())
+  (
+    &save_to_file=1
+  )
+  &dump_file="c:\temp\spmidump_"+"&spmi_date"+".txt"
+)
+else
+(
+  &save_to_file=1
+)
+if !win.exist(spmi_dump)
+(
+  WinPOS ,,,,,,spmi_dump
+  area.create spmi_dump 200 500
+)
+area.view spmi_dump
+area.select spmi_dump
+
+local &astr_str
+&astr_str="****************************************************"
+
+print "&astr_str&astr_str"
+
+;-----------------------------------------------------------------------------
+; Check for non-interactive mode.
+;-----------------------------------------------------------------------------
+
+if ("&target"=="") 
+(
+  print %color.red "Specify target folder (i.e. 845)"
+  print " "
+  gosub Usage
+  print "&astr_str&astr_str"
+  enddo "Specify target folder (i.e. 845)"
+)
+
+if (file.exist(&target/hwio.cmm))
+(
+  do &target/hwio.cmm
+)
+else
+(
+  print %color.red "Target not supported!"
+  print "&astr_str&astr_str"
+  enddo "Target not supported!"
+)
+
+if ("&register_filter"!="")
+(
+  &register_filter=string.trim("&register_filter")
+  &register_filter=string.upper("&register_filter")
+  &register_filter="*"+"&register_filter"+"*"
+)
+else
+(
+  &save_to_file=1
+)
+
+//*****************************************************************************
+// HW Settings
+//*****************************************************************************
+
+local &num_channels &num_ees &tmp
+
+OPEN #1 &target/meta.txt /Read
+READ #1 &tmp &num_channels
+READ #1 &tmp &num_ees
+CLOSE #1
+
+if (&save_to_file==1)
+(
+  if file.exist(&dump_file)==TRUE()
+  (
+    OPEN #1 &dump_file /Append
+  )
+  else
+  (
+    OPEN #1 &dump_file /Create
+  )
+)
+
+
+local &spmi_addr &spmi_data &tmp1 &tmp2
+
+OPEN #2 &target/hwio.cmm /Read
+
+REPEAT
+(
+  READ #2 &tmp1 &spmi_addr &tmp2
+    
+  if (("&spmi_addr"!="")&&("&tmp1"=="y.create.l"))
+  (
+    if (string.compare("&spmi_addr","*XPU*")!=TRUE())
+    (
+      gosub write_to_file &spmi_addr &spmi_addr
+    )
+  )
+)
+WHILE !EOF()
+
+if (&save_to_file==1)
+(
+  CLOSE #1
+)
+CLOSE #2
+
+if (&save_to_file==1)
+(
+  PRINT " "
+  PRINT %color.blue "SPMI Dump copied to"
+  PRINT %color.blue "&dump_file"
+)
+print "&astr_str&astr_str"
+
+enddo
+
+;=============================================================================
+; SUB: Usage
+;=============================================================================
+Usage:
+  print %color.blue "Usage examples"
+  print " "
+  print %color.blue "do spmi_dump.cmm <target> <register_filter> file=<dump_file>"
+  print " "
+  print "do spmi_dump.cmm 845                 -> Collects full SPMI register dump and copies to file"
+  print "do spmi_dump.cmm 845 pvc             -> Collects PVC related register dump and prints"
+  print "do spmi_dump.cmm 845 pmic_arb_reg    -> Collects the channel to ppid mapping related register dump"
+  print "do spmi_dump.cmm 845 * file=default  -> Collects full SPMI dump, prints and copies to default file"
+  print "do spmi_dump.cmm 845 * file=\\<user>\dropbox\demo.txt -> Collects full SPMI dump, prints and copies to demo.txt"
+  return
+
+;=============================================================================
+; sub: write_to_file
+;=============================================================================
+write_to_file:
+  local &reg_addr &reg_str &reg_data
+  entry &reg_addr &reg_str
+
+  if ("&register_filter"!="")
+  (
+    if (string.compare("&reg_str","&register_filter")==TRUE())
+    (
+      &reg_data=data.long(&bus_access_mode:&reg_addr)
+      print %color.maroon "&reg_str : &reg_data = "+FORMAT.DECIMAL(0,&reg_data)
+
+      if (&save_to_file==1)
+      (
+        WRITE #1 "&reg_str : &reg_data = "+FORMAT.DECIMAL(0,&reg_data)
+      )
+    )
+  )
+  else
+  (
+    &reg_data=data.long(&bus_access_mode:&reg_addr)
+
+    if (&save_to_file==1)
+    (
+      WRITE #1 "&reg_str : &reg_data = "+FORMAT.DECIMAL(0,&reg_data)
+    )
+  )
+
+  return
+
+

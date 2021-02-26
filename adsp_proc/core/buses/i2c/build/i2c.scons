@@ -1,0 +1,181 @@
+#===============================================================================
+#
+# I2C Libs
+#
+# GENERAL DESCRIPTION
+#    Public build script for I2C BUS driver.
+#
+# Copyright (c) 2016-2017 Qualcomm Technologies, Inc.
+# All Rights Reserved.
+# Qualcomm Technologies, Inc. Confidential and Proprietary.
+#
+#-------------------------------------------------------------------------------
+#
+#  $Header: //components/rel/core.qdsp6/2.1/buses/i2c/build/i2c.scons#5 $
+#  $DateTime: 2017/11/02 01:09:41 $
+#  $Author: pwbldsvc $
+#  $Change: 14754448 $
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#  
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 07/20/17   UNR	 Logging changes
+# 08/01/17   ska     Ported for sdm670
+# 07/19/17   RC      To pick the I2C dependent areas for ADSP
+# 08/12/16   UNR	 Initial release
+#
+#===============================================================================
+
+import os
+
+Import('env')
+env = env.Clone()
+
+#------------------------------------------------------------------------------
+# Debug logging options
+#------------------------------------------------------------------------------
+env.Append(CCFLAGS = ' -DI2C_ENABLE_ULOG')
+# env.Append(CCFLAGS = ' -DI2C_LOG_ENABLE_DATA')
+env.Append(CCFLAGS = ' -DI2C_LOG_ENABLE_ERROR')
+env.Append(CCFLAGS = ' -DI2C_LOG_ENABLE_INFO')
+# env.Append(CCFLAGS = ' -DI2C_LOG_ENABLE_REGS')
+# env.Append(CCFLAGS = ' -DI2C_LOG_ENABLE_PERF')
+# env.Append(CCFLAGS = ' -DI2C_LOG_ENABLE_VERBOSE')
+
+#------------------------------------------------------------------------------
+# Add API folders
+#------------------------------------------------------------------------------
+
+I2C_BUILD_ROOT = os.getcwd();
+
+if env['MSM_ID'] in ['670']:
+   I2C_DRV_IMAGES = ['CORE_SLPI_ADSP_ROOT']
+   I2C_USR_IMAGES = ['CORE_SLPI_USER']
+else:   
+   I2C_DRV_IMAGES = ['CORE_SLPI_ROOT', 'CORE_ADSP_ROOT']
+   I2C_USR_IMAGES = ['CORE_SSC_SLPI_USER', 'CORE_ADSP_USER']
+   
+#-----------------------------------------------------------------------------
+# Define paths
+#-----------------------------------------------------------------------------
+
+SRCPATH = "../"
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-----------------------------------------------------------------------------
+# Define any features or compiler flags
+#-----------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+
+CBSP_API = [
+   'BUSES',
+   'SERVICES',
+   'SYSTEMDRIVERS',
+   'BUSYWAIT',
+   'HWENGINES',
+   'KERNEL',
+   'PRODUCTS',
+   'SERVICES',
+   'POWER',
+   'DEBUGTRACE',
+   'I2C_SETTINGS',
+   'DAL',
+]
+
+env.RequirePublicApi(CBSP_API)
+env.RequireRestrictedApi(CBSP_API)
+
+#-------------------------------------------------------------------------------
+# Define sources
+#-------------------------------------------------------------------------------
+
+I2C_DRV_SOURCES = [
+   '${BUILDPATH}/src/i2c_alloc.c',
+   '${BUILDPATH}/src/i2c_api.c',
+   '${BUILDPATH}/src/i2c_iface.c',
+   '${BUILDPATH}/src/i2c_plat.c',
+   '${BUILDPATH}/src/i2c_qdi_root.c',
+   '${BUILDPATH}/src/i2c_log.c',
+]
+
+I2C_USR_SOURCES = [
+#  '${BUILDPATH}/test/i2c_test.c',
+   '${BUILDPATH}/src/i2c_qdi_user.c',
+]
+
+#-------------------------------------------------------------------------------
+# Image specific parameters
+#-------------------------------------------------------------------------------
+
+if   env.has_key('SLPI_PROC'):
+    env.Append(CCFLAGS = ' -DI2C_ENABLE_MICRO_ULOG')
+    env.Append(CCFLAGS = ' -DEXT_DEP_HEADER="\\\"pram_mgr.h\\\""')
+    I2C_INIT_DEPS = ['gpi_drv', 'clk_regime', 'pram_mgr']
+
+elif env.has_key('ADSP_PROC') and env['CHIPSET'] in ['sdm845', 'sdm855']:
+    env.Append(CCFLAGS = ' -DEXT_DEP_HEADER="\\\"ext_stubs.h\\\""')
+    I2C_DRV_SOURCES += ['${BUILDPATH}/src/ext_stubs.c']
+    I2C_INIT_DEPS = ['gpi_drv', 'clk_regime']
+
+elif 'ADSP_PROC' in env and env['CHIPSET'] in ['sdm670']:
+    env.Append(CCFLAGS = ' -DI2C_ENABLE_MICRO_ULOG')
+    env.Append(CCFLAGS = ' -DEXT_DEP_HEADER="\\\"pram_mgr.h\\\""')
+    I2C_INIT_DEPS = ['gpi_drv', 'clk_regime', 'pram_mgr']
+ 
+#-------------------------------------------------------------------------------
+# Add Libraries to image
+#-------------------------------------------------------------------------------
+
+I2cDriver_lib = env.AddLibrary(I2C_DRV_IMAGES, '${BUILDPATH}/I2cDriver', I2C_DRV_SOURCES)
+I2cClient_lib = env.AddLibrary(I2C_USR_IMAGES, '${BUILDPATH}/I2cClient', I2C_USR_SOURCES)
+
+if 'USES_ISLAND' in env:
+    env.AddIslandLibrary(I2C_DRV_IMAGES, I2cDriver_lib)
+    env.AddIslandLibrary(I2C_USR_IMAGES, I2cClient_lib)
+
+#-------------------------------------------------------------------------------
+# Register initialization function and dependencies.
+#-------------------------------------------------------------------------------
+
+if ('SLPI_PROC' in env) or ('ADSP_PROC' in env):
+   if 'USES_RCINIT' in env:
+      env.AddRCInitFunc(
+         I2C_DRV_IMAGES,
+         {
+            'sequence_group'             : 'RCINIT_GROUP_1',       # required
+            'init_name'                  : 'i2c_init',             # required
+            'init_function'              : 'i2c_init',             # required
+            'dependencies'               : I2C_INIT_DEPS
+         })
+
+      env.AddRCInitFunc(
+         I2C_DRV_IMAGES,
+         {
+            'sequence_group'             : 'RCINIT_GROUP_1',       # required
+            'init_name'                  : 'i2c_qdi_root_init',    # required
+            'init_function'              : 'i2c_qdi_root_init',    # required
+            'dependencies'               : ['i2c_init']
+         })
+
+      env.AddRCInitFunc(
+         I2C_USR_IMAGES,
+         {
+            'sequence_group'             : 'RCINIT_GROUP_1',       # required
+            'init_name'                  : 'i2c_qdi_user_init',    # required
+            'init_function'              : 'i2c_qdi_user_init',    # required
+         })
+
+#     env.AddRCInitFunc(
+#        I2C_USR_IMAGES,
+#        {
+#           'sequence_group'             : 'RCINIT_GROUP_7',       # required
+#           'init_name'                  : 'i2c_test_init',        # required
+#           'init_function'              : 'i2c_test_init',        # required
+#           'dependencies'               : ['i2c_qdi_user_init']
+#        })

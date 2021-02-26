@@ -1,0 +1,153 @@
+//============================================================================
+//  Name:                                                                     
+//    DAP_SLPI.cmm
+//
+//  Description:                                                              
+//    Setup script for the Sensor Applications DSP Sub-system
+//                                                                            
+// Copyright (c) 2012 - 2014 by Qualcomm Technologies, Incorporated.  All Rights Reserved.        
+//
+//
+//
+//
+//                      EDIT HISTORY FOR FILE
+//  This section contains comments describing changes made to the module.
+//  Notice that changes are listed in reverse chronological order.
+//
+// when       who             what, where, why
+// --------   ---             --------------------------------------------------------
+// 09/29/2017 JBILLING        Updated for EUD  arguments
+// 09/29/2017 JBILLING        Updated for EUD  arguments
+// 02/01/2017 JBILLING        Updated for SDM845
+// 03/29/2016 JBILLING        Updated for 8998
+// 02/20/2015 JBILLING        Remove sys.config JTAG in first if block
+// 02/20/2015 JBILLING        Remove JTAG/SWD Hack
+// 02/03/2015 JBILLING        Modified per what VI has 
+// 12/30/2014 JBILLING        Created for Istari
+//
+
+// The script accepts two input arguments
+// ARG0 - Chipset name
+// ARG1 - Core number
+// ARG2 - JTAG / SWD option
+// Ideal case, the argument 'ARG0' would not have to be used
+// as the parameters for a sub-system should be the same
+// across the entire family of chipsets
+
+ENTRY &ARG0 &ARG1 &ARG2
+GLOBAL &SLPI_HW_BLOCK_NAME &CURRENT_HW_BLOCK_NAME
+&SLPI_HW_BLOCK_NAME="SSC-Q6"
+MAIN:
+    &ARG0=STR.UPR("&ARG0")
+    IF (("&ARG0"=="SDM845"))
+    (
+        SYStem.CPU HexagonV65
+        
+        
+        IF "&RUMI"=="TRUE"
+        (
+            SYSTEM.JTAGCLOCK 500khz
+        )
+        ELSE
+        (
+            SYSTEM.JTAGCLOCK 5Mhz
+        )
+
+        SYStem.CONFIG SLAVE ON
+        SYStem.CONFIG MEMORYACCESSPORT 0.
+        SYStem.CONFIG DEBUGACCESSPORT  17.
+        SYStem.CONFIG AHBACCESSPORT    18.
+        SYStem.CONFIG APBACCESSPORT    1.
+        SYStem.CONFIG AXIACCESSPORT    0.
+        SYStem.CONFIG MULTITAP NONE
+        SYStem.CONFIG DAPIRPOST 0.
+        SYStem.CONFIG DAPDRPOST 0.
+        SYStem.CONFIG DAPIRPOST 11.
+        SYStem.CONFIG DAPDRPOST 1.
+        SYStem.CONFIG.ETM.Base           DAP:0x86B18000
+        SYStem.CONFIG.COREDEBUG.Base     DAP:0x86B19000
+        
+        IF "&RUMI"=="TRUE"
+        (
+            SYStem.CONFIG DAPIRPOST 0.
+            SYStem.CONFIG DAPDRPOST 0.
+            System.CONFIG.debugtimescale 4.
+        )
+    )
+    IF (("&ARG0"=="MSM8996"))
+    (
+    
+            SYSTEM.RESET
+            SYSTEM.CPU HEXAGONV60
+            
+            SYSTEM.JTAGCLOCK 10.0MHZ
+            
+            SYSTEM.CONFIG SLAVE ON    
+            SYStem.CONFIG MEMORYACCESSPORT 0.
+            SYStem.CONFIG DEBUGACCESSPORT  1.
+            SYStem.CONFIG AXIACCESSPORT    0.
+            SYStem.CONFIG JTAGACCESSPORT   2.
+            SYStem.CONFIG COREJTAGPORT     4.
+            SYStem.CONFIG MULTITAP NONE
+            SYStem.CONFIG DAPIRPOST 0.
+            SYStem.CONFIG DAPDRPOST 0.
+            SYStem.CONFIG DAPIRPOST 16.
+            SYStem.CONFIG DAPDRPOST 2.
+            
+            SYS.OPTION.ICFLUSH OFF
+            
+            ETM.OFF
+    )
+    
+    IF (("&ARG0"=="MSM8998"))
+    (
+    
+            SYSTEM.RESET
+            SYSTEM.CPU HEXAGONV62
+            
+            SYSTEM.JTAGCLOCK 10.0MHZ
+            
+            SYSTEM.CONFIG SLAVE ON    
+            SYStem.CONFIG MEMORYACCESSPORT 0.
+            SYStem.CONFIG DEBUGACCESSPORT  1.
+            SYStem.CONFIG AXIACCESSPORT    0.
+            SYStem.CONFIG JTAGACCESSPORT   2.
+            SYStem.CONFIG COREJTAGPORT     4.
+            SYStem.CONFIG MULTITAP NONE
+            SYStem.CONFIG DAPIRPOST 0.
+            SYStem.CONFIG DAPDRPOST 0.
+            SYStem.CONFIG DAPIRPOST 16.
+            SYStem.CONFIG DAPDRPOST 2.
+            
+            SYS.OPTION.ICFLUSH OFF
+            
+            ETM.OFF
+    )
+    &CURRENT_HW_BLOCK_NAME="&SLPI_HW_BLOCK_NAME"
+    IF "&EUD"!="TRUE"
+    (
+        // Common settings for all chipsets
+        IF (("&ARG2"=="SWD")||("&ARG2"=="swd"))
+        (
+            SYSTEM.CONFIG SWDP ON 
+            SYSTEM.CONFIG DEBUGPORTTYPE SWD
+        )
+        ELSE
+        (
+            SYStem.CONFIG DEBUGPORTTYPE JTAG
+        )
+    )
+    // Launch startup scripts
+    IF (OS.ENV(STARTUPCMM)!="")
+    (
+        &STARTUPSCRIPT=OS.ENV(STARTUPCMM)
+        do &STARTUPSCRIPT
+    )
+    IF "&EUD"!="TRUE"
+    (
+        AUTOSTORE DAP_SLPI HISTORY
+    )
+    GOTO EXIT
+
+EXIT:
+    ENDDO

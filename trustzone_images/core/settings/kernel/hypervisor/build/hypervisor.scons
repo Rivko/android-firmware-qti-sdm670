@@ -1,0 +1,67 @@
+#===============================================================================
+#
+# Hypervisor Settings
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2017 by Qualcomm Technologies, Inc.  All Rights Reserved.
+# Qualcomm Technologies, Inc. Confidential and Proprietary.
+#
+#-------------------------------------------------------------------------------
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 09/26/17   rr     Initial version. Starting Device Configuration settings for HYP in core/settings/
+#===============================================================================
+Import('env')
+env = env.Clone()
+
+if env['MSM_ID'] not in  ['845', '855','670','1000', '640']:
+    Return()
+
+#-------------------------------------------------------------------------------
+# Dependencies
+#-------------------------------------------------------------------------------
+
+#-------------------------------------------------------------------------------
+# Source PATH
+#-------------------------------------------------------------------------------
+if env['MSM_ID'] in  ['845', '855','670','1000', '640']:
+   SRCPATH = "${BUILD_ROOT}/core/settings/kernel/hypervisor/config/$(MSM_ID)"
+
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+# Device Configuration File Registrations
+#-------------------------------------------------------------------------------
+deploy_items = ["hypervisor.scons", "hypervisor.api",]
+if ('USES_DEVCFG' in env) and not (env.has_key('BUILD_TOOL_CHAIN') or env.has_key('BUILD_BOOT_CHAIN')):
+   if "USES_SSG_DEVCFG_TOOLS" in env:
+      add_devcfg_info = env.AddShippableDevCfgInfo
+   else:
+      add_devcfg_info = env.AddDevCfgInfo
+
+   DEVCFG_IMG = ['DAL_DEVCFG_HYP_IMG']
+   if env['MSM_ID'] in ['845', '855', '670', '1000', '640']:
+      add_devcfg_info(DEVCFG_IMG,
+      {
+            'devcfg_xml'  : ['${BUILD_ROOT}/core/settings/kernel/hypervisor/config/${MSM_ID}/hypervisor.xml' ]
+      })
+
+   DEVCFG_IMG = ['DAL_DEVCFG_OEM_HYP_IMG']
+   if env['MSM_ID'] in ['845', '855', '670', '1000']:
+      add_devcfg_info(DEVCFG_IMG,
+      {
+            'devcfg_xml'  : ['${BUILD_ROOT}/core/settings/kernel/hypervisor/config/${MSM_ID}/hypervisor_oem.xml' ]
+      })
+      deploy_items.append('${BUILD_ROOT}/core/settings/kernel/hypervisor/config/${MSM_ID}/hypervisor_oem.xml')
+
+if "USES_DEPLOY_BUILDER" in env:
+   env.Deploy(deploy_items)
+

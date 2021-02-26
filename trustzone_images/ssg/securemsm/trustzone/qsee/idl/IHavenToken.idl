@@ -1,0 +1,178 @@
+// Copyright (c) 2016, 2017 Qualcomm Technologies, Inc.  All Rights Reserved.
+// Qualcomm Technologies Proprietary and Confidential.
+
+interface IHavenToken {
+
+  /** Used fixed sizes for simplicity (but still check). This is possible because
+  this part of Haven Token is designed to have very small and fixed data
+  structures so that it can fit into HW or very small, very secure CPUs Note that 
+  the buffer size is always passed in, so if these values are too small the function 
+  will error out and not stomp on memory. */
+  
+  const uint32 SIGNK_KERNELDATA_MAX     = 300;              /** For all the data fields */
+  const uint32 SIGNK_SIG_MAX            = 96;               /** 2 * 32, size of an ECDSA sig 256, 96 to allow for ECDSA 384*/
+  const uint32 SIGNK_SKID_MAX           = 20;               /** 20 bytes corresponds to the size of a SHA-1 hash */
+  const uint32 SIGNK_PROTECTED_HDRS_MAX = 36;               /** Typically < 10 bytes, but can be larger. Sized for 3 COSE headers using 32-bit integers */
+
+  //--------------------------------------------------------
+  //  IHavenToken Error codes
+  //--------------------------------------------------------
+              
+  error ERROR_SIGNING_KEY_UNAVAIL;   
+  error ERROR_CBOR_ENCODE_ERR;
+  error ERROR_DATA_TOO_BIG;
+  error ERROR_RPMB_ERR;
+  error ERROR_UNSUPPORTED_PAYLOAD_HASH;
+  error ERROR_SIGNING_ERR;
+  error ERROR_DEVICE_NOT_SECURE;
+  error ERROR_GROUPKEY_ERR;
+
+  //--------------------------------------------------------
+  //  Interface
+  //--------------------------------------------------------
+
+  /**
+  This API is deprecated. 
+  Call to this API returns Object_ERROR_INVALID.
+  */
+  method sign(in uint32 uKeySelect,
+              in uint64 nOpts,
+              in uint64 uReserved,           
+              in buffer RelyingPartyName, 
+              in buffer TEEUserHash,
+              in buffer RichOSUserHash,
+              out buffer TEEKernelDataCBOR,
+              out uint16 TEEKernelDataCBOR_Items,
+              out buffer HavenHashesCBOR,
+              out uint16 HavenHashesCBOR_Items,
+              out buffer HavenSig,
+              out buffer HavenPubKey);
+
+  /**
+  Haven Token core API into kernel for COSE format signatures (Use the main Haven Token API for most purposes, not this one)
+  
+  @param[in] nKeySelect  Select which signing key to use, one of HAVENT_KEYTYPE_*
+  @param[in] nPayloadHashSelect Selects which hash algorithm is used for payloads.
+  @param[in] nOpts HAVENT_OPT_* flags selecting various data options.
+  @param[in] uReserved Reserved for future use
+  @param[in] RelyingPartyName  A buffer with the name of the relying party / licensee
+  @param[in] TEEUserHash Hash of the TEE User Mode data going into the report
+  @param[in] RichOSUserHash  Hash of the Rich OS User Mode data going into the report
+  @param[in,out] pTEEKernelDataCBOR Buffer in which to put the CBOR with the TEE Kernel data. 
+  @param[in,out] pCOSEProtectedHeaders Buffer in which to put protected headers are put
+  @param[in,out] pCOSESig Buffer in which to put the signature created by the kernel
+  @param[in,out] pSKID Buffer in which to put the subject key identifier
+  
+  @return 
+  - Object_OK  -- Success
+  - Object_ERROR  -- General non-specific authentication
+  - Object_ERROR_SIZE_OUT -- A buffer passed in to recieve data is too small
+  - IHavenToken_ERROR_SIGNING_KEY_UNAVAIL -- Requested signing key is not availabled, possibly because it wasn't provisioned or isn't supported.
+  - IHavenToken_ERROR_CBOR_ENCODE_ERR -- Internal CBOR encoding error (would only happen if there is a bug)
+  - IHavenToken_ERROR_DATA_TOO_BIG -- The data items added are too big to be transferred to the Haven Token service in the TEE or similar
+  - IHavenToken_ERROR_RPMB_ERR -- Error while accessing RPMB partition.
+  - IHavenToken_ERROR_UNSUPPORTED_PAYLOAD_HASH -- Requested hash algorithm is not supported.
+  - IHavenToken_ERROR_SIGNING_ERR -- Error during computation of signature.
+  - IHavenToken_ERROR_GROUPKEY_ERR -- Error while using groupkey.
+  
+  This kernel API does the core part of creating the Haven Token, the
+  collecting of kernel-originated data and the signing. The Haven TA
+  Service that calls this assembles the full token and encrypts
+  it. This functionality is kept to the minimum necessary to run in the
+  QSEE kernel.
+
+  This API is for COSE format signatures as defined in RFC 8152 with
+  Qualcomm-specific modification for signing multiple payloads to
+  handle multiple security levels. This API will temporarily coexist with
+  and eventually replace the sign() method which was for a signing format
+  entirely proprietary to Qualcomm.
+
+  The nPayloadHashSelect parameter will use the hash algorithm identifiers
+  specified at the IANA registry for algorithms for COSE. Refreashingly,
+  these are simple integers, not complex OIDs, but ote that they can be
+  negative. (Common hashes are not in the IANA registry as of July 2017,
+  but they will be soon).
+  
+  The buffer sizes are intentionally and luckily small enough that the
+  implementation in the kernel needs no heap and the caller to this API
+  also needs no heap. Everything fits on the stack.
+  
+  The four output buffers passed in should be at least as big as the
+  constant definitions for their sizes below. If not the signing
+  operation may fail.  Note there is no querying for the size. The call
+  should just provide buffers of these sizes.
+  
+  Four data blobs are passed in for the signing
+  
+  1) The relying party name which is used to create the privacy
+  preserving DeviceID.  The max that it can be is
+  HAVEN_MAX_RELYINGPARTY_NAME (128 bytes). If it is larger signing
+  fails with IHavenToken_ERROR_DATA_TOO_BIG.
+  
+  2, 3), 4) One hash of the Rich OS user data another of Rich OS
+  kernel data and finall the TEE User data. There size will depend on
+  the nPayloadHashSelect and typically be between 256 and 512
+  bytes. They get encoded into the hashes CBOR along with some other stuff.
+  If these hashes are too big, or pHavenHashesCBOR is too small, signing fails
+  and Object_ERROR_SIZE_OUT is returned.
+  
+  Four data blobs are returned. If any of then are too small then no
+  signature is generated and Object_ERROR_SIZE_OUT is
+  returned. The max sizes are defined below.
+  
+  1) The CBOR encoded kernel data items including DeviceID, OEM ID, TEE
+  Version and such.  The size of this is largely fixed and is not
+  influenced by any input to the signing API.  A buffer of size
+  IHavenToken_SIGNK_KERNELDATA_MAX should always be passed in.
+  
+  2) The COSE protected headers. This carries the signing algorithm ID
+  corresponding to uKeySelect and the payload hash algorithm ID
+  corresponding to nPayloadHashSelect. It is a CBOR encoded
+  blob for insertion into the final CBOR structure. COSE algorithm
+  IDs are usually small integers, but can be 32-bit integers in some
+  cases. This buffer should always be SIGNK_PROTECTED_HDRS_MAX in
+  size to accommodate the more or larger headers.
+  
+  3) The signature. With the current implementation supporting only
+  ECDSA 256, this is always 64 bytes. Buffer should be SIGNK_SIG_MAX
+  to accommodate ECDSA 384.
+  
+  4) The subject Key ID. This is as defined in RFC 5280 as a
+  SHA-1 hash of the subjectPublicKey for the public part
+  of the signing key. This is used to lookup the certificate
+  of the signing key. This is format is works for many different
+  signing algorithms and is common use on the Internet.
+  
+  This API should not be published to developers.
+  
+  This is the format and fields simulated data output when the
+  HAVENT_OPT_SIMDATA flag is set. The actual data returned is binary
+  CBOR. What's shown here is CBOR diagnostic, a JSON-like text version
+  of it.
+  
+  {
+   "HWVers": 512,
+   "DevID": h'b932773ca0a48bfb1fc2eada9a1a36ae', 
+   "OEMIDs": {
+      "Int": 65520,
+      "PKHash": h'ae9fc129d49ff92270b5f8d31d38086a49a389f001b27c681dbd0b7007b76f21'
+   },
+   "QSEEVersion": "TZ.BF.4.x.x.n-nnnn :abuyy-mm",
+   "FWVersion": "BSP.4.x.x.n-nnnn :abuyy-mm"
+  }
+  
+  */
+   
+  method sign_cose(in uint32 uKeySelect,
+                   in int32 nPayloadHashSelect,
+                   in uint64 nOpts,
+                   in uint64 uReserved,           
+                   in buffer RelyingPartyName,
+                   in buffer TEEUserHash,
+                   in buffer RichOSKernelHash,
+                   in buffer RichOSUserHash,
+                   out buffer TEEKernelDataCBOR,
+                   out buffer COSEProtectedHeaders,
+                   out buffer COSESig,
+                   out buffer SKID);
+}; 

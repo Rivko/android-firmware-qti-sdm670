@@ -1,0 +1,108 @@
+#===============================================================================
+#
+# QUPv3 common Libs
+#
+# GENERAL DESCRIPTION
+#    build script
+#
+# Copyright (c) 2017 Qualcomm Technologies, Inc.
+#         All Rights Reserved.
+# Qualcomm Technologies, Inc. Confidential and Proprietary.
+#
+#-------------------------------------------------------------------------------
+#                      EDIT HISTORY FOR FILE
+#
+#  This section contains comments describing changes made to the module.
+#  Notice that changes are listed in reverse chronological order.
+#
+# when       who     what, where, why
+# --------   ---     ---------------------------------------------------------
+# 09/15/17   RC      Added right flag for the ADSP compilation
+# 07/10/17   RC      Added the PRAM support for the warlock ADSP.
+# 06/01/17   VV      Initial revision.
+#===============================================================================
+
+Import('env')
+env = env.Clone()
+
+#-------------------------------------------------------------------------------
+# Load sub scripts
+#-------------------------------------------------------------------------------
+env.LoadSoftwareUnits()
+
+
+SRCPATH = "${BUILD_ROOT}/core/buses/qup_common"
+
+env.VariantDir('${BUILDPATH}', SRCPATH, duplicate=0)
+
+#-------------------------------------------------------------------------------
+#  Publish Private APIs
+#-------------------------------------------------------------------------------
+
+env.PublishPrivateApi('QUP_FW', [
+   "${BUILD_ROOT}/core/buses/qup_fw/inc",
+])
+
+#-------------------------------------------------------------------------------
+# Internal depends within CoreBSP
+#-------------------------------------------------------------------------------
+CBSP_APIS = [
+   'BUSES',
+   'HAL',
+   'KERNEL',
+   'DAL',
+   'DEBUGTOOLS',
+   'PRODUCTS',
+   'SERVICES',
+   'FW_SETTINGS',
+]
+env.RequirePublicApi(CBSP_APIS)
+env.RequireRestrictedApi(CBSP_APIS)
+
+SOURCES = [
+   '${BUILDPATH}/src/qup_common.c',
+]
+IMAGES = ['CORE_SLPI_ROOT']
+
+
+if env.has_key('ADSP_PROC'):
+   SOURCES = [
+      '${BUILDPATH}/src/qup_stubs.c',
+   ]
+   IMAGES = ['CORE_ADSP_ROOT'];
+   
+if env['MSM_ID'] in ['670']:
+   SOURCES = [
+      '${BUILDPATH}/src/qup_common.c',
+   ]   
+   IMAGES = ['CORE_SLPI_ADSP_ROOT'];
+
+uimg_libs = env.AddLibrary(IMAGES, '${BUILDPATH}/QUP_COMMON', SOURCES)
+
+if 'USES_ISLAND' in env:
+    env.AddIslandLibrary(IMAGES, uimg_libs)
+
+if env.has_key('SLPI_PROC'):
+   if 'USES_RCINIT' in env:
+      env.AddRCInitFunc(
+          IMAGES,
+          {
+          'sequence_group'             : 'RCINIT_GROUP_0',
+          'init_name'                  : 'qup_common_init',
+          'init_function'              : 'qup_common_init',
+          'dependencies'               : ['dalsys','pram_mgr','qup_fw_init']
+          })
+		  
+if env['MSM_ID'] in ['670']:
+   if env.has_key('ADSP_PROC'):
+      if 'USES_RCINIT' in env:
+         env.AddRCInitFunc(
+            IMAGES,
+            {
+            'sequence_group'             : 'RCINIT_GROUP_0',
+            'init_name'                  : 'qup_common_init',
+            'init_function'              : 'qup_common_init',
+            'dependencies'               : ['dalsys','pram_mgr','qup_fw_init']
+            })		  
+
+
