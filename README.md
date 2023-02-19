@@ -1,6 +1,6 @@
 What's this?
 ==================
-This repository contains the firmware source code for the Qualcomm Snapdragon 660, also known as SDM660.
+This repository contains the firmware source code for the Qualcomm Snapdragon 670 (or so it seems), also known as SDM670.
 
 Build
 ==================
